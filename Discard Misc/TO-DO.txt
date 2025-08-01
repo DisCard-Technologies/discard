@@ -1,0 +1,30 @@
+TO-DO:
+
+
+- READ PRD (check for any features missing, see if anything else is needed)
+
+- Re-validate backend configuration/deployment
+
+
+
+
+
+- Proof Of Concept Objective:  App running on phone, create card, and transaction (real or mock), then dispose. Then we can ensure production readiness (app store)
+
+
+
+
+
+
+
+- Work with Bmad
+
+- Install Bmad into Project
+
+- Marketing strategy
+
+
+
+
+- App store listing how-to
+

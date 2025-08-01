@@ -1,0 +1,73 @@
+For the "key services" section part 1, wallet integration should work with any major crypto wallet such as Metamask for example, and my partner intends to integrate his own crypto wallet currently being developed. For part 2, we will be using Marqeta for the virtual cards and apple wallet compatibility.  For the backend we will be using Node.js.  
+
+
+Web Dashboard: 
+
+
+=====================================
+MVP:
+
+MAIN GOAL:   Disposable Card
+
+- Wallet Connect
+
+
+
+Additional Featrures:
+
+MCC
+=====================================
+
+
+TECH STACK FINALIZATION:
+
+
+FrontEnd: React Native,   
+Expo.dev (universal app dev Android, Ios, Web)
+
+
+
+Backend: Node.JS Express (api calls), PostgreSQL, Redis
+
+
+
+
+
+
+Card issuing: Marqeta
+
+
+======================================
+Bmad (Ai Agent team):
+
+Market Research
+Team maneger
+Quality control
+Code Review
+
+CLAUDE CHAT BMAD:
+
+--------------------------------------
+Fundamental Requirements:
+
+16 digit number
+Wallet integration or Multichain QR deposit?
+
+----------------------------------
+Immediate Strategic Questions
+
+1. Geographic Strategy: Privacy.com is US-only, major crypto cards have limited international reach. Are you considering launching in crypto-friendly jurisdictions first?
+
+
+2. Regulatory Approach: How are you planning to balance privacy features with compliance requirements?
+
+
+3. Business Model: Have you decided between interchange fees, subscription tiers, or crypto-native monetization?
+
+============================================
+
+LAYERS:
+
+Layer 0 - Constellation (data validation, quality assurance layer)
+Layer 1 - ETH (Premium security layer, stores high value & disputed assets NFT's)
+Layer 2 - BASE ( User experience layer, fast affordable minting operations)
