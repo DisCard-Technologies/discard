@@ -140,6 +140,8 @@ dump.rdb
 .linear/
 .cursor-tutor/
 .ai/
+.cursor/
+.husky/
 
 # Card issuer sandbox credentials
 marqeta-sandbox.json
