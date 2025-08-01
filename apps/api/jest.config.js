@@ -13,7 +13,7 @@ module.exports = {
     '!src/**/*.test.ts',
   ],
   setupFilesAfterEnv: ['<rootDir>/src/setupTests.ts'],
-  moduleNameMapping: {
+  moduleNameMapper: {
     '^@discard/shared$': '<rootDir>/../../packages/shared/src/index.ts'
   }
 };

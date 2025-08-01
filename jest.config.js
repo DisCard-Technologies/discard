@@ -16,7 +16,7 @@ module.exports = {
     '!**/node_modules/**',
     '!**/dist/**'
   ],
-  moduleNameMapping: {
+  moduleNameMapper: {
     '^@discard/shared$': '<rootDir>/packages/shared/src/index.ts'
   },
   setupFilesAfterEnv: ['<rootDir>/jest.setup.js']
