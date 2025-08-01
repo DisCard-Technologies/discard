@@ -7,7 +7,9 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "lint": "eslint src/**/*.ts",
+    "type-check": "tsc --noEmit"
   },
   "keywords": [
     "shared",
@@ -15,5 +17,11 @@
     "utilities"
   ],
   "author": "",
-  "license": "ISC"
+  "license": "ISC",
+  "devDependencies": {
+    "typescript": "^5.3.3"
+  },
+  "peerDependencies": {
+    "typescript": "^5.3.3"
+  }
 }
