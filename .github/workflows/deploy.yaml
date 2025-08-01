@@ -1,0 +1,156 @@
+name: Deploy to Railway
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - development
+          - staging
+          - production
+
+env:
+  NODE_VERSION: '20.x'
+
+jobs:
+  deploy-api:
+    name: Deploy API to Railway
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || 'production' }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build API
+        run: npm run build --workspace=apps/api
+
+      - name: Run tests
+        env:
+          NODE_ENV: test
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+        run: npm test --workspace=apps/api
+
+      - name: Deploy to Railway
+        uses: railwayapp/railway-deploy@v3
+        with:
+          railway_token: ${{ secrets.RAILWAY_TOKEN }}
+          service: discard-api
+          environment: ${{ github.event.inputs.environment || 'production' }}
+
+  deploy-web:
+    name: Deploy Web App
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || 'production' }}
+    needs: deploy-api
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Web App
+        env:
+          NEXT_PUBLIC_API_URL: ${{ secrets.API_URL }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: npm run build --workspace=apps/web
+
+      - name: Deploy to Vercel
+        uses: amondnet/vercel-action@v25
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+          working-directory: ./apps/web
+          scope: ${{ secrets.VERCEL_ORG_ID }}
+
+  health-check:
+    name: Post-Deployment Health Check
+    runs-on: ubuntu-latest
+    needs: [deploy-api, deploy-web]
+    steps:
+      - name: Wait for deployment stabilization
+        run: sleep 30
+
+      - name: API Health Check
+        run: |
+          response=$(curl -s -o /dev/null -w "%{http_code}" ${{ secrets.API_URL }}/health)
+          if [ $response -ne 200 ]; then
+            echo "API health check failed with status $response"
+            exit 1
+          fi
+          echo "API health check passed"
+
+      - name: Web App Health Check
+        run: |
+          response=$(curl -s -o /dev/null -w "%{http_code}" ${{ secrets.WEB_URL }})
+          if [ $response -ne 200 ]; then
+            echo "Web app health check failed with status $response"
+            exit 1
+          fi
+          echo "Web app health check passed"
+
+  notify:
+    name: Deployment Notification
+    runs-on: ubuntu-latest
+    needs: [deploy-api, deploy-web, health-check]
+    if: always()
+    steps:
+      - name: Notify success
+        if: needs.deploy-api.result == 'success' && needs.deploy-web.result == 'success' && needs.health-check.result == 'success'
+        run: |
+          echo "✅ Deployment successful!"
+          echo "API: ${{ secrets.API_URL }}"
+          echo "Web: ${{ secrets.WEB_URL }}"
+          echo "Environment: ${{ github.event.inputs.environment || 'production' }}"
+
+      - name: Notify failure
+        if: needs.deploy-api.result == 'failure' || needs.deploy-web.result == 'failure' || needs.health-check.result == 'failure'
+        run: |
+          echo "❌ Deployment failed!"
+          echo "API Deploy: ${{ needs.deploy-api.result }}"
+          echo "Web Deploy: ${{ needs.deploy-web.result }}"
+          echo "Health Check: ${{ needs.health-check.result }}"
+          exit 1
+
+  rollback:
+    name: Rollback on Failure
+    runs-on: ubuntu-latest
+    needs: [deploy-api, deploy-web, health-check]
+    if: failure()
+    steps:
+      - name: Rollback API
+        if: needs.deploy-api.result == 'failure'
+        run: |
+          echo "Rolling back API deployment..."
+          # Implement rollback logic here
+
+      - name: Rollback Web
+        if: needs.deploy-web.result == 'failure'
+        run: |
+          echo "Rolling back web deployment..."
+          # Implement rollback logic here
