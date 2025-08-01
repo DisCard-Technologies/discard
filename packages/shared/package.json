@@ -9,7 +9,11 @@
     "dev": "tsc --watch",
     "clean": "rm -rf dist"
   },
-  "keywords": ["shared", "types", "utilities"],
+  "keywords": [
+    "shared",
+    "types",
+    "utilities"
+  ],
   "author": "",
   "license": "ISC"
 }
