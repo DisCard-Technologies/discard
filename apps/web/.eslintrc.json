@@ -1,0 +1,14 @@
+{
+  "extends": ["../../.eslintrc.json", "next/core-web-vitals"],
+  "env": {
+    "browser": true,
+    "es2020": true
+  },
+  "parserOptions": {
+    "project": "./tsconfig.json"
+  },
+  "rules": {
+    "react/react-in-jsx-scope": "off",
+    "@typescript-eslint/no-unused-vars": ["error", { "argsIgnorePattern": "^_" }]
+  }
+}
