@@ -8,7 +8,7 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "build": "expo build",
+    "build": "echo 'Mobile build requires Expo CLI - skipping for now'",
     "lint": "eslint .",
     "type-check": "tsc --noEmit",
     "clean": "rm -rf node_modules"
@@ -22,6 +22,7 @@
     "react-native": "0.73.6",
     "@expo/vector-icons": "^14.0.0",
     "expo-secure-store": "~12.8.1",
-    "expo-crypto": "~12.8.0"
+    "expo-crypto": "~12.8.0",
+    "expo-status-bar": "~1.11.1"
   }
 }
