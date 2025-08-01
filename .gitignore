@@ -135,6 +135,7 @@ docs/node_modules/
 *.tgz
 .dockerignore
 dump.rdb
+.turbo
 
 # Linear/Cursor specific
 .linear/
