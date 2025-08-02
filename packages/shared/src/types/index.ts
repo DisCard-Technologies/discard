@@ -1,13 +1,20 @@
 // DisCard Shared Types
 
+export interface PrivacySettings {
+  dataRetention: number;
+  analyticsOptOut: boolean;
+}
+
 export interface User {
   id: string;
   email: string;
-  username: string;
+  username?: string;
   created_at: string;
   updated_at: string;
-  is_verified: boolean;
-  kyc_status: 'pending' | 'approved' | 'rejected';
+  emailVerified: boolean;
+  lastActive: string;
+  privacySettings: PrivacySettings;
+  kyc_status?: 'pending' | 'approved' | 'rejected';
 }
 
 export interface Card {
@@ -88,11 +95,35 @@ export interface LoginRequest {
 export interface RegisterRequest {
   email: string;
   password: string;
-  username: string;
+  username?: string;
 }
 
 export interface AuthResponse {
   user: User;
-  token: string;
+  accessToken: string;
+  refreshToken: string;
   expiresIn: number;
+}
+
+export interface AuthTokens {
+  accessToken: string;
+  refreshToken: string;
+  expiresIn: number;
+}
+
+export interface EmailVerificationRequest {
+  token: string;
+}
+
+export interface RefreshTokenRequest {
+  refreshToken: string;
+}
+
+export interface ForgotPasswordRequest {
+  email: string;
+}
+
+export interface ResetPasswordRequest {
+  token: string;
+  password: string;
 }

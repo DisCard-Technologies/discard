@@ -6,7 +6,8 @@ export interface AuthenticatedRequest extends Request {
   user?: {
     id: string;
     email: string;
-    role: string;
+    username?: string;
+    emailVerified: boolean;
   };
 }
 
@@ -34,10 +35,16 @@ export const authenticateToken = async (
     
     const decoded = jwt.verify(token, jwtSecret) as any;
     
+    // Ensure it's an access token
+    if (decoded.type !== 'access') {
+      res.status(401).json({ error: 'Invalid token type' });
+      return;
+    }
+    
     // Verify user exists in Supabase
     const { data: user, error } = await supabase
       .from('users')
-      .select('id, email, role')
+      .select('id, email, username, email_verified')
       .eq('id', decoded.user_id)
       .single();
 
@@ -46,7 +53,19 @@ export const authenticateToken = async (
       return;
     }
 
-    req.user = user;
+    req.user = {
+      id: user.id,
+      email: user.email,
+      username: user.username,
+      emailVerified: user.email_verified
+    };
+    
+    // Update last active time
+    await supabase
+      .from('users')
+      .update({ last_active: new Date().toISOString() })
+      .eq('id', user.id);
+    
     next();
   } catch (error) {
     res.status(403).json({ error: 'Invalid token' });
@@ -54,18 +73,16 @@ export const authenticateToken = async (
   }
 };
 
-export const requireRole = (roles: string[]) => {
-  return (req: AuthenticatedRequest, res: Response, next: NextFunction): void => {
-    if (!req.user) {
-      res.status(401).json({ error: 'Authentication required' });
-      return;
-    }
+export const requireEmailVerification = (req: AuthenticatedRequest, res: Response, next: NextFunction): void => {
+  if (!req.user) {
+    res.status(401).json({ error: 'Authentication required' });
+    return;
+  }
 
-    if (!roles.includes(req.user.role)) {
-      res.status(403).json({ error: 'Insufficient permissions' });
-      return;
-    }
+  if (!req.user.emailVerified) {
+    res.status(403).json({ error: 'Email verification required' });
+    return;
+  }
 
-    next();
-  };
+  next();
 }; 

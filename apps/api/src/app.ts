@@ -4,6 +4,7 @@ import helmet from 'helmet';
 import dotenv from 'dotenv';
 import { createClient } from '@supabase/supabase-js';
 import userRoutes from './routes/users';
+import authRoutes from './services/auth/auth.routes';
 
 // Load environment variables
 dotenv.config();
@@ -60,6 +61,9 @@ app.get('/api/v1', (req, res) => {
     version: '1.0.0'
   });
 });
+
+// Authentication routes
+app.use('/api/v1/auth', authRoutes);
 
 // User routes
 app.use('/api/v1/users', userRoutes);
