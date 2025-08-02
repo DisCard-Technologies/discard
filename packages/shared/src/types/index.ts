@@ -18,17 +18,18 @@ export interface User {
 }
 
 export interface Card {
-  id: string;
-  user_id: string;
-  card_number_encrypted: string;
-  card_type: 'virtual' | 'physical';
-  status: 'active' | 'frozen' | 'cancelled';
-  balance_usd: number;
-  spending_limit_daily: number;
-  spending_limit_monthly: number;
-  created_at: string;
-  updated_at: string;
-  expires_at: string;
+  cardId: string; // UUID v4
+  cardContext: string; // Cryptographic isolation key
+  encryptedCardNumber: string; // AES-256 encrypted
+  encryptedCVV: string; // AES-256 encrypted
+  expirationDate: string; // MMYY
+  status: 'active' | 'paused' | 'expired' | 'deleted';
+  spendingLimit: number; // Cents
+  currentBalance: number; // Cents
+  createdAt: Date;
+  expiresAt?: Date;
+  merchantRestrictions?: string[]; // Category codes
+  deletionKey: string; // Cryptographic deletion verification
 }
 
 export interface Transaction {
@@ -126,4 +127,32 @@ export interface ForgotPasswordRequest {
 export interface ResetPasswordRequest {
   token: string;
   password: string;
+}
+
+// Card API Types
+export interface CreateCardRequest {
+  spendingLimit: number; // 100-500000 cents
+  expirationDate?: string; // MMYY
+  merchantRestrictions?: string[]; // Category codes
+}
+
+export interface CreateCardResponse {
+  card: Card;
+  cardNumber: string; // Temporary exposure for initial display
+  cvv: string; // Temporary exposure for initial display
+}
+
+export interface CardListRequest {
+  status?: 'active' | 'paused' | 'expired' | 'deleted';
+  limit?: number; // max 50
+}
+
+export interface CardDetailsResponse {
+  card: Card;
+  transactionHistory: Transaction[];
+}
+
+export interface CardDeletionResponse {
+  success: boolean;
+  deletionProof: string; // Cryptographic verification
 }
