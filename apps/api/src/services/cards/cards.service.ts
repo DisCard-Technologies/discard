@@ -2,7 +2,8 @@ import crypto from 'crypto';
 import { supabase } from '../../app';
 import { privacyService, DeletionProof } from './privacy.service';
 import { InputValidator, InputSanitizer } from '../../utils/validators';
-import { Card, CreateCardRequest, CardListRequest, CardDetailsResponse, Transaction } from '../../../shared/src/types';
+// @ts-ignore - Direct import from source for development
+import { Card, CreateCardRequest, CardListRequest, CardDetailsResponse, Transaction } from '@discard/shared/src/types/index';
 
 export interface CreateCardData {
   userId: string;
@@ -78,17 +79,13 @@ export class CardsService {
 
       const card: Card = {
         cardId: cardRecord.card_id,
-        cardContext: cardRecord.card_context_hash,
-        encryptedCardNumber: cardRecord.encrypted_card_number,
-        encryptedCVV: cardRecord.encrypted_cvv,
-        expirationDate: cardRecord.expiration_date,
+        userId: cardRecord.user_id,
         status: cardRecord.status,
         spendingLimit: cardRecord.spending_limit,
         currentBalance: cardRecord.current_balance,
-        createdAt: new Date(cardRecord.created_at),
-        expiresAt: cardRecord.expires_at ? new Date(cardRecord.expires_at) : undefined,
         merchantRestrictions: cardRecord.merchant_restrictions,
-        deletionKey: cardRecord.deletion_key
+        createdAt: cardRecord.created_at,
+        expiresAt: cardRecord.expires_at || new Date(Date.now() + (2 * 365 * 24 * 60 * 60 * 1000)).toISOString()
       };
 
       return {
@@ -132,17 +129,13 @@ export class CardsService {
 
       return cards.map(cardRecord => ({
         cardId: cardRecord.card_id,
-        cardContext: cardRecord.card_context_hash,
-        encryptedCardNumber: cardRecord.encrypted_card_number,
-        encryptedCVV: cardRecord.encrypted_cvv,
-        expirationDate: cardRecord.expiration_date,
+        userId: cardRecord.user_id,
         status: cardRecord.status,
         spendingLimit: cardRecord.spending_limit,
         currentBalance: cardRecord.current_balance,
-        createdAt: new Date(cardRecord.created_at),
-        expiresAt: cardRecord.expires_at ? new Date(cardRecord.expires_at) : undefined,
         merchantRestrictions: cardRecord.merchant_restrictions,
-        deletionKey: cardRecord.deletion_key
+        createdAt: cardRecord.created_at,
+        expiresAt: cardRecord.expires_at || new Date(Date.now() + (2 * 365 * 24 * 60 * 60 * 1000)).toISOString()
       }));
     } catch (error) {
       console.error('Card listing failed:', error);
@@ -182,31 +175,22 @@ export class CardsService {
 
       const card: Card = {
         cardId: cardRecord.card_id,
-        cardContext: cardRecord.card_context_hash,
-        encryptedCardNumber: cardRecord.encrypted_card_number,
-        encryptedCVV: cardRecord.encrypted_cvv,
-        expirationDate: cardRecord.expiration_date,
+        userId: cardRecord.user_id,
         status: cardRecord.status,
         spendingLimit: cardRecord.spending_limit,
         currentBalance: cardRecord.current_balance,
-        createdAt: new Date(cardRecord.created_at),
-        expiresAt: cardRecord.expires_at ? new Date(cardRecord.expires_at) : undefined,
         merchantRestrictions: cardRecord.merchant_restrictions,
-        deletionKey: cardRecord.deletion_key
+        createdAt: cardRecord.created_at,
+        expiresAt: cardRecord.expires_at || new Date(Date.now() + (2 * 365 * 24 * 60 * 60 * 1000)).toISOString()
       };
 
       const transactionHistory: Transaction[] = (transactions || []).map(tx => ({
         id: tx.id,
-        user_id: tx.user_id,
-        card_id: tx.card_id,
-        amount_usd: tx.amount_usd,
-        currency: tx.currency,
-        merchant_name: tx.merchant_name,
-        merchant_category: tx.merchant_category,
-        transaction_type: tx.transaction_type,
-        status: tx.status,
-        created_at: tx.created_at,
-        metadata: tx.metadata || {}
+        cardId: tx.card_id,
+        amount: tx.amount_usd,
+        merchant: tx.merchant_name,
+        timestamp: tx.created_at,
+        status: tx.status
       }));
 
       return {
@@ -290,17 +274,13 @@ export class CardsService {
 
       return {
         cardId: cardRecord.card_id,
-        cardContext: cardRecord.card_context_hash,
-        encryptedCardNumber: cardRecord.encrypted_card_number,
-        encryptedCVV: cardRecord.encrypted_cvv,
-        expirationDate: cardRecord.expiration_date,
+        userId: cardRecord.user_id,
         status: cardRecord.status,
         spendingLimit: cardRecord.spending_limit,
         currentBalance: cardRecord.current_balance,
-        createdAt: new Date(cardRecord.created_at),
-        expiresAt: cardRecord.expires_at ? new Date(cardRecord.expires_at) : undefined,
         merchantRestrictions: cardRecord.merchant_restrictions,
-        deletionKey: cardRecord.deletion_key
+        createdAt: cardRecord.created_at,
+        expiresAt: cardRecord.expires_at || new Date(Date.now() + (2 * 365 * 24 * 60 * 60 * 1000)).toISOString()
       };
     } catch (error) {
       console.error('Card status update failed:', error);

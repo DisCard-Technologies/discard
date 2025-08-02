@@ -3,7 +3,7 @@ import { cardsService } from './cards.service';
 import { privacyService } from './privacy.service';
 import { AuthenticatedRequest } from '../../middleware/auth';
 import { InputSanitizer } from '../../utils/input-sanitizer';
-import { CreateCardRequest, CardListRequest } from '../../../shared/src/types';
+import { CreateCardRequest, CardListRequest } from '@discard/shared/src/types/index';
 
 export class CardsController {
   /**
@@ -89,12 +89,12 @@ export class CardsController {
       // Validate and sanitize query parameters
       const options: CardListRequest = {};
       
-      if (status && ['active', 'paused', 'expired', 'deleted'].includes(status as string)) {
-        options.status = status as 'active' | 'paused' | 'expired' | 'deleted';
-      }
+             if (status && ['active', 'paused', 'deleted'].includes(status as string)) {
+         options.status = status as 'active' | 'paused' | 'deleted';
+       }
       
       if (limit) {
-        const limitNum = parseInt(limit as string, 10);
+        const limitNum = parseInt(String(limit), 10);
         if (!isNaN(limitNum) && limitNum > 0) {
           options.limit = Math.min(limitNum, 50);
         }

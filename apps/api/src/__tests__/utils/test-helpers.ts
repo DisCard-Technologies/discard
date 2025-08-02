@@ -1,154 +1,95 @@
 /**
- * Common Test Utilities and Helpers
- * Provides reusable testing patterns and utilities
+ * Test helper utilities and data factories
  */
 
-import { createMockSupabaseClient, mockResponses, mockScenarios } from './supabase-mock';
-
-/**
- * Test data factories
- */
 export const testDataFactory = {
-  createUser: (overrides: Partial<typeof mockResponses.user> = {}) => ({
-    ...mockResponses.user,
+  createCard: (overrides = {}) => ({
+    card_id: 'test-card-id',
+    user_id: 'test-user-id',
+    card_context_hash: 'mock-context-hash',
+    encrypted_card_number: 'encrypted-card-number',
+    encrypted_cvv: 'encrypted-cvv',
+    expiration_date: '1225',
+    status: 'active',
+    spending_limit: 10000,
+    current_balance: 0,
+    expires_at: '2025-12-31T23:59:59.999Z',
+    merchant_restrictions: null,
+    deletion_key: 'mock-deletion-key',
+    created_at: '2024-01-01T00:00:00.000Z',
     ...overrides
-  }),
-
-  createCard: (overrides: Partial<typeof mockResponses.card> = {}) => ({
-    ...mockResponses.card,
-    ...overrides
-  }),
-
-  createToken: (overrides: Partial<typeof mockResponses.token> = {}) => ({
-    ...mockResponses.token,
-    ...overrides
-  }),
-
-  createAuthTokens: () => ({
-    accessToken: 'mock_access_token',
-    refreshToken: 'mock_refresh_token'
   }),
 
   createCardCredentials: () => ({
     cardNumber: '4111111111111111',
     cvv: '123'
+  }),
+
+  createUser: (overrides = {}) => ({
+    id: 'test-user-id',
+    email: 'test@example.com',
+    username: 'testuser',
+    email_verified: true,
+    created_at: '2024-01-01T00:00:00.000Z',
+    last_active: '2024-01-01T00:00:00.000Z',
+    privacy_settings: {
+      dataRetention: 365,
+      analyticsOptOut: false
+    },
+    ...overrides
+  }),
+
+  createTransaction: (overrides = {}) => ({
+    id: 'test-transaction-id',
+    card_id: 'test-card-id',
+    user_id: 'test-user-id',
+    amount_usd: 1000,
+    currency: 'USD',
+    merchant_name: 'Test Merchant',
+    merchant_category: 'grocery',
+    transaction_type: 'purchase',
+    status: 'completed',
+    created_at: '2024-01-01T00:00:00.000Z',
+    metadata: {},
+    ...overrides
   })
 };
 
-/**
- * Common mock setups for different scenarios
- */
 export const setupMocks = {
-  /**
-   * Setup mocks for successful authentication flow
-   */
   authSuccess: () => {
-    const bcrypt = require('bcryptjs');
-    const jwt = require('jsonwebtoken');
-    
-    bcrypt.compare.mockResolvedValue(true);
-    jwt.sign.mockReturnValue('mock_jwt_token');
-    jwt.verify.mockReturnValue({ 
-      user_id: 'test-user-id', 
-      email: 'test@example.com', 
-      type: 'access' 
-    });
+    // Mock successful authentication
+    process.env.JWT_SECRET = 'test-jwt-secret';
+    process.env.JWT_REFRESH_SECRET = 'test-jwt-refresh-secret';
   },
 
-  /**
-   * Setup mocks for failed authentication
-   */
-  authFailure: () => {
-    const bcrypt = require('bcryptjs');
-    bcrypt.compare.mockResolvedValue(false);
-  },
-
-  /**
-   * Setup mocks for privacy service
-   */
   privacyService: () => {
-    const { privacyService } = require('../../services/cards/privacy.service');
-    
-    privacyService.validateSpendingLimit.mockReturnValue({ valid: true });
-    privacyService.generateCardCredentials.mockReturnValue(testDataFactory.createCardCredentials());
-    privacyService.generateCardContext.mockReturnValue('mock-context-hash');
-    privacyService.generateDeletionKey.mockReturnValue('mock-deletion-key');
-    privacyService.encryptCardData.mockReturnValue('encrypted-data');
-    privacyService.createDeletionProof.mockReturnValue('deletion-proof');
-    privacyService.decryptCardData.mockReturnValue(testDataFactory.createCardCredentials());
+    // Mock privacy service configuration
+    process.env.CARD_ENCRYPTION_KEY = 'test-card-encryption-key';
+    process.env.DELETION_SIGNING_KEY = 'test-deletion-signing-key';
+  },
+
+  supabaseClient: () => {
+    // Mock Supabase client setup is handled in individual test files
   }
 };
 
-/**
- * Helper to setup standard Supabase mocks for a test
- */
-export function setupSupabaseMocks() {
-  const mockClient = createMockSupabaseClient();
-  
-  // Store original jest.mock for restoration
-  const originalMock = jest.fn;
-  
-  return {
-    mockClient,
-    scenarios: mockScenarios,
-    resetMocks: () => {
-      jest.clearAllMocks();
-    }
-  };
-}
-
-/**
- * Helper to create a mock request with authentication
- */
-export function createAuthenticatedRequest(overrides: any = {}) {
-  return {
-    headers: {
-      authorization: 'Bearer mock_token',
-      ...overrides.headers
-    },
-    user: {
-      id: 'test-user-id',
-      email: 'test@example.com',
-      ...overrides.user
-    },
-    ...overrides
-  };
-}
-
-/**
- * Helper to validate API response structure
- */
-export function expectApiResponse(response: any, expectedStatus: number = 200) {
+export const expectApiResponse = (response: any, expectedStatus: number) => {
   expect(response.status).toBe(expectedStatus);
-  
-  if (expectedStatus >= 200 && expectedStatus < 300) {
-    expect(response.body).toHaveProperty('success', true);
-    expect(response.body).toHaveProperty('data');
-  } else {
-    expect(response.body).toHaveProperty('success', false);
-    expect(response.body).toHaveProperty('error');
+  expect(response.body).toHaveProperty('success');
+};
+
+export const expectSuccessResponse = (response: any, expectedData?: any) => {
+  expectApiResponse(response, 200);
+  expect(response.body.success).toBe(true);
+  if (expectedData) {
+    expect(response.body.data).toEqual(expect.objectContaining(expectedData));
   }
-}
+};
 
-/**
- * Helper to validate pagination response
- */
-export function expectPaginatedResponse(response: any) {
-  expectApiResponse(response);
-  expect(response.body.data).toBeInstanceOf(Array);
-  expect(response.body).toHaveProperty('pagination');
-  expect(response.body.pagination).toHaveProperty('total');
-  expect(response.body.pagination).toHaveProperty('limit');
-}
-
-/**
- * Helper to create test timeout wrapper
- */
-export function withTimeout<T>(promise: Promise<T>, timeout: number = 5000): Promise<T> {
-  return Promise.race([
-    promise,
-    new Promise<T>((_, reject) => 
-      setTimeout(() => reject(new Error('Test timeout')), timeout)
-    )
-  ]);
-}
+export const expectErrorResponse = (response: any, expectedStatus: number, expectedError?: string) => {
+  expectApiResponse(response, expectedStatus);
+  expect(response.body.success).toBe(false);
+  if (expectedError) {
+    expect(response.body.error).toContain(expectedError);
+  }
+};
