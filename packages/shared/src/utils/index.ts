@@ -94,3 +94,9 @@ export const debounce = <T extends (...args: any[]) => any>(
 export const deepClone = <T>(obj: T): T => {
   return JSON.parse(JSON.stringify(obj));
 };
+
+// Export secure clipboard utilities
+export * from './secure-clipboard';
+
+// Export deletion confirmation utilities
+export * from './deletion-confirmation';
