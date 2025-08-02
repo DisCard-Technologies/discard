@@ -2,49 +2,73 @@ import { describe, test, expect, beforeAll, afterAll, beforeEach, afterEach } fr
 import request from 'supertest';
 import app from '../../app';
 import { supabase } from '../../app';
-import { authService } from '../../services/auth/auth.service';
+import { createMockSupabaseClient, mockScenarios, mockResponses } from '../utils/supabase-mock';
+import { testDataFactory, setupMocks, expectApiResponse } from '../utils/test-helpers';
+
+// Mock Supabase client
+jest.mock('../../app', () => {
+  return {
+    supabase: {
+      from: jest.fn(() => ({
+        insert: jest.fn().mockReturnThis(),
+        select: jest.fn().mockReturnThis(), 
+        update: jest.fn().mockReturnThis(),
+        delete: jest.fn().mockReturnThis(),
+        eq: jest.fn().mockReturnThis(),
+        order: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockReturnThis(),
+        single: jest.fn()
+      }))
+    }
+  };
+});
+
+// Mock bcryptjs for authentication
+jest.mock('bcryptjs', () => ({
+  hash: jest.fn(() => Promise.resolve('$2b$12$hashedpassword')),
+  compare: jest.fn(() => Promise.resolve(true))
+}));
+
+// Mock jsonwebtoken
+jest.mock('jsonwebtoken', () => ({
+  sign: jest.fn(() => 'mock_jwt_token'),
+  verify: jest.fn(() => ({ user_id: 'test-user-id', email: 'test@example.com', type: 'access' }))
+}));
+
+// Mock privacy service
+jest.mock('../../services/cards/privacy.service', () => ({
+  privacyService: {
+    validateSpendingLimit: jest.fn(() => ({ valid: true })),
+    generateCardCredentials: jest.fn(() => testDataFactory.createCardCredentials()),
+    generateCardContext: jest.fn(() => 'mock-context-hash'),
+    generateDeletionKey: jest.fn(() => 'mock-deletion-key'),
+    encryptCardData: jest.fn(() => 'encrypted-data'),
+    createDeletionProof: jest.fn(() => 'deletion-proof'),
+    decryptCardData: jest.fn(() => testDataFactory.createCardCredentials())
+  }
+}));
 
 describe('Cards API Integration Tests', () => {
   let authToken: string;
   let userId: string;
   let testCardId: string;
+  const mockSupabaseClient = supabase as jest.Mocked<typeof supabase>;
 
-  beforeAll(async () => {
-    // Create a test user and get auth token
-    const testUser = {
-      email: 'test-cards@example.com',
-      password: 'TestPassword123!',
-      username: 'testcardsuser'
-    };
-
-    try {
-      const result = await authService.register(testUser);
-      userId = result.user.id;
-      authToken = result.tokens.accessToken;
-    } catch (error) {
-      // User might already exist, try to login
-      const loginResult = await authService.login({
-        email: testUser.email,
-        password: testUser.password
-      });
-      userId = loginResult.user.id;
-      authToken = loginResult.tokens.accessToken;
-    }
+  beforeAll(() => {
+    // Setup test user data
+    userId = 'test-user-id';
+    authToken = 'mock_jwt_token';
+    
+    // Setup common mocks
+    setupMocks.authSuccess();
+    setupMocks.privacyService();
   });
 
-  afterAll(async () => {
-    // Clean up test data
-    if (userId) {
-      await supabase.from('cards').delete().eq('user_id', userId);
-      await supabase.from('users').delete().eq('id', userId);
-    }
-  });
-
-  beforeEach(async () => {
-    // Clean up any existing cards before each test
-    if (userId) {
-      await supabase.from('cards').delete().eq('user_id', userId);
-    }
+  beforeEach(() => {
+    jest.clearAllMocks();
+    
+    // Reset test card ID
+    testCardId = 'test-card-id';
   });
 
   describe('POST /api/v1/cards', () => {
@@ -55,12 +79,21 @@ describe('Cards API Integration Tests', () => {
         merchantRestrictions: ['grocery', 'gas']
       };
 
+      // Setup Supabase mock for successful card creation
+      const mockCard = testDataFactory.createCard({
+        spending_limit: 10000,
+        merchant_restrictions: ['grocery', 'gas'],
+        expiration_date: '1226'
+      });
+      
+      mockScenarios.createCardSuccess(mockSupabaseClient, mockCard);
+
       const response = await request(app)
         .post('/api/v1/cards')
         .set('Authorization', `Bearer ${authToken}`)
-        .send(cardData)
-        .expect(201);
+        .send(cardData);
 
+      expectApiResponse(response, 201);
       expect(response.body).toEqual({
         success: true,
         message: 'Card created successfully',
@@ -85,12 +118,19 @@ describe('Cards API Integration Tests', () => {
         spendingLimit: 50 // Too low
       };
 
+      // Mock privacy service to return validation error
+      const { privacyService } = require('../../services/cards/privacy.service');
+      privacyService.validateSpendingLimit.mockReturnValue({ 
+        valid: false, 
+        error: 'Spending limit must be between $1.00 and $10,000.00' 
+      });
+
       const response = await request(app)
         .post('/api/v1/cards')
         .set('Authorization', `Bearer ${authToken}`)
-        .send(cardData)
-        .expect(400);
+        .send(cardData);
 
+      expectApiResponse(response, 400);
       expect(response.body).toEqual({
         success: false,
         error: expect.stringContaining('Spending limit must be between')

@@ -42,7 +42,7 @@ export class PrivacyService {
   encryptCardData(plaintext: string, additionalData?: string): string {
     const iv = crypto.randomBytes(16);
     const key = crypto.scryptSync(this.encryptionKey, 'salt', 32);
-    const cipher = crypto.createCipher('aes-256-cbc', key);
+    const cipher = crypto.createCipheriv('aes-256-cbc', key, iv);
     
     let encrypted = cipher.update(plaintext, 'utf8', 'hex');
     encrypted += cipher.final('hex');
@@ -77,7 +77,7 @@ export class PrivacyService {
       }
     }
     
-    const decipher = crypto.createDecipher('aes-256-cbc', key);
+    const decipher = crypto.createDecipheriv('aes-256-cbc', key, iv);
     
     let decrypted = decipher.update(encrypted, 'hex', 'utf8');
     decrypted += decipher.final('utf8');

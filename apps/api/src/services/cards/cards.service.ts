@@ -2,10 +2,13 @@ import crypto from 'crypto';
 import { supabase } from '../../app';
 import { privacyService, DeletionProof } from './privacy.service';
 import { InputValidator, InputSanitizer } from '../../utils/validators';
-import { Card, CreateCardRequest, CardListRequest, CardDetailsResponse, Transaction } from '../../../../shared/src/types';
+import { Card, CreateCardRequest, CardListRequest, CardDetailsResponse, Transaction } from '../../../shared/src/types';
 
-export interface CreateCardData extends CreateCardRequest {
+export interface CreateCardData {
   userId: string;
+  spendingLimit: number;
+  expirationDate?: string;
+  merchantRestrictions?: string[];
 }
 
 export interface CardWithCredentials {

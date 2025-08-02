@@ -2,8 +2,8 @@ import { Request, Response } from 'express';
 import { cardsService } from './cards.service';
 import { privacyService } from './privacy.service';
 import { AuthenticatedRequest } from '../../middleware/auth';
-import { InputSanitizer } from '../../utils/validators';
-import { CreateCardRequest, CardListRequest } from '../../../../shared/src/types';
+import { InputSanitizer } from '../../utils/input-sanitizer';
+import { CreateCardRequest, CardListRequest } from '../../../shared/src/types';
 
 export class CardsController {
   /**
@@ -45,7 +45,7 @@ export class CardsController {
         userId: req.user.id,
         spendingLimit,
         expirationDate: expirationDate ? InputSanitizer.sanitizeString(expirationDate) : undefined,
-        merchantRestrictions: merchantRestrictions?.map(r => InputSanitizer.sanitizeString(r))
+        merchantRestrictions: merchantRestrictions?.map((r: string) => InputSanitizer.sanitizeString(r))
       };
 
       const result = await cardsService.createCard(sanitizedData);

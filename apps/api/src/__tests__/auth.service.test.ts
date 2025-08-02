@@ -6,6 +6,8 @@ process.env.SUPABASE_ANON_KEY = 'test_anon_key';
 
 import { authService } from '../services/auth/auth.service';
 import { supabase } from '../app';
+import { createMockSupabaseClient, mockScenarios, mockResponses } from './utils/supabase-mock';
+import { testDataFactory, setupMocks } from './utils/test-helpers';
 
 // Mock Supabase
 jest.mock('../app', () => ({
@@ -239,24 +241,20 @@ describe('AuthService', () => {
 
   describe('verifyEmail', () => {
     it('should successfully verify email with valid token', async () => {
-      const mockTokenRecord = {
-        user_id: 'test-user-id',
+      const mockTokenRecord = testDataFactory.createToken({
         expires_at: new Date(Date.now() + 60000).toISOString()
-      };
-
-      (supabase.from as jest.Mock).mockReturnValue({
-        select: jest.fn().mockReturnValue({
-          eq: jest.fn().mockReturnValue({
-            single: jest.fn().mockResolvedValue({ data: mockTokenRecord, error: null })
-          })
-        }),
-        update: jest.fn().mockReturnValue({
-          eq: jest.fn().mockResolvedValue({ error: null })
-        }),
-        delete: jest.fn().mockReturnValue({
-          eq: jest.fn().mockResolvedValue({ error: null })
-        })
       });
+
+      const mockSupabaseClient = supabase as jest.Mocked<typeof supabase>;
+      
+      // Setup token verification scenario
+      const builder = mockSupabaseClient.from('user_verification_tokens');
+      builder.single
+        .mockResolvedValueOnce({ data: mockTokenRecord, error: null }) // Token lookup
+        .mockResolvedValueOnce({ data: {}, error: null }); // Delete token
+      
+      // Setup user update scenario  
+      builder.eq.mockResolvedValue({ error: null });
 
       const result = await authService.verifyEmail('valid_token');
 
@@ -352,19 +350,12 @@ describe('AuthService', () => {
       const jwt = require('jsonwebtoken');
       jwt.verify.mockReturnValue({ user_id: 'test-user-id', type: 'password_reset' });
 
-      (supabase.from as jest.Mock).mockReturnValue({
-        select: jest.fn().mockReturnValue({
-          eq: jest.fn().mockReturnValue({
-            single: jest.fn().mockResolvedValue({ data: mockTokenRecord, error: null })
-          })
-        }),
-        update: jest.fn().mockReturnValue({
-          eq: jest.fn().mockResolvedValue({ error: null })
-        }),
-        delete: jest.fn().mockReturnValue({
-          eq: jest.fn().mockResolvedValue({ error: null })
-        })
-      });
+      const mockSupabaseClient = supabase as jest.Mocked<typeof supabase>;
+      const builder = mockSupabaseClient.from('password_reset_tokens');
+      builder.single
+        .mockResolvedValueOnce({ data: mockTokenRecord, error: null })
+        .mockResolvedValueOnce({ data: {}, error: null });
+      builder.eq.mockResolvedValue({ error: null });
 
       const result = await authService.resetPassword('valid_token', 'NewPassword123!');
 

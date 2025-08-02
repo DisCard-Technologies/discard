@@ -2,22 +2,26 @@ import { describe, test, expect, beforeEach, afterEach, jest } from '@jest/globa
 import { cardsService } from '../../../services/cards/cards.service';
 import { privacyService } from '../../../services/cards/privacy.service';
 import { supabase } from '../../../app';
+import { createMockSupabaseClient, mockScenarios } from '../../utils/supabase-mock';
+import { testDataFactory, setupMocks } from '../../utils/test-helpers';
 
-// Mock supabase
-jest.mock('../../../app', () => ({
-  supabase: {
-    from: jest.fn(() => ({
-      insert: jest.fn().mockReturnThis(),
-      select: jest.fn().mockReturnThis(),
-      update: jest.fn().mockReturnThis(),
-      delete: jest.fn().mockReturnThis(),
-      eq: jest.fn().mockReturnThis(),
-      order: jest.fn().mockReturnThis(),
-      limit: jest.fn().mockReturnThis(),
-      single: jest.fn()
-    }))
-  }
-}));
+// Mock supabase with centralized factory
+jest.mock('../../../app', () => {
+  return {
+    supabase: {
+      from: jest.fn(() => ({
+        insert: jest.fn().mockReturnThis(),
+        select: jest.fn().mockReturnThis(),
+        update: jest.fn().mockReturnThis(),
+        delete: jest.fn().mockReturnThis(),
+        eq: jest.fn().mockReturnThis(),
+        order: jest.fn().mockReturnThis(),
+        limit: jest.fn().mockReturnThis(),
+        single: jest.fn()
+      }))
+    }
+  };
+});
 
 // Mock privacy service
 jest.mock('../../../services/cards/privacy.service', () => ({
@@ -33,7 +37,7 @@ jest.mock('../../../services/cards/privacy.service', () => ({
   }
 }));
 
-const mockSupabase = supabase as jest.Mocked<typeof supabase>;
+const mockSupabaseClient = supabase as jest.Mocked<typeof supabase>;
 const mockPrivacyService = privacyService as jest.Mocked<typeof privacyService>;
 
 describe('CardsService', () => {
@@ -87,7 +91,7 @@ describe('CardsService', () => {
       mockPrivacyService.encryptCardData.mockReturnValue('encrypted-data');
 
       // Mock supabase insert
-      const mockQuery = mockSupabase.from();
+      const mockQuery = mockSupabaseClient.from('cards');
       mockQuery.single.mockResolvedValue({ data: mockCardRecord, error: null });
 
       // Act
@@ -100,7 +104,7 @@ describe('CardsService', () => {
       expect(mockPrivacyService.generateDeletionKey).toHaveBeenCalledWith(expect.any(String));
       expect(mockPrivacyService.encryptCardData).toHaveBeenCalledTimes(2); // card number and CVV
 
-      expect(mockSupabase.from).toHaveBeenCalledWith('cards');
+      expect(mockSupabaseClient.from).toHaveBeenCalledWith('cards');
       expect(mockQuery.insert).toHaveBeenCalledWith([expect.objectContaining({
         user_id: mockUserId,
         spending_limit: 10000,
@@ -152,7 +156,7 @@ describe('CardsService', () => {
       mockPrivacyService.generateDeletionKey.mockReturnValue('mock-deletion-key');
       mockPrivacyService.encryptCardData.mockReturnValue('encrypted-data');
 
-      const mockQuery = mockSupabase.from();
+      const mockQuery = mockSupabaseClient.from('cards');
       mockQuery.single.mockResolvedValue({ 
         data: null, 
         error: { message: 'Database error' } 
@@ -184,14 +188,14 @@ describe('CardsService', () => {
         }
       ];
 
-      const mockQuery = mockSupabase.from();
+      const mockQuery = mockSupabaseClient.from('cards');
       mockQuery.limit.mockResolvedValue({ data: mockCards, error: null });
 
       // Act
       const result = await cardsService.listCards(mockUserId);
 
       // Assert
-      expect(mockSupabase.from).toHaveBeenCalledWith('cards');
+      expect(mockSupabaseClient.from).toHaveBeenCalledWith('cards');
       expect(mockQuery.eq).toHaveBeenCalledWith('user_id', mockUserId);
       expect(mockQuery.order).toHaveBeenCalledWith('created_at', { ascending: false });
       expect(mockQuery.limit).toHaveBeenCalledWith(50);
@@ -207,7 +211,7 @@ describe('CardsService', () => {
 
     test('should filter cards by status', async () => {
       // Arrange
-      const mockQuery = mockSupabase.from();
+      const mockQuery = mockSupabaseClient.from('cards');
       mockQuery.limit.mockResolvedValue({ data: [], error: null });
 
       // Act
@@ -221,7 +225,7 @@ describe('CardsService', () => {
 
     test('should handle database query error', async () => {
       // Arrange
-      const mockQuery = mockSupabase.from();
+      const mockQuery = mockSupabaseClient.from('cards');
       mockQuery.limit.mockResolvedValue({ 
         data: null, 
         error: { message: 'Database error' } 
@@ -248,13 +252,13 @@ describe('CardsService', () => {
         signature: 'mock-signature'
       };
 
-      const mockSelectQuery = mockSupabase.from();
-      const mockUpdateQuery = mockSupabase.from();
+      const mockSelectQuery = mockSupabaseClient.from('cards');
+      const mockUpdateQuery = mockSupabaseClient.from('cards');
       
       mockSelectQuery.single.mockResolvedValue({ data: mockCardRecord, error: null });
       mockUpdateQuery.eq.mockResolvedValue({ error: null });
 
-      mockSupabase.from.mockReturnValueOnce(mockSelectQuery)
+      mockSupabaseClient.from.mockReturnValueOnce(mockSelectQuery)
                    .mockReturnValueOnce(mockUpdateQuery);
 
       mockPrivacyService.createDeletionProof.mockReturnValue(mockDeletionProof);
@@ -264,7 +268,7 @@ describe('CardsService', () => {
       const result = await cardsService.deleteCard(mockUserId, mockCardId);
 
       // Assert
-      expect(mockSupabase.from).toHaveBeenCalledWith('cards');
+      expect(mockSupabaseClient.from).toHaveBeenCalledWith('cards');
       expect(mockSelectQuery.eq).toHaveBeenCalledWith('card_id', mockCardId);
       expect(mockSelectQuery.eq).toHaveBeenCalledWith('user_id', mockUserId);
       
@@ -284,9 +288,9 @@ describe('CardsService', () => {
       const mockQuery = {
         select: jest.fn().mockReturnThis(),
         eq: jest.fn().mockReturnThis(),
-        single: jest.fn().mockResolvedValue({ data: null, error: { message: 'Not found' } })
+        single: jest.fn().mockResolvedValue({ data: null, error: { message: 'Not found' } }) as any
       };
-      mockSupabase.from.mockReturnValue(mockQuery as any);
+      mockSupabaseClient.from.mockReturnValue(mockQuery as any);
 
       // Act & Assert
       await expect(cardsService.deleteCard(mockUserId, mockCardId)).rejects.toThrow('Card not found');
@@ -303,9 +307,9 @@ describe('CardsService', () => {
       const mockQuery = {
         select: jest.fn().mockReturnThis(),
         eq: jest.fn().mockReturnThis(),
-        single: jest.fn().mockResolvedValue({ data: mockCardRecord, error: null })
+        single: jest.fn().mockResolvedValue({ data: mockCardRecord, error: null }) as any
       };
-      mockSupabase.from.mockReturnValue(mockQuery as any);
+      mockSupabaseClient.from.mockReturnValue(mockQuery as any);
 
       // Act & Assert
       await expect(cardsService.deleteCard(mockUserId, mockCardId)).rejects.toThrow('Card is already deleted');
@@ -323,9 +327,9 @@ describe('CardsService', () => {
       const mockQuery = {
         select: jest.fn().mockReturnThis(),
         eq: jest.fn().mockReturnThis(),
-        single: jest.fn().mockResolvedValue({ data: mockCardRecord, error: null })
+        single: jest.fn().mockResolvedValue({ data: mockCardRecord, error: null }) as any
       };
-      mockSupabase.from.mockReturnValue(mockQuery as any);
+      mockSupabaseClient.from.mockReturnValue(mockQuery as any);
 
       mockPrivacyService.decryptCardData
         .mockReturnValueOnce('4111111111111111') // card number
@@ -335,7 +339,7 @@ describe('CardsService', () => {
       const result = await cardsService.getCardCredentials(mockUserId, mockCardId);
 
       // Assert
-      expect(mockSupabase.from).toHaveBeenCalledWith('cards');
+      expect(mockSupabaseClient.from).toHaveBeenCalledWith('cards');
       expect(mockQuery.eq).toHaveBeenCalledWith('card_id', mockCardId);
       expect(mockQuery.eq).toHaveBeenCalledWith('user_id', mockUserId);
 
@@ -353,9 +357,9 @@ describe('CardsService', () => {
       const mockQuery = {
         select: jest.fn().mockReturnThis(),
         eq: jest.fn().mockReturnThis(),
-        single: jest.fn().mockResolvedValue({ data: null, error: { message: 'Not found' } })
+        single: jest.fn().mockResolvedValue({ data: null, error: { message: 'Not found' } }) as any
       };
-      mockSupabase.from.mockReturnValue(mockQuery as any);
+      mockSupabaseClient.from.mockReturnValue(mockQuery as any);
 
       // Act & Assert
       await expect(cardsService.getCardCredentials(mockUserId, mockCardId)).rejects.toThrow('Card not found');
