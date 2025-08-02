@@ -1,3 +1,9 @@
+// Set environment variables for testing BEFORE importing modules
+process.env.JWT_SECRET = 'test_jwt_secret';
+process.env.JWT_REFRESH_SECRET = 'test_jwt_refresh_secret';
+process.env.SUPABASE_URL = 'https://test.supabase.co';
+process.env.SUPABASE_ANON_KEY = 'test_anon_key';
+
 import { authService } from '../services/auth/auth.service';
 import { supabase } from '../app';
 
@@ -37,9 +43,7 @@ jest.mock('jsonwebtoken', () => ({
   verify: jest.fn(() => ({ user_id: 'test-user-id', type: 'email_verification' }))
 }));
 
-// Set environment variables for testing
-process.env.JWT_SECRET = 'test_jwt_secret';
-process.env.JWT_REFRESH_SECRET = 'test_jwt_refresh_secret';
+
 
 describe('AuthService', () => {
   beforeEach(() => {
