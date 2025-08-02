@@ -2,6 +2,8 @@ import { Request, Response } from 'express';
 import { authService } from './auth.service';
 import { totpService } from './totp.service';
 import { AuthenticatedRequest } from '../../middleware/auth';
+import { AUTH_CONSTANTS } from '../../constants/auth.constants';
+import { InputSanitizer } from '../../utils/validators';
 
 export class AuthController {
   /**
@@ -12,20 +14,24 @@ export class AuthController {
     try {
       const { email, password, username } = req.body;
 
-      // Input validation
-      if (!email || !password) {
+      // Sanitize and validate inputs
+      const sanitized = InputSanitizer.sanitizeAuthInputs({ email, username });
+      const cleanEmail = sanitized.email || email;
+      const cleanUsername = sanitized.username || username;
+
+      if (!cleanEmail || !password) {
         res.status(400).json({ 
           success: false,
-          error: 'Email and password are required' 
+          error: AUTH_CONSTANTS.ERRORS.EMAIL_REQUIRED 
         });
         return;
       }
 
-      const result = await authService.register({ email, password, username });
+      const result = await authService.register({ email: cleanEmail, password, username: cleanUsername });
 
       res.status(201).json({
         success: true,
-        message: 'User registered successfully. Please check your email to verify your account.',
+        message: AUTH_CONSTANTS.SUCCESS.REGISTRATION,
         data: {
           user: result.user,
           accessToken: result.tokens.accessToken,
@@ -81,7 +87,7 @@ export class AuthController {
 
       res.json({
         success: true,
-        message: 'Login successful',
+        message: AUTH_CONSTANTS.SUCCESS.LOGIN,
         data: {
           user: result.user,
           accessToken: result.tokens.accessToken,
@@ -141,7 +147,7 @@ export class AuthController {
       console.error('Email verification error:', error);
       res.status(400).json({
         success: false,
-        error: 'Email verification failed'
+        error: AUTH_CONSTANTS.ERRORS.EMAIL_VERIFICATION_FAILED
       });
     }
   }
@@ -177,7 +183,7 @@ export class AuthController {
       console.error('Token refresh error:', error);
       res.status(401).json({
         success: false,
-        error: 'Invalid refresh token'
+        error: AUTH_CONSTANTS.ERRORS.INVALID_REFRESH_TOKEN
       });
     }
   }
@@ -208,7 +214,7 @@ export class AuthController {
       console.error('Forgot password error:', error);
       res.status(400).json({
         success: false,
-        error: 'Password reset request failed'
+        error: AUTH_CONSTANTS.ERRORS.PASSWORD_RESET_FAILED
       });
     }
   }
@@ -246,7 +252,7 @@ export class AuthController {
       console.error('Password reset error:', error);
       res.status(400).json({
         success: false,
-        error: 'Password reset failed'
+        error: AUTH_CONSTANTS.ERRORS.PASSWORD_RESET_FAILED
       });
     }
   }
@@ -260,7 +266,7 @@ export class AuthController {
       if (!req.user) {
         res.status(401).json({ 
           success: false,
-          error: 'Authentication required' 
+          error: AUTH_CONSTANTS.ERRORS.AUTHENTICATION_REQUIRED 
         });
         return;
       }
@@ -270,7 +276,7 @@ export class AuthController {
       if (isEnabled) {
         res.status(400).json({
           success: false,
-          error: '2FA is already enabled for this account'
+          error: AUTH_CONSTANTS.ERRORS.TOTP_ALREADY_ENABLED
         });
         return;
       }
@@ -279,7 +285,7 @@ export class AuthController {
 
       res.json({
         success: true,
-        message: 'TOTP setup initiated. Scan the QR code with your authenticator app.',
+        message: AUTH_CONSTANTS.SUCCESS.TOTP_SETUP,
         data: {
           secret: setupData.secret,
           manualEntryKey: setupData.manualEntryKey,
@@ -291,7 +297,7 @@ export class AuthController {
       console.error('TOTP setup error:', error);
       res.status(500).json({
         success: false,
-        error: 'Failed to setup 2FA'
+        error: AUTH_CONSTANTS.ERRORS.TOTP_SETUP_FAILED
       });
     }
   }
@@ -305,7 +311,7 @@ export class AuthController {
       if (!req.user) {
         res.status(401).json({ 
           success: false,
-          error: 'Authentication required' 
+          error: AUTH_CONSTANTS.ERRORS.AUTHENTICATION_REQUIRED 
         });
         return;
       }
@@ -343,7 +349,7 @@ export class AuthController {
       console.error('TOTP verification error:', error);
       res.status(400).json({
         success: false,
-        error: 'Failed to verify 2FA'
+        error: AUTH_CONSTANTS.ERRORS.TOTP_VERIFICATION_FAILED
       });
     }
   }
@@ -357,7 +363,7 @@ export class AuthController {
       if (!req.user) {
         res.status(401).json({ 
           success: false,
-          error: 'Authentication required' 
+          error: AUTH_CONSTANTS.ERRORS.AUTHENTICATION_REQUIRED 
         });
         return;
       }
@@ -367,7 +373,7 @@ export class AuthController {
       if (!password) {
         res.status(400).json({ 
           success: false,
-          error: 'Current password is required to disable 2FA' 
+          error: AUTH_CONSTANTS.ERRORS.PASSWORD_REQUIRED_DISABLE_2FA 
         });
         return;
       }
@@ -400,7 +406,7 @@ export class AuthController {
       console.error('TOTP disable error:', error);
       res.status(500).json({
         success: false,
-        error: 'Failed to disable 2FA'
+        error: AUTH_CONSTANTS.ERRORS.TOTP_DISABLE_FAILED
       });
     }
   }
@@ -414,7 +420,7 @@ export class AuthController {
       if (!req.user) {
         res.status(401).json({ 
           success: false,
-          error: 'Authentication required' 
+          error: AUTH_CONSTANTS.ERRORS.AUTHENTICATION_REQUIRED 
         });
         return;
       }
@@ -431,7 +437,7 @@ export class AuthController {
       console.error('TOTP status error:', error);
       res.status(500).json({
         success: false,
-        error: 'Failed to get 2FA status'
+        error: AUTH_CONSTANTS.ERRORS.TOTP_STATUS_FAILED
       });
     }
   }
@@ -445,7 +451,7 @@ export class AuthController {
       if (!req.user) {
         res.status(401).json({ 
           success: false,
-          error: 'Authentication required' 
+          error: AUTH_CONSTANTS.ERRORS.AUTHENTICATION_REQUIRED 
         });
         return;
       }
@@ -455,7 +461,7 @@ export class AuthController {
       if (!isEnabled) {
         res.status(400).json({
           success: false,
-          error: '2FA must be enabled to generate backup codes'
+          error: AUTH_CONSTANTS.ERRORS.TOTP_NOT_ENABLED
         });
         return;
       }
@@ -464,7 +470,7 @@ export class AuthController {
 
       res.json({
         success: true,
-        message: 'New backup codes generated successfully',
+        message: AUTH_CONSTANTS.SUCCESS.BACKUP_CODES_GENERATED,
         data: {
           backupCodes
         }
@@ -473,7 +479,7 @@ export class AuthController {
       console.error('Backup codes generation error:', error);
       res.status(500).json({
         success: false,
-        error: 'Failed to generate backup codes'
+        error: AUTH_CONSTANTS.ERRORS.BACKUP_CODES_FAILED
       });
     }
   }

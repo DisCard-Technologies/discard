@@ -1,6 +1,7 @@
 import speakeasy from 'speakeasy';
 import QRCode from 'qrcode';
 import { supabase } from '../../app';
+import { AUTH_CONSTANTS } from '../../constants/auth.constants';
 
 export interface TOTPSetupData {
   secret: string;
@@ -16,9 +17,9 @@ export class TOTPService {
   async setupTOTP(userId: string, userEmail: string): Promise<TOTPSetupData> {
     // Generate secret
     const secret = speakeasy.generateSecret({
-      name: `DisCard (${userEmail})`,
-      issuer: 'DisCard',
-      length: 32
+      name: `${AUTH_CONSTANTS.TOTP.ISSUER} (${userEmail})`,
+      issuer: AUTH_CONSTANTS.TOTP.ISSUER,
+      length: AUTH_CONSTANTS.TOTP.SECRET_LENGTH
     });
 
     // Store temporary secret in database (not activated until verified)
@@ -69,7 +70,7 @@ export class TOTPService {
         secret: totpRecord.secret,
         encoding: 'base32',
         token,
-        window: 2 // Allow some time drift
+        window: AUTH_CONSTANTS.TOTP.WINDOW // Allow some time drift
       });
 
       if (!verified) {
@@ -91,7 +92,7 @@ export class TOTPService {
         .update({ totp_enabled: true })
         .eq('id', userId);
 
-      return { success: true, message: '2FA has been successfully activated.' };
+      return { success: true, message: AUTH_CONSTANTS.SUCCESS.TOTP_ACTIVATED };
     } catch (error) {
       console.error('TOTP activation error:', error);
       return { success: false, message: 'Failed to activate 2FA. Please try again.' };
@@ -120,7 +121,7 @@ export class TOTPService {
         secret: totpRecord.secret,
         encoding: 'base32',
         token,
-        window: 2 // Allow some time drift
+        window: AUTH_CONSTANTS.TOTP.WINDOW // Allow some time drift
       });
     } catch (error) {
       console.error('TOTP verification error:', error);
@@ -165,7 +166,7 @@ export class TOTPService {
         .update({ totp_enabled: false })
         .eq('id', userId);
 
-      return { success: true, message: '2FA has been successfully disabled.' };
+      return { success: true, message: AUTH_CONSTANTS.SUCCESS.TOTP_DISABLED };
     } catch (error) {
       console.error('TOTP disable error:', error);
       return { success: false, message: 'Failed to disable 2FA. Please try again.' };
@@ -178,9 +179,9 @@ export class TOTPService {
   async generateBackupCodes(userId: string): Promise<string[]> {
     const backupCodes: string[] = [];
     
-    // Generate 8 backup codes
-    for (let i = 0; i < 8; i++) {
-      const code = Math.random().toString(36).substring(2, 10).toUpperCase();
+    // Generate backup codes
+    for (let i = 0; i < AUTH_CONSTANTS.TOTP.BACKUP_CODES_COUNT; i++) {
+      const code = Math.random().toString(36).substring(2, 2 + AUTH_CONSTANTS.TOTP.BACKUP_CODE_LENGTH).toUpperCase();
       backupCodes.push(code);
     }
 

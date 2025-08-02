@@ -2,6 +2,8 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { supabase } from '../../app';
 import { totpService } from './totp.service';
+import { AUTH_CONSTANTS } from '../../constants/auth.constants';
+import { InputValidator, InputSanitizer } from '../../utils/validators';
 
 export interface RegisterData {
   email: string;
@@ -38,8 +40,8 @@ export interface UserData {
 export class AuthService {
   private readonly jwtSecret: string;
   private readonly jwtRefreshSecret: string;
-  private readonly jwtExpiryTime = '1h';
-  private readonly jwtRefreshExpiryTime = '7d';
+  private readonly jwtExpiryTime = AUTH_CONSTANTS.JWT.ACCESS_TOKEN_EXPIRY;
+  private readonly jwtRefreshExpiryTime = AUTH_CONSTANTS.JWT.REFRESH_TOKEN_EXPIRY;
 
   constructor() {
     this.jwtSecret = process.env.JWT_SECRET || '';
@@ -52,43 +54,19 @@ export class AuthService {
 
   /**
    * Validates password complexity requirements
+   * @deprecated Use InputValidator.validatePassword instead
    */
   private validatePassword(password: string): { valid: boolean; message?: string } {
-    const minLength = 8;
-    const hasUpperCase = /[A-Z]/.test(password);
-    const hasLowerCase = /[a-z]/.test(password);
-    const hasNumbers = /\d/.test(password);
-    const hasSpecialChar = /[!@#$%^&*(),.?":{}|<>]/.test(password);
-
-    if (password.length < minLength) {
-      return { valid: false, message: 'Password must be at least 8 characters long' };
-    }
-    
-    if (!hasUpperCase) {
-      return { valid: false, message: 'Password must contain at least one uppercase letter' };
-    }
-    
-    if (!hasLowerCase) {
-      return { valid: false, message: 'Password must contain at least one lowercase letter' };
-    }
-    
-    if (!hasNumbers) {
-      return { valid: false, message: 'Password must contain at least one number' };
-    }
-    
-    if (!hasSpecialChar) {
-      return { valid: false, message: 'Password must contain at least one special character' };
-    }
-
-    return { valid: true };
+    return InputValidator.validatePassword(password);
   }
 
   /**
    * Validates email format
+   * @deprecated Use InputValidator.validateEmail instead
    */
   private validateEmail(email: string): boolean {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return emailRegex.test(email);
+    const result = InputValidator.validateEmail(email);
+    return result.valid;
   }
 
   /**
@@ -110,7 +88,7 @@ export class AuthService {
     return {
       accessToken,
       refreshToken,
-      expiresIn: 3600 // 1 hour in seconds
+      expiresIn: AUTH_CONSTANTS.JWT.ACCESS_TOKEN_EXPIRY_SECONDS
     };
   }
 
@@ -119,9 +97,9 @@ export class AuthService {
    */
   private async createEmailVerificationToken(userId: string): Promise<string> {
     const token = jwt.sign(
-      { user_id: userId, type: 'email_verification' },
+      { user_id: userId, type: AUTH_CONSTANTS.TOKEN_TYPES.EMAIL_VERIFICATION },
       this.jwtSecret,
-      { expiresIn: '24h' }
+      { expiresIn: AUTH_CONSTANTS.SECURITY.EMAIL_VERIFICATION_EXPIRY }
     );
 
     // Store verification token in database
@@ -130,7 +108,7 @@ export class AuthService {
       .insert([{
         user_id: userId,
         token,
-        type: 'email_verification',
+        type: AUTH_CONSTANTS.TOKEN_TYPES.EMAIL_VERIFICATION,
         expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
       }]);
 
@@ -143,45 +121,42 @@ export class AuthService {
   async register(data: RegisterData): Promise<{ user: UserData; tokens: AuthTokens; verificationToken: string }> {
     const { email, password, username } = data;
 
+    // Sanitize inputs
+    const sanitized = InputSanitizer.sanitizeAuthInputs({ email, username });
+    const cleanEmail = sanitized.email || email;
+    const cleanUsername = sanitized.username || username;
+
     // Validate input
-    if (!email || !password) {
-      throw new Error('Email and password are required');
-    }
-
-    if (!this.validateEmail(email)) {
-      throw new Error('Invalid email format');
-    }
-
-    const passwordValidation = this.validatePassword(password);
-    if (!passwordValidation.valid) {
-      throw new Error(passwordValidation.message || 'Invalid password');
+    const validation = InputValidator.validateRegistrationInput(cleanEmail, password, cleanUsername);
+    if (!validation.valid) {
+      throw new Error(validation.message || 'Invalid input');
     }
 
     // Check if user already exists
     const { data: existingUser } = await supabase
       .from('users')
       .select('id')
-      .eq('email', email)
+      .eq('email', cleanEmail)
       .single();
 
     if (existingUser) {
-      throw new Error('User with this email already exists');
+      throw new Error(AUTH_CONSTANTS.ERRORS.USER_EXISTS);
     }
 
     // Hash password
-    const hashedPassword = await bcrypt.hash(password, 12);
+    const hashedPassword = await bcrypt.hash(password, AUTH_CONSTANTS.PASSWORD.BCRYPT_ROUNDS);
 
     // Create user with privacy settings
     const { data: user, error } = await supabase
       .from('users')
       .insert([{
-        email,
+        email: cleanEmail,
         password_hash: hashedPassword,
-        username: username || null,
+        username: cleanUsername || null,
         email_verified: false,
         privacy_settings: {
-          dataRetention: 365, // Default 1 year
-          analyticsOptOut: false
+          dataRetention: AUTH_CONSTANTS.PRIVACY.DEFAULT_DATA_RETENTION_DAYS,
+          analyticsOptOut: AUTH_CONSTANTS.PRIVACY.DEFAULT_ANALYTICS_OPT_OUT
         },
         last_active: new Date().toISOString()
       }])
@@ -190,7 +165,7 @@ export class AuthService {
 
     if (error) {
       console.error('User creation error:', error);
-      throw new Error('Failed to create user');
+      throw new Error(AUTH_CONSTANTS.ERRORS.USER_CREATION_FAILED);
     }
 
     // Generate tokens
@@ -218,29 +193,30 @@ export class AuthService {
   async login(data: LoginData): Promise<{ user: UserData; tokens: AuthTokens; requires2FA?: boolean }> {
     const { email, password, totpToken, backupCode } = data;
 
-    // Validate input
-    if (!email || !password) {
-      throw new Error('Email and password are required');
-    }
+    // Sanitize inputs
+    const sanitized = InputSanitizer.sanitizeAuthInputs({ email });
+    const cleanEmail = sanitized.email || email;
 
-    if (!this.validateEmail(email)) {
-      throw new Error('Invalid email format');
+    // Validate input
+    const validation = InputValidator.validateLoginInput(cleanEmail, password, totpToken, backupCode);
+    if (!validation.valid) {
+      throw new Error(validation.message || 'Invalid input');
     }
 
     // Get user from database
     const { data: user, error } = await supabase
       .from('users')
       .select('id, email, password_hash, username, email_verified, created_at, last_active, privacy_settings, failed_login_attempts, locked_until, totp_enabled')
-      .eq('email', email)
+      .eq('email', cleanEmail)
       .single();
 
     if (error || !user) {
-      throw new Error('Invalid credentials');
+      throw new Error(AUTH_CONSTANTS.ERRORS.INVALID_CREDENTIALS);
     }
 
     // Check if account is locked
     if (user.locked_until && new Date(user.locked_until) > new Date()) {
-      throw new Error('Account is temporarily locked due to multiple failed login attempts');
+      throw new Error(AUTH_CONSTANTS.ERRORS.ACCOUNT_LOCKED);
     }
 
     // Verify password
@@ -248,7 +224,9 @@ export class AuthService {
     if (!isValidPassword) {
       // Increment failed login attempts
       const failedAttempts = (user.failed_login_attempts || 0) + 1;
-      const lockUntil = failedAttempts >= 5 ? new Date(Date.now() + 15 * 60 * 1000) : null; // Lock for 15 minutes after 5 failed attempts
+      const lockUntil = failedAttempts >= AUTH_CONSTANTS.SECURITY.MAX_FAILED_ATTEMPTS 
+        ? new Date(Date.now() + AUTH_CONSTANTS.SECURITY.ACCOUNT_LOCK_DURATION_MS) 
+        : null;
 
       await supabase
         .from('users')
@@ -258,7 +236,7 @@ export class AuthService {
         })
         .eq('id', user.id);
 
-      throw new Error('Invalid credentials');
+      throw new Error(AUTH_CONSTANTS.ERRORS.INVALID_CREDENTIALS);
     }
 
     // Check if 2FA is enabled
@@ -294,7 +272,9 @@ export class AuthService {
       if (!totpValid) {
         // Increment failed login attempts for invalid 2FA
         const failedAttempts = (user.failed_login_attempts || 0) + 1;
-        const lockUntil = failedAttempts >= 5 ? new Date(Date.now() + 15 * 60 * 1000) : null;
+        const lockUntil = failedAttempts >= AUTH_CONSTANTS.SECURITY.MAX_FAILED_ATTEMPTS 
+          ? new Date(Date.now() + AUTH_CONSTANTS.SECURITY.ACCOUNT_LOCK_DURATION_MS) 
+          : null;
 
         await supabase
           .from('users')
@@ -304,7 +284,7 @@ export class AuthService {
           })
           .eq('id', user.id);
 
-        throw new Error('Invalid 2FA code');
+        throw new Error(AUTH_CONSTANTS.ERRORS.INVALID_2FA_CODE);
       }
     }
 
@@ -342,7 +322,7 @@ export class AuthService {
       // Verify token
       const decoded = jwt.verify(token, this.jwtSecret) as any;
       
-      if (decoded.type !== 'email_verification') {
+      if (decoded.type !== AUTH_CONSTANTS.TOKEN_TYPES.EMAIL_VERIFICATION) {
         throw new Error('Invalid token type');
       }
 
@@ -351,15 +331,15 @@ export class AuthService {
         .from('user_verification_tokens')
         .select('user_id, expires_at')
         .eq('token', token)
-        .eq('type', 'email_verification')
+        .eq('type', AUTH_CONSTANTS.TOKEN_TYPES.EMAIL_VERIFICATION)
         .single();
 
       if (tokenError || !tokenRecord) {
-        throw new Error('Invalid or expired verification token');
+        throw new Error(AUTH_CONSTANTS.ERRORS.INVALID_TOKEN);
       }
 
       if (new Date(tokenRecord.expires_at) < new Date()) {
-        throw new Error('Verification token has expired');
+        throw new Error(AUTH_CONSTANTS.ERRORS.INVALID_TOKEN);
       }
 
       // Update user email verification status
@@ -378,9 +358,9 @@ export class AuthService {
         .delete()
         .eq('token', token);
 
-      return { success: true, message: 'Email verified successfully' };
+      return { success: true, message: AUTH_CONSTANTS.SUCCESS.EMAIL_VERIFIED };
     } catch (error) {
-      return { success: false, message: 'Invalid or expired verification token' };
+      return { success: false, message: AUTH_CONSTANTS.ERRORS.INVALID_TOKEN };
     }
   }
 
@@ -391,7 +371,7 @@ export class AuthService {
     try {
       const decoded = jwt.verify(refreshToken, this.jwtRefreshSecret) as any;
       
-      if (decoded.type !== 'refresh') {
+      if (decoded.type !== AUTH_CONSTANTS.TOKEN_TYPES.REFRESH) {
         throw new Error('Invalid token type');
       }
 
@@ -409,7 +389,7 @@ export class AuthService {
       // Generate new tokens
       return this.generateTokens(user.id, user.email);
     } catch (error) {
-      throw new Error('Invalid refresh token');
+      throw new Error(AUTH_CONSTANTS.ERRORS.INVALID_REFRESH_TOKEN);
     }
   }
 
@@ -417,27 +397,31 @@ export class AuthService {
    * Generate password reset token
    */
   async forgotPassword(email: string): Promise<{ success: boolean; message: string }> {
-    if (!this.validateEmail(email)) {
-      throw new Error('Invalid email format');
+    // Sanitize email
+    const cleanEmail = InputSanitizer.sanitizeEmail(email);
+    
+    const emailValidation = InputValidator.validateEmail(cleanEmail);
+    if (!emailValidation.valid) {
+      throw new Error(emailValidation.message || AUTH_CONSTANTS.ERRORS.INVALID_EMAIL);
     }
 
     // Check if user exists
     const { data: user, error } = await supabase
       .from('users')
       .select('id')
-      .eq('email', email)
+      .eq('email', cleanEmail)
       .single();
 
     if (error || !user) {
       // Don't reveal if user exists for security
-      return { success: true, message: 'If an account with this email exists, a password reset link has been sent' };
+      return { success: true, message: AUTH_CONSTANTS.SUCCESS.PASSWORD_RESET_REQUESTED };
     }
 
     // Generate reset token
     const resetToken = jwt.sign(
-      { user_id: user.id, type: 'password_reset' },
+      { user_id: user.id, type: AUTH_CONSTANTS.TOKEN_TYPES.PASSWORD_RESET },
       this.jwtSecret,
-      { expiresIn: '1h' }
+      { expiresIn: AUTH_CONSTANTS.SECURITY.PASSWORD_RESET_EXPIRY }
     );
 
     // Store reset token in database
@@ -446,13 +430,13 @@ export class AuthService {
       .insert([{
         user_id: user.id,
         token: resetToken,
-        type: 'password_reset',
+        type: AUTH_CONSTANTS.TOKEN_TYPES.PASSWORD_RESET,
         expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString() // 1 hour
       }]);
 
     // TODO: Send email with reset token (implement email service)
     
-    return { success: true, message: 'If an account with this email exists, a password reset link has been sent' };
+    return { success: true, message: AUTH_CONSTANTS.SUCCESS.PASSWORD_RESET_REQUESTED };
   }
 
   /**
@@ -469,7 +453,7 @@ export class AuthService {
       // Verify token
       const decoded = jwt.verify(token, this.jwtSecret) as any;
       
-      if (decoded.type !== 'password_reset') {
+      if (decoded.type !== AUTH_CONSTANTS.TOKEN_TYPES.PASSWORD_RESET) {
         throw new Error('Invalid token type');
       }
 
@@ -478,19 +462,19 @@ export class AuthService {
         .from('user_verification_tokens')
         .select('user_id, expires_at')
         .eq('token', token)
-        .eq('type', 'password_reset')
+        .eq('type', AUTH_CONSTANTS.TOKEN_TYPES.PASSWORD_RESET)
         .single();
 
       if (tokenError || !tokenRecord) {
-        throw new Error('Invalid or expired reset token');
+        throw new Error(AUTH_CONSTANTS.ERRORS.INVALID_TOKEN);
       }
 
       if (new Date(tokenRecord.expires_at) < new Date()) {
-        throw new Error('Reset token has expired');
+        throw new Error(AUTH_CONSTANTS.ERRORS.INVALID_TOKEN);
       }
 
       // Hash new password
-      const hashedPassword = await bcrypt.hash(newPassword, 12);
+      const hashedPassword = await bcrypt.hash(newPassword, AUTH_CONSTANTS.PASSWORD.BCRYPT_ROUNDS);
 
       // Update user password
       const { error: updateError } = await supabase
@@ -512,9 +496,9 @@ export class AuthService {
         .delete()
         .eq('token', token);
 
-      return { success: true, message: 'Password reset successfully' };
+      return { success: true, message: AUTH_CONSTANTS.SUCCESS.PASSWORD_RESET };
     } catch (error) {
-      return { success: false, message: 'Invalid or expired reset token' };
+      return { success: false, message: AUTH_CONSTANTS.ERRORS.INVALID_TOKEN };
     }
   }
 }

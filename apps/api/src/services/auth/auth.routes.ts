@@ -2,13 +2,14 @@ import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { authController } from './auth.controller';
 import { authenticateToken } from '../../middleware/auth';
+import { AUTH_CONSTANTS } from '../../constants/auth.constants';
 
 const router = Router();
 
 // Rate limiting for authentication endpoints
 const authRateLimit = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // Limit each IP to 5 requests per windowMs for auth endpoints
+  windowMs: AUTH_CONSTANTS.RATE_LIMITING.AUTH_WINDOW_MS,
+  max: AUTH_CONSTANTS.RATE_LIMITING.AUTH_MAX_REQUESTS,
   message: {
     success: false,
     error: 'Too many authentication attempts, please try again later'
@@ -18,8 +19,8 @@ const authRateLimit = rateLimit({
 });
 
 const generalRateLimit = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes  
-  max: 100, // Limit each IP to 100 requests per windowMs for general endpoints
+  windowMs: AUTH_CONSTANTS.RATE_LIMITING.GENERAL_WINDOW_MS,
+  max: AUTH_CONSTANTS.RATE_LIMITING.GENERAL_MAX_REQUESTS,
   message: {
     success: false,
     error: 'Too many requests, please try again later'
