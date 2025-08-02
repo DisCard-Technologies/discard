@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { authController } from './auth.controller';
+import { authenticateToken } from '../../middleware/auth';
 
 const router = Router();
 
@@ -40,5 +41,12 @@ router.post('/verify-email', generalRateLimit, authController.verifyEmail.bind(a
 router.post('/refresh-token', generalRateLimit, authController.refreshToken.bind(authController));
 router.post('/forgot-password', authRateLimit, authController.forgotPassword.bind(authController));
 router.post('/reset-password', authRateLimit, authController.resetPassword.bind(authController));
+
+// TOTP 2FA endpoints (require authentication)
+router.post('/totp/setup', authenticateToken, generalRateLimit, authController.setupTOTP.bind(authController));
+router.post('/totp/verify', authenticateToken, generalRateLimit, authController.verifyTOTP.bind(authController));
+router.post('/totp/disable', authenticateToken, authRateLimit, authController.disableTOTP.bind(authController));
+router.get('/totp/status', authenticateToken, generalRateLimit, authController.getTOTPStatus.bind(authController));
+router.post('/totp/backup-codes', authenticateToken, authRateLimit, authController.generateBackupCodes.bind(authController));
 
 export default router;

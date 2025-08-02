@@ -1,5 +1,7 @@
 import { Request, Response } from 'express';
 import { authService } from './auth.service';
+import { totpService } from './totp.service';
+import { AuthenticatedRequest } from '../../middleware/auth';
 
 export class AuthController {
   /**
@@ -50,7 +52,7 @@ export class AuthController {
    */
   async login(req: Request, res: Response): Promise<void> {
     try {
-      const { email, password } = req.body;
+      const { email, password, totpToken, backupCode } = req.body;
 
       // Input validation
       if (!email || !password) {
@@ -61,7 +63,21 @@ export class AuthController {
         return;
       }
 
-      const result = await authService.login({ email, password });
+      const result = await authService.login({ email, password, totpToken, backupCode });
+
+      // Check if 2FA is required
+      if (result.requires2FA) {
+        res.status(200).json({
+          success: false,
+          requires2FA: true,
+          message: '2FA verification required',
+          data: {
+            userId: result.user.id,
+            email: result.user.email
+          }
+        });
+        return;
+      }
 
       res.json({
         success: true,
@@ -77,7 +93,13 @@ export class AuthController {
       console.error('Login error:', error);
       
       const errorMessage = error instanceof Error ? error.message : 'Login failed';
-      const statusCode = errorMessage.includes('locked') ? 423 : 401;
+      let statusCode = 401;
+      
+      if (errorMessage.includes('locked')) {
+        statusCode = 423;
+      } else if (errorMessage.includes('2FA')) {
+        statusCode = 400;
+      }
       
       res.status(statusCode).json({
         success: false,
@@ -225,6 +247,233 @@ export class AuthController {
       res.status(400).json({
         success: false,
         error: 'Password reset failed'
+      });
+    }
+  }
+
+  /**
+   * Setup TOTP 2FA for user
+   * POST /auth/totp/setup
+   */
+  async setupTOTP(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      if (!req.user) {
+        res.status(401).json({ 
+          success: false,
+          error: 'Authentication required' 
+        });
+        return;
+      }
+
+      // Check if 2FA is already enabled
+      const isEnabled = await totpService.isTOTPEnabled(req.user.id);
+      if (isEnabled) {
+        res.status(400).json({
+          success: false,
+          error: '2FA is already enabled for this account'
+        });
+        return;
+      }
+
+      const setupData = await totpService.setupTOTP(req.user.id, req.user.email);
+
+      res.json({
+        success: true,
+        message: 'TOTP setup initiated. Scan the QR code with your authenticator app.',
+        data: {
+          secret: setupData.secret,
+          manualEntryKey: setupData.manualEntryKey,
+          qrCodeUrl: setupData.qrCodeUrl,
+          qrCodeDataUrl: setupData.qrCodeDataUrl
+        }
+      });
+    } catch (error) {
+      console.error('TOTP setup error:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to setup 2FA'
+      });
+    }
+  }
+
+  /**
+   * Verify and activate TOTP 2FA
+   * POST /auth/totp/verify
+   */
+  async verifyTOTP(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      if (!req.user) {
+        res.status(401).json({ 
+          success: false,
+          error: 'Authentication required' 
+        });
+        return;
+      }
+
+      const { token } = req.body;
+
+      if (!token) {
+        res.status(400).json({ 
+          success: false,
+          error: 'TOTP token is required' 
+        });
+        return;
+      }
+
+      const result = await totpService.verifyAndActivateTOTP(req.user.id, token);
+
+      if (result.success) {
+        // Generate backup codes
+        const backupCodes = await totpService.generateBackupCodes(req.user.id);
+        
+        res.json({
+          success: true,
+          message: result.message,
+          data: {
+            backupCodes
+          }
+        });
+      } else {
+        res.status(400).json({
+          success: false,
+          error: result.message
+        });
+      }
+    } catch (error) {
+      console.error('TOTP verification error:', error);
+      res.status(400).json({
+        success: false,
+        error: 'Failed to verify 2FA'
+      });
+    }
+  }
+
+  /**
+   * Disable TOTP 2FA
+   * POST /auth/totp/disable
+   */
+  async disableTOTP(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      if (!req.user) {
+        res.status(401).json({ 
+          success: false,
+          error: 'Authentication required' 
+        });
+        return;
+      }
+
+      const { password } = req.body;
+
+      if (!password) {
+        res.status(400).json({ 
+          success: false,
+          error: 'Current password is required to disable 2FA' 
+        });
+        return;
+      }
+
+      // Verify current password before disabling 2FA
+      try {
+        await authService.login({ email: req.user.email, password });
+      } catch (error) {
+        res.status(401).json({
+          success: false,
+          error: 'Invalid password'
+        });
+        return;
+      }
+
+      const result = await totpService.disableTOTP(req.user.id);
+
+      if (result.success) {
+        res.json({
+          success: true,
+          message: result.message
+        });
+      } else {
+        res.status(400).json({
+          success: false,
+          error: result.message
+        });
+      }
+    } catch (error) {
+      console.error('TOTP disable error:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to disable 2FA'
+      });
+    }
+  }
+
+  /**
+   * Get 2FA status for user
+   * GET /auth/totp/status
+   */
+  async getTOTPStatus(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      if (!req.user) {
+        res.status(401).json({ 
+          success: false,
+          error: 'Authentication required' 
+        });
+        return;
+      }
+
+      const isEnabled = await totpService.isTOTPEnabled(req.user.id);
+
+      res.json({
+        success: true,
+        data: {
+          totpEnabled: isEnabled
+        }
+      });
+    } catch (error) {
+      console.error('TOTP status error:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to get 2FA status'
+      });
+    }
+  }
+
+  /**
+   * Generate new backup codes
+   * POST /auth/totp/backup-codes
+   */
+  async generateBackupCodes(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      if (!req.user) {
+        res.status(401).json({ 
+          success: false,
+          error: 'Authentication required' 
+        });
+        return;
+      }
+
+      // Check if 2FA is enabled
+      const isEnabled = await totpService.isTOTPEnabled(req.user.id);
+      if (!isEnabled) {
+        res.status(400).json({
+          success: false,
+          error: '2FA must be enabled to generate backup codes'
+        });
+        return;
+      }
+
+      const backupCodes = await totpService.generateBackupCodes(req.user.id);
+
+      res.json({
+        success: true,
+        message: 'New backup codes generated successfully',
+        data: {
+          backupCodes
+        }
+      });
+    } catch (error) {
+      console.error('Backup codes generation error:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to generate backup codes'
       });
     }
   }

@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { supabase } from '../../app';
+import { totpService } from './totp.service';
 
 export interface RegisterData {
   email: string;
@@ -11,6 +12,8 @@ export interface RegisterData {
 export interface LoginData {
   email: string;
   password: string;
+  totpToken?: string;
+  backupCode?: string;
 }
 
 export interface AuthTokens {
@@ -210,10 +213,10 @@ export class AuthService {
   }
 
   /**
-   * Login user with email and password
+   * Login user with email and password (and optional 2FA)
    */
-  async login(data: LoginData): Promise<{ user: UserData; tokens: AuthTokens }> {
-    const { email, password } = data;
+  async login(data: LoginData): Promise<{ user: UserData; tokens: AuthTokens; requires2FA?: boolean }> {
+    const { email, password, totpToken, backupCode } = data;
 
     // Validate input
     if (!email || !password) {
@@ -227,7 +230,7 @@ export class AuthService {
     // Get user from database
     const { data: user, error } = await supabase
       .from('users')
-      .select('id, email, password_hash, username, email_verified, created_at, last_active, privacy_settings, failed_login_attempts, locked_until')
+      .select('id, email, password_hash, username, email_verified, created_at, last_active, privacy_settings, failed_login_attempts, locked_until, totp_enabled')
       .eq('email', email)
       .single();
 
@@ -256,6 +259,53 @@ export class AuthService {
         .eq('id', user.id);
 
       throw new Error('Invalid credentials');
+    }
+
+    // Check if 2FA is enabled
+    if (user.totp_enabled) {
+      // Require 2FA verification
+      if (!totpToken && !backupCode) {
+        // Return special response indicating 2FA is required
+        const userData: UserData = {
+          id: user.id,
+          email: user.email,
+          username: user.username,
+          emailVerified: user.email_verified,
+          createdAt: user.created_at,
+          lastActive: user.last_active,
+          privacySettings: user.privacy_settings
+        };
+
+        return { 
+          user: userData, 
+          tokens: { accessToken: '', refreshToken: '', expiresIn: 0 }, 
+          requires2FA: true 
+        };
+      }
+
+      // Verify 2FA token or backup code
+      let totpValid = false;
+      if (totpToken) {
+        totpValid = await totpService.verifyTOTP(user.id, totpToken);
+      } else if (backupCode) {
+        totpValid = await totpService.verifyBackupCode(user.id, backupCode);
+      }
+
+      if (!totpValid) {
+        // Increment failed login attempts for invalid 2FA
+        const failedAttempts = (user.failed_login_attempts || 0) + 1;
+        const lockUntil = failedAttempts >= 5 ? new Date(Date.now() + 15 * 60 * 1000) : null;
+
+        await supabase
+          .from('users')
+          .update({
+            failed_login_attempts: failedAttempts,
+            locked_until: lockUntil?.toISOString()
+          })
+          .eq('id', user.id);
+
+        throw new Error('Invalid 2FA code');
+      }
     }
 
     // Reset failed login attempts and update last active
