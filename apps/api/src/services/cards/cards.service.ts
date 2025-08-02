@@ -2,7 +2,6 @@ import crypto from 'crypto';
 import { supabase } from '../../app';
 import { privacyService, DeletionProof } from './privacy.service';
 import { InputValidator, InputSanitizer } from '../../utils/validators';
-// @ts-ignore - Direct import from source for development
 import { Card, CreateCardRequest, CardListRequest, CardDetailsResponse, Transaction } from '@discard/shared/src/types/index';
 
 export interface CreateCardData {
@@ -19,6 +18,22 @@ export interface CardWithCredentials {
 }
 
 export class CardsService {
+  /**
+   * Map database card record to API Card interface
+   */
+  private mapCardRecord(cardRecord: any): Card {
+    return {
+      cardId: cardRecord.card_id,
+      userId: cardRecord.user_id,
+      status: cardRecord.status,
+      spendingLimit: cardRecord.spending_limit,
+      currentBalance: cardRecord.current_balance,
+      merchantRestrictions: cardRecord.merchant_restrictions,
+      createdAt: cardRecord.created_at,
+      expiresAt: cardRecord.expires_at || new Date(Date.now() + (2 * 365 * 24 * 60 * 60 * 1000)).toISOString()
+    };
+  }
+
   /**
    * Create a new disposable virtual card with privacy isolation
    */
@@ -127,16 +142,7 @@ export class CardsService {
         throw new Error('Failed to retrieve cards');
       }
 
-      return cards.map(cardRecord => ({
-        cardId: cardRecord.card_id,
-        userId: cardRecord.user_id,
-        status: cardRecord.status,
-        spendingLimit: cardRecord.spending_limit,
-        currentBalance: cardRecord.current_balance,
-        merchantRestrictions: cardRecord.merchant_restrictions,
-        createdAt: cardRecord.created_at,
-        expiresAt: cardRecord.expires_at || new Date(Date.now() + (2 * 365 * 24 * 60 * 60 * 1000)).toISOString()
-      }));
+      return cards.map(cardRecord => this.mapCardRecord(cardRecord));
     } catch (error) {
       console.error('Card listing failed:', error);
       throw new Error('Failed to retrieve cards');
@@ -173,16 +179,7 @@ export class CardsService {
         console.error('Transaction retrieval error:', transactionError);
       }
 
-      const card: Card = {
-        cardId: cardRecord.card_id,
-        userId: cardRecord.user_id,
-        status: cardRecord.status,
-        spendingLimit: cardRecord.spending_limit,
-        currentBalance: cardRecord.current_balance,
-        merchantRestrictions: cardRecord.merchant_restrictions,
-        createdAt: cardRecord.created_at,
-        expiresAt: cardRecord.expires_at || new Date(Date.now() + (2 * 365 * 24 * 60 * 60 * 1000)).toISOString()
-      };
+      const card = this.mapCardRecord(cardRecord);
 
       const transactionHistory: Transaction[] = (transactions || []).map(tx => ({
         id: tx.id,
@@ -272,16 +269,7 @@ export class CardsService {
         throw new Error('Failed to update card status');
       }
 
-      return {
-        cardId: cardRecord.card_id,
-        userId: cardRecord.user_id,
-        status: cardRecord.status,
-        spendingLimit: cardRecord.spending_limit,
-        currentBalance: cardRecord.current_balance,
-        merchantRestrictions: cardRecord.merchant_restrictions,
-        createdAt: cardRecord.created_at,
-        expiresAt: cardRecord.expires_at || new Date(Date.now() + (2 * 365 * 24 * 60 * 60 * 1000)).toISOString()
-      };
+      return this.mapCardRecord(cardRecord);
     } catch (error) {
       console.error('Card status update failed:', error);
       throw new Error('Failed to update card status');
