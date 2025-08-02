@@ -148,7 +148,7 @@ export default function CreateCardPage() {
         <CardCreationForm
           onSubmit={handleCreateCard}
           isLoading={createCardMutation.isLoading}
-          error={createCardMutation.error instanceof Error ? createCardMutation.error.message : null}
+          error={(createCardMutation.error as any).message || null}
         />
       </div>
     </div>

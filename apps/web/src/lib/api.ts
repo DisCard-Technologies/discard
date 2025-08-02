@@ -3,7 +3,7 @@
  * Provides centralized API communication with proper error handling
  */
 
-import axios from './stubs';
+import axios from 'axios';
 import { Card, CreateCardRequest, CardListRequest, CardDetailsResponse } from '../../../../packages/shared/src/types';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';

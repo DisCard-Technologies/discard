@@ -104,7 +104,7 @@ export default function CardsDashboard() {
           <div className="bg-red-50 border border-red-200 rounded-md p-4">
             <h3 className="text-lg font-medium text-red-800">Error Loading Cards</h3>
             <p className="text-red-700 mt-1">
-              {error instanceof Error ? error.message : 'Failed to load cards'}
+              {(error as any).message || 'Failed to load cards'}
             </p>
             <button
               onClick={() => refetch()}
