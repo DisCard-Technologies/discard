@@ -42,3 +42,6 @@ export interface Transaction {
 // Export funding and payment types
 export * from './funding';
 export * from './stripe';
+
+// Export crypto wallet types
+export * from './crypto';

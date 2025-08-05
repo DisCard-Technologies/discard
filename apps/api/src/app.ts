@@ -7,6 +7,7 @@ import userRoutes from './routes/users';
 import authRoutes from './services/auth/auth.routes';
 import cardRoutes from './services/cards/cards.routes';
 import fundingRoutes from './services/funding/funding.routes';
+import cryptoRoutes from './services/crypto/crypto.routes';
 
 // Load environment variables
 dotenv.config();
@@ -72,6 +73,9 @@ app.use('/api/v1/cards', cardRoutes);
 
 // Funding management routes
 app.use('/api/v1/funding', fundingRoutes);
+
+// Cryptocurrency wallet routes
+app.use('/api/v1/crypto', cryptoRoutes);
 
 // User routes
 app.use('/api/v1/users', userRoutes);
