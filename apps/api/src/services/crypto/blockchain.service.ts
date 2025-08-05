@@ -98,7 +98,7 @@ export class BlockchainService {
   async encryptWalletAddress(address: string): Promise<string> {
     try {
       const iv = crypto.randomBytes(16);
-      const cipher = crypto.createCipher(this.ENCRYPTION_ALGORITHM, this.ENCRYPTION_KEY);
+      const cipher = crypto.createCipheriv(this.ENCRYPTION_ALGORITHM, this.ENCRYPTION_KEY, iv);
       
       let encrypted = cipher.update(address, 'utf8', 'hex');
       encrypted += cipher.final('hex');
@@ -124,7 +124,7 @@ export class BlockchainService {
       const iv = Buffer.from(parts[0], 'hex');
       const encrypted = parts[1];
 
-      const decipher = crypto.createDecipher(this.ENCRYPTION_ALGORITHM, this.ENCRYPTION_KEY);
+      const decipher = crypto.createDecipheriv(this.ENCRYPTION_ALGORITHM, this.ENCRYPTION_KEY, iv);
       
       let decrypted = decipher.update(encrypted, 'hex', 'utf8');
       decrypted += decipher.final('utf8');
