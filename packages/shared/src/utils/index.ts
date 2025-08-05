@@ -100,3 +100,9 @@ export * from './secure-clipboard';
 
 // Export deletion confirmation utilities
 export * from './deletion-confirmation';
+
+// Export funding utilities
+export * from './funding';
+
+// Export validation utilities
+export * from './validation';

@@ -6,6 +6,7 @@ import { createClient } from '@supabase/supabase-js';
 import userRoutes from './routes/users';
 import authRoutes from './services/auth/auth.routes';
 import cardRoutes from './services/cards/cards.routes';
+import fundingRoutes from './services/funding/funding.routes';
 
 // Load environment variables
 dotenv.config();
@@ -68,6 +69,9 @@ app.use('/api/v1/auth', authRoutes);
 
 // Card management routes
 app.use('/api/v1/cards', cardRoutes);
+
+// Funding management routes
+app.use('/api/v1/funding', fundingRoutes);
 
 // User routes
 app.use('/api/v1/users', userRoutes);

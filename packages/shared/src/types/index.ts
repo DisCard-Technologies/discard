@@ -38,3 +38,7 @@ export interface Transaction {
   timestamp: string;
   status: 'completed' | 'pending' | 'failed';
 }
+
+// Export funding and payment types
+export * from './funding';
+export * from './stripe';
