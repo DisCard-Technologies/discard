@@ -37,7 +37,7 @@ jest.mock('ecpair', () => ({
 
 jest.mock('tiny-secp256k1', () => ({}));
 
-// Mock Supabase  
+// Mock Supabase - exactly like the working MetaMask service
 const mockSupabaseChain = {
   select: jest.fn().mockReturnThis(),
   insert: jest.fn().mockReturnThis(),
@@ -51,7 +51,7 @@ const mockSupabaseChain = {
   order: jest.fn().mockReturnThis(),
   limit: jest.fn().mockReturnThis(),
   single: jest.fn().mockResolvedValue({ data: null, error: null }),
-  from: jest.fn().mockReturnThis()
+  mockResolvedValue: jest.fn().mockResolvedValue({ data: null, error: null })
 };
 
 jest.mock('../../../../app', () => ({
@@ -63,6 +63,18 @@ jest.mock('../../../../app', () => ({
 // Mock fetch globally
 global.fetch = jest.fn() as jest.MockedFunction<typeof fetch>;
 
+// Mock blockchain service with comprehensive encryption/decryption scenarios
+const mockBlockchainService = {
+  encryptWalletAddress: jest.fn(),
+  decryptWalletAddress: jest.fn(),
+  hashWalletAddress: jest.fn(),
+  validateWalletAddress: jest.fn()
+};
+
+jest.mock('../../../../services/crypto/blockchain.service', () => ({
+  blockchainService: mockBlockchainService
+}));
+
 describe('BitcoinService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -71,55 +83,31 @@ describe('BitcoinService', () => {
     const bitcoin = require('bitcoinjs-lib');
     bitcoin.address.toOutputScript.mockClear();
     
-    // Create a smart mock that handles any chain length
-    const createChainableMock = (terminalData) => {
-      const chainMock = jest.fn().mockImplementation(() => chainMock);
-      chainMock.mockResolvedValue = jest.fn().mockResolvedValue(terminalData);
-      
-      // Make it resolve to terminal data when awaited
-      chainMock.then = jest.fn((resolve) => {
-        resolve(terminalData);
-        return chainMock;
-      });
-      
-      return chainMock;
-    };
+    // Clear all mocks first
+    Object.values(mockSupabaseChain).forEach(mock => {
+      if (typeof mock.mockClear === 'function') {
+        mock.mockClear();
+      }
+    });
     
-    // Reset all methods to be chainable and return appropriate terminal data
-    mockSupabaseChain.select.mockImplementation(() => createChainableMock({ data: [], error: null }));
-    mockSupabaseChain.insert.mockImplementation(() => createChainableMock({ data: { wallet_id: 'mock-wallet-id' }, error: null }));
-    mockSupabaseChain.update.mockImplementation(() => createChainableMock({ data: null, error: null }));
-    mockSupabaseChain.single.mockResolvedValue({ data: null, error: null });
+    // Set up chaining - all intermediate methods return the chain object
+    mockSupabaseChain.select.mockReturnValue(mockSupabaseChain);
+    mockSupabaseChain.insert.mockReturnValue(mockSupabaseChain);
+    mockSupabaseChain.update.mockReturnValue(mockSupabaseChain);
     
-    // Set up specific method chains for Bitcoin service patterns
+    // For Bitcoin service, .eq() is the terminal method, so it should resolve to data
+    mockSupabaseChain.eq.mockResolvedValue({ data: [], error: null });
     
-    // For getBitcoinWallets: .select().eq().eq().eq()
-    const getBitcoinWalletsChain = {
-      eq: jest.fn().mockImplementation(() => ({
-        eq: jest.fn().mockImplementation(() => ({
-          eq: jest.fn().mockResolvedValue({ data: [], error: null })
-        }))
-      }))
-    };
-    
-    // For connectBitcoinWallet: .insert().select()  
-    const connectBitcoinWalletChain = {
+    // Special handling for connectBitcoinWallet which uses .insert().select()
+    mockSupabaseChain.insert.mockReturnValue({
       select: jest.fn().mockResolvedValue({ data: { wallet_id: 'mock-wallet-id' }, error: null })
-    };
+    });
     
-    // For disconnectBitcoinWallet: .update().eq().eq().eq()
-    const disconnectBitcoinWalletChain = {
-      eq: jest.fn().mockImplementation(() => ({
-        eq: jest.fn().mockImplementation(() => ({
-          eq: jest.fn().mockResolvedValue({ data: null, error: null })
-        }))
-      }))
-    };
+    // Special handling for disconnectBitcoinWallet which uses .update().eq().eq().eq()
+    mockSupabaseChain.update.mockReturnValue(mockSupabaseChain);
     
-    // Override specific methods with our chains
-    mockSupabaseChain.select.mockReturnValue(getBitcoinWalletsChain);
-    mockSupabaseChain.insert.mockReturnValue(connectBitcoinWalletChain);  
-    mockSupabaseChain.update.mockReturnValue(disconnectBitcoinWalletChain);
+    // Other terminal methods
+    mockSupabaseChain.single.mockResolvedValue({ data: null, error: null });
   });
 
   afterEach(() => {
@@ -761,6 +749,379 @@ describe('BitcoinService', () => {
       await expect(
         bitcoinService.disconnectBitcoinWallet(userId, walletId)
       ).rejects.toThrow('Failed to disconnect Bitcoin wallet');
+    });
+  });
+
+  describe('createBitcoinTransaction', () => {
+    beforeEach(() => {
+      // Mock UTXO data for transaction creation
+      const mockUtxos = [
+        {
+          txid: 'abc123def456',
+          vout: 0,
+          value: 100000000, // 1 BTC
+          confirmations: 6,
+          scriptPubKey: 'mock-script-1'
+        },
+        {
+          txid: 'def456ghi789',
+          vout: 1,
+          value: 50000000, // 0.5 BTC
+          confirmations: 10,
+          scriptPubKey: 'mock-script-2'
+        }
+      ];
+
+      // Mock getBitcoinUTXOs to return mock UTXOs
+      jest.spyOn(bitcoinService, 'getBitcoinUTXOs').mockResolvedValue(mockUtxos);
+    });
+
+    it('should create Bitcoin transaction successfully', async () => {
+      const fromAddress = '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa';
+      const toAddress = '1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2';
+      const amount = 0.5; // 0.5 BTC
+      const feeRate = 10; // satoshis per byte
+
+      // Mock address validation
+      require('bitcoinjs-lib').address.toOutputScript.mockReturnValue(Buffer.from('mock-script'));
+
+      // Mock TransactionBuilder
+      const mockTx = {
+        getId: jest.fn().mockReturnValue('mock-transaction-id'),
+        toHex: jest.fn().mockReturnValue('0100000001abc123def456000000006a473044022074f3f55df2e0c15b0e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e02205f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f01210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798ac')
+      };
+
+      const mockTxBuilder = {
+        addInput: jest.fn().mockReturnThis(),
+        addOutput: jest.fn().mockReturnThis(),
+        buildIncomplete: jest.fn().mockReturnValue(mockTx)
+      };
+
+      const bitcoin = require('bitcoinjs-lib');
+      bitcoin.TransactionBuilder.mockReturnValue(mockTxBuilder);
+
+      const result = await bitcoinService.createBitcoinTransaction(
+        fromAddress,
+        toAddress,
+        amount,
+        feeRate
+      );
+
+      expect(result.transaction).toBe('0100000001abc123def456000000006a473044022074f3f55df2e0c15b0e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e2e02205f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f01210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798ac');
+      expect(result.txid).toBe('mock-transaction-id');
+      expect(result.size).toBeGreaterThan(0);
+      expect(result.fee).toBeGreaterThan(0);
+      expect(result.inputs).toHaveLength(1); // Should select first UTXO which is sufficient
+
+      // Verify transaction builder calls
+      expect(mockTxBuilder.addInput).toHaveBeenCalledWith('abc123def456', 0);
+      expect(mockTxBuilder.addOutput).toHaveBeenCalledWith(toAddress, 50000000); // 0.5 BTC in satoshis
+    });
+
+    it('should handle insufficient funds', async () => {
+      const fromAddress = '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa';
+      const toAddress = '1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2';
+      const amount = 2.0; // 2 BTC - more than available UTXOs
+
+      // Mock address validation
+      require('bitcoinjs-lib').address.toOutputScript.mockReturnValue(Buffer.from('mock-script'));
+
+      await expect(
+        bitcoinService.createBitcoinTransaction(fromAddress, toAddress, amount)
+      ).rejects.toThrow('Insufficient funds for transaction');
+    });
+
+    it('should handle no UTXOs available', async () => {
+      const fromAddress = '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa';
+      const toAddress = '1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2';
+      const amount = 0.1;
+
+      // Mock empty UTXOs
+      jest.spyOn(bitcoinService, 'getBitcoinUTXOs').mockResolvedValue([]);
+
+      // Mock address validation
+      require('bitcoinjs-lib').address.toOutputScript.mockReturnValue(Buffer.from('mock-script'));
+
+      await expect(
+        bitcoinService.createBitcoinTransaction(fromAddress, toAddress, amount)
+      ).rejects.toThrow('No UTXOs available for transaction');
+    });
+
+    it('should handle invalid from address', async () => {
+      const fromAddress = 'invalid-address';
+      const toAddress = '1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2';
+      const amount = 0.1;
+
+      // Mock address validation - invalid from address
+      require('bitcoinjs-lib').address.toOutputScript
+        .mockImplementationOnce(() => {
+          throw new Error('Invalid address');
+        })
+        .mockReturnValueOnce(Buffer.from('mock-script')); // valid to address
+
+      await expect(
+        bitcoinService.createBitcoinTransaction(fromAddress, toAddress, amount)
+      ).rejects.toThrow('Invalid from address');
+    });
+
+    it('should handle invalid to address', async () => {
+      const fromAddress = '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa';
+      const toAddress = 'invalid-address';
+      const amount = 0.1;
+
+      // Mock address validation - valid from, invalid to
+      require('bitcoinjs-lib').address.toOutputScript
+        .mockReturnValueOnce(Buffer.from('mock-script')) // valid from address
+        .mockImplementationOnce(() => {
+          throw new Error('Invalid address');
+        });
+
+      await expect(
+        bitcoinService.createBitcoinTransaction(fromAddress, toAddress, amount)
+      ).rejects.toThrow('Invalid to address');
+    });
+
+    it('should handle change output calculation', async () => {
+      const fromAddress = '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa';
+      const toAddress = '1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2';
+      const amount = 0.3; // 0.3 BTC - will need change
+      const feeRate = 10;
+
+      // Mock address validation
+      require('bitcoinjs-lib').address.toOutputScript.mockReturnValue(Buffer.from('mock-script'));
+
+      // Mock TransactionBuilder
+      const mockTx = {
+        getId: jest.fn().mockReturnValue('mock-transaction-id'),
+        toHex: jest.fn().mockReturnValue('mock-hex')
+      };
+
+      const mockTxBuilder = {
+        addInput: jest.fn().mockReturnThis(),
+        addOutput: jest.fn().mockReturnThis(),
+        buildIncomplete: jest.fn().mockReturnValue(mockTx)
+      };
+
+      const bitcoin = require('bitcoinjs-lib');
+      bitcoin.TransactionBuilder.mockReturnValue(mockTxBuilder);
+
+      await bitcoinService.createBitcoinTransaction(fromAddress, toAddress, amount, feeRate);
+
+      // Should have two addOutput calls: one for payment, one for change
+      expect(mockTxBuilder.addOutput).toHaveBeenCalledTimes(2);
+      expect(mockTxBuilder.addOutput).toHaveBeenCalledWith(toAddress, 30000000); // 0.3 BTC
+      expect(mockTxBuilder.addOutput).toHaveBeenCalledWith(fromAddress, expect.any(Number)); // change
+    });
+
+    it('should handle testnet transaction creation', async () => {
+      const fromAddress = 'tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx';
+      const toAddress = 'tb1qrp33g0q4c70atj4d2kqx5pqp5pqp5pqp5pqp5pqp5pqp5pqp5pqp5pqp5pqp5';
+      const amount = 0.1;
+      const network = 'testnet';
+
+      // Mock address validation
+      require('bitcoinjs-lib').address.toOutputScript.mockReturnValue(Buffer.from('mock-script'));
+
+      // Mock TransactionBuilder with testnet network
+      const mockTx = {
+        getId: jest.fn().mockReturnValue('mock-testnet-tx-id'),
+        toHex: jest.fn().mockReturnValue('mock-testnet-hex')
+      };
+
+      const mockTxBuilder = {
+        addInput: jest.fn().mockReturnThis(),
+        addOutput: jest.fn().mockReturnThis(),
+        buildIncomplete: jest.fn().mockReturnValue(mockTx)
+      };
+
+      const bitcoin = require('bitcoinjs-lib');
+      bitcoin.TransactionBuilder.mockReturnValue(mockTxBuilder);
+
+      const result = await bitcoinService.createBitcoinTransaction(
+        fromAddress,
+        toAddress,
+        amount,
+        10,
+        network
+      );
+
+      expect(result.txid).toBe('mock-testnet-tx-id');
+      expect(bitcoin.TransactionBuilder).toHaveBeenCalledWith(bitcoin.networks.testnet);
+    });
+
+    it('should handle UTXO selection for high fee rates', async () => {
+      const fromAddress = '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa';
+      const toAddress = '1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2';
+      const amount = 0.1;
+      const feeRate = 100; // High fee rate
+
+      // Mock many small UTXOs to test selection logic
+      const smallUtxos = Array.from({ length: 10 }, (_, i) => ({
+        txid: `utxo-${i}`,
+        vout: i,
+        value: 5000000, // 0.05 BTC each
+        confirmations: 6,
+        scriptPubKey: `script-${i}`
+      }));
+
+      jest.spyOn(bitcoinService, 'getBitcoinUTXOs').mockResolvedValue(smallUtxos);
+
+      // Mock address validation
+      require('bitcoinjs-lib').address.toOutputScript.mockReturnValue(Buffer.from('mock-script'));
+
+      // Mock TransactionBuilder
+      const mockTx = {
+        getId: jest.fn().mockReturnValue('mock-high-fee-tx'),
+        toHex: jest.fn().mockReturnValue('mock-high-fee-hex')
+      };
+
+      const mockTxBuilder = {
+        addInput: jest.fn().mockReturnThis(),
+        addOutput: jest.fn().mockReturnThis(),
+        buildIncomplete: jest.fn().mockReturnValue(mockTx)
+      };
+
+      const bitcoin = require('bitcoinjs-lib');
+      bitcoin.TransactionBuilder.mockReturnValue(mockTxBuilder);
+
+      const result = await bitcoinService.createBitcoinTransaction(
+        fromAddress,
+        toAddress,
+        amount,
+        feeRate
+      );
+
+      // Should select multiple UTXOs due to high fee requirements
+      expect(result.inputs.length).toBeGreaterThan(2);
+      expect(result.fee).toBeGreaterThan(0.001); // High fee
+    });
+  });
+
+  describe('broadcastBitcoinTransaction', () => {
+    it('should broadcast transaction successfully', async () => {
+      const transactionHex = '0100000001abc123def456...';
+      const mockBroadcastResponse = {
+        tx: {
+          hash: 'broadcast-tx-hash-12345'
+        }
+      };
+
+      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValue({
+        ok: true,
+        json: async () => mockBroadcastResponse
+      } as Response);
+
+      const txid = await bitcoinService.broadcastBitcoinTransaction(transactionHex);
+
+      expect(txid).toBe('broadcast-tx-hash-12345');
+      expect(global.fetch).toHaveBeenCalledWith(
+        'https://api.blockcypher.com/v1/btc/main/txs/push?token=test-api-key',
+        expect.objectContaining({
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            tx: transactionHex
+          })
+        })
+      );
+    });
+
+    it('should broadcast transaction on testnet', async () => {
+      const transactionHex = '0100000001def456...';
+      const mockBroadcastResponse = {
+        tx: {
+          hash: 'testnet-tx-hash-67890'
+        }
+      };
+
+      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValue({
+        ok: true,
+        json: async () => mockBroadcastResponse
+      } as Response);
+
+      const txid = await bitcoinService.broadcastBitcoinTransaction(transactionHex, 'testnet');
+
+      expect(txid).toBe('testnet-tx-hash-67890');
+      expect(global.fetch).toHaveBeenCalledWith(
+        'https://api.blockcypher.com/v1/btc/test3/txs/push?token=test-api-key',
+        expect.any(Object)
+      );
+    });
+
+    it('should handle broadcast errors', async () => {
+      const transactionHex = '0100000001invalid...';
+
+      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValue({
+        ok: false,
+        status: 400,
+        text: async () => 'Invalid transaction'
+      } as Response);
+
+      await expect(
+        bitcoinService.broadcastBitcoinTransaction(transactionHex)
+      ).rejects.toThrow('Failed to broadcast transaction');
+    });
+
+    it('should handle network errors during broadcast', async () => {
+      const transactionHex = '0100000001abc123...';
+
+      (global.fetch as jest.MockedFunction<typeof fetch>).mockRejectedValue(
+        new Error('Network error')
+      );
+
+      await expect(
+        bitcoinService.broadcastBitcoinTransaction(transactionHex)
+      ).rejects.toThrow('Failed to broadcast transaction: Network error');
+    });
+
+    it('should work without API key', async () => {
+      delete process.env.BLOCKCYPHER_API_KEY;
+
+      const transactionHex = '0100000001abc123...';
+      const mockBroadcastResponse = {
+        tx: {
+          hash: 'no-key-tx-hash'
+        }
+      };
+
+      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValue({
+        ok: true,
+        json: async () => mockBroadcastResponse
+      } as Response);
+
+      const txid = await bitcoinService.broadcastBitcoinTransaction(transactionHex);
+
+      expect(txid).toBe('no-key-tx-hash');
+      expect(global.fetch).toHaveBeenCalledWith(
+        'https://api.blockcypher.com/v1/btc/main/txs/push',
+        expect.any(Object)
+      );
+
+      // Restore for other tests
+      process.env.BLOCKCYPHER_API_KEY = 'test-api-key';
+    });
+
+    it('should handle malformed API response', async () => {
+      const transactionHex = '0100000001abc123...';
+
+      (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValue({
+        ok: true,
+        json: async () => ({ malformed: 'response' }) // Missing tx.hash
+      } as Response);
+
+      await expect(
+        bitcoinService.broadcastBitcoinTransaction(transactionHex)
+      ).rejects.toThrow('Failed to broadcast transaction');
+    });
+
+    it('should handle unsupported network', async () => {
+      const transactionHex = '0100000001abc123...';
+
+      await expect(
+        bitcoinService.broadcastBitcoinTransaction(transactionHex, 'unsupported')
+      ).rejects.toThrow('Unsupported network: unsupported');
     });
   });
 
