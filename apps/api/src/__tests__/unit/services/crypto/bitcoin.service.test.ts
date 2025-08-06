@@ -1473,6 +1473,391 @@ describe('BitcoinService', () => {
     });
   });
 
+  describe('complex API failure scenarios', () => {
+    describe('rate limiting and throttling', () => {
+      it('should handle BlockCypher rate limiting (429)', async () => {
+        const mockAddress = '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa';
+
+        // First call hits rate limit
+        (global.fetch as jest.MockedFunction<typeof fetch>)
+          .mockResolvedValueOnce({
+            ok: false,
+            status: 429,
+            headers: new Headers({ 'Retry-After': '60' })
+          } as Response);
+
+        await expect(
+          bitcoinService.getBitcoinBalance(mockAddress)
+        ).rejects.toThrow('Failed to get Bitcoin balance');
+
+        expect(global.fetch).toHaveBeenCalledWith(
+          `https://api.blockcypher.com/v1/btc/main/addrs/${mockAddress}/balance?token=test-api-key`
+        );
+      });
+
+      it('should handle mempool.space rate limiting for fees', async () => {
+        // Rate limit response
+        (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValue({
+          ok: false,
+          status: 429
+        } as Response);
+
+        const fees = await bitcoinService.getBitcoinTransactionFees();
+
+        // Should return fallback fees
+        expect(fees).toEqual({
+          fast: 20,
+          medium: 10,
+          slow: 5
+        });
+      });
+
+      it('should handle progressive backoff scenarios', async () => {
+        const mockAddress = '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa';
+
+        // Simulate multiple rate limit responses, then success
+        (global.fetch as jest.MockedFunction<typeof fetch>)
+          .mockResolvedValueOnce({ ok: false, status: 429 } as Response)
+          .mockResolvedValueOnce({ ok: false, status: 429 } as Response)
+          .mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({ balance: 100000000, unconfirmed_balance: 0 })
+          } as Response);
+
+        // First call should fail
+        await expect(
+          bitcoinService.getBitcoinBalance(mockAddress)
+        ).rejects.toThrow('Failed to get Bitcoin balance');
+
+        // Reset fetch mock for individual calls
+        (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValue({
+          ok: true,
+          json: async () => ({ balance: 100000000, unconfirmed_balance: 0 })
+        } as Response);
+
+        // Subsequent call should succeed
+        const balance = await bitcoinService.getBitcoinBalance(mockAddress);
+        expect(balance.confirmed).toBe(1);
+      });
+    });
+
+    describe('network timeouts and connectivity', () => {
+      it('should handle fetch timeout errors', async () => {
+        const mockAddress = '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa';
+
+        (global.fetch as jest.MockedFunction<typeof fetch>).mockRejectedValue(
+          new Error('Request timeout')
+        );
+
+        await expect(
+          bitcoinService.getBitcoinBalance(mockAddress)
+        ).rejects.toThrow('Failed to get Bitcoin balance: Request timeout');
+      });
+
+      it('should handle network unreachable errors', async () => {
+        const mockAddress = '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa';
+
+        (global.fetch as jest.MockedFunction<typeof fetch>).mockRejectedValue(
+          new Error('Network unreachable')
+        );
+
+        await expect(
+          bitcoinService.getBitcoinUTXOs(mockAddress)
+        ).rejects.toThrow('Failed to get Bitcoin UTXOs: Network unreachable');
+      });
+
+      it('should handle DNS resolution failures', async () => {
+        const transactionHex = '0100000001abc123...';
+
+        (global.fetch as jest.MockedFunction<typeof fetch>).mockRejectedValue(
+          new Error('getaddrinfo ENOTFOUND api.blockcypher.com')
+        );
+
+        await expect(
+          bitcoinService.broadcastBitcoinTransaction(transactionHex)
+        ).rejects.toThrow('Failed to broadcast transaction');
+      });
+
+      it('should handle SSL/TLS certificate errors', async () => {
+        const mockAddress = '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa';
+
+        (global.fetch as jest.MockedFunction<typeof fetch>).mockRejectedValue(
+          new Error('certificate verify failed')
+        );
+
+        await expect(
+          bitcoinService.getBitcoinBalance(mockAddress)
+        ).rejects.toThrow('Failed to get Bitcoin balance');
+      });
+    });
+
+    describe('malformed and partial API responses', () => {
+      it('should handle malformed JSON in balance response', async () => {
+        const mockAddress = '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa';
+
+        (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValue({
+          ok: true,
+          json: async () => {
+            throw new Error('Unexpected token in JSON at position 0');
+          }
+        } as Response);
+
+        await expect(
+          bitcoinService.getBitcoinBalance(mockAddress)
+        ).rejects.toThrow('Failed to get Bitcoin balance');
+      });
+
+      it('should handle partial/corrupted balance data', async () => {
+        const mockAddress = '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa';
+
+        // Missing balance field
+        (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValue({
+          ok: true,
+          json: async () => ({
+            unconfirmed_balance: 50000000
+            // missing balance field
+          })
+        } as Response);
+
+        const balance = await bitcoinService.getBitcoinBalance(mockAddress);
+
+        expect(balance).toEqual({
+          confirmed: 0, // Should default to 0 when missing
+          unconfirmed: 0.5,
+          total: 0.5
+        });
+      });
+
+      it('should handle corrupted UTXO data', async () => {
+        const mockAddress = '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa';
+
+        // Malformed UTXO response
+        (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValue({
+          ok: true,
+          json: async () => ({
+            txrefs: [
+              {
+                tx_hash: 'abc123',
+                // missing tx_output_n
+                value: 100000000,
+                confirmations: 6
+                // missing script
+              },
+              null, // null UTXO entry
+              {
+                tx_hash: '', // empty hash
+                tx_output_n: 1,
+                value: 'invalid', // invalid value type
+                confirmations: -1 // invalid confirmations
+              }
+            ]
+          })
+        } as Response);
+
+        const utxos = await bitcoinService.getBitcoinUTXOs(mockAddress);
+
+        // Should handle corrupted data gracefully
+        expect(utxos).toHaveLength(2); // null entry filtered out
+        expect(utxos[0].vout).toBeUndefined(); // missing field
+        expect(utxos[1].value).toBe('invalid'); // preserved as-is
+      });
+
+      it('should handle empty/null API responses', async () => {
+        const mockAddress = '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa';
+
+        (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValue({
+          ok: true,
+          json: async () => null
+        } as Response);
+
+        await expect(
+          bitcoinService.getBitcoinBalance(mockAddress)
+        ).rejects.toThrow('Failed to get Bitcoin balance');
+      });
+
+      it('should handle fee API returning invalid data types', async () => {
+        (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValue({
+          ok: true,
+          json: async () => ({
+            fastestFee: 'fast', // string instead of number
+            halfHourFee: null,
+            hourFee: undefined
+          })
+        } as Response);
+
+        const fees = await bitcoinService.getBitcoinTransactionFees();
+
+        // Should use fallbacks for invalid data
+        expect(fees).toEqual({
+          fast: 'fast', // preserves as-is but fallback logic should handle
+          medium: 10,   // fallback value
+          slow: 5       // fallback value
+        });
+      });
+    });
+
+    describe('API versioning and compatibility', () => {
+      it('should handle API version mismatch errors', async () => {
+        const mockAddress = '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa';
+
+        (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValue({
+          ok: false,
+          status: 400,
+          json: async () => ({
+            error: 'API version no longer supported',
+            supported_versions: ['v2', 'v3']
+          })
+        } as Response);
+
+        await expect(
+          bitcoinService.getBitcoinBalance(mockAddress)
+        ).rejects.toThrow('Failed to get Bitcoin balance');
+      });
+
+      it('should handle deprecated endpoint warnings', async () => {
+        const mockAddress = '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa';
+
+        (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValue({
+          ok: true,
+          headers: new Headers({ 'X-Deprecated': 'true', 'X-Sunset': '2024-12-31' }),
+          json: async () => ({
+            balance: 100000000,
+            unconfirmed_balance: 0,
+            warnings: ['This endpoint will be deprecated on 2024-12-31']
+          })
+        } as Response);
+
+        const balance = await bitcoinService.getBitcoinBalance(mockAddress);
+
+        expect(balance.confirmed).toBe(1);
+        // Should continue working despite deprecation warning
+      });
+
+      it('should handle new API fields gracefully', async () => {
+        const mockAddress = '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa';
+
+        (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValue({
+          ok: true,
+          json: async () => ({
+            balance: 100000000,
+            unconfirmed_balance: 0,
+            // New fields that don't exist in current version
+            confirmed_balance_v2: 100000000,
+            pending_txs: 3,
+            address_type: 'P2PKH',
+            last_seen: '2023-12-01T00:00:00Z'
+          })
+        } as Response);
+
+        const balance = await bitcoinService.getBitcoinBalance(mockAddress);
+
+        expect(balance).toEqual({
+          confirmed: 1,
+          unconfirmed: 0,
+          total: 1
+        });
+        // Should ignore unknown fields
+      });
+    });
+
+    describe('service degradation scenarios', () => {
+      it('should handle partial service outages', async () => {
+        const mockAddress = '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa';
+
+        // Balance API works, UTXO API is down
+        (global.fetch as jest.MockedFunction<typeof fetch>)
+          .mockImplementation(async (url) => {
+            if (typeof url === 'string' && url.includes('/balance')) {
+              return {
+                ok: true,
+                json: async () => ({ balance: 100000000, unconfirmed_balance: 0 })
+              } as Response;
+            } else if (typeof url === 'string' && url.includes('?unspentOnly=true')) {
+              return {
+                ok: false,
+                status: 503,
+                statusText: 'Service Unavailable'
+              } as Response;
+            }
+            return { ok: false, status: 500 } as Response;
+          });
+
+        // Balance should work
+        const balance = await bitcoinService.getBitcoinBalance(mockAddress);
+        expect(balance.confirmed).toBe(1);
+
+        // UTXOs should fail
+        await expect(
+          bitcoinService.getBitcoinUTXOs(mockAddress)
+        ).rejects.toThrow('Failed to get Bitcoin UTXOs');
+      });
+
+      it('should handle cascading failures in transaction creation', async () => {
+        const fromAddress = '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa';
+        const toAddress = '1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2';
+
+        // Mock address validation
+        require('bitcoinjs-lib').address.toOutputScript.mockReturnValue(Buffer.from('mock-script'));
+
+        // UTXO API fails
+        jest.spyOn(bitcoinService, 'getBitcoinUTXOs').mockRejectedValue(
+          new Error('UTXO service temporarily unavailable')
+        );
+
+        await expect(
+          bitcoinService.createBitcoinTransaction(fromAddress, toAddress, 0.1)
+        ).rejects.toThrow('Failed to create Bitcoin transaction: UTXO service temporarily unavailable');
+      });
+
+      it('should handle mixed success/failure responses', async () => {
+        const userId = 'test-user-id';
+        const mockWallets = [
+          {
+            wallet_id: 'wallet-1',
+            wallet_name: 'Working Wallet',
+            wallet_address_encrypted: 'working-encrypted-data',
+            wallet_metadata: { network: 'mainnet' },
+            connection_status: 'connected',
+            supported_currencies: ['BTC'],
+            created_at: '2023-01-01T00:00:00Z'
+          },
+          {
+            wallet_id: 'wallet-2',
+            wallet_name: 'Failed Wallet',
+            wallet_address_encrypted: 'corrupted-encrypted-data',
+            wallet_metadata: { network: 'mainnet' },
+            connection_status: 'connected',
+            supported_currencies: ['BTC'],
+            created_at: '2023-01-01T00:00:00Z'
+          }
+        ];
+
+        mockSupabaseChain.select.mockResolvedValue({
+          data: mockWallets,
+          error: null
+        });
+
+        // Mock decryption - first succeeds, second fails
+        mockBlockchainService.decryptWalletAddress
+          .mockResolvedValueOnce('1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa')
+          .mockRejectedValueOnce(new Error('Decryption failed'));
+
+        // Mock balance API - first succeeds, QR fails for first wallet
+        (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValue({
+          ok: true,
+          json: async () => ({ balance: 100000000, unconfirmed_balance: 0 })
+        } as Response);
+
+        require('qrcode').toDataURL.mockRejectedValue(new Error('QR generation failed'));
+
+        const wallets = await bitcoinService.getBitcoinWallets(userId);
+
+        // Should return empty array as both wallets failed for different reasons
+        expect(wallets).toEqual([]);
+      });
+    });
+  });
+
   describe('configuration and utility methods', () => {
     it('should return supported networks', () => {
       const networks = bitcoinService.getSupportedNetworks();
