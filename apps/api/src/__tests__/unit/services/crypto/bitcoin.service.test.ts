@@ -37,22 +37,44 @@ jest.mock('ecpair', () => ({
 
 jest.mock('tiny-secp256k1', () => ({}));
 
-// Mock Supabase - exactly like the working MetaMask service
-const mockSupabaseChain = {
-  select: jest.fn().mockReturnThis(),
-  insert: jest.fn().mockReturnThis(),
-  update: jest.fn().mockReturnThis(),
-  eq: jest.fn().mockReturnThis(),
-  not: jest.fn().mockReturnThis(),
-  lt: jest.fn().mockReturnThis(),
-  gt: jest.fn().mockReturnThis(),
-  gte: jest.fn().mockReturnThis(),
-  lte: jest.fn().mockReturnThis(),
-  order: jest.fn().mockReturnThis(),
-  limit: jest.fn().mockReturnThis(),
-  single: jest.fn().mockResolvedValue({ data: null, error: null }),
-  mockResolvedValue: jest.fn().mockResolvedValue({ data: null, error: null })
+// Mock Supabase chain that supports both chaining and promise resolution
+const createMockSupabaseChain = () => {
+  const mockChain = {
+    single: jest.fn().mockResolvedValue({ data: null, error: null }),
+    
+    // Make the chain thenable so it can be awaited
+    then: jest.fn((resolve) => {
+      return resolve({ data: [], error: null });
+    }),
+    
+    mockResolvedValue: jest.fn(function(value) {
+      this.then = jest.fn((resolve) => resolve(value));
+      return this;
+    }),
+    
+    mockRejectedValue: jest.fn(function(error) {
+      this.then = jest.fn((resolve, reject) => reject(error));
+      return this;
+    })
+  };
+  
+  // Set up chainable methods that return the mockChain
+  mockChain.select = jest.fn(() => mockChain);
+  mockChain.insert = jest.fn(() => mockChain);
+  mockChain.update = jest.fn(() => mockChain);
+  mockChain.eq = jest.fn(() => mockChain);
+  mockChain.not = jest.fn(() => mockChain);
+  mockChain.lt = jest.fn(() => mockChain);
+  mockChain.gt = jest.fn(() => mockChain);
+  mockChain.gte = jest.fn(() => mockChain);
+  mockChain.lte = jest.fn(() => mockChain);
+  mockChain.order = jest.fn(() => mockChain);
+  mockChain.limit = jest.fn(() => mockChain);
+  
+  return mockChain;
 };
+
+const mockSupabaseChain = createMockSupabaseChain();
 
 jest.mock('../../../../app', () => ({
   supabase: {
@@ -64,15 +86,13 @@ jest.mock('../../../../app', () => ({
 global.fetch = jest.fn() as jest.MockedFunction<typeof fetch>;
 
 // Mock blockchain service with comprehensive encryption/decryption scenarios
-const mockBlockchainService = {
-  encryptWalletAddress: jest.fn(),
-  decryptWalletAddress: jest.fn(),
-  hashWalletAddress: jest.fn(),
-  validateWalletAddress: jest.fn()
-};
-
 jest.mock('../../../../services/crypto/blockchain.service', () => ({
-  blockchainService: mockBlockchainService
+  blockchainService: {
+    encryptWalletAddress: jest.fn(),
+    decryptWalletAddress: jest.fn(),
+    hashWalletAddress: jest.fn(),
+    validateWalletAddress: jest.fn()
+  }
 }));
 
 describe('BitcoinService', () => {
@@ -90,40 +110,41 @@ describe('BitcoinService', () => {
       }
     });
     
-    // Set up chaining - all intermediate methods return the chain object
+    // Reset to default chainable behavior
     mockSupabaseChain.select.mockReturnValue(mockSupabaseChain);
     mockSupabaseChain.insert.mockReturnValue(mockSupabaseChain);
     mockSupabaseChain.update.mockReturnValue(mockSupabaseChain);
+    mockSupabaseChain.eq.mockReturnValue(mockSupabaseChain);
     
-    // For Bitcoin service, .eq() is the terminal method, so it should resolve to data
-    mockSupabaseChain.eq.mockResolvedValue({ data: [], error: null });
+    // Set default resolution behavior
+    mockSupabaseChain.then.mockImplementation((resolve) => {
+      return resolve({ data: [], error: null });
+    });
     
     // Special handling for connectBitcoinWallet which uses .insert().select()
     mockSupabaseChain.insert.mockReturnValue({
       select: jest.fn().mockResolvedValue({ data: { wallet_id: 'mock-wallet-id' }, error: null })
     });
     
-    // Special handling for disconnectBitcoinWallet which uses .update().eq().eq().eq()
-    mockSupabaseChain.update.mockReturnValue(mockSupabaseChain);
-    
     // Other terminal methods
     mockSupabaseChain.single.mockResolvedValue({ data: null, error: null });
 
     // Reset blockchain service mocks with default implementations
-    mockBlockchainService.encryptWalletAddress.mockClear();
-    mockBlockchainService.decryptWalletAddress.mockClear();
-    mockBlockchainService.hashWalletAddress.mockClear();
-    mockBlockchainService.validateWalletAddress.mockClear();
+    const { blockchainService } = require('../../../../services/crypto/blockchain.service');
+    blockchainService.encryptWalletAddress.mockClear();
+    blockchainService.decryptWalletAddress.mockClear();
+    blockchainService.hashWalletAddress.mockClear();
+    blockchainService.validateWalletAddress.mockClear();
 
     // Default mock implementations for blockchain service
-    mockBlockchainService.encryptWalletAddress.mockImplementation(async (address: string) => {
+    blockchainService.encryptWalletAddress.mockImplementation(async (address: string) => {
       // Simulate real encryption by creating a predictable encrypted format
       const iv = 'mock-iv-16-bytes';
       const encrypted = Buffer.from(`encrypted-${address}`, 'utf8').toString('hex');
       return `${iv}:${encrypted}`;
     });
 
-    mockBlockchainService.decryptWalletAddress.mockImplementation(async (encryptedAddress: string) => {
+    blockchainService.decryptWalletAddress.mockImplementation(async (encryptedAddress: string) => {
       // Simulate real decryption by reversing the mock encryption
       const parts = encryptedAddress.split(':');
       if (parts.length !== 2) {
@@ -134,12 +155,12 @@ describe('BitcoinService', () => {
       return decrypted.replace('encrypted-', '');
     });
 
-    mockBlockchainService.hashWalletAddress.mockImplementation((address: string) => {
+    blockchainService.hashWalletAddress.mockImplementation((address: string) => {
       // Simulate deterministic hashing
       return `hash-${address.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
     });
 
-    mockBlockchainService.validateWalletAddress.mockResolvedValue({
+    blockchainService.validateWalletAddress.mockResolvedValue({
       isValid: true
     });
   });
@@ -681,10 +702,13 @@ describe('BitcoinService', () => {
         }
       ];
 
-      mockSupabaseChain.eq.mockReturnThis();
-      mockSupabaseChain.select.mockResolvedValue({
-        data: mockWallets,
-        error: null
+      // Set up proper chaining for getBitcoinWallets: .from().select().eq().eq().eq()
+      mockSupabaseChain.select.mockReturnValue(mockSupabaseChain);
+      mockSupabaseChain.eq.mockReturnValue(mockSupabaseChain);
+      
+      // The final awaited result should be from the chain itself
+      mockSupabaseChain.then.mockImplementation((resolve) => {
+        return resolve({ data: mockWallets, error: null });
       });
 
       // Mock balance API responses
@@ -725,10 +749,12 @@ describe('BitcoinService', () => {
     it('should handle empty wallet list', async () => {
       const userId = 'test-user-id';
 
-      mockSupabaseChain.eq.mockReturnThis();
-      mockSupabaseChain.select.mockResolvedValue({
-        data: [],
-        error: null
+      // Set up proper chaining for empty wallet list
+      mockSupabaseChain.select.mockReturnValue(mockSupabaseChain);
+      mockSupabaseChain.eq.mockReturnValue(mockSupabaseChain);
+      
+      mockSupabaseChain.then.mockImplementation((resolve) => {
+        return resolve({ data: [], error: null });
       });
 
       const wallets = await bitcoinService.getBitcoinWallets(userId);
@@ -739,10 +765,12 @@ describe('BitcoinService', () => {
     it('should handle database errors', async () => {
       const userId = 'test-user-id';
 
-      mockSupabaseChain.eq.mockReturnThis();
-      mockSupabaseChain.select.mockResolvedValue({
-        data: null,
-        error: { message: 'Database error' }
+      // Set up proper chaining for database error
+      mockSupabaseChain.select.mockReturnValue(mockSupabaseChain);
+      mockSupabaseChain.eq.mockReturnValue(mockSupabaseChain);
+      
+      mockSupabaseChain.then.mockImplementation((resolve) => {
+        return resolve({ data: null, error: { message: 'Database error' } });
       });
 
       await expect(
@@ -1187,7 +1215,8 @@ describe('BitcoinService', () => {
         });
 
         // Mock encryption failure
-        mockBlockchainService.encryptWalletAddress.mockRejectedValue(
+        const { blockchainService } = require('../../../../services/crypto/blockchain.service');
+        blockchainService.encryptWalletAddress.mockRejectedValue(
           new Error('Encryption service unavailable')
         );
 
@@ -1195,7 +1224,7 @@ describe('BitcoinService', () => {
           bitcoinService.connectBitcoinWallet(userId, mockRequest)
         ).rejects.toThrow('Failed to connect Bitcoin wallet');
 
-        expect(mockBlockchainService.encryptWalletAddress).toHaveBeenCalledWith(mockRequest.address);
+        expect(blockchainService.encryptWalletAddress).toHaveBeenCalledWith(mockRequest.address);
       });
 
       it('should handle decryption errors during wallet retrieval', async () => {
@@ -1210,13 +1239,17 @@ describe('BitcoinService', () => {
           created_at: '2023-01-01T00:00:00Z'
         }];
 
-        mockSupabaseChain.select.mockResolvedValue({
-          data: mockWallets,
-          error: null
+        // Set up proper chaining for decryption error test
+        mockSupabaseChain.select.mockReturnValue(mockSupabaseChain);
+        mockSupabaseChain.eq.mockReturnValue(mockSupabaseChain);
+        
+        mockSupabaseChain.then.mockImplementation((resolve) => {
+          return resolve({ data: mockWallets, error: null });
         });
 
         // Mock decryption failure
-        mockBlockchainService.decryptWalletAddress.mockRejectedValue(
+        const { blockchainService } = require('../../../../services/crypto/blockchain.service');
+        blockchainService.decryptWalletAddress.mockRejectedValue(
           new Error('Invalid encrypted address format')
         );
 
@@ -1224,7 +1257,7 @@ describe('BitcoinService', () => {
 
         // Should continue with other wallets even if one fails
         expect(wallets).toEqual([]);
-        expect(mockBlockchainService.decryptWalletAddress).toHaveBeenCalledWith('corrupted-encrypted-data');
+        expect(blockchainService.decryptWalletAddress).toHaveBeenCalledWith('corrupted-encrypted-data');
       });
 
       it('should handle complex encryption/decryption round trip', async () => {
@@ -1232,8 +1265,9 @@ describe('BitcoinService', () => {
         const userId = 'test-user-id';
         
         // Use a more realistic encryption mock
-        let encryptedData: string;
-        mockBlockchainService.encryptWalletAddress.mockImplementation(async (address: string) => {
+        let encryptedData: string = '';
+        const { blockchainService } = require('../../../../services/crypto/blockchain.service');
+        blockchainService.encryptWalletAddress.mockImplementation(async (address: string) => {
           // Simulate real encryption with random IV
           const iv = Buffer.from('1234567890123456', 'utf8').toString('hex');
           const encrypted = Buffer.from(address).toString('base64');
@@ -1241,7 +1275,7 @@ describe('BitcoinService', () => {
           return encryptedData;
         });
 
-        mockBlockchainService.decryptWalletAddress.mockImplementation(async (encrypted: string) => {
+        blockchainService.decryptWalletAddress.mockImplementation(async (encrypted: string) => {
           const [iv, data] = encrypted.split(':');
           return Buffer.from(data, 'base64').toString('utf8');
         });
@@ -1277,7 +1311,7 @@ describe('BitcoinService', () => {
 
         const connection = await bitcoinService.connectBitcoinWallet(userId, mockRequest);
 
-        expect(mockBlockchainService.encryptWalletAddress).toHaveBeenCalledWith(testAddress);
+        expect(blockchainService.encryptWalletAddress).toHaveBeenCalledWith(testAddress);
         expect(connection.address).toBe(testAddress);
         expect(connection.walletName).toBe('Encryption Test Wallet');
 
@@ -1292,9 +1326,12 @@ describe('BitcoinService', () => {
           created_at: '2023-01-01T00:00:00Z'
         }];
 
-        mockSupabaseChain.select.mockResolvedValue({
-          data: mockWallets,
-          error: null
+        // Set up proper chaining for complex encryption/decryption round trip
+        mockSupabaseChain.select.mockReturnValue(mockSupabaseChain);
+        mockSupabaseChain.eq.mockReturnValue(mockSupabaseChain);
+        
+        mockSupabaseChain.then.mockImplementation((resolve) => {
+          return resolve({ data: mockWallets, error: null });
         });
 
         (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValue({
@@ -1306,7 +1343,7 @@ describe('BitcoinService', () => {
 
         expect(retrievedWallets).toHaveLength(1);
         expect(retrievedWallets[0].address).toBe(testAddress);
-        expect(mockBlockchainService.decryptWalletAddress).toHaveBeenCalledWith(encryptedData);
+        expect(blockchainService.decryptWalletAddress).toHaveBeenCalledWith(encryptedData);
       });
 
       it('should handle hash collision detection', async () => {
@@ -1315,7 +1352,8 @@ describe('BitcoinService', () => {
         const address2 = '1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2';
 
         // Mock deterministic hashing that creates different hashes
-        mockBlockchainService.hashWalletAddress.mockImplementation((address: string) => {
+        const { blockchainService } = require('../../../../services/crypto/blockchain.service');
+        blockchainService.hashWalletAddress.mockImplementation((address: string) => {
           return `hash-${address.substring(0, 10)}`;
         });
 
@@ -1351,7 +1389,7 @@ describe('BitcoinService', () => {
 
         await bitcoinService.connectBitcoinWallet(userId, mockRequest1);
 
-        expect(mockBlockchainService.hashWalletAddress).toHaveBeenCalledWith(address1);
+        expect(blockchainService.hashWalletAddress).toHaveBeenCalledWith(address1);
 
         // Second wallet connection with different address
         const mockRequest2 = { address: address2, walletName: 'Wallet 2' };
@@ -1375,8 +1413,8 @@ describe('BitcoinService', () => {
 
         await bitcoinService.connectBitcoinWallet(userId, mockRequest2);
 
-        expect(mockBlockchainService.hashWalletAddress).toHaveBeenCalledWith(address2);
-        expect(mockBlockchainService.hashWalletAddress).toHaveBeenCalledTimes(2);
+        expect(blockchainService.hashWalletAddress).toHaveBeenCalledWith(address2);
+        expect(blockchainService.hashWalletAddress).toHaveBeenCalledTimes(2);
       });
 
       it('should handle blockchain service timeout scenarios', async () => {
@@ -1390,7 +1428,8 @@ describe('BitcoinService', () => {
         require('bitcoinjs-lib').address.toOutputScript.mockReturnValue(Buffer.from('mock-script'));
 
         // Mock encryption timeout
-        mockBlockchainService.encryptWalletAddress.mockImplementation(async () => {
+        const { blockchainService } = require('../../../../services/crypto/blockchain.service');
+        blockchainService.encryptWalletAddress.mockImplementation(async () => {
           await new Promise(resolve => setTimeout(resolve, 100));
           throw new Error('Request timeout');
         });
@@ -1420,25 +1459,26 @@ describe('BitcoinService', () => {
         ];
 
         // Mock concurrent encryption calls
+        const { blockchainService } = require('../../../../services/crypto/blockchain.service');
         const encryptionPromises = addresses.map(address => {
-          return mockBlockchainService.encryptWalletAddress(address);
+          return blockchainService.encryptWalletAddress(address);
         });
 
         // All should complete successfully
         const encryptedAddresses = await Promise.all(encryptionPromises);
         
         expect(encryptedAddresses).toHaveLength(3);
-        expect(mockBlockchainService.encryptWalletAddress).toHaveBeenCalledTimes(3);
+        expect(blockchainService.encryptWalletAddress).toHaveBeenCalledTimes(3);
 
         // Mock concurrent decryption calls
         const decryptionPromises = encryptedAddresses.map(encryptedAddress => {
-          return mockBlockchainService.decryptWalletAddress(encryptedAddress);
+          return blockchainService.decryptWalletAddress(encryptedAddress);
         });
 
         const decryptedAddresses = await Promise.all(decryptionPromises);
         
         expect(decryptedAddresses).toEqual(addresses);
-        expect(mockBlockchainService.decryptWalletAddress).toHaveBeenCalledTimes(3);
+        expect(blockchainService.decryptWalletAddress).toHaveBeenCalledTimes(3);
       });
     });
 
@@ -1448,9 +1488,10 @@ describe('BitcoinService', () => {
         const upperCaseAddress = '1A1ZP1EP5QGEFI2DMPTTL5SLMV7DIVFNA';
         const mixedCaseAddress = '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa';
 
-        const hash1 = mockBlockchainService.hashWalletAddress(lowerCaseAddress);
-        const hash2 = mockBlockchainService.hashWalletAddress(upperCaseAddress);
-        const hash3 = mockBlockchainService.hashWalletAddress(mixedCaseAddress);
+        const { blockchainService } = require('../../../../services/crypto/blockchain.service');
+        const hash1 = blockchainService.hashWalletAddress(lowerCaseAddress);
+        const hash2 = blockchainService.hashWalletAddress(upperCaseAddress);
+        const hash3 = blockchainService.hashWalletAddress(mixedCaseAddress);
 
         // All should produce the same hash due to toLowerCase in implementation
         expect(hash1).toBe(hash2);
@@ -1462,8 +1503,9 @@ describe('BitcoinService', () => {
         const addressWithSpecialChars = '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa!@#';
         const cleanAddress = '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa';
 
-        const hash1 = mockBlockchainService.hashWalletAddress(addressWithSpecialChars);
-        const hash2 = mockBlockchainService.hashWalletAddress(cleanAddress);
+        const { blockchainService } = require('../../../../services/crypto/blockchain.service');
+        const hash1 = blockchainService.hashWalletAddress(addressWithSpecialChars);
+        const hash2 = blockchainService.hashWalletAddress(cleanAddress);
 
         // Hash should remove special characters
         expect(hash1).toBe('hash-1a1zp1ep5q');
@@ -1668,7 +1710,7 @@ describe('BitcoinService', () => {
         (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValue({
           ok: true,
           json: async () => null
-        } as Response);
+        } as unknown as Response);
 
         await expect(
           bitcoinService.getBitcoinBalance(mockAddress)
@@ -1832,13 +1874,17 @@ describe('BitcoinService', () => {
           }
         ];
 
-        mockSupabaseChain.select.mockResolvedValue({
-          data: mockWallets,
-          error: null
+        // Set up proper chaining for mixed success/failure responses
+        mockSupabaseChain.select.mockReturnValue(mockSupabaseChain);
+        mockSupabaseChain.eq.mockReturnValue(mockSupabaseChain);
+        
+        mockSupabaseChain.then.mockImplementation((resolve) => {
+          return resolve({ data: mockWallets, error: null });
         });
 
         // Mock decryption - first succeeds, second fails
-        mockBlockchainService.decryptWalletAddress
+        const { blockchainService } = require('../../../../services/crypto/blockchain.service');
+        blockchainService.decryptWalletAddress
           .mockResolvedValueOnce('1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa')
           .mockRejectedValueOnce(new Error('Decryption failed'));
 
