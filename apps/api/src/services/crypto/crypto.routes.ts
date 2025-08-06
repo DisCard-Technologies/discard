@@ -151,4 +151,88 @@ router.post('/wallets/walletconnect/cleanup',
   }
 );
 
+// MetaMask specific routes
+
+/**
+ * GET /api/v1/crypto/wallets/metamask/availability
+ * Check MetaMask availability
+ */
+router.get('/wallets/metamask/availability',
+  async (req, res) => {
+    await cryptoController.checkMetaMaskAvailability(req, res);
+  }
+);
+
+/**
+ * POST /api/v1/crypto/wallets/metamask/connect
+ * Connect MetaMask wallet
+ */
+router.post('/wallets/metamask/connect',
+  walletConnectionRateLimit,
+  async (req, res) => {
+    await cryptoController.connectMetaMask(req, res);
+  }
+);
+
+/**
+ * POST /api/v1/crypto/wallets/metamask/disconnect
+ * Disconnect MetaMask wallet
+ */
+router.post('/wallets/metamask/disconnect',
+  async (req, res) => {
+    await cryptoController.disconnectMetaMask(req, res);
+  }
+);
+
+/**
+ * GET /api/v1/crypto/wallets/metamask/connections
+ * Get active MetaMask connections
+ */
+router.get('/wallets/metamask/connections',
+  async (req, res) => {
+    await cryptoController.getMetaMaskConnections(req, res);
+  }
+);
+
+/**
+ * POST /api/v1/crypto/wallets/metamask/transaction
+ * Send transaction through MetaMask
+ */
+router.post('/wallets/metamask/transaction',
+  balanceCheckRateLimit, // Use balance check rate limit for transactions
+  async (req, res) => {
+    await cryptoController.sendMetaMaskTransaction(req, res);
+  }
+);
+
+/**
+ * POST /api/v1/crypto/wallets/metamask/sign
+ * Sign message with MetaMask
+ */
+router.post('/wallets/metamask/sign',
+  async (req, res) => {
+    await cryptoController.signMetaMaskMessage(req, res);
+  }
+);
+
+/**
+ * POST /api/v1/crypto/wallets/metamask/switch-chain
+ * Switch Ethereum chain in MetaMask
+ */
+router.post('/wallets/metamask/switch-chain',
+  async (req, res) => {
+    await cryptoController.switchMetaMaskChain(req, res);
+  }
+);
+
+/**
+ * POST /api/v1/crypto/wallets/metamask/cleanup
+ * Cleanup expired MetaMask connections
+ */
+router.post('/wallets/metamask/cleanup',
+  async (req, res) => {
+    await cryptoController.cleanupMetaMaskConnections(req, res);
+  }
+);
+
 export default router;

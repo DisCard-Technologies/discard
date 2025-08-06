@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { blockchainService } from './blockchain.service';
 import { ratesService } from './rates.service';
 import { walletConnectService } from './walletconnect.service';
+import { metamaskService } from './metamask.service';
 import { AuthenticatedRequest } from '../../middleware/auth';
 import { InputSanitizer } from '../../utils/input-sanitizer';
 import { 
@@ -831,6 +832,501 @@ export class CryptoController {
       res.status(500).json({ 
         success: false,
         error: 'Failed to cleanup WalletConnect sessions',
+        details: error.message
+      });
+    }
+  }
+
+  /**
+   * Check MetaMask availability
+   * GET /api/v1/crypto/wallets/metamask/availability
+   */
+  async checkMetaMaskAvailability(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      if (!req.user) {
+        res.status(401).json({ 
+          success: false,
+          error: 'Authentication required' 
+        });
+        return;
+      }
+
+      // Check if MetaMask service is configured
+      if (!metamaskService.isConfigured()) {
+        res.status(503).json({ 
+          success: false,
+          error: 'MetaMask service not configured' 
+        });
+        return;
+      }
+
+      // Initialize MetaMask service if needed
+      await metamaskService.initialize();
+
+      // Check MetaMask availability
+      const isAvailable = await metamaskService.isMetaMaskAvailable();
+
+      res.status(200).json({
+        success: true,
+        data: {
+          isAvailable,
+          isConfigured: metamaskService.isConfigured(),
+          message: isAvailable ? 'MetaMask is available' : 'MetaMask not detected or not unlocked'
+        }
+      });
+
+    } catch (error) {
+      console.error('Check MetaMask availability error:', error);
+      res.status(500).json({ 
+        success: false,
+        error: 'Failed to check MetaMask availability',
+        details: error.message
+      });
+    }
+  }
+
+  /**
+   * Request MetaMask connection
+   * POST /api/v1/crypto/wallets/metamask/connect
+   */
+  async connectMetaMask(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      if (!req.user) {
+        res.status(401).json({ 
+          success: false,
+          error: 'Authentication required' 
+        });
+        return;
+      }
+
+      const { 
+        requestedPermissions = ['eth_accounts'], 
+        sessionDuration = 3600 
+      }: MetaMaskConnectionRequest = req.body;
+
+      // Check if MetaMask service is configured
+      if (!metamaskService.isConfigured()) {
+        res.status(503).json({ 
+          success: false,
+          error: 'MetaMask service not configured' 
+        });
+        return;
+      }
+
+      // Initialize MetaMask service if needed
+      await metamaskService.initialize();
+
+      // Request MetaMask connection
+      const connection = await metamaskService.requestConnection(req.user.id, {
+        requestedPermissions,
+        sessionDuration
+      });
+
+      // Create wallet record in crypto_wallets table
+      const walletId = uuidv4();
+      const primaryAccount = connection.accounts[0];
+      const encryptedAddress = await blockchainService.encryptWalletAddress(primaryAccount);
+      const supportedCurrencies = blockchainService.getSupportedCurrencies('metamask');
+
+      const { data: wallet, error: insertError } = await supabase
+        .from('crypto_wallets')
+        .insert({
+          wallet_id: walletId,
+          user_id: req.user.id,
+          wallet_type: 'metamask',
+          wallet_address_encrypted: encryptedAddress,
+          wallet_address_hash: blockchainService.hashWalletAddress(primaryAccount),
+          wallet_name: 'MetaMask Wallet',
+          connection_status: 'connected',
+          permissions: connection.permissions,
+          session_expiry: connection.sessionExpiry.toISOString(),
+          supported_currencies: supportedCurrencies,
+          last_balance_check: new Date().toISOString(),
+          // Store MetaMask connection ID for reference
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .select()
+        .single();
+
+      if (insertError) {
+        console.error('Database error creating MetaMask wallet:', insertError);
+        res.status(500).json({ 
+          success: false,
+          error: 'Failed to save wallet connection' 
+        });
+        return;
+      }
+
+      res.status(201).json({
+        success: true,
+        data: {
+          walletId: wallet.wallet_id,
+          connectionId: connection.connectionId,
+          walletType: 'metamask',
+          walletName: wallet.wallet_name,
+          accounts: connection.accounts,
+          chainId: connection.chainId,
+          connectionStatus: 'connected',
+          permissions: connection.permissions,
+          supportedCurrencies: supportedCurrencies,
+          sessionExpiry: wallet.session_expiry
+        }
+      });
+
+    } catch (error) {
+      console.error('Connect MetaMask error:', error);
+      res.status(500).json({ 
+        success: false,
+        error: 'Failed to connect MetaMask',
+        details: error.message
+      });
+    }
+  }
+
+  /**
+   * Disconnect MetaMask connection
+   * POST /api/v1/crypto/wallets/metamask/disconnect
+   */
+  async disconnectMetaMask(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      if (!req.user) {
+        res.status(401).json({ 
+          success: false,
+          error: 'Authentication required' 
+        });
+        return;
+      }
+
+      const { connectionId, walletId } = req.body;
+
+      if (!connectionId && !walletId) {
+        res.status(400).json({ 
+          success: false,
+          error: 'Connection ID or wallet ID is required' 
+        });
+        return;
+      }
+
+      let targetConnectionId = connectionId;
+
+      // If walletId provided, get connection ID from database
+      if (walletId && !connectionId) {
+        const { data: sessions, error: fetchError } = await supabase
+          .from('wallet_sessions')
+          .select('connection_metadata')
+          .eq('wallet_id', walletId)
+          .eq('user_id', req.user.id)
+          .eq('is_active', true)
+          .single();
+
+        if (fetchError || !sessions?.connection_metadata?.metamask_connection_id) {
+          res.status(404).json({ 
+            success: false,
+            error: 'MetaMask connection not found' 
+          });
+          return;
+        }
+
+        targetConnectionId = sessions.connection_metadata.metamask_connection_id;
+      }
+
+      // Disconnect MetaMask connection
+      await metamaskService.disconnectConnection(targetConnectionId);
+
+      // Update wallet status in database
+      const { error: updateError } = await supabase
+        .from('crypto_wallets')
+        .update({
+          connection_status: 'disconnected',
+          updated_at: new Date().toISOString()
+        })
+        .eq('wallet_id', walletId || targetConnectionId)
+        .eq('user_id', req.user.id);
+
+      if (updateError) {
+        console.error('Database error updating wallet status:', updateError);
+        // Continue since MetaMask connection was disconnected successfully
+      }
+
+      res.status(200).json({
+        success: true,
+        message: 'MetaMask connection disconnected successfully'
+      });
+
+    } catch (error) {
+      console.error('Disconnect MetaMask error:', error);
+      res.status(500).json({ 
+        success: false,
+        error: 'Failed to disconnect MetaMask',
+        details: error.message
+      });
+    }
+  }
+
+  /**
+   * Get active MetaMask connections
+   * GET /api/v1/crypto/wallets/metamask/connections
+   */
+  async getMetaMaskConnections(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      if (!req.user) {
+        res.status(401).json({ 
+          success: false,
+          error: 'Authentication required' 
+        });
+        return;
+      }
+
+      // Get connections from MetaMask service
+      const connections = await metamaskService.getActiveConnections(req.user.id);
+
+      // Get corresponding wallet records from database
+      const { data: wallets, error } = await supabase
+        .from('crypto_wallets')
+        .select('*')
+        .eq('user_id', req.user.id)
+        .eq('wallet_type', 'metamask')
+        .eq('connection_status', 'connected');
+
+      if (error) {
+        console.error('Database error fetching MetaMask wallets:', error);
+        res.status(500).json({ 
+          success: false,
+          error: 'Failed to fetch MetaMask connections' 
+        });
+        return;
+      }
+
+      // Combine connection and wallet data
+      const combinedData = connections.map(connection => {
+        const wallet = wallets.find(w => 
+          w.wallet_address_hash === blockchainService.hashWalletAddress(connection.accounts[0])
+        );
+        return {
+          connectionId: connection.connectionId,
+          walletId: wallet?.wallet_id,
+          accounts: connection.accounts,
+          chainId: connection.chainId,
+          isConnected: connection.isConnected,
+          permissions: connection.permissions,
+          supportedCurrencies: wallet?.supported_currencies || [],
+          sessionExpiry: connection.sessionExpiry.toISOString(),
+          lastActivity: wallet?.updated_at
+        };
+      });
+
+      res.status(200).json({
+        success: true,
+        data: {
+          connections: combinedData,
+          total: combinedData.length
+        }
+      });
+
+    } catch (error) {
+      console.error('Get MetaMask connections error:', error);
+      res.status(500).json({ 
+        success: false,
+        error: 'Failed to get MetaMask connections',
+        details: error.message
+      });
+    }
+  }
+
+  /**
+   * Send MetaMask transaction
+   * POST /api/v1/crypto/wallets/metamask/transaction
+   */
+  async sendMetaMaskTransaction(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      if (!req.user) {
+        res.status(401).json({ 
+          success: false,
+          error: 'Authentication required' 
+        });
+        return;
+      }
+
+      const { connectionId, to, value, data, gas, gasPrice } = req.body;
+
+      if (!connectionId || !to) {
+        res.status(400).json({ 
+          success: false,
+          error: 'Connection ID and recipient address are required' 
+        });
+        return;
+      }
+
+      // Validate recipient address
+      const addressValidation = await blockchainService.validateWalletAddress('metamask', to);
+      if (!addressValidation.isValid) {
+        res.status(400).json({ 
+          success: false,
+          error: 'Invalid recipient address',
+          details: addressValidation.error
+        });
+        return;
+      }
+
+      // Send transaction through MetaMask
+      const txHash = await metamaskService.sendTransaction(connectionId, {
+        to,
+        value,
+        data,
+        gas,
+        gasPrice
+      });
+
+      res.status(200).json({
+        success: true,
+        data: {
+          transactionHash: txHash,
+          status: 'pending'
+        }
+      });
+
+    } catch (error) {
+      console.error('Send MetaMask transaction error:', error);
+      res.status(500).json({ 
+        success: false,
+        error: 'Failed to send transaction',
+        details: error.message
+      });
+    }
+  }
+
+  /**
+   * Sign message with MetaMask
+   * POST /api/v1/crypto/wallets/metamask/sign
+   */
+  async signMetaMaskMessage(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      if (!req.user) {
+        res.status(401).json({ 
+          success: false,
+          error: 'Authentication required' 
+        });
+        return;
+      }
+
+      const { connectionId, message, address, method = 'personal_sign' } = req.body;
+
+      if (!connectionId || !message || !address) {
+        res.status(400).json({ 
+          success: false,
+          error: 'Connection ID, message, and address are required' 
+        });
+        return;
+      }
+
+      // Validate signing method
+      if (!['personal_sign', 'eth_signTypedData_v4'].includes(method)) {
+        res.status(400).json({ 
+          success: false,
+          error: 'Invalid signing method' 
+        });
+        return;
+      }
+
+      // Sign message through MetaMask
+      const signature = await metamaskService.signMessage(connectionId, {
+        message,
+        address,
+        method
+      });
+
+      res.status(200).json({
+        success: true,
+        data: {
+          signature,
+          message,
+          address,
+          method
+        }
+      });
+
+    } catch (error) {
+      console.error('Sign MetaMask message error:', error);
+      res.status(500).json({ 
+        success: false,
+        error: 'Failed to sign message',
+        details: error.message
+      });
+    }
+  }
+
+  /**
+   * Switch MetaMask chain
+   * POST /api/v1/crypto/wallets/metamask/switch-chain
+   */
+  async switchMetaMaskChain(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      if (!req.user) {
+        res.status(401).json({ 
+          success: false,
+          error: 'Authentication required' 
+        });
+        return;
+      }
+
+      const { connectionId, chainId } = req.body;
+
+      if (!connectionId || !chainId) {
+        res.status(400).json({ 
+          success: false,
+          error: 'Connection ID and chain ID are required' 
+        });
+        return;
+      }
+
+      // Switch chain through MetaMask
+      await metamaskService.switchChain(connectionId, chainId);
+
+      res.status(200).json({
+        success: true,
+        data: {
+          chainId,
+          message: 'Chain switched successfully'
+        }
+      });
+
+    } catch (error) {
+      console.error('Switch MetaMask chain error:', error);
+      res.status(500).json({ 
+        success: false,
+        error: 'Failed to switch chain',
+        details: error.message
+      });
+    }
+  }
+
+  /**
+   * Cleanup expired MetaMask connections
+   * POST /api/v1/crypto/wallets/metamask/cleanup
+   */
+  async cleanupMetaMaskConnections(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      if (!req.user) {
+        res.status(401).json({ 
+          success: false,
+          error: 'Authentication required' 
+        });
+        return;
+      }
+
+      await metamaskService.cleanupExpiredConnections();
+
+      res.status(200).json({
+        success: true,
+        message: 'MetaMask connections cleanup completed'
+      });
+
+    } catch (error) {
+      console.error('Cleanup MetaMask connections error:', error);
+      res.status(500).json({ 
+        success: false,
+        error: 'Failed to cleanup MetaMask connections',
         details: error.message
       });
     }
