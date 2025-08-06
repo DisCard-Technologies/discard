@@ -784,10 +784,12 @@ describe('BitcoinService', () => {
       const userId = 'test-user-id';
       const walletId = 'test-wallet-id';
 
-      mockSupabaseChain.eq.mockReturnThis();
-      mockSupabaseChain.update.mockResolvedValue({
-        data: null,
-        error: null
+      // Set up proper chaining for disconnectBitcoinWallet: .from().update().eq().eq().eq()
+      mockSupabaseChain.update.mockReturnValue(mockSupabaseChain);
+      mockSupabaseChain.eq.mockReturnValue(mockSupabaseChain);
+      
+      mockSupabaseChain.then.mockImplementation((resolve) => {
+        return resolve({ data: null, error: null });
       });
 
       await bitcoinService.disconnectBitcoinWallet(userId, walletId);
@@ -802,10 +804,12 @@ describe('BitcoinService', () => {
       const userId = 'test-user-id';
       const walletId = 'test-wallet-id';
 
-      mockSupabaseChain.eq.mockReturnThis();
-      mockSupabaseChain.update.mockResolvedValue({
-        data: null,
-        error: { message: 'Database error' }
+      // Set up proper chaining for database error scenario
+      mockSupabaseChain.update.mockReturnValue(mockSupabaseChain);
+      mockSupabaseChain.eq.mockReturnValue(mockSupabaseChain);
+      
+      mockSupabaseChain.then.mockImplementation((resolve) => {
+        return resolve({ data: null, error: { message: 'Database error' } });
       });
 
       await expect(
