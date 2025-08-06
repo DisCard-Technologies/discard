@@ -417,8 +417,8 @@ describe('Crypto API Integration Tests', () => {
     });
 
     describe('GET /api/v1/crypto/rates', () => {
-      test('should get current conversion rates', async () => {
-        // Mock CoinGecko response
+      test('should get current conversion rates with default currencies', async () => {
+        // Mock CoinGecko response for default currencies
         nock('https://api.coingecko.com')
           .get('/api/v3/simple/price')
           .query({ ids: 'bitcoin,ethereum,tether,usd-coin', vs_currencies: 'usd' })
@@ -438,35 +438,255 @@ describe('Crypto API Integration Tests', () => {
           success: true,
           data: {
             rates: expect.objectContaining({
-              BTC: expect.objectContaining({ usd: expect.any(String) }),
-              ETH: expect.objectContaining({ usd: expect.any(String) }),
-              USDT: expect.objectContaining({ usd: expect.any(String) }),
-              USDC: expect.objectContaining({ usd: expect.any(String) })
+              BTC: expect.objectContaining({ 
+                usd: expect.any(String),
+                lastUpdated: expect.any(String)
+              }),
+              ETH: expect.objectContaining({ 
+                usd: expect.any(String),
+                lastUpdated: expect.any(String)
+              }),
+              USDT: expect.objectContaining({ 
+                usd: expect.any(String),
+                lastUpdated: expect.any(String)
+              }),
+              USDC: expect.objectContaining({ 
+                usd: expect.any(String),
+                lastUpdated: expect.any(String)
+              })
             }),
+            requestedCurrencies: ['BTC', 'ETH', 'USDT', 'USDC'],
             lastUpdated: expect.any(String)
           }
         });
       });
 
-      test('should handle external API failures gracefully', async () => {
-        // Mock API failure
+      test('should get rates for specific currencies via query param', async () => {
+        // Mock CoinGecko response for specific currencies
         nock('https://api.coingecko.com')
           .get('/api/v3/simple/price')
-          .query(true)
-          .reply(500, { error: 'Internal Server Error' });
+          .query({ ids: 'bitcoin,ethereum', vs_currencies: 'usd' })
+          .reply(200, {
+            bitcoin: { usd: 52000 },
+            ethereum: { usd: 3200 }
+          });
 
         const response = await request(app)
-          .get('/api/v1/crypto/rates')
+          .get('/api/v1/crypto/rates?currencies=BTC,ETH')
           .set('Authorization', `Bearer ${authToken}`);
 
         expect(response.status).toBe(200);
         expect(response.body).toEqual({
           success: true,
           data: {
-            rates: expect.any(Object),
+            rates: expect.objectContaining({
+              BTC: expect.objectContaining({ 
+                usd: '52000',
+                lastUpdated: expect.any(String)
+              }),
+              ETH: expect.objectContaining({ 
+                usd: '3200',
+                lastUpdated: expect.any(String)
+              })
+            }),
+            requestedCurrencies: ['BTC', 'ETH'],
             lastUpdated: expect.any(String)
           }
         });
+      });
+
+      test('should handle single currency request', async () => {
+        // Mock CoinGecko response for single currency
+        nock('https://api.coingecko.com')
+          .get('/api/v3/simple/price')
+          .query({ ids: 'bitcoin', vs_currencies: 'usd' })
+          .reply(200, {
+            bitcoin: { usd: 48000 }
+          });
+
+        const response = await request(app)
+          .get('/api/v1/crypto/rates?currencies=BTC')
+          .set('Authorization', `Bearer ${authToken}`);
+
+        expect(response.status).toBe(200);
+        expect(response.body).toEqual({
+          success: true,
+          data: {
+            rates: expect.objectContaining({
+              BTC: expect.objectContaining({ 
+                usd: '48000',
+                lastUpdated: expect.any(String)
+              })
+            }),
+            requestedCurrencies: ['BTC'],
+            lastUpdated: expect.any(String)
+          }
+        });
+      });
+
+      test('should handle case-insensitive currency codes', async () => {
+        // Mock CoinGecko response
+        nock('https://api.coingecko.com')
+          .get('/api/v3/simple/price')
+          .query({ ids: 'bitcoin,ethereum', vs_currencies: 'usd' })
+          .reply(200, {
+            bitcoin: { usd: 50000 },
+            ethereum: { usd: 3000 }
+          });
+
+        const response = await request(app)
+          .get('/api/v1/crypto/rates?currencies=btc,eth')
+          .set('Authorization', `Bearer ${authToken}`);
+
+        expect(response.status).toBe(200);
+        expect(response.body.data.requestedCurrencies).toEqual(['BTC', 'ETH']);
+      });
+
+      test('should reject invalid currency codes', async () => {
+        const response = await request(app)
+          .get('/api/v1/crypto/rates?currencies=INVALID,FAKE')
+          .set('Authorization', `Bearer ${authToken}`);
+
+        expect(response.status).toBe(400);
+        expect(response.body).toEqual({
+          success: false,
+          error: 'No valid currencies specified',
+          supportedCurrencies: ['BTC', 'ETH', 'USDT', 'USDC', 'XRP']
+        });
+      });
+
+      test('should filter out invalid currencies and process valid ones', async () => {
+        // Mock CoinGecko response for valid currency only
+        nock('https://api.coingecko.com')
+          .get('/api/v3/simple/price')
+          .query({ ids: 'bitcoin', vs_currencies: 'usd' })
+          .reply(200, {
+            bitcoin: { usd: 50000 }
+          });
+
+        const response = await request(app)
+          .get('/api/v1/crypto/rates?currencies=BTC,INVALID,FAKE')
+          .set('Authorization', `Bearer ${authToken}`);
+
+        expect(response.status).toBe(200);
+        expect(response.body.data.requestedCurrencies).toEqual(['BTC']);
+      });
+
+      test('should handle external API failures gracefully with cached data', async () => {
+        // First request to populate cache
+        nock('https://api.coingecko.com')
+          .get('/api/v3/simple/price')
+          .query({ ids: 'bitcoin', vs_currencies: 'usd' })
+          .reply(200, {
+            bitcoin: { usd: 50000 }
+          });
+
+        await request(app)
+          .get('/api/v1/crypto/rates?currencies=BTC')
+          .set('Authorization', `Bearer ${authToken}`);
+
+        // Second request with API failure should return cached data
+        nock('https://api.coingecko.com')
+          .get('/api/v3/simple/price')
+          .query({ ids: 'bitcoin', vs_currencies: 'usd' })
+          .reply(500, { error: 'Internal Server Error' });
+
+        const response = await request(app)
+          .get('/api/v1/crypto/rates?currencies=BTC')
+          .set('Authorization', `Bearer ${authToken}`);
+
+        expect(response.status).toBe(200);
+        expect(response.body).toEqual({
+          success: true,
+          data: {
+            rates: expect.objectContaining({
+              BTC: expect.objectContaining({ 
+                usd: '50000',
+                lastUpdated: expect.any(String)
+              })
+            }),
+            requestedCurrencies: ['BTC'],
+            lastUpdated: expect.any(String)
+          }
+        });
+      });
+
+      test('should handle external API failures with no cache gracefully', async () => {
+        // Clear any existing cache first
+        const ratesService = require('../../services/crypto/rates.service').ratesService;
+        ratesService.clearCache();
+
+        // Mock API failure
+        nock('https://api.coingecko.com')
+          .get('/api/v3/simple/price')
+          .query({ ids: 'bitcoin', vs_currencies: 'usd' })
+          .reply(500, { error: 'Internal Server Error' });
+
+        const response = await request(app)
+          .get('/api/v1/crypto/rates?currencies=BTC')
+          .set('Authorization', `Bearer ${authToken}`);
+
+        expect(response.status).toBe(200);
+        expect(response.body).toEqual({
+          success: true,
+          data: {
+            rates: expect.objectContaining({
+              BTC: expect.objectContaining({ 
+                usd: '0',  // Fallback value when no cache and API fails
+                lastUpdated: expect.any(String)
+              })
+            }),
+            requestedCurrencies: ['BTC'],
+            lastUpdated: expect.any(String)
+          }
+        });
+      });
+
+      test('should handle rate limiting with proper error response', async () => {
+        // Mock rate limiting response
+        nock('https://api.coingecko.com')
+          .get('/api/v3/simple/price')
+          .query(true)
+          .reply(429, { error: 'Too Many Requests' });
+
+        const response = await request(app)
+          .get('/api/v1/crypto/rates?currencies=BTC')
+          .set('Authorization', `Bearer ${authToken}`);
+
+        expect(response.status).toBe(200);
+        expect(response.body.data.rates.BTC.usd).toBe('0');
+      });
+
+      test('should handle network timeout errors', async () => {
+        // Mock network timeout
+        nock('https://api.coingecko.com')
+          .get('/api/v3/simple/price')
+          .query(true)
+          .replyWithError({ code: 'ETIMEDOUT', message: 'Request timeout' });
+
+        const response = await request(app)
+          .get('/api/v1/crypto/rates?currencies=BTC')
+          .set('Authorization', `Bearer ${authToken}`);
+
+        expect(response.status).toBe(200);
+        expect(response.body.data.rates.BTC.usd).toBe('0');
+      });
+
+      test('should not require authentication for public rates endpoint', async () => {
+        // Mock CoinGecko response
+        nock('https://api.coingecko.com')
+          .get('/api/v3/simple/price')
+          .query({ ids: 'bitcoin', vs_currencies: 'usd' })
+          .reply(200, {
+            bitcoin: { usd: 50000 }
+          });
+
+        const response = await request(app)
+          .get('/api/v1/crypto/rates?currencies=BTC')
+          // No Authorization header
+
+        expect(response.status).toBe(200);
+        expect(response.body.success).toBe(true);
       });
     });
   });

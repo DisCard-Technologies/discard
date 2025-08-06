@@ -15,7 +15,8 @@ import {
   BitcoinTransactionRequest,
   BitcoinBroadcastRequest,
   CryptoWalletError,
-  CRYPTO_ERROR_CODES 
+  CRYPTO_ERROR_CODES,
+  ConversionRates
 } from '@discard/shared/src/types/crypto';
 import { supabase } from '../../app';
 import { v4 as uuidv4 } from 'uuid';
@@ -1809,6 +1810,64 @@ export class CryptoController {
       res.status(500).json({ 
         success: false,
         error: 'Failed to validate Bitcoin address',
+        details: error.message
+      });
+    }
+  }
+
+  /**
+   * Get current conversion rates for cryptocurrencies
+   * GET /api/v1/crypto/rates
+   */
+  async getCurrentRates(req: Request, res: Response): Promise<void> {
+    try {
+      const { currencies } = req.query;
+      
+      // Default currencies if none specified
+      let currencyList: string[] = ['BTC', 'ETH', 'USDT', 'USDC'];
+      
+      if (currencies) {
+        if (typeof currencies === 'string') {
+          // Single currency or comma-separated
+          currencyList = currencies.split(',').map(c => c.trim().toUpperCase());
+        } else if (Array.isArray(currencies)) {
+          // Array of currencies
+          currencyList = currencies.map(c => String(c).trim().toUpperCase());
+        }
+      }
+
+      // Validate currency codes
+      const validCurrencies = ['BTC', 'ETH', 'USDT', 'USDC', 'XRP'];
+      const filteredCurrencies = currencyList.filter(currency => 
+        validCurrencies.includes(currency)
+      );
+
+      if (filteredCurrencies.length === 0) {
+        res.status(400).json({
+          success: false,
+          error: 'No valid currencies specified',
+          supportedCurrencies: validCurrencies
+        });
+        return;
+      }
+
+      // Get rates from rates service
+      const rates: ConversionRates = await ratesService.getCurrentRates(filteredCurrencies);
+
+      res.status(200).json({
+        success: true,
+        data: {
+          rates,
+          requestedCurrencies: filteredCurrencies,
+          lastUpdated: new Date().toISOString()
+        }
+      });
+
+    } catch (error: any) {
+      console.error('Get current rates error:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to get conversion rates',
         details: error.message
       });
     }
