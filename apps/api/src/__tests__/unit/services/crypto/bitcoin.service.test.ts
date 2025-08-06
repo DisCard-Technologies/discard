@@ -382,6 +382,10 @@ describe('BitcoinService', () => {
     it('should work without API key', async () => {
       delete process.env.BLOCKCYPHER_API_KEY;
       
+      // Create new service instance without API key
+      const BitcoinService = require('../../../../services/crypto/bitcoin.service').BitcoinService;
+      const noKeyBitcoinService = new BitcoinService();
+      
       const mockAddress = '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa';
       const mockApiResponse = {
         balance: 100000000, // 1 BTC
@@ -393,7 +397,7 @@ describe('BitcoinService', () => {
         json: async () => mockApiResponse
       } as Response);
 
-      const balance = await bitcoinService.getBitcoinBalance(mockAddress);
+      const balance = await noKeyBitcoinService.getBitcoinBalance(mockAddress);
 
       expect(balance.confirmed).toBe(1);
       expect(global.fetch).toHaveBeenCalledWith(
@@ -1145,6 +1149,10 @@ describe('BitcoinService', () => {
     it('should work without API key', async () => {
       delete process.env.BLOCKCYPHER_API_KEY;
 
+      // Create new service instance without API key
+      const BitcoinService = require('../../../../services/crypto/bitcoin.service').BitcoinService;
+      const noKeyBitcoinService = new BitcoinService();
+
       const transactionHex = '0100000001abc123...';
       const mockBroadcastResponse = {
         tx: {
@@ -1157,7 +1165,7 @@ describe('BitcoinService', () => {
         json: async () => mockBroadcastResponse
       } as Response);
 
-      const txid = await bitcoinService.broadcastBitcoinTransaction(transactionHex);
+      const txid = await noKeyBitcoinService.broadcastBitcoinTransaction(transactionHex);
 
       expect(txid).toBe('no-key-tx-hash');
       expect(global.fetch).toHaveBeenCalledWith(
