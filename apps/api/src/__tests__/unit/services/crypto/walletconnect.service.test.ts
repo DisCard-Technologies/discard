@@ -48,6 +48,9 @@ const mockSupabaseChain = {
   eq: jest.fn().mockReturnThis(),
   not: jest.fn().mockReturnThis(),
   lt: jest.fn().mockReturnThis(),
+  gt: jest.fn().mockReturnThis(),
+  gte: jest.fn().mockReturnThis(),
+  lte: jest.fn().mockReturnThis(),
   single: jest.fn().mockResolvedValue(mockSupabaseResponse),
   mockResolvedValue: jest.fn().mockResolvedValue(mockSupabaseResponse)
 };
@@ -115,18 +118,27 @@ describe('WalletConnectService', () => {
     });
 
     it('should not initialize twice', async () => {
+      // First initialization
       await walletConnectService.initialize();
+      
+      // Clear previous calls
+      const { SignClient } = require('@walletconnect/sign-client');
+      SignClient.init.mockClear();
+      
+      // Second initialization should not call SignClient.init again
       await walletConnectService.initialize();
 
-      const { SignClient } = require('@walletconnect/sign-client');
-      expect(SignClient.init).toHaveBeenCalledTimes(1);
+      expect(SignClient.init).toHaveBeenCalledTimes(0);
     });
 
     it('should handle initialization errors', async () => {
       const { SignClient } = require('@walletconnect/sign-client');
       SignClient.init.mockRejectedValue(new Error('Initialization failed'));
+      
+      // Create a fresh service instance for this test
+      const newService = new (require('../../../../services/crypto/walletconnect.service').WalletConnectService)();
 
-      await expect(walletConnectService.initialize()).rejects.toThrow('WalletConnect initialization failed');
+      await expect(newService.initialize()).rejects.toThrow('WalletConnect initialization failed');
     });
   });
 
@@ -412,7 +424,8 @@ describe('WalletConnectService', () => {
     });
 
     it('should handle database errors gracefully', async () => {
-      mockSupabaseChain.mockResolvedValue({
+      // Mock database error by making the query chain fail
+      mockSupabaseChain.single.mockResolvedValue({
         data: null,
         error: { message: 'Database error' }
       });
@@ -479,14 +492,17 @@ describe('WalletConnectService', () => {
 
   describe('getSignClient', () => {
     it('should return the SignClient instance', async () => {
+      // Create a fresh service instance for this test
+      const newService = new (require('../../../../services/crypto/walletconnect.service').WalletConnectService)();
+      
       // Before initialization, SignClient should be null
-      const initialClient = walletConnectService.getSignClient();
+      const initialClient = newService.getSignClient();
       expect(initialClient).toBeNull();
       
-      await walletConnectService.initialize();
+      await newService.initialize();
       
       // After initialization, SignClient should be available
-      const client = walletConnectService.getSignClient();
+      const client = newService.getSignClient();
       expect(client).not.toBeNull();
       expect(client).toBe(mockSignClient);
     });
