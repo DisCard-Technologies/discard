@@ -210,7 +210,7 @@ export class BitcoinService {
 
       if (existingWallet) {
         throw {
-          code: CRYPTO_ERROR_CODES.WALLET_CONNECTION_FAILED,
+          code: 'WALLET_ALREADY_CONNECTED',
           message: 'Bitcoin address already connected',
           details: { walletId: existingWallet.wallet_id }
         } as CryptoWalletError;
@@ -221,7 +221,14 @@ export class BitcoinService {
 
       // Create wallet record
       const walletId = uuidv4();
-      const encryptedAddress = await this.encryptBitcoinAddress(address);
+      let encryptedAddress: string;
+      
+      try {
+        encryptedAddress = await this.encryptBitcoinAddress(address);
+      } catch (encryptionError) {
+        console.error('Address encryption failed:', encryptionError);
+        throw new Error('Failed to connect Bitcoin wallet');
+      }
 
       const { data: wallet, error: insertError } = await supabase
         .from('crypto_wallets')
@@ -359,13 +366,15 @@ export class BitcoinService {
       const data = await response.json();
 
       // Transform BlockCypher UTXO format to our format
-      const utxos: BitcoinUTXO[] = (data.txrefs || []).map((txref: any) => ({
-        txid: txref.tx_hash,
-        vout: txref.tx_output_n,
-        value: txref.value, // in satoshis
-        confirmations: txref.confirmations || 0,
-        scriptPubKey: txref.script || ''
-      }));
+      const utxos: BitcoinUTXO[] = (data.txrefs || [])
+        .filter((txref: any) => txref && txref.tx_hash) // Filter out null/invalid entries
+        .map((txref: any) => ({
+          txid: txref.tx_hash,
+          vout: txref.tx_output_n,
+          value: txref.value, // in satoshis
+          confirmations: txref.confirmations || 0,
+          scriptPubKey: txref.script || ''
+        }));
 
       return utxos;
 
