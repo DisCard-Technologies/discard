@@ -93,6 +93,9 @@ const useCrypto = create<CryptoStore>((set, get) => {
   const startAutoRefresh = () => {
     const { autoRefreshEnabled, refreshInterval } = get();
     
+    // Clear any existing timer first
+    stopAutoRefresh();
+    
     if (autoRefreshEnabled && refreshInterval > 0) {
       refreshTimer = setInterval(() => {
         const { refreshAllBalances, loadConversionRates } = get();
