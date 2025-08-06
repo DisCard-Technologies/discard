@@ -235,4 +235,100 @@ router.post('/wallets/metamask/cleanup',
   }
 );
 
+// Bitcoin specific routes
+
+/**
+ * POST /api/v1/crypto/wallets/bitcoin/connect
+ * Connect Bitcoin wallet by importing address
+ */
+router.post('/wallets/bitcoin/connect',
+  walletConnectionRateLimit,
+  async (req, res) => {
+    await cryptoController.connectBitcoinWallet(req, res);
+  }
+);
+
+/**
+ * GET /api/v1/crypto/wallets/bitcoin/list
+ * Get Bitcoin wallets for user
+ */
+router.get('/wallets/bitcoin/list',
+  async (req, res) => {
+    await cryptoController.getBitcoinWallets(req, res);
+  }
+);
+
+/**
+ * POST /api/v1/crypto/wallets/bitcoin/disconnect
+ * Disconnect Bitcoin wallet
+ */
+router.post('/wallets/bitcoin/disconnect',
+  async (req, res) => {
+    await cryptoController.disconnectBitcoinWallet(req, res);
+  }
+);
+
+/**
+ * GET /api/v1/crypto/wallets/bitcoin/balance/:walletId
+ * Get Bitcoin wallet balance
+ */
+router.get('/wallets/bitcoin/balance/:walletId',
+  balanceCheckRateLimit,
+  async (req, res) => {
+    await cryptoController.getBitcoinWalletBalance(req, res);
+  }
+);
+
+/**
+ * POST /api/v1/crypto/wallets/bitcoin/qr-code
+ * Generate Bitcoin address QR code
+ */
+router.post('/wallets/bitcoin/qr-code',
+  async (req, res) => {
+    await cryptoController.generateBitcoinQRCode(req, res);
+  }
+);
+
+/**
+ * POST /api/v1/crypto/wallets/bitcoin/transaction/create
+ * Create Bitcoin transaction (unsigned)
+ */
+router.post('/wallets/bitcoin/transaction/create',
+  balanceCheckRateLimit, // Use balance check rate limit for transactions
+  async (req, res) => {
+    await cryptoController.createBitcoinTransaction(req, res);
+  }
+);
+
+/**
+ * POST /api/v1/crypto/wallets/bitcoin/transaction/broadcast
+ * Broadcast Bitcoin transaction
+ */
+router.post('/wallets/bitcoin/transaction/broadcast',
+  balanceCheckRateLimit, // Use balance check rate limit for broadcasts
+  async (req, res) => {
+    await cryptoController.broadcastBitcoinTransaction(req, res);
+  }
+);
+
+/**
+ * GET /api/v1/crypto/wallets/bitcoin/fees
+ * Get Bitcoin transaction fees
+ */
+router.get('/wallets/bitcoin/fees',
+  async (req, res) => {
+    await cryptoController.getBitcoinTransactionFees(req, res);
+  }
+);
+
+/**
+ * POST /api/v1/crypto/wallets/bitcoin/validate
+ * Validate Bitcoin address
+ */
+router.post('/wallets/bitcoin/validate',
+  async (req, res) => {
+    await cryptoController.validateBitcoinAddress(req, res);
+  }
+);
+
 export default router;

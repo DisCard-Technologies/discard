@@ -3,6 +3,7 @@ import { blockchainService } from './blockchain.service';
 import { ratesService } from './rates.service';
 import { walletConnectService } from './walletconnect.service';
 import { metamaskService } from './metamask.service';
+import { bitcoinService } from './bitcoin.service';
 import { AuthenticatedRequest } from '../../middleware/auth';
 import { InputSanitizer } from '../../utils/input-sanitizer';
 import { 
@@ -10,8 +11,9 @@ import {
   WalletBalanceResponse,
   MetaMaskConnectionRequest,
   WalletConnectSessionRequest,
-  BitcoinWalletConnectionRequest,
-  HardwareWalletConnectionRequest,
+  BitcoinWalletRequest,
+  BitcoinTransactionRequest,
+  BitcoinBroadcastRequest,
   CryptoWalletError,
   CRYPTO_ERROR_CODES 
 } from '@discard/shared/src/types/crypto';
@@ -164,7 +166,7 @@ export class CryptoController {
         }
       });
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Connect wallet error:', error);
       res.status(500).json({ 
         success: false,
@@ -232,7 +234,7 @@ export class CryptoController {
         }
       });
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Get wallets error:', error);
       res.status(500).json({ 
         success: false,
@@ -321,7 +323,7 @@ export class CryptoController {
         message: 'Wallet disconnected successfully'
       });
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Disconnect wallet error:', error);
       res.status(500).json({ 
         success: false,
@@ -444,7 +446,7 @@ export class CryptoController {
         data: response
       });
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Get wallet balance error:', error);
       res.status(500).json({ 
         success: false,
@@ -501,7 +503,7 @@ export class CryptoController {
         }
       });
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Create WalletConnect proposal error:', error);
       res.status(500).json({ 
         success: false,
@@ -606,7 +608,7 @@ export class CryptoController {
         }
       });
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Approve WalletConnect proposal error:', error);
       res.status(500).json({ 
         success: false,
@@ -647,7 +649,7 @@ export class CryptoController {
         message: 'WalletConnect session proposal rejected'
       });
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Reject WalletConnect proposal error:', error);
       res.status(500).json({ 
         success: false,
@@ -726,7 +728,7 @@ export class CryptoController {
         message: 'WalletConnect session disconnected successfully'
       });
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Disconnect WalletConnect session error:', error);
       res.status(500).json({ 
         success: false,
@@ -796,7 +798,7 @@ export class CryptoController {
         }
       });
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Get WalletConnect sessions error:', error);
       res.status(500).json({ 
         success: false,
@@ -827,7 +829,7 @@ export class CryptoController {
         message: 'WalletConnect sessions cleanup completed'
       });
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Cleanup WalletConnect sessions error:', error);
       res.status(500).json({ 
         success: false,
@@ -875,7 +877,7 @@ export class CryptoController {
         }
       });
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Check MetaMask availability error:', error);
       res.status(500).json({ 
         success: false,
@@ -974,7 +976,7 @@ export class CryptoController {
         }
       });
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Connect MetaMask error:', error);
       res.status(500).json({ 
         success: false,
@@ -1054,7 +1056,7 @@ export class CryptoController {
         message: 'MetaMask connection disconnected successfully'
       });
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Disconnect MetaMask error:', error);
       res.status(500).json({ 
         success: false,
@@ -1124,7 +1126,7 @@ export class CryptoController {
         }
       });
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Get MetaMask connections error:', error);
       res.status(500).json({ 
         success: false,
@@ -1186,7 +1188,7 @@ export class CryptoController {
         }
       });
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Send MetaMask transaction error:', error);
       res.status(500).json({ 
         success: false,
@@ -1246,7 +1248,7 @@ export class CryptoController {
         }
       });
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Sign MetaMask message error:', error);
       res.status(500).json({ 
         success: false,
@@ -1291,7 +1293,7 @@ export class CryptoController {
         }
       });
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Switch MetaMask chain error:', error);
       res.status(500).json({ 
         success: false,
@@ -1322,11 +1324,491 @@ export class CryptoController {
         message: 'MetaMask connections cleanup completed'
       });
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Cleanup MetaMask connections error:', error);
       res.status(500).json({ 
         success: false,
         error: 'Failed to cleanup MetaMask connections',
+        details: error.message
+      });
+    }
+  }
+
+  /**
+   * Connect Bitcoin wallet by importing address
+   * POST /api/v1/crypto/wallets/bitcoin/connect
+   */
+  async connectBitcoinWallet(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      if (!req.user) {
+        res.status(401).json({ 
+          success: false,
+          error: 'Authentication required' 
+        });
+        return;
+      }
+
+      const { address, walletName, network = 'mainnet' }: BitcoinWalletRequest = req.body;
+
+      if (!address) {
+        res.status(400).json({ 
+          success: false,
+          error: 'Bitcoin address is required' 
+        });
+        return;
+      }
+
+      // Sanitize inputs
+      const sanitizedAddress = InputSanitizer.sanitizeString(address);
+      const sanitizedWalletName = walletName ? InputSanitizer.sanitizeString(walletName) : undefined;
+      const sanitizedNetwork = InputSanitizer.sanitizeString(network);
+
+      // Connect Bitcoin wallet
+      const connection = await bitcoinService.connectBitcoinWallet(req.user.id, {
+        address: sanitizedAddress,
+        walletName: sanitizedWalletName,
+        network: sanitizedNetwork
+      });
+
+      res.status(201).json({
+        success: true,
+        data: connection
+      });
+
+    } catch (error: any) {
+      console.error('Connect Bitcoin wallet error:', error);
+      if (error.code) {
+        // Handle crypto wallet errors
+        res.status(400).json({ 
+          success: false,
+          error: error.message,
+          code: error.code,
+          details: error.details
+        });
+      } else {
+        res.status(500).json({ 
+          success: false,
+          error: 'Failed to connect Bitcoin wallet',
+          details: error.message
+        });
+      }
+    }
+  }
+
+  /**
+   * Get Bitcoin wallets for user
+   * GET /api/v1/crypto/wallets/bitcoin/list
+   */
+  async getBitcoinWallets(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      if (!req.user) {
+        res.status(401).json({ 
+          success: false,
+          error: 'Authentication required' 
+        });
+        return;
+      }
+
+      const wallets = await bitcoinService.getBitcoinWallets(req.user.id);
+
+      res.status(200).json({
+        success: true,
+        data: {
+          wallets,
+          total: wallets.length
+        }
+      });
+
+    } catch (error: any) {
+      console.error('Get Bitcoin wallets error:', error);
+      res.status(500).json({ 
+        success: false,
+        error: 'Failed to get Bitcoin wallets',
+        details: error.message
+      });
+    }
+  }
+
+  /**
+   * Disconnect Bitcoin wallet
+   * POST /api/v1/crypto/wallets/bitcoin/disconnect
+   */
+  async disconnectBitcoinWallet(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      if (!req.user) {
+        res.status(401).json({ 
+          success: false,
+          error: 'Authentication required' 
+        });
+        return;
+      }
+
+      const { walletId } = req.body;
+
+      if (!walletId) {
+        res.status(400).json({ 
+          success: false,
+          error: 'Wallet ID is required' 
+        });
+        return;
+      }
+
+      await bitcoinService.disconnectBitcoinWallet(req.user.id, walletId);
+
+      res.status(200).json({
+        success: true,
+        message: 'Bitcoin wallet disconnected successfully'
+      });
+
+    } catch (error: any) {
+      console.error('Disconnect Bitcoin wallet error:', error);
+      res.status(500).json({ 
+        success: false,
+        error: 'Failed to disconnect Bitcoin wallet',
+        details: error.message
+      });
+    }
+  }
+
+  /**
+   * Get Bitcoin wallet balance
+   * GET /api/v1/crypto/wallets/bitcoin/balance/:walletId
+   */
+  async getBitcoinWalletBalance(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      if (!req.user) {
+        res.status(401).json({ 
+          success: false,
+          error: 'Authentication required' 
+        });
+        return;
+      }
+
+      const { walletId } = req.params;
+      const { refresh = 'false' } = req.query;
+
+      if (!walletId) {
+        res.status(400).json({ 
+          success: false,
+          error: 'Wallet ID is required' 
+        });
+        return;
+      }
+
+      // Get wallet from database
+      const { data: wallet, error } = await supabase
+        .from('crypto_wallets')
+        .select('*')
+        .eq('wallet_id', walletId)
+        .eq('user_id', req.user.id)
+        .eq('wallet_type', 'bitcoin')
+        .single();
+
+      if (error || !wallet) {
+        res.status(404).json({ 
+          success: false,
+          error: 'Bitcoin wallet not found' 
+        });
+        return;
+      }
+
+      // Decrypt address
+      const address = await (bitcoinService as any).decryptBitcoinAddress(wallet.wallet_address_encrypted);
+      const network = wallet.wallet_metadata?.network || 'mainnet';
+
+      // Get balance (fresh or cached)
+      const balance = await bitcoinService.getBitcoinBalance(address, network);
+
+      // Update last balance check if refresh requested
+      if (refresh === 'true') {
+        await supabase
+          .from('crypto_wallets')
+          .update({
+            last_balance_check: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          })
+          .eq('wallet_id', walletId);
+      }
+
+      res.status(200).json({
+        success: true,
+        data: {
+          walletId,
+          address,
+          network,
+          balance,
+          lastChecked: wallet.last_balance_check,
+          refreshed: refresh === 'true'
+        }
+      });
+
+    } catch (error: any) {
+      console.error('Get Bitcoin wallet balance error:', error);
+      res.status(500).json({ 
+        success: false,
+        error: 'Failed to get Bitcoin wallet balance',
+        details: error.message
+      });
+    }
+  }
+
+  /**
+   * Generate Bitcoin address QR code
+   * POST /api/v1/crypto/wallets/bitcoin/qr-code
+   */
+  async generateBitcoinQRCode(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      if (!req.user) {
+        res.status(401).json({ 
+          success: false,
+          error: 'Authentication required' 
+        });
+        return;
+      }
+
+      const { address, amount, label } = req.body;
+
+      if (!address) {
+        res.status(400).json({ 
+          success: false,
+          error: 'Bitcoin address is required' 
+        });
+        return;
+      }
+
+      // Sanitize inputs
+      const sanitizedAddress = InputSanitizer.sanitizeString(address);
+      const sanitizedLabel = label ? InputSanitizer.sanitizeString(label) : undefined;
+
+      // Generate QR code
+      const qrCode = await bitcoinService.generateAddressQRCode(
+        sanitizedAddress,
+        amount ? parseFloat(amount) : undefined,
+        sanitizedLabel
+      );
+
+      res.status(200).json({
+        success: true,
+        data: {
+          address: sanitizedAddress,
+          amount,
+          label: sanitizedLabel,
+          qrCode
+        }
+      });
+
+    } catch (error: any) {
+      console.error('Generate Bitcoin QR code error:', error);
+      res.status(500).json({ 
+        success: false,
+        error: 'Failed to generate Bitcoin QR code',
+        details: error.message
+      });
+    }
+  }
+
+  /**
+   * Create Bitcoin transaction (unsigned)
+   * POST /api/v1/crypto/wallets/bitcoin/transaction/create
+   */
+  async createBitcoinTransaction(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      if (!req.user) {
+        res.status(401).json({ 
+          success: false,
+          error: 'Authentication required' 
+        });
+        return;
+      }
+
+      const { 
+        fromAddress, 
+        toAddress, 
+        amount, 
+        feeRate = 10, 
+        network = 'mainnet' 
+      }: BitcoinTransactionRequest = req.body;
+
+      if (!fromAddress || !toAddress || !amount) {
+        res.status(400).json({ 
+          success: false,
+          error: 'From address, to address, and amount are required' 
+        });
+        return;
+      }
+
+      if (amount <= 0) {
+        res.status(400).json({ 
+          success: false,
+          error: 'Amount must be greater than 0' 
+        });
+        return;
+      }
+
+      // Verify user owns the from address
+      const { data: wallet, error } = await supabase
+        .from('crypto_wallets')
+        .select('*')
+        .eq('user_id', req.user.id)
+        .eq('wallet_type', 'bitcoin')
+        .eq('wallet_address_hash', (bitcoinService as any).hashBitcoinAddress(fromAddress))
+        .single();
+
+      if (error || !wallet) {
+        res.status(404).json({ 
+          success: false,
+          error: 'Bitcoin wallet not found or not owned by user' 
+        });
+        return;
+      }
+
+      // Create unsigned transaction
+      const transaction = await bitcoinService.createBitcoinTransaction(
+        fromAddress,
+        toAddress,
+        amount,
+        feeRate,
+        network
+      );
+
+      res.status(200).json({
+        success: true,
+        data: transaction
+      });
+
+    } catch (error: any) {
+      console.error('Create Bitcoin transaction error:', error);
+      res.status(500).json({ 
+        success: false,
+        error: 'Failed to create Bitcoin transaction',
+        details: error.message
+      });
+    }
+  }
+
+  /**
+   * Broadcast Bitcoin transaction
+   * POST /api/v1/crypto/wallets/bitcoin/transaction/broadcast
+   */
+  async broadcastBitcoinTransaction(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      if (!req.user) {
+        res.status(401).json({ 
+          success: false,
+          error: 'Authentication required' 
+        });
+        return;
+      }
+
+      const { transactionHex, network = 'mainnet' }: BitcoinBroadcastRequest = req.body;
+
+      if (!transactionHex) {
+        res.status(400).json({ 
+          success: false,
+          error: 'Transaction hex is required' 
+        });
+        return;
+      }
+
+      // Broadcast transaction
+      const txid = await bitcoinService.broadcastBitcoinTransaction(transactionHex, network);
+
+      res.status(200).json({
+        success: true,
+        data: {
+          txid,
+          network,
+          explorerUrl: `${bitcoinService.getNetworkConfig(network)?.explorerUrl}/tx/${txid}`
+        }
+      });
+
+    } catch (error: any) {
+      console.error('Broadcast Bitcoin transaction error:', error);
+      res.status(500).json({ 
+        success: false,
+        error: 'Failed to broadcast Bitcoin transaction',
+        details: error.message
+      });
+    }
+  }
+
+  /**
+   * Get Bitcoin transaction fees
+   * GET /api/v1/crypto/wallets/bitcoin/fees
+   */
+  async getBitcoinTransactionFees(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      if (!req.user) {
+        res.status(401).json({ 
+          success: false,
+          error: 'Authentication required' 
+        });
+        return;
+      }
+
+      const { network = 'mainnet' } = req.query;
+
+      const fees = await bitcoinService.getBitcoinTransactionFees(network as string);
+
+      res.status(200).json({
+        success: true,
+        data: {
+          network,
+          fees,
+          unit: 'sat/byte'
+        }
+      });
+
+    } catch (error: any) {
+      console.error('Get Bitcoin transaction fees error:', error);
+      res.status(500).json({ 
+        success: false,
+        error: 'Failed to get Bitcoin transaction fees',
+        details: error.message
+      });
+    }
+  }
+
+  /**
+   * Validate Bitcoin address
+   * POST /api/v1/crypto/wallets/bitcoin/validate
+   */
+  async validateBitcoinAddress(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      if (!req.user) {
+        res.status(401).json({ 
+          success: false,
+          error: 'Authentication required' 
+        });
+        return;
+      }
+
+      const { address, network = 'mainnet' } = req.body;
+
+      if (!address) {
+        res.status(400).json({ 
+          success: false,
+          error: 'Bitcoin address is required' 
+        });
+        return;
+      }
+
+      const validation = bitcoinService.validateBitcoinAddress(address, network);
+
+      res.status(200).json({
+        success: true,
+        data: {
+          address,
+          network,
+          ...validation
+        }
+      });
+
+    } catch (error: any) {
+      console.error('Validate Bitcoin address error:', error);
+      res.status(500).json({ 
+        success: false,
+        error: 'Failed to validate Bitcoin address',
         details: error.message
       });
     }
@@ -1344,7 +1826,7 @@ export class CryptoController {
           updated_at: new Date().toISOString()
         })
         .eq('wallet_id', walletId);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error updating wallet status:', error);
     }
   }

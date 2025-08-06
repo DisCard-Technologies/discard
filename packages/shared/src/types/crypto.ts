@@ -69,6 +69,60 @@ export interface MetaMaskConnectionRequest {
   sessionDuration?: number;
 }
 
+// Bitcoin-specific interfaces
+export interface BitcoinWalletRequest {
+  address: string;
+  walletName?: string;
+  network?: string; // 'mainnet' | 'testnet'
+}
+
+export interface BitcoinWalletConnection {
+  walletId: string;
+  address: string;
+  network: string;
+  addressType: string;
+  walletName: string;
+  balance: {
+    confirmed: number;
+    unconfirmed: number;
+    total: number;
+  };
+  connectionStatus: 'connected' | 'disconnected';
+  qrCode: string; // Base64 data URL
+  explorerUrl: string;
+  supportedCurrencies: string[];
+  createdAt: string;
+}
+
+export interface BitcoinTransactionRequest {
+  fromAddress: string;
+  toAddress: string;
+  amount: number; // in BTC
+  feeRate?: number; // satoshis per byte
+  network?: string;
+}
+
+export interface BitcoinTransactionResponse {
+  transactionHex: string;
+  txid: string;
+  size: number;
+  fee: number; // in BTC
+  inputs: BitcoinUTXO[];
+}
+
+export interface BitcoinUTXO {
+  txid: string;
+  vout: number;
+  value: number; // in satoshis
+  confirmations: number;
+  scriptPubKey: string;
+}
+
+export interface BitcoinBroadcastRequest {
+  transactionHex: string;
+  network?: string;
+}
+
 export interface WalletConnectSessionRequest {
   bridgeUrl?: string;
   sessionDuration?: number;
