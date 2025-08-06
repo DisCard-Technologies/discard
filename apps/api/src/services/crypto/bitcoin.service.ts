@@ -93,10 +93,20 @@ export class BitcoinService {
         addressType = 'P2PKH'; // Pay to Public Key Hash
       } else if (address.startsWith('3')) {
         addressType = 'P2SH'; // Pay to Script Hash
-      } else if (address.startsWith('bc1') && address.length === 42) {
-        addressType = 'P2WPKH'; // Pay to Witness Public Key Hash
-      } else if (address.startsWith('bc1') && address.length === 62) {
-        addressType = 'P2WSH'; // Pay to Witness Script Hash
+      } else if (address.startsWith('bc1')) {
+        // Bech32 addresses - determine type by length
+        if (address.length === 42) {
+          addressType = 'P2WPKH'; // Pay to Witness Public Key Hash (20-byte hash)
+        } else if (address.length >= 62) {
+          addressType = 'P2WSH'; // Pay to Witness Script Hash (32-byte hash, can be 62+ chars)
+        }
+      } else if (address.startsWith('tb1')) {
+        // Testnet Bech32 addresses
+        if (address.length === 42) {
+          addressType = 'P2WPKH'; // Testnet Pay to Witness Public Key Hash
+        } else if (address.length >= 62) {
+          addressType = 'P2WSH'; // Testnet Pay to Witness Script Hash
+        }
       }
 
       return {
