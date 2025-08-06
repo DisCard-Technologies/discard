@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { blockchainService } from './blockchain.service';
 import { ratesService } from './rates.service';
+import { walletConnectService } from './walletconnect.service';
 import { AuthenticatedRequest } from '../../middleware/auth';
 import { InputSanitizer } from '../../utils/input-sanitizer';
 import { 
@@ -447,6 +448,390 @@ export class CryptoController {
       res.status(500).json({ 
         success: false,
         error: 'Internal server error' 
+      });
+    }
+  }
+
+  /**
+   * Create WalletConnect session proposal
+   * POST /api/v1/crypto/wallets/walletconnect/propose
+   */
+  async createWalletConnectProposal(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      if (!req.user) {
+        res.status(401).json({ 
+          success: false,
+          error: 'Authentication required' 
+        });
+        return;
+      }
+
+      const { 
+        bridgeUrl, 
+        sessionDuration = 3600, 
+        requiredNamespaces = ['eip155'] 
+      }: WalletConnectSessionRequest = req.body;
+
+      // Check if WalletConnect is properly configured
+      if (!walletConnectService.isConfigured()) {
+        res.status(503).json({ 
+          success: false,
+          error: 'WalletConnect service not configured' 
+        });
+        return;
+      }
+
+      // Initialize WalletConnect service if needed
+      await walletConnectService.initialize();
+
+      // Create session proposal
+      const { uri, proposalId } = await walletConnectService.createSessionProposal(
+        req.user.id,
+        { bridgeUrl, sessionDuration, requiredNamespaces }
+      );
+
+      res.status(200).json({
+        success: true,
+        data: {
+          uri,
+          proposalId,
+          qrCode: uri, // The URI can be used to generate QR code on frontend
+          expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString() // 5 minutes
+        }
+      });
+
+    } catch (error) {
+      console.error('Create WalletConnect proposal error:', error);
+      res.status(500).json({ 
+        success: false,
+        error: 'Failed to create WalletConnect session proposal',
+        details: error.message
+      });
+    }
+  }
+
+  /**
+   * Approve WalletConnect session proposal
+   * POST /api/v1/crypto/wallets/walletconnect/approve
+   */
+  async approveWalletConnectProposal(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      if (!req.user) {
+        res.status(401).json({ 
+          success: false,
+          error: 'Authentication required' 
+        });
+        return;
+      }
+
+      const { proposalId, accounts, walletName } = req.body;
+
+      if (!proposalId || !accounts || !Array.isArray(accounts) || accounts.length === 0) {
+        res.status(400).json({ 
+          success: false,
+          error: 'Proposal ID and accounts are required' 
+        });
+        return;
+      }
+
+      // Validate account addresses
+      for (const account of accounts) {
+        const validation = await blockchainService.validateWalletAddress('walletconnect', account);
+        if (!validation.isValid) {
+          res.status(400).json({ 
+            success: false,
+            error: `Invalid account address: ${account}`,
+            details: validation.error
+          });
+          return;
+        }
+      }
+
+      // Approve the session
+      const session = await walletConnectService.approveSessionProposal(
+        proposalId,
+        req.user.id,
+        accounts
+      );
+
+      // Create wallet record in crypto_wallets table
+      const walletId = uuidv4();
+      const encryptedAddress = await blockchainService.encryptWalletAddress(session.walletAddress);
+      const supportedCurrencies = blockchainService.getSupportedCurrencies('walletconnect');
+
+      const { data: wallet, error: insertError } = await supabase
+        .from('crypto_wallets')
+        .insert({
+          wallet_id: walletId,
+          user_id: req.user.id,
+          wallet_type: 'walletconnect',
+          wallet_address_encrypted: encryptedAddress,
+          wallet_address_hash: blockchainService.hashWalletAddress(session.walletAddress),
+          wallet_name: walletName || session.walletName || 'WalletConnect Wallet',
+          connection_status: 'connected',
+          permissions: session.permissions,
+          session_expiry: new Date(session.expiryTimestamp * 1000).toISOString(),
+          supported_currencies: supportedCurrencies,
+          last_balance_check: new Date().toISOString(),
+          topic: session.topic, // Store WalletConnect topic
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .select()
+        .single();
+
+      if (insertError) {
+        console.error('Database error creating WalletConnect wallet:', insertError);
+        res.status(500).json({ 
+          success: false,
+          error: 'Failed to save wallet connection' 
+        });
+        return;
+      }
+
+      res.status(201).json({
+        success: true,
+        data: {
+          walletId: wallet.wallet_id,
+          sessionId: session.sessionId,
+          walletType: 'walletconnect',
+          walletName: wallet.wallet_name,
+          walletAddress: session.walletAddress, // Return plaintext for confirmation
+          connectionStatus: 'connected',
+          permissions: session.permissions,
+          supportedCurrencies: supportedCurrencies,
+          sessionExpiry: wallet.session_expiry,
+          topic: session.topic
+        }
+      });
+
+    } catch (error) {
+      console.error('Approve WalletConnect proposal error:', error);
+      res.status(500).json({ 
+        success: false,
+        error: 'Failed to approve WalletConnect session',
+        details: error.message
+      });
+    }
+  }
+
+  /**
+   * Reject WalletConnect session proposal
+   * POST /api/v1/crypto/wallets/walletconnect/reject
+   */
+  async rejectWalletConnectProposal(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      if (!req.user) {
+        res.status(401).json({ 
+          success: false,
+          error: 'Authentication required' 
+        });
+        return;
+      }
+
+      const { proposalId, reason } = req.body;
+
+      if (!proposalId) {
+        res.status(400).json({ 
+          success: false,
+          error: 'Proposal ID is required' 
+        });
+        return;
+      }
+
+      await walletConnectService.rejectSessionProposal(proposalId, reason);
+
+      res.status(200).json({
+        success: true,
+        message: 'WalletConnect session proposal rejected'
+      });
+
+    } catch (error) {
+      console.error('Reject WalletConnect proposal error:', error);
+      res.status(500).json({ 
+        success: false,
+        error: 'Failed to reject WalletConnect session proposal',
+        details: error.message
+      });
+    }
+  }
+
+  /**
+   * Disconnect WalletConnect session
+   * POST /api/v1/crypto/wallets/walletconnect/disconnect
+   */
+  async disconnectWalletConnectSession(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      if (!req.user) {
+        res.status(401).json({ 
+          success: false,
+          error: 'Authentication required' 
+        });
+        return;
+      }
+
+      const { walletId, topic } = req.body;
+
+      if (!walletId && !topic) {
+        res.status(400).json({ 
+          success: false,
+          error: 'Wallet ID or topic is required' 
+        });
+        return;
+      }
+
+      let walletTopic = topic;
+
+      // If walletId provided, get topic from database
+      if (walletId && !topic) {
+        const { data: wallet, error: fetchError } = await supabase
+          .from('crypto_wallets')
+          .select('topic')
+          .eq('wallet_id', walletId)
+          .eq('user_id', req.user.id)
+          .single();
+
+        if (fetchError || !wallet?.topic) {
+          res.status(404).json({ 
+            success: false,
+            error: 'Wallet not found or invalid' 
+          });
+          return;
+        }
+
+        walletTopic = wallet.topic;
+      }
+
+      // Disconnect WalletConnect session
+      await walletConnectService.disconnectSession(walletTopic);
+
+      // Update wallet status in database
+      const { error: updateError } = await supabase
+        .from('crypto_wallets')
+        .update({
+          connection_status: 'disconnected',
+          updated_at: new Date().toISOString()
+        })
+        .eq('topic', walletTopic)
+        .eq('user_id', req.user.id);
+
+      if (updateError) {
+        console.error('Database error updating wallet status:', updateError);
+        // Continue since WalletConnect session was disconnected successfully
+      }
+
+      res.status(200).json({
+        success: true,
+        message: 'WalletConnect session disconnected successfully'
+      });
+
+    } catch (error) {
+      console.error('Disconnect WalletConnect session error:', error);
+      res.status(500).json({ 
+        success: false,
+        error: 'Failed to disconnect WalletConnect session',
+        details: error.message
+      });
+    }
+  }
+
+  /**
+   * Get active WalletConnect sessions
+   * GET /api/v1/crypto/wallets/walletconnect/sessions
+   */
+  async getWalletConnectSessions(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      if (!req.user) {
+        res.status(401).json({ 
+          success: false,
+          error: 'Authentication required' 
+        });
+        return;
+      }
+
+      // Get sessions from WalletConnect service
+      const sessions = await walletConnectService.getActiveSessions(req.user.id);
+
+      // Get corresponding wallet records from database
+      const { data: wallets, error } = await supabase
+        .from('crypto_wallets')
+        .select('*')
+        .eq('user_id', req.user.id)
+        .eq('wallet_type', 'walletconnect')
+        .eq('connection_status', 'connected');
+
+      if (error) {
+        console.error('Database error fetching WalletConnect wallets:', error);
+        res.status(500).json({ 
+          success: false,
+          error: 'Failed to fetch WalletConnect sessions' 
+        });
+        return;
+      }
+
+      // Combine session and wallet data
+      const combinedData = sessions.map(session => {
+        const wallet = wallets.find(w => w.topic === session.topic);
+        return {
+          sessionId: session.sessionId,
+          walletId: wallet?.wallet_id,
+          topic: session.topic,
+          walletAddress: session.walletAddress,
+          walletName: session.walletName || wallet?.wallet_name,
+          expiresAt: new Date(session.expiryTimestamp * 1000).toISOString(),
+          permissions: session.permissions,
+          supportedCurrencies: wallet?.supported_currencies || [],
+          chainIds: session.chainIds,
+          methods: session.methods,
+          lastActivity: wallet?.updated_at
+        };
+      });
+
+      res.status(200).json({
+        success: true,
+        data: {
+          sessions: combinedData,
+          total: combinedData.length
+        }
+      });
+
+    } catch (error) {
+      console.error('Get WalletConnect sessions error:', error);
+      res.status(500).json({ 
+        success: false,
+        error: 'Failed to get WalletConnect sessions',
+        details: error.message
+      });
+    }
+  }
+
+  /**
+   * Cleanup expired WalletConnect sessions
+   * POST /api/v1/crypto/wallets/walletconnect/cleanup
+   */
+  async cleanupWalletConnectSessions(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      if (!req.user) {
+        res.status(401).json({ 
+          success: false,
+          error: 'Authentication required' 
+        });
+        return;
+      }
+
+      await walletConnectService.cleanupExpiredSessions();
+
+      res.status(200).json({
+        success: true,
+        message: 'WalletConnect sessions cleanup completed'
+      });
+
+    } catch (error) {
+      console.error('Cleanup WalletConnect sessions error:', error);
+      res.status(500).json({ 
+        success: false,
+        error: 'Failed to cleanup WalletConnect sessions',
+        details: error.message
       });
     }
   }

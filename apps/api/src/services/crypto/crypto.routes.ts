@@ -87,4 +87,68 @@ router.get('/wallets/:walletId/balance',
   }
 );
 
+// WalletConnect specific routes
+
+/**
+ * POST /api/v1/crypto/wallets/walletconnect/propose
+ * Create WalletConnect session proposal
+ */
+router.post('/wallets/walletconnect/propose',
+  walletConnectionRateLimit,
+  async (req, res) => {
+    await cryptoController.createWalletConnectProposal(req, res);
+  }
+);
+
+/**
+ * POST /api/v1/crypto/wallets/walletconnect/approve
+ * Approve WalletConnect session proposal
+ */
+router.post('/wallets/walletconnect/approve',
+  walletConnectionRateLimit,
+  async (req, res) => {
+    await cryptoController.approveWalletConnectProposal(req, res);
+  }
+);
+
+/**
+ * POST /api/v1/crypto/wallets/walletconnect/reject
+ * Reject WalletConnect session proposal
+ */
+router.post('/wallets/walletconnect/reject',
+  async (req, res) => {
+    await cryptoController.rejectWalletConnectProposal(req, res);
+  }
+);
+
+/**
+ * POST /api/v1/crypto/wallets/walletconnect/disconnect
+ * Disconnect WalletConnect session
+ */
+router.post('/wallets/walletconnect/disconnect',
+  async (req, res) => {
+    await cryptoController.disconnectWalletConnectSession(req, res);
+  }
+);
+
+/**
+ * GET /api/v1/crypto/wallets/walletconnect/sessions
+ * Get active WalletConnect sessions
+ */
+router.get('/wallets/walletconnect/sessions',
+  async (req, res) => {
+    await cryptoController.getWalletConnectSessions(req, res);
+  }
+);
+
+/**
+ * POST /api/v1/crypto/wallets/walletconnect/cleanup
+ * Cleanup expired WalletConnect sessions
+ */
+router.post('/wallets/walletconnect/cleanup',
+  async (req, res) => {
+    await cryptoController.cleanupWalletConnectSessions(req, res);
+  }
+);
+
 export default router;
