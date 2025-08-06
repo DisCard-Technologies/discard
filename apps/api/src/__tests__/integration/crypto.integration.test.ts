@@ -12,7 +12,14 @@ app.use(express.json());
 // Mock authentication middleware
 jest.mock('../../middleware/auth', () => ({
   authenticateToken: jest.fn((req: any, res: any, next: any) => {
+    if (!req.headers.authorization) {
+      return res.status(401).json({ 
+        success: false,
+        error: 'Authentication required' 
+      });
+    }
     req.user = { 
+      id: 'test-user-id',
       userId: 'test-user-id',
       email: 'test@example.com'
     };
@@ -34,6 +41,11 @@ const mockSupabaseChain = {
   eq: jest.fn().mockReturnThis(),
   not: jest.fn().mockReturnThis(),
   lt: jest.fn().mockReturnThis(),
+  gt: jest.fn().mockReturnThis(),
+  gte: jest.fn().mockReturnThis(),
+  lte: jest.fn().mockReturnThis(),
+  order: jest.fn().mockReturnThis(),
+  limit: jest.fn().mockReturnThis(),
   single: jest.fn().mockResolvedValue(mockSupabaseResponse),
   mockResolvedValue: jest.fn().mockResolvedValue(mockSupabaseResponse)
 };
@@ -108,10 +120,23 @@ describe('Crypto API Integration Tests', () => {
     jest.clearAllMocks();
     nock.cleanAll();
     
-    // Reset Supabase mocks
-    mockSupabaseChain.insert.mockResolvedValue({ data: null, error: null });
+    // Reset Supabase mocks - setup comprehensive chaining
+    mockSupabaseChain.insert.mockResolvedValue({ data: { wallet_id: 'test-wallet-id' }, error: null });
     mockSupabaseChain.update.mockResolvedValue({ data: null, error: null });
     mockSupabaseChain.single.mockResolvedValue({ data: null, error: null });
+    mockSupabaseChain.order.mockResolvedValue({ data: [], error: null });
+    mockSupabaseChain.not.mockResolvedValue({ data: [], error: null });
+    
+    // Reset all chain methods to return this
+    Object.keys(mockSupabaseChain).forEach(key => {
+      if (key !== 'mockResolvedValue' && typeof mockSupabaseChain[key] === 'function') {
+        if (key === 'single' || key === 'insert' || key === 'update' || key === 'order' || key === 'not') {
+          // These are terminal methods that should return data
+          return;
+        }
+        mockSupabaseChain[key].mockReturnValue(mockSupabaseChain);
+      }
+    });
   });
 
   afterEach(() => {
@@ -462,7 +487,7 @@ describe('Crypto API Integration Tests', () => {
         };
 
         const response = await request(app)
-          .post('/api/v1/crypto/walletconnect/propose')
+          .post('/api/v1/crypto/wallets/walletconnect/propose')
           .set('Authorization', `Bearer ${authToken}`)
           .send(sessionData);
 
@@ -493,7 +518,7 @@ describe('Crypto API Integration Tests', () => {
         };
 
         const response = await request(app)
-          .post('/api/v1/crypto/walletconnect/approve')
+          .post('/api/v1/crypto/wallets/walletconnect/approve')
           .set('Authorization', `Bearer ${authToken}`)
           .send(approvalData);
 
@@ -517,7 +542,7 @@ describe('Crypto API Integration Tests', () => {
         metamaskService.isMetaMaskAvailable.mockResolvedValue(true);
 
         const response = await request(app)
-          .get('/api/v1/crypto/metamask/availability')
+          .get('/api/v1/crypto/wallets/metamask/availability')
           .set('Authorization', `Bearer ${authToken}`);
 
         expect(response.status).toBe(200);
@@ -549,7 +574,7 @@ describe('Crypto API Integration Tests', () => {
         };
 
         const response = await request(app)
-          .post('/api/v1/crypto/metamask/connect')
+          .post('/api/v1/crypto/wallets/metamask/connect')
           .set('Authorization', `Bearer ${authToken}`)
           .send(connectionData);
 
@@ -583,7 +608,7 @@ describe('Crypto API Integration Tests', () => {
         };
 
         const response = await request(app)
-          .post('/api/v1/crypto/bitcoin/connect')
+          .post('/api/v1/crypto/wallets/bitcoin/connect')
           .set('Authorization', `Bearer ${authToken}`)
           .send(bitcoinData);
 

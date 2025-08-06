@@ -424,8 +424,11 @@ describe('WalletConnectService', () => {
     });
 
     it('should handle database errors gracefully', async () => {
-      // Mock database error by making the query chain fail
-      mockSupabaseChain.single.mockResolvedValue({
+      // Reset all mocks first
+      Object.values(mockSupabaseChain).forEach(mock => mock.mockClear && mock.mockClear());
+      
+      // Mock database error at the final `.not()` call which is what getActiveSessions uses
+      mockSupabaseChain.not.mockResolvedValue({
         data: null,
         error: { message: 'Database error' }
       });
@@ -479,7 +482,10 @@ describe('WalletConnectService', () => {
 
   describe('event handling', () => {
     it('should set up event listeners during initialization', async () => {
-      await walletConnectService.initialize();
+      // Create a fresh service instance to ensure clean state
+      const newService = new (require('../../../../services/crypto/walletconnect.service').WalletConnectService)();
+      
+      await newService.initialize();
 
       expect(mockSignClient.on).toHaveBeenCalledWith('session_proposal', expect.any(Function));
       expect(mockSignClient.on).toHaveBeenCalledWith('session_settle', expect.any(Function));

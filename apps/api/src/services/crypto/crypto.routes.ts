@@ -331,4 +331,26 @@ router.post('/wallets/bitcoin/validate',
   }
 );
 
+/**
+ * GET /api/v1/crypto/rates
+ * Get current conversion rates
+ */
+router.get('/rates',
+  async (req, res) => {
+    await cryptoController.getCurrentRates(req, res);
+  }
+);
+
+/**
+ * GET /api/v1/crypto/wallets/bitcoin/qr-code/:address
+ * Generate QR code for Bitcoin address (GET version)
+ */
+router.get('/wallets/bitcoin/qr-code/:address',
+  async (req, res) => {
+    const { address } = req.params;
+    req.body = { address }; // Convert param to body format
+    await cryptoController.generateBitcoinQRCode(req, res);
+  }
+);
+
 export default router;

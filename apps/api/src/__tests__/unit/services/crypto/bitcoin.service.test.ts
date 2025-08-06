@@ -37,12 +37,19 @@ jest.mock('ecpair', () => ({
 
 jest.mock('tiny-secp256k1', () => ({}));
 
-// Mock Supabase
+// Mock Supabase  
 const mockSupabaseChain = {
   select: jest.fn().mockReturnThis(),
   insert: jest.fn().mockReturnThis(),
   update: jest.fn().mockReturnThis(),
   eq: jest.fn().mockReturnThis(),
+  not: jest.fn().mockReturnThis(),
+  lt: jest.fn().mockReturnThis(),
+  gt: jest.fn().mockReturnThis(),
+  gte: jest.fn().mockReturnThis(),
+  lte: jest.fn().mockReturnThis(),
+  order: jest.fn().mockReturnThis(),
+  limit: jest.fn().mockReturnThis(),
   single: jest.fn().mockResolvedValue({ data: null, error: null }),
   from: jest.fn().mockReturnThis()
 };
@@ -63,9 +70,56 @@ describe('BitcoinService', () => {
     // Reset mock functions
     const bitcoin = require('bitcoinjs-lib');
     bitcoin.address.toOutputScript.mockClear();
-    mockSupabaseChain.insert.mockResolvedValue({ data: null, error: null });
-    mockSupabaseChain.update.mockResolvedValue({ data: null, error: null });
+    
+    // Create a smart mock that handles any chain length
+    const createChainableMock = (terminalData) => {
+      const chainMock = jest.fn().mockImplementation(() => chainMock);
+      chainMock.mockResolvedValue = jest.fn().mockResolvedValue(terminalData);
+      
+      // Make it resolve to terminal data when awaited
+      chainMock.then = jest.fn((resolve) => {
+        resolve(terminalData);
+        return chainMock;
+      });
+      
+      return chainMock;
+    };
+    
+    // Reset all methods to be chainable and return appropriate terminal data
+    mockSupabaseChain.select.mockImplementation(() => createChainableMock({ data: [], error: null }));
+    mockSupabaseChain.insert.mockImplementation(() => createChainableMock({ data: { wallet_id: 'mock-wallet-id' }, error: null }));
+    mockSupabaseChain.update.mockImplementation(() => createChainableMock({ data: null, error: null }));
     mockSupabaseChain.single.mockResolvedValue({ data: null, error: null });
+    
+    // Set up specific method chains for Bitcoin service patterns
+    
+    // For getBitcoinWallets: .select().eq().eq().eq()
+    const getBitcoinWalletsChain = {
+      eq: jest.fn().mockImplementation(() => ({
+        eq: jest.fn().mockImplementation(() => ({
+          eq: jest.fn().mockResolvedValue({ data: [], error: null })
+        }))
+      }))
+    };
+    
+    // For connectBitcoinWallet: .insert().select()  
+    const connectBitcoinWalletChain = {
+      select: jest.fn().mockResolvedValue({ data: { wallet_id: 'mock-wallet-id' }, error: null })
+    };
+    
+    // For disconnectBitcoinWallet: .update().eq().eq().eq()
+    const disconnectBitcoinWalletChain = {
+      eq: jest.fn().mockImplementation(() => ({
+        eq: jest.fn().mockImplementation(() => ({
+          eq: jest.fn().mockResolvedValue({ data: null, error: null })
+        }))
+      }))
+    };
+    
+    // Override specific methods with our chains
+    mockSupabaseChain.select.mockReturnValue(getBitcoinWalletsChain);
+    mockSupabaseChain.insert.mockReturnValue(connectBitcoinWalletChain);  
+    mockSupabaseChain.update.mockReturnValue(disconnectBitcoinWalletChain);
   });
 
   afterEach(() => {
