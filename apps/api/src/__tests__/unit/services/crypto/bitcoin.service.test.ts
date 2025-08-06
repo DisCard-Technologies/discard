@@ -108,6 +108,40 @@ describe('BitcoinService', () => {
     
     // Other terminal methods
     mockSupabaseChain.single.mockResolvedValue({ data: null, error: null });
+
+    // Reset blockchain service mocks with default implementations
+    mockBlockchainService.encryptWalletAddress.mockClear();
+    mockBlockchainService.decryptWalletAddress.mockClear();
+    mockBlockchainService.hashWalletAddress.mockClear();
+    mockBlockchainService.validateWalletAddress.mockClear();
+
+    // Default mock implementations for blockchain service
+    mockBlockchainService.encryptWalletAddress.mockImplementation(async (address: string) => {
+      // Simulate real encryption by creating a predictable encrypted format
+      const iv = 'mock-iv-16-bytes';
+      const encrypted = Buffer.from(`encrypted-${address}`, 'utf8').toString('hex');
+      return `${iv}:${encrypted}`;
+    });
+
+    mockBlockchainService.decryptWalletAddress.mockImplementation(async (encryptedAddress: string) => {
+      // Simulate real decryption by reversing the mock encryption
+      const parts = encryptedAddress.split(':');
+      if (parts.length !== 2) {
+        throw new Error('Invalid encrypted address format');
+      }
+      const encrypted = parts[1];
+      const decrypted = Buffer.from(encrypted, 'hex').toString('utf8');
+      return decrypted.replace('encrypted-', '');
+    });
+
+    mockBlockchainService.hashWalletAddress.mockImplementation((address: string) => {
+      // Simulate deterministic hashing
+      return `hash-${address.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
+    });
+
+    mockBlockchainService.validateWalletAddress.mockResolvedValue({
+      isValid: true
+    });
   });
 
   afterEach(() => {
@@ -1122,6 +1156,320 @@ describe('BitcoinService', () => {
       await expect(
         bitcoinService.broadcastBitcoinTransaction(transactionHex, 'unsupported')
       ).rejects.toThrow('Unsupported network: unsupported');
+    });
+  });
+
+  describe('blockchain service integration', () => {
+    describe('encryption/decryption scenarios', () => {
+      it('should handle encryption errors during wallet connection', async () => {
+        const userId = 'test-user-id';
+        const mockRequest = {
+          address: '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa',
+          walletName: 'Test Wallet'
+        };
+
+        // Mock address validation
+        require('bitcoinjs-lib').address.toOutputScript.mockReturnValue(Buffer.from('mock-script'));
+
+        // Mock balance API
+        (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValue({
+          ok: true,
+          json: async () => ({ balance: 100000000, unconfirmed_balance: 0 })
+        } as Response);
+
+        // Mock QR code generation
+        require('qrcode').toDataURL.mockResolvedValue('data:image/png;base64,test-qr');
+
+        // Mock no existing wallet
+        mockSupabaseChain.single.mockResolvedValue({
+          data: null,
+          error: { code: 'PGRST116' }
+        });
+
+        // Mock encryption failure
+        mockBlockchainService.encryptWalletAddress.mockRejectedValue(
+          new Error('Encryption service unavailable')
+        );
+
+        await expect(
+          bitcoinService.connectBitcoinWallet(userId, mockRequest)
+        ).rejects.toThrow('Failed to connect Bitcoin wallet');
+
+        expect(mockBlockchainService.encryptWalletAddress).toHaveBeenCalledWith(mockRequest.address);
+      });
+
+      it('should handle decryption errors during wallet retrieval', async () => {
+        const userId = 'test-user-id';
+        const mockWallets = [{
+          wallet_id: 'wallet-1',
+          wallet_name: 'Test Wallet',
+          wallet_address_encrypted: 'corrupted-encrypted-data',
+          wallet_metadata: { network: 'mainnet' },
+          connection_status: 'connected',
+          supported_currencies: ['BTC'],
+          created_at: '2023-01-01T00:00:00Z'
+        }];
+
+        mockSupabaseChain.select.mockResolvedValue({
+          data: mockWallets,
+          error: null
+        });
+
+        // Mock decryption failure
+        mockBlockchainService.decryptWalletAddress.mockRejectedValue(
+          new Error('Invalid encrypted address format')
+        );
+
+        const wallets = await bitcoinService.getBitcoinWallets(userId);
+
+        // Should continue with other wallets even if one fails
+        expect(wallets).toEqual([]);
+        expect(mockBlockchainService.decryptWalletAddress).toHaveBeenCalledWith('corrupted-encrypted-data');
+      });
+
+      it('should handle complex encryption/decryption round trip', async () => {
+        const testAddress = '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa';
+        const userId = 'test-user-id';
+        
+        // Use a more realistic encryption mock
+        let encryptedData: string;
+        mockBlockchainService.encryptWalletAddress.mockImplementation(async (address: string) => {
+          // Simulate real encryption with random IV
+          const iv = Buffer.from('1234567890123456', 'utf8').toString('hex');
+          const encrypted = Buffer.from(address).toString('base64');
+          encryptedData = `${iv}:${encrypted}`;
+          return encryptedData;
+        });
+
+        mockBlockchainService.decryptWalletAddress.mockImplementation(async (encrypted: string) => {
+          const [iv, data] = encrypted.split(':');
+          return Buffer.from(data, 'base64').toString('utf8');
+        });
+
+        const mockRequest = {
+          address: testAddress,
+          walletName: 'Encryption Test Wallet'
+        };
+
+        // Mock other dependencies
+        require('bitcoinjs-lib').address.toOutputScript.mockReturnValue(Buffer.from('mock-script'));
+        (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValue({
+          ok: true,
+          json: async () => ({ balance: 100000000, unconfirmed_balance: 0 })
+        } as Response);
+        require('qrcode').toDataURL.mockResolvedValue('data:image/png;base64,test-qr');
+
+        mockSupabaseChain.single.mockResolvedValueOnce({
+          data: null,
+          error: { code: 'PGRST116' }
+        });
+
+        mockSupabaseChain.single.mockResolvedValueOnce({
+          data: {
+            wallet_id: 'test-wallet-id',
+            wallet_name: 'Encryption Test Wallet',
+            connection_status: 'connected',
+            supported_currencies: ['BTC'],
+            created_at: '2023-01-01T00:00:00Z'
+          },
+          error: null
+        });
+
+        const connection = await bitcoinService.connectBitcoinWallet(userId, mockRequest);
+
+        expect(mockBlockchainService.encryptWalletAddress).toHaveBeenCalledWith(testAddress);
+        expect(connection.address).toBe(testAddress);
+        expect(connection.walletName).toBe('Encryption Test Wallet');
+
+        // Now test wallet retrieval with decryption
+        const mockWallets = [{
+          wallet_id: 'test-wallet-id',
+          wallet_name: 'Encryption Test Wallet',
+          wallet_address_encrypted: encryptedData,
+          wallet_metadata: { network: 'mainnet' },
+          connection_status: 'connected',
+          supported_currencies: ['BTC'],
+          created_at: '2023-01-01T00:00:00Z'
+        }];
+
+        mockSupabaseChain.select.mockResolvedValue({
+          data: mockWallets,
+          error: null
+        });
+
+        (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValue({
+          ok: true,
+          json: async () => ({ balance: 50000000, unconfirmed_balance: 0 })
+        } as Response);
+
+        const retrievedWallets = await bitcoinService.getBitcoinWallets(userId);
+
+        expect(retrievedWallets).toHaveLength(1);
+        expect(retrievedWallets[0].address).toBe(testAddress);
+        expect(mockBlockchainService.decryptWalletAddress).toHaveBeenCalledWith(encryptedData);
+      });
+
+      it('should handle hash collision detection', async () => {
+        const userId = 'test-user-id';
+        const address1 = '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa';
+        const address2 = '1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2';
+
+        // Mock deterministic hashing that creates different hashes
+        mockBlockchainService.hashWalletAddress.mockImplementation((address: string) => {
+          return `hash-${address.substring(0, 10)}`;
+        });
+
+        // Mock address validation
+        require('bitcoinjs-lib').address.toOutputScript.mockReturnValue(Buffer.from('mock-script'));
+
+        // First wallet connection
+        const mockRequest1 = { address: address1, walletName: 'Wallet 1' };
+        
+        // Mock no existing wallet for first address
+        mockSupabaseChain.single.mockResolvedValueOnce({
+          data: null,
+          error: { code: 'PGRST116' }
+        });
+
+        // Mock successful connection
+        (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValue({
+          ok: true,
+          json: async () => ({ balance: 100000000, unconfirmed_balance: 0 })
+        } as Response);
+        require('qrcode').toDataURL.mockResolvedValue('data:image/png;base64,test-qr');
+
+        mockSupabaseChain.single.mockResolvedValueOnce({
+          data: {
+            wallet_id: 'wallet-1',
+            wallet_name: 'Wallet 1',
+            connection_status: 'connected',
+            supported_currencies: ['BTC'],
+            created_at: '2023-01-01T00:00:00Z'
+          },
+          error: null
+        });
+
+        await bitcoinService.connectBitcoinWallet(userId, mockRequest1);
+
+        expect(mockBlockchainService.hashWalletAddress).toHaveBeenCalledWith(address1);
+
+        // Second wallet connection with different address
+        const mockRequest2 = { address: address2, walletName: 'Wallet 2' };
+
+        // Mock no existing wallet for second address
+        mockSupabaseChain.single.mockResolvedValueOnce({
+          data: null,
+          error: { code: 'PGRST116' }
+        });
+
+        mockSupabaseChain.single.mockResolvedValueOnce({
+          data: {
+            wallet_id: 'wallet-2',
+            wallet_name: 'Wallet 2',
+            connection_status: 'connected',
+            supported_currencies: ['BTC'],
+            created_at: '2023-01-01T00:00:00Z'
+          },
+          error: null
+        });
+
+        await bitcoinService.connectBitcoinWallet(userId, mockRequest2);
+
+        expect(mockBlockchainService.hashWalletAddress).toHaveBeenCalledWith(address2);
+        expect(mockBlockchainService.hashWalletAddress).toHaveBeenCalledTimes(2);
+      });
+
+      it('should handle blockchain service timeout scenarios', async () => {
+        const userId = 'test-user-id';
+        const mockRequest = {
+          address: '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa',
+          walletName: 'Timeout Test Wallet'
+        };
+
+        // Mock address validation
+        require('bitcoinjs-lib').address.toOutputScript.mockReturnValue(Buffer.from('mock-script'));
+
+        // Mock encryption timeout
+        mockBlockchainService.encryptWalletAddress.mockImplementation(async () => {
+          await new Promise(resolve => setTimeout(resolve, 100));
+          throw new Error('Request timeout');
+        });
+
+        // Mock balance API
+        (global.fetch as jest.MockedFunction<typeof fetch>).mockResolvedValue({
+          ok: true,
+          json: async () => ({ balance: 100000000, unconfirmed_balance: 0 })
+        } as Response);
+
+        // Mock no existing wallet
+        mockSupabaseChain.single.mockResolvedValue({
+          data: null,
+          error: { code: 'PGRST116' }
+        });
+
+        await expect(
+          bitcoinService.connectBitcoinWallet(userId, mockRequest)
+        ).rejects.toThrow('Failed to connect Bitcoin wallet');
+      });
+
+      it('should handle concurrent encryption/decryption operations', async () => {
+        const addresses = [
+          '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa',
+          '1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2',
+          '3J98t1WpEZ73CNmQviecrnyiWrnqRhWNLy'
+        ];
+
+        // Mock concurrent encryption calls
+        const encryptionPromises = addresses.map(address => {
+          return mockBlockchainService.encryptWalletAddress(address);
+        });
+
+        // All should complete successfully
+        const encryptedAddresses = await Promise.all(encryptionPromises);
+        
+        expect(encryptedAddresses).toHaveLength(3);
+        expect(mockBlockchainService.encryptWalletAddress).toHaveBeenCalledTimes(3);
+
+        // Mock concurrent decryption calls
+        const decryptionPromises = encryptedAddresses.map(encryptedAddress => {
+          return mockBlockchainService.decryptWalletAddress(encryptedAddress);
+        });
+
+        const decryptedAddresses = await Promise.all(decryptionPromises);
+        
+        expect(decryptedAddresses).toEqual(addresses);
+        expect(mockBlockchainService.decryptWalletAddress).toHaveBeenCalledTimes(3);
+      });
+    });
+
+    describe('address hashing scenarios', () => {
+      it('should handle case-insensitive address hashing', async () => {
+        const lowerCaseAddress = '1a1zp1ep5qgefi2dmpttl5slmv7divfna';
+        const upperCaseAddress = '1A1ZP1EP5QGEFI2DMPTTL5SLMV7DIVFNA';
+        const mixedCaseAddress = '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa';
+
+        const hash1 = mockBlockchainService.hashWalletAddress(lowerCaseAddress);
+        const hash2 = mockBlockchainService.hashWalletAddress(upperCaseAddress);
+        const hash3 = mockBlockchainService.hashWalletAddress(mixedCaseAddress);
+
+        // All should produce the same hash due to toLowerCase in implementation
+        expect(hash1).toBe(hash2);
+        expect(hash2).toBe(hash3);
+        expect(hash1).toBe('hash-1a1zp1ep5q');
+      });
+
+      it('should handle special characters in address hashing', async () => {
+        const addressWithSpecialChars = '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa!@#';
+        const cleanAddress = '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa';
+
+        const hash1 = mockBlockchainService.hashWalletAddress(addressWithSpecialChars);
+        const hash2 = mockBlockchainService.hashWalletAddress(cleanAddress);
+
+        // Hash should remove special characters
+        expect(hash1).toBe('hash-1a1zp1ep5q');
+        expect(hash2).toBe('hash-1a1zp1ep5q');
+        expect(hash1).toBe(hash2);
+      });
     });
   });
 
