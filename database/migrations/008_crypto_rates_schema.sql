@@ -67,13 +67,28 @@ CREATE INDEX idx_conversion_quotes_created_at ON conversion_quotes(created_at);
 
 -- Implement data retention policies for rate history cleanup
 -- Trigger function to automatically delete old rate history (7-day retention)
+-- Added SECURITY DEFINER to ensure proper permissions for automated cleanup
 CREATE OR REPLACE FUNCTION cleanup_rate_history()
 RETURNS void AS $$
+DECLARE
+    deleted_count INTEGER;
 BEGIN
     DELETE FROM rate_history 
     WHERE created_at < NOW() - INTERVAL '7 days';
+    
+    GET DIAGNOSTICS deleted_count = ROW_COUNT;
+    
+    -- Log cleanup activity for audit purposes
+    INSERT INTO system_logs (operation, details, timestamp) 
+    VALUES (
+        'rate_history_cleanup', 
+        format('Deleted %s expired rate history records', deleted_count), 
+        NOW()
+    ) ON CONFLICT DO NOTHING;
+    
+    RAISE NOTICE 'Cleaned up % expired rate history records', deleted_count;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- Trigger function to automatically expire old conversion quotes
 CREATE OR REPLACE FUNCTION expire_old_quotes()

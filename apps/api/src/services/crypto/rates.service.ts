@@ -204,43 +204,47 @@ export class EnhancedRatesService {
     const rates: ConversionRates = {};
     const currentTime = new Date().toISOString();
 
-    for (const currency of currencies) {
+    // Process requests in parallel for better performance
+    const ratePromises = currencies.map(async (currency) => {
       try {
         // Skip stablecoins for 0x API (they're typically 1:1 with USD)
         if (currency === 'USDT' || currency === 'USDC') {
-          rates[currency] = {
-            usd: '1.00',
-            lastUpdated: currentTime
-          };
-          continue;
+          return { currency, rate: { usd: '1.00', lastUpdated: currentTime } };
         }
 
-        const response = await fetch(`${this.ZEROX_API_URL}/swap/v1/quote?sellToken=${currency}&buyToken=USDC&sellAmount=1000000000000000000`, {
+        const response = await fetch(`${this.ZEROX_API_URL}/swap/v1/price?sellToken=${currency}&buyToken=USDC&sellAmount=1000000000000000000`, {
           headers: {
-            'Accept': 'application/json'
-          }
+            'Accept': 'application/json',
+            'User-Agent': 'DisCard-API/1.0'
+          },
+          signal: AbortSignal.timeout(5000) // 5 second timeout
         });
 
         if (response.ok) {
           const data = await response.json();
-          const price = new Decimal(data.buyAmount).div(1000000).toString(); // Assuming 6 decimals for USDC
+          // Validate response structure
+          if (!data.buyAmount || isNaN(Number(data.buyAmount))) {
+            throw new Error(`Invalid response from 0x API for ${currency}`);
+          }
           
-          rates[currency] = {
-            usd: price,
-            lastUpdated: currentTime
-          };
+          const price = new Decimal(data.buyAmount).div(1000000).toString(); // USDC has 6 decimals
+          return { currency, rate: { usd: price, lastUpdated: currentTime } };
         } else {
           throw new Error(`0x API error for ${currency}: ${response.status}`);
         }
       } catch (error) {
         console.warn(`Failed to fetch ${currency} from 0x:`, error);
-        // Set fallback rate
-        rates[currency] = {
-          usd: '0',
-          lastUpdated: currentTime
-        };
+        return { currency, rate: { usd: '0', lastUpdated: currentTime } };
       }
-    }
+    });
+
+    const results = await Promise.allSettled(ratePromises);
+    
+    results.forEach((result) => {
+      if (result.status === 'fulfilled' && result.value) {
+        rates[result.value.currency] = result.value.rate;
+      }
+    });
 
     return rates;
   }

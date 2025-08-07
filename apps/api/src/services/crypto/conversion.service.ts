@@ -68,12 +68,21 @@ export class ConversionService {
    * Calculate exact crypto amount needed for desired USD funding with current market rates
    */
   async calculateConversion(request: ConversionCalculatorRequest): Promise<ConversionCalculatorResponse> {
+    // Input validation
+    if (!request.fromCrypto || request.toUsd <= 0) {
+      throw new Error('Invalid conversion request: missing or invalid parameters');
+    }
+
+    if (request.slippageLimit && !this.validateSlippageLimit(request.slippageLimit)) {
+      throw new Error('Invalid slippage limit: must be between 0 and 5%');
+    }
+
     try {
       // Get current rate for the specified crypto
       const rates = await enhancedRatesService.getCurrentRates([request.fromCrypto]);
       const currentRate = rates[request.fromCrypto]?.usd;
 
-      if (!currentRate || currentRate === '0') {
+      if (!currentRate || new Decimal(currentRate).isZero()) {
         throw new Error(`Unable to get current rate for ${request.fromCrypto}`);
       }
 
