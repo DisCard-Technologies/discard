@@ -8,6 +8,7 @@ import {
 import { supabase } from '../../database/connection';
 import WebSocket from 'ws';
 import Decimal from 'decimal.js';
+import { cacheService } from '../../config/redis';
 
 interface RateCache {
   rates: ConversionRates;
@@ -91,18 +92,11 @@ export class EnhancedRatesService {
    */
   async getCurrentRates(currencies: string[], forceRefresh = false): Promise<ConversionRates> {
     try {
-      // Check if we have valid cached rates (unless force refresh)
-      if (!forceRefresh && this.isCacheValid() && this.cache) {
-        const filteredRates: ConversionRates = {};
-        for (const currency of currencies) {
-          if (this.cache.rates[currency]) {
-            filteredRates[currency] = this.cache.rates[currency];
-          }
-        }
-        
-        // If all requested currencies are in cache, return them
-        if (Object.keys(filteredRates).length === currencies.length) {
-          return filteredRates;
+      // Check Redis cache first (unless force refresh)
+      if (!forceRefresh) {
+        const cachedRates = await this.getRatesFromRedisCache(currencies);
+        if (cachedRates && Object.keys(cachedRates).length === currencies.length) {
+          return cachedRates;
         }
       }
 
@@ -149,7 +143,7 @@ export class EnhancedRatesService {
         }
 
         // Update cache and database
-        await this.updateCache(rates);
+        await this.updateRedisCache(rates);
         await this.saveRatesToDatabase(rates, source.name);
         
         // Mark source as successful
@@ -544,12 +538,77 @@ export class EnhancedRatesService {
   }
 
   /**
+   * Get rates from Redis cache
+   */
+  private async getRatesFromRedisCache(currencies: string[]): Promise<ConversionRates | null> {
+    try {
+      const keys = currencies.map(currency => `crypto_rate:${currency}`);
+      const values = await cacheService.mget(keys);
+      
+      const rates: ConversionRates = {};
+      let allFound = true;
+      
+      for (let i = 0; i < currencies.length; i++) {
+        const value = values[i];
+        if (value) {
+          rates[currencies[i]] = JSON.parse(value);
+        } else {
+          allFound = false;
+          break;
+        }
+      }
+      
+      return allFound ? rates : null;
+    } catch (error) {
+      console.error('Redis cache get error:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Update Redis cache with new rates
+   */
+  private async updateRedisCache(rates: ConversionRates): Promise<void> {
+    try {
+      const keyValuePairs: Record<string, string> = {};
+      
+      for (const [currency, rate] of Object.entries(rates)) {
+        keyValuePairs[`crypto_rate:${currency}`] = JSON.stringify(rate);
+      }
+      
+      await cacheService.mset(keyValuePairs);
+      
+      // Set TTL for each key
+      for (const currency of Object.keys(rates)) {
+        await cacheService.expire(`crypto_rate:${currency}`, 30); // 30 seconds TTL
+      }
+    } catch (error) {
+      console.error('Redis cache update error:', error);
+    }
+  }
+
+  /**
+   * Clear Redis cache
+   */
+  private async clearRedisCache(): Promise<void> {
+    try {
+      const currencies = this.getSupportedCurrencies();
+      for (const currency of currencies) {
+        await cacheService.del(`crypto_rate:${currency}`);
+      }
+    } catch (error) {
+      console.error('Redis cache clear error:', error);
+    }
+  }
+
+  /**
    * Cleanup resources
    */
   public cleanup(): void {
     this.stopRateRefreshMechanism();
     this.wsClients.clear();
     this.clearCache();
+    this.clearRedisCache();
   }
 }
 

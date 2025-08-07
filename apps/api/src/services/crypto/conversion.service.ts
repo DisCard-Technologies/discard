@@ -10,6 +10,7 @@ import { supabase } from '../../database/connection';
 import { enhancedRatesService } from './rates.service';
 import Decimal from 'decimal.js';
 import { v4 as uuidv4 } from 'uuid';
+import { cacheService } from '../../config/redis';
 
 interface FeeStructure {
   networkFeePercentage: number; // e.g., 0.001 = 0.1%
@@ -345,6 +346,13 @@ export class ConversionService {
         // Continue without database save - quote still valid in memory
       }
 
+      // Cache quote in Redis with TTL
+      await cacheService.set(
+        `conversion_quote:${quoteId}`,
+        JSON.stringify(quote),
+        this.QUOTE_EXPIRY_MINUTES * 60 // TTL in seconds
+      );
+
       return quote;
 
     } catch (error) {
@@ -358,6 +366,17 @@ export class ConversionService {
    */
   async getConversionQuote(quoteId: string): Promise<ConversionQuote | null> {
     try {
+      // Check Redis cache first
+      const cachedQuote = await cacheService.get(`conversion_quote:${quoteId}`);
+      if (cachedQuote) {
+        const quote = JSON.parse(cachedQuote) as ConversionQuote;
+        // Check if quote is still valid
+        if (new Date(quote.expiresAt) > new Date() && quote.status === 'active') {
+          return quote;
+        }
+      }
+
+      // Fallback to database
       const { data, error } = await supabase
         .from('conversion_quotes')
         .select('*')
@@ -369,7 +388,7 @@ export class ConversionService {
         return null;
       }
 
-      return {
+      const quote: ConversionQuote = {
         quoteId: data.quote_id,
         fromCrypto: data.from_crypto,
         toCrypto: data.to_crypto,
@@ -384,6 +403,18 @@ export class ConversionService {
         expiresAt: new Date(data.expires_at),
         status: data.status
       };
+
+      // Cache in Redis for remaining TTL
+      const remainingTTL = Math.floor((quote.expiresAt.getTime() - Date.now()) / 1000);
+      if (remainingTTL > 0) {
+        await cacheService.set(
+          `conversion_quote:${quoteId}`,
+          JSON.stringify(quote),
+          remainingTTL
+        );
+      }
+
+      return quote;
 
     } catch (error) {
       console.error('Get conversion quote error:', error);
@@ -409,6 +440,9 @@ export class ConversionService {
         console.error('Failed to use conversion quote:', error);
         return false;
       }
+
+      // Remove from Redis cache
+      await cacheService.del(`conversion_quote:${quoteId}`);
 
       return true;
 
@@ -436,6 +470,9 @@ export class ConversionService {
         console.error('Failed to cancel conversion quote:', error);
         return false;
       }
+
+      // Remove from Redis cache
+      await cacheService.del(`conversion_quote:${quoteId}`);
 
       return true;
 

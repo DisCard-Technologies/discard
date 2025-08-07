@@ -2,6 +2,7 @@ import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { cryptoController } from './crypto.controller';
 import { authenticateToken } from '../../middleware/auth';
+import { rateLimitingMiddleware } from '../../middleware/rate-limiting.middleware';
 
 const router = Router();
 
@@ -336,8 +337,42 @@ router.post('/wallets/bitcoin/validate',
  * Get current conversion rates
  */
 router.get('/rates',
+  rateLimitingMiddleware.cryptoRates,
   async (req, res) => {
     await cryptoController.getCurrentRates(req, res);
+  }
+);
+
+/**
+ * GET /api/v1/crypto/rates/conversion-calculator
+ * Calculate exact amounts for funding
+ */
+router.get('/rates/conversion-calculator',
+  rateLimitingMiddleware.conversionCalculator,
+  async (req, res) => {
+    await cryptoController.calculateConversion(req, res);
+  }
+);
+
+/**
+ * GET /api/v1/crypto/rates/comparison
+ * Compare rates across multiple cryptocurrencies
+ */
+router.get('/rates/comparison',
+  rateLimitingMiddleware.cryptoRates,
+  async (req, res) => {
+    await cryptoController.compareRates(req, res);
+  }
+);
+
+/**
+ * GET /api/v1/crypto/rates/historical
+ * Get historical price data for trend analysis
+ */
+router.get('/rates/historical',
+  rateLimitingMiddleware.historicalRates,
+  async (req, res) => {
+    await cryptoController.getHistoricalRates(req, res);
   }
 );
 
