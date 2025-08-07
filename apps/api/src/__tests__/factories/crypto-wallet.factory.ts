@@ -10,11 +10,11 @@ export interface WalletFactoryOptions {
   walletType?: 'metamask' | 'walletconnect' | 'hardware' | 'bitcoin';
   walletName?: string;
   walletAddress?: string;
-  network?: 'mainnet' | 'testnet';
-  connectionStatus?: 'connected' | 'disconnected' | 'connecting' | 'error';
+  connectionStatus?: 'connected' | 'disconnected' | 'expired';
   supportedCurrencies?: string[];
-  balance?: Partial<CryptoBalance>;
-  userId?: string;
+  sessionExpiry?: Date;
+  lastBalanceCheck?: Date;
+  permissions?: string[];
 }
 
 export class CryptoWalletFactory {
@@ -24,19 +24,11 @@ export class CryptoWalletFactory {
       walletType: overrides.walletType || 'metamask',
       walletName: overrides.walletName || 'Test Wallet',
       walletAddress: overrides.walletAddress || this.generateAddress(overrides.walletType || 'metamask'),
-      network: overrides.network || 'mainnet',
       connectionStatus: overrides.connectionStatus || 'connected',
-      supportedCurrencies: overrides.supportedCurrencies || this.getSupportedCurrencies(overrides.walletType || 'metamask'),
-      balance: {
-        confirmed: 0,
-        unconfirmed: 0,
-        total: 0,
-        usdValue: 0,
-        currency: this.getPrimaryCurrency(overrides.walletType || 'metamask'),
-        ...overrides.balance
-      },
-      lastSynced: new Date().toISOString(),
-      qrCode: `data:image/png;base64,test-qr-code-${this.generateId()}`
+      permissions: overrides.permissions || ['balance', 'send'],
+      sessionExpiry: overrides.sessionExpiry || new Date(Date.now() + 3600000), // 1 hour from now
+      lastBalanceCheck: overrides.lastBalanceCheck || new Date(),
+      supportedCurrencies: overrides.supportedCurrencies || this.getSupportedCurrencies(overrides.walletType || 'metamask')
     };
 
     return defaultWallet;
@@ -78,17 +70,13 @@ export class CryptoWalletFactory {
     );
   }
 
-  static createWithBalance(amount: number, currency: string = 'ETH', overrides: WalletFactoryOptions = {}): CryptoWallet {
-    return this.create({
-      balance: {
-        confirmed: amount,
-        unconfirmed: 0,
-        total: amount,
-        currency,
-        usdValue: amount * 3000 // Mock $3000 per ETH
-      },
-      ...overrides
-    });
+  static createBalance(currency: string = 'ETH', balance: string = '1.0', usdValue: number = 3000): CryptoBalance {
+    return {
+      currency,
+      balance, // Decimal string for precision
+      usdValue: Math.floor(usdValue * 100), // Convert to cents
+      conversionRate: (usdValue / parseFloat(balance)).toFixed(2)
+    };
   }
 
   private static generateId(): string {

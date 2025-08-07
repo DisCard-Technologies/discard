@@ -4,6 +4,12 @@ import { logger } from '../utils/logger';
 import { TransactionWebSocketService } from '../services/crypto/transaction-websocket.service';
 import { DatabaseService } from '../services/database.service';
 
+// Utility function to handle errors safely
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  return String(error);
+}
+
 export interface CryptoTransactionWebSocketServer {
   server: WebSocketServer;
   service: TransactionWebSocketService;
@@ -19,7 +25,7 @@ export function createCryptoTransactionWebSocketServer(
   const server = new WebSocketServer({
     port,
     path: '/ws/crypto/transactions',
-    verifyClient: async (info) => {
+    verifyClient: async (info: { origin: string; secure: boolean; req: IncomingMessage }) => {
       return await verifyWebSocketClient(info, databaseService);
     }
   });
@@ -73,7 +79,7 @@ async function verifyWebSocketClient(
     return true;
     
   } catch (error) {
-    logger.error('Error verifying WebSocket client', { error: error.message });
+    logger.error('Error verifying WebSocket client', { error: getErrorMessage(error) });
     return false;
   }
 }
@@ -98,7 +104,7 @@ async function verifyTokenAndCardAccess(
     return result.rows.length > 0;
     
   } catch (error) {
-    logger.error('Error verifying token and card access', { error: error.message, cardId });
+    logger.error('Error verifying token and card access', { error: getErrorMessage(error), cardId });
     return false;
   }
 }
@@ -183,7 +189,7 @@ export function createWebSocketHealthCheck(manager: CryptoTransactionWebSocketMa
     } catch (error) {
       res.status(500).json({
         status: 'unhealthy',
-        error: error.message,
+        error: getErrorMessage(error),
         timestamp: new Date().toISOString()
       });
     }

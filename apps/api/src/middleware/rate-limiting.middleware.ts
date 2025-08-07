@@ -3,9 +3,17 @@ import rateLimit from 'express-rate-limit';
 import RedisStore from 'rate-limit-redis';
 import { redis } from '../config/redis';
 
+interface AuthenticatedRequest extends Request {
+  user?: {
+    id: string;
+  };
+}
+
 export const cryptoRatesLimiter = rateLimit({
   store: new RedisStore({
-    client: redis,
+    sendCommand: async (...args: any[]) => {
+      return redis.call(args[0], ...args.slice(1)) as any;
+    },
     prefix: 'rate_limit:crypto_rates:',
   }),
   windowMs: 60 * 1000, // 1 minute
@@ -13,8 +21,8 @@ export const cryptoRatesLimiter = rateLimit({
   message: 'Too many rate requests, please try again later',
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req: Request) => {
-    return req.user?.id || req.ip;
+  keyGenerator: (req: AuthenticatedRequest) => {
+    return req.user?.id || req.ip || 'unknown';
   },
   handler: (req: Request, res: Response) => {
     res.status(429).json({
@@ -27,7 +35,9 @@ export const cryptoRatesLimiter = rateLimit({
 
 export const conversionCalculatorLimiter = rateLimit({
   store: new RedisStore({
-    client: redis,
+    sendCommand: async (...args: any[]) => {
+      return redis.call(args[0], ...args.slice(1)) as any;
+    },
     prefix: 'rate_limit:conversion_calculator:',
   }),
   windowMs: 60 * 1000, // 1 minute
@@ -35,8 +45,8 @@ export const conversionCalculatorLimiter = rateLimit({
   message: 'Too many conversion calculator requests, please try again later',
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req: Request) => {
-    return req.user?.id || req.ip;
+  keyGenerator: (req: AuthenticatedRequest) => {
+    return req.user?.id || req.ip || 'unknown';
   },
   handler: (req: Request, res: Response) => {
     res.status(429).json({
@@ -49,7 +59,9 @@ export const conversionCalculatorLimiter = rateLimit({
 
 export const historicalRatesLimiter = rateLimit({
   store: new RedisStore({
-    client: redis,
+    sendCommand: async (...args: any[]) => {
+      return redis.call(args[0], ...args.slice(1)) as any;
+    },
     prefix: 'rate_limit:historical_rates:',
   }),
   windowMs: 60 * 1000, // 1 minute
@@ -57,8 +69,8 @@ export const historicalRatesLimiter = rateLimit({
   message: 'Too many historical rate requests, please try again later',
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req: Request) => {
-    return req.user?.id || req.ip;
+  keyGenerator: (req: AuthenticatedRequest) => {
+    return req.user?.id || req.ip || 'unknown';
   },
   handler: (req: Request, res: Response) => {
     res.status(429).json({

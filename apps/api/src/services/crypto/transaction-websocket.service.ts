@@ -1,6 +1,12 @@
 import { WebSocket, WebSocketServer } from 'ws';
 import { v4 as uuidv4 } from 'uuid';
 import { logger } from '../../utils/logger';
+
+// Utility function to handle errors safely
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  return String(error);
+}
 import { CryptoTransactionProcessing } from './transaction.service';
 
 export interface WebSocketClient {
@@ -131,7 +137,7 @@ export class TransactionWebSocketService {
           logger.warn('Unknown WebSocket message type', { clientId, type: message.type });
       }
     } catch (error) {
-      logger.error('Error parsing WebSocket message', { clientId, error: error.message });
+      logger.error('Error parsing WebSocket message', { clientId, error: getErrorMessage(error) });
     }
   }
 
@@ -196,7 +202,7 @@ export class TransactionWebSocketService {
         } catch (error) {
           logger.error('Error broadcasting network congestion update', {
             clientId: client.id,
-            error: error.message
+            error: getErrorMessage(error)
           });
         }
       }
@@ -232,7 +238,7 @@ export class TransactionWebSocketService {
       logger.error('Error sending WebSocket message', {
         clientId,
         cardId: client.cardId,
-        error: error.message
+        error: getErrorMessage(error)
       });
       
       // Remove dead connection

@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { body, param, query, validationResult } from 'express-validator';
+const { body, param, query, validationResult } = require('express-validator');
 import { logger } from '../../utils/logger';
 import { CryptoTransactionService } from '../../services/crypto/transaction.service';
 import { RefundService } from '../../services/crypto/refund.service';
@@ -8,23 +8,33 @@ import { ConversionService } from '../../services/crypto/conversion.service';
 import { FraudDetectionService } from '../../services/crypto/fraud-detection.service';
 import { TransactionWebSocketService } from '../../services/crypto/transaction-websocket.service';
 
+// Utility function to handle errors safely
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  return String(error);
+}
+
 export class CryptoTransactionController {
   private transactionService: CryptoTransactionService;
   private refundService: RefundService;
 
   constructor(
-    databaseService: DatabaseService,
-    conversionService: ConversionService,
-    fraudDetectionService: FraudDetectionService,
-    websocketService: TransactionWebSocketService
+    databaseService: DatabaseService = new DatabaseService(),
+    conversionService: ConversionService = new ConversionService(),
+    fraudDetectionService?: FraudDetectionService,
+    websocketService?: TransactionWebSocketService
   ) {
-    this.refundService = new RefundService(databaseService, websocketService);
+    this.refundService = new RefundService(
+      databaseService, 
+      websocketService || new TransactionWebSocketService(),
+      fraudDetectionService || new FraudDetectionService(databaseService)
+    );
     this.transactionService = new CryptoTransactionService(
       databaseService,
       conversionService,
-      fraudDetectionService,
+      fraudDetectionService || new FraudDetectionService(databaseService),
       this.refundService,
-      websocketService
+      websocketService || new TransactionWebSocketService()
     );
   }
 
@@ -74,12 +84,13 @@ export class CryptoTransactionController {
         }
       });
     } catch (error) {
+      const errorMessage = getErrorMessage(error);
       logger.error('Error processing crypto transaction', {
-        error: error.message,
+        error: errorMessage,
         transactionId: req.body?.transactionId
       });
 
-      if (error.message.includes('fraud') || error.message.includes('blocked')) {
+      if (errorMessage.includes('fraud') || errorMessage.includes('blocked')) {
         res.status(403).json({
           success: false,
           error: 'Transaction blocked by security validation'
@@ -144,7 +155,7 @@ export class CryptoTransactionController {
       });
     } catch (error) {
       logger.error('Error getting transaction status', {
-        error: error.message,
+        error: getErrorMessage(error),
         transactionId: req.params.transactionId
       });
 
@@ -206,7 +217,7 @@ export class CryptoTransactionController {
       });
     } catch (error) {
       logger.error('Error getting transaction history', {
-        error: error.message,
+        error: getErrorMessage(error),
         cardId: req.query.cardId
       });
 
@@ -262,14 +273,14 @@ export class CryptoTransactionController {
       });
     } catch (error) {
       logger.error('Error processing refund', {
-        error: error.message,
+        error: getErrorMessage(error),
         transactionId: req.params.transactionId
       });
 
-      if (error.message.includes('not found') || error.message.includes('Cannot refund')) {
+      if (getErrorMessage(error).includes('not found') || getErrorMessage(error).includes('Cannot refund')) {
         res.status(400).json({
           success: false,
-          error: error.message
+          error: getErrorMessage(error)
         });
       } else {
         res.status(500).json({
@@ -334,14 +345,14 @@ export class CryptoTransactionController {
       });
     } catch (error) {
       logger.error('Error accelerating transaction', {
-        error: error.message,
+        error: getErrorMessage(error),
         transactionId: req.params.transactionId
       });
 
-      if (error.message.includes('not found') || error.message.includes('cannot be accelerated')) {
+      if (getErrorMessage(error).includes('not found') || getErrorMessage(error).includes('cannot be accelerated')) {
         res.status(400).json({
           success: false,
-          error: error.message
+          error: getErrorMessage(error)
         });
       } else {
         res.status(500).json({
@@ -399,7 +410,7 @@ export class CryptoTransactionController {
       });
     } catch (error) {
       logger.error('Error getting refund status', {
-        error: error.message,
+        error: getErrorMessage(error),
         refundId: req.params.refundId
       });
 

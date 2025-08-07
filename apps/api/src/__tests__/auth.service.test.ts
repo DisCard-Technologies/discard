@@ -10,28 +10,12 @@ import { createMockSupabaseClient, mockScenarios, mockResponses } from './utils/
 import { testDataFactory, setupMocks } from './utils/test-helpers';
 
 // Mock Supabase
-jest.mock('../app', () => ({
-  supabase: {
-    from: jest.fn(() => ({
-      select: jest.fn(() => ({
-        eq: jest.fn(() => ({
-          single: jest.fn()
-        }))
-      })),
-      insert: jest.fn(() => ({
-        select: jest.fn(() => ({
-          single: jest.fn()
-        }))
-      })),
-      update: jest.fn(() => ({
-        eq: jest.fn()
-      })),
-      delete: jest.fn(() => ({
-        eq: jest.fn()
-      }))
-    }))
-  }
-}));
+jest.mock('../app', () => {
+  const { createMockSupabaseClient } = require('./utils/supabase-mock');
+  return {
+    supabase: createMockSupabaseClient()
+  };
+});
 
 // Mock bcryptjs
 jest.mock('bcryptjs', () => ({
@@ -65,17 +49,22 @@ describe('AuthService', () => {
       };
 
       // Mock Supabase responses
-      (supabase.from as jest.Mock).mockReturnValue({
-        select: jest.fn().mockReturnValue({
-          eq: jest.fn().mockReturnValue({
-            single: jest.fn().mockResolvedValue({ data: null, error: null })
-          })
-        }),
-        insert: jest.fn().mockReturnValue({
-          select: jest.fn().mockReturnValue({
-            single: jest.fn().mockResolvedValue({ data: mockUser, error: null })
-          })
-        })
+      const mockSupabaseClient = supabase as jest.Mocked<typeof supabase>;
+      
+      // Set up complete mock behavior for this test
+      mockSupabaseClient.from.mockImplementation((tableName: string) => {
+        if (tableName === 'users') {
+          const userQuery = createMockSupabaseClient().from(tableName);
+          
+          // First call - check user existence (return null)
+          userQuery.single.mockResolvedValueOnce({ data: null, error: null });
+          
+          // Second call - user insertion (return new user) 
+          userQuery.single.mockResolvedValueOnce({ data: mockUser, error: null });
+          
+          return userQuery;
+        }
+        return createMockSupabaseClient().from(tableName);
       });
 
       const result = await authService.register({
@@ -247,14 +236,27 @@ describe('AuthService', () => {
 
       const mockSupabaseClient = supabase as jest.Mocked<typeof supabase>;
       
-      // Setup token verification scenario
-      const builder = mockSupabaseClient.from('user_verification_tokens');
-      builder.single
-        .mockResolvedValueOnce({ data: mockTokenRecord, error: null }) // Token lookup
-        .mockResolvedValueOnce({ data: {}, error: null }); // Delete token
-      
-      // Setup user update scenario  
-      builder.eq.mockResolvedValue({ error: null });
+      // Setup complete mock behavior for verifyEmail test
+      let callCount = 0;
+      mockSupabaseClient.from.mockImplementation((tableName: string) => {
+        const query = createMockSupabaseClient().from(tableName);
+        
+        if (tableName === 'user_verification_tokens') {
+          callCount++;
+          if (callCount === 1) {
+            // First call: token lookup
+            query.single.mockResolvedValue({ data: mockTokenRecord, error: null });
+          } else {
+            // Second call: token deletion
+            query.eq.mockResolvedValue({ data: {}, error: null });
+          }
+        } else if (tableName === 'users') {
+          // User update for email verification
+          query.eq.mockResolvedValue({ data: {}, error: null });
+        }
+        
+        return query;
+      });
 
       const result = await authService.verifyEmail('valid_token');
 
@@ -351,11 +353,28 @@ describe('AuthService', () => {
       jwt.verify.mockReturnValue({ user_id: 'test-user-id', type: 'password_reset' });
 
       const mockSupabaseClient = supabase as jest.Mocked<typeof supabase>;
-      const builder = mockSupabaseClient.from('password_reset_tokens');
-      builder.single
-        .mockResolvedValueOnce({ data: mockTokenRecord, error: null })
-        .mockResolvedValueOnce({ data: {}, error: null });
-      builder.eq.mockResolvedValue({ error: null });
+      
+      // Setup complete mock behavior for resetPassword test
+      let callCount = 0;
+      mockSupabaseClient.from.mockImplementation((tableName: string) => {
+        const query = createMockSupabaseClient().from(tableName);
+        
+        if (tableName === 'password_reset_tokens') {
+          callCount++;
+          if (callCount === 1) {
+            // First call: token lookup
+            query.single.mockResolvedValue({ data: mockTokenRecord, error: null });
+          } else {
+            // Second call: token deletion
+            query.eq.mockResolvedValue({ data: {}, error: null });
+          }
+        } else if (tableName === 'users') {
+          // User password update
+          query.eq.mockResolvedValue({ data: {}, error: null });
+        }
+        
+        return query;
+      });
 
       const result = await authService.resetPassword('valid_token', 'NewPassword123!');
 

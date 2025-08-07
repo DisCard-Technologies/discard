@@ -3,6 +3,10 @@ import { AuthenticatedRequest } from '../../middleware/auth';
 import { VisaService } from './visa.service';
 import { AuthorizationService } from './authorization.service';
 import { RestrictionsService } from './restrictions.service';
+import { FraudDetectionService } from './fraud-detection.service';
+import { CurrencyConversionService } from './currency-conversion.service';
+import { DeclineReasonsService } from './decline-reasons.service';
+import { AuthorizationHoldsService } from './authorization-holds.service';
 import { Logger } from '../../utils/logger';
 
 interface MarqetaErrorResponse {
@@ -15,6 +19,10 @@ export class PaymentsController {
   private visaService = new VisaService();
   private authorizationService = new AuthorizationService();
   private restrictionsService = new RestrictionsService();
+  private fraudDetectionService = new FraudDetectionService();
+  private currencyConversionService = new CurrencyConversionService();
+  private declineReasonsService = new DeclineReasonsService();
+  private authorizationHoldsService = new AuthorizationHoldsService();
   private logger = new Logger('PaymentsController');
 
   /**
@@ -53,17 +61,21 @@ export class PaymentsController {
         merchantLocation
       });
 
-      const statusCode = authResult.approved ? 200 : 202; // 202 for declined transactions
+      const statusCode = authResult.status === 'approved' ? 200 : 202; // 202 for declined transactions
 
       res.status(statusCode).json({
         success: true,
         data: {
-          approved: authResult.approved,
+          authorizationId: authResult.authorizationId,
+          status: authResult.status,
+          approved: authResult.status === 'approved',
           authorizationCode: authResult.authorizationCode,
           declineReason: authResult.declineReason,
           declineCode: authResult.declineCode,
           holdId: authResult.holdId,
-          responseTimeMs: authResult.responseTimeMs
+          responseTimeMs: authResult.responseTimeMs,
+          riskScore: authResult.riskScore,
+          currencyConversion: authResult.currencyConversion
         }
       });
     } catch (error) {
@@ -73,9 +85,12 @@ export class PaymentsController {
         success: false,
         error: 'Authorization processing failed',
         data: {
+          authorizationId: null,
+          status: 'declined',
           approved: false,
           declineCode: 'PROCESSING_ERROR',
-          declineReason: 'Internal processing error'
+          declineReason: 'Internal processing error',
+          riskScore: 0
         }
       });
     }
@@ -318,12 +333,307 @@ export class PaymentsController {
   }
 
   /**
+   * Retry failed authorization
+   * POST /api/v1/payments/authorize/retry
+   */
+  async retryAuthorization(req: Request, res: Response): Promise<void> {
+    try {
+      const {
+        cardContext,
+        marqetaTransactionToken,
+        merchantName,
+        merchantCategoryCode,
+        amount,
+        currencyCode = 'USD',
+        merchantLocation,
+        previousAuthorizationId
+      } = req.body;
+
+      // Validate required fields
+      if (!cardContext || !marqetaTransactionToken || !merchantName || 
+          !merchantCategoryCode || !amount || !previousAuthorizationId) {
+        res.status(400).json({
+          success: false,
+          error: 'Missing required fields: cardContext, marqetaTransactionToken, merchantName, merchantCategoryCode, amount, previousAuthorizationId'
+        });
+        return;
+      }
+
+      // Process authorization retry
+      const authResult = await this.authorizationService.retryAuthorization({
+        cardContext,
+        marqetaTransactionToken,
+        merchantName,
+        merchantCategoryCode,
+        amount,
+        currencyCode,
+        merchantLocation
+      }, previousAuthorizationId);
+
+      const statusCode = authResult.status === 'approved' ? 200 : 202;
+
+      res.status(statusCode).json({
+        success: true,
+        data: authResult
+      });
+    } catch (error) {
+      this.logger.error('Authorization retry failed', { error, body: req.body });
+      
+      res.status(500).json({
+        success: false,
+        error: 'Authorization retry failed',
+        data: {
+          authorizationId: null,
+          status: 'declined',
+          approved: false,
+          declineCode: 'RETRY_ERROR',
+          declineReason: 'Authorization retry failed'
+        }
+      });
+    }
+  }
+
+  /**
+   * Get authorization status
+   * GET /api/v1/payments/authorization/:authId/status
+   */
+  async getAuthorizationStatus(req: Request, res: Response): Promise<void> {
+    try {
+      const { authId } = req.params;
+
+      if (!authId) {
+        res.status(400).json({
+          success: false,
+          error: 'Authorization ID is required'
+        });
+        return;
+      }
+
+      const authorization = await this.authorizationService.getAuthorizationStatus(authId);
+
+      if (!authorization) {
+        res.status(404).json({
+          success: false,
+          error: 'Authorization not found'
+        });
+        return;
+      }
+
+      res.json({
+        success: true,
+        data: authorization
+      });
+    } catch (error) {
+      this.logger.error('Failed to get authorization status', { error, authId: req.params.authId });
+      
+      res.status(500).json({
+        success: false,
+        error: 'Failed to retrieve authorization status'
+      });
+    }
+  }
+
+  /**
+   * Release authorization hold
+   * PUT /api/v1/payments/holds/:holdId/release
+   */
+  async releaseHold(req: Request, res: Response): Promise<void> {
+    try {
+      const { holdId } = req.params;
+      const { releaseAmount, releaseReason } = req.body;
+
+      if (!holdId) {
+        res.status(400).json({
+          success: false,
+          error: 'Hold ID is required'
+        });
+        return;
+      }
+
+      const releasedHold = await this.authorizationHoldsService.releaseHold({
+        holdId,
+        releaseAmount,
+        releaseReason
+      });
+
+      res.json({
+        success: true,
+        data: releasedHold,
+        message: 'Authorization hold released successfully'
+      });
+    } catch (error) {
+      this.logger.error('Failed to release hold', { error, holdId: req.params.holdId });
+      
+      const errorMessage = error instanceof Error ? error.message : 'Failed to release hold';
+      const statusCode = errorMessage.includes('not found') ? 404 : 500;
+
+      res.status(statusCode).json({
+        success: false,
+        error: errorMessage
+      });
+    }
+  }
+
+  /**
+   * Get decline reasons
+   * GET /api/v1/payments/decline-reasons
+   */
+  async getDeclineReasons(req: Request, res: Response): Promise<void> {
+    try {
+      const { category } = req.query;
+      
+      const reasons = await this.declineReasonsService.getDeclineReasonsByCategory(
+        category as any
+      );
+
+      res.json({
+        success: true,
+        data: {
+          reasons,
+          count: reasons.length
+        }
+      });
+    } catch (error) {
+      this.logger.error('Failed to get decline reasons', { error });
+      
+      res.status(500).json({
+        success: false,
+        error: 'Failed to retrieve decline reasons'
+      });
+    }
+  }
+
+  /**
+   * Get currency conversion quote
+   * POST /api/v1/payments/currency-conversion
+   */
+  async getCurrencyConversion(req: Request, res: Response): Promise<void> {
+    try {
+      const { amount, fromCurrency, toCurrency = 'USD' } = req.body;
+
+      if (!amount || !fromCurrency) {
+        res.status(400).json({
+          success: false,
+          error: 'Amount and fromCurrency are required'
+        });
+        return;
+      }
+
+      const conversion = await this.currencyConversionService.getConversionQuote(
+        amount,
+        fromCurrency,
+        toCurrency
+      );
+
+      res.json({
+        success: true,
+        data: conversion
+      });
+    } catch (error) {
+      this.logger.error('Currency conversion failed', { error, body: req.body });
+      
+      res.status(500).json({
+        success: false,
+        error: 'Currency conversion failed'
+      });
+    }
+  }
+
+  /**
+   * Get fraud detection metrics
+   * GET /api/v1/payments/cards/:cardContext/fraud-metrics
+   */
+  async getFraudMetrics(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      if (!req.user) {
+        res.status(401).json({
+          success: false,
+          error: 'Authentication required'
+        });
+        return;
+      }
+
+      const { cardContext } = req.params;
+      const { hoursBack = 24 } = req.query;
+
+      if (!cardContext) {
+        res.status(400).json({
+          success: false,
+          error: 'Card context is required'
+        });
+        return;
+      }
+
+      const metrics = await this.fraudDetectionService.getFraudMetrics(
+        cardContext,
+        parseInt(hoursBack as string)
+      );
+
+      res.json({
+        success: true,
+        data: metrics
+      });
+    } catch (error) {
+      this.logger.error('Failed to get fraud metrics', { error, cardContext: req.params.cardContext });
+      
+      res.status(500).json({
+        success: false,
+        error: 'Failed to retrieve fraud metrics'
+      });
+    }
+  }
+
+  /**
+   * Get hold metrics
+   * GET /api/v1/payments/cards/:cardContext/hold-metrics
+   */
+  async getHoldMetrics(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      if (!req.user) {
+        res.status(401).json({
+          success: false,
+          error: 'Authentication required'
+        });
+        return;
+      }
+
+      const { cardContext } = req.params;
+      const { hoursBack = 24 } = req.query;
+
+      if (!cardContext) {
+        res.status(400).json({
+          success: false,
+          error: 'Card context is required'
+        });
+        return;
+      }
+
+      const metrics = await this.authorizationHoldsService.getHoldMetrics(
+        cardContext,
+        parseInt(hoursBack as string)
+      );
+
+      res.json({
+        success: true,
+        data: metrics
+      });
+    } catch (error) {
+      this.logger.error('Failed to get hold metrics', { error, cardContext: req.params.cardContext });
+      
+      res.status(500).json({
+        success: false,
+        error: 'Failed to retrieve hold metrics'
+      });
+    }
+  }
+
+  /**
    * Expire old authorization holds (maintenance endpoint)
    * POST /api/v1/payments/maintenance/expire-holds
    */
   async expireOldHolds(req: Request, res: Response): Promise<void> {
     try {
-      const expiredCount = await this.authorizationService.expireOldHolds();
+      const expiredCount = await this.authorizationHoldsService.expireOldHolds();
 
       res.json({
         success: true,

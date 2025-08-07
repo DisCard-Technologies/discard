@@ -4,21 +4,32 @@ import { useCryptoStore } from '../../stores/crypto';
 import { useWebSocketConnection } from '../../hooks/useWebSocketConnection';
 
 export interface TransactionStatusMonitorProps {
-  transactionId: string;
+  transactionId?: string; // For crypto transactions
+  authorizationId?: string; // For payment authorizations
   cardId: string;
+  cardContext: string;
+  transactionType?: 'crypto' | 'authorization';
   onStatusChange?: (status: string) => void;
   onTransactionCompleted?: () => void;
+  onRetryRequested?: () => void;
 }
 
 export const TransactionStatusMonitor: React.FC<TransactionStatusMonitorProps> = ({
   transactionId,
+  authorizationId,
   cardId,
+  cardContext,
+  transactionType = 'crypto',
   onStatusChange,
-  onTransactionCompleted
+  onTransactionCompleted,
+  onRetryRequested
 }) => {
   const [transaction, setTransaction] = useState<any>(null);
+  const [authorization, setAuthorization] = useState<any>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [accelerationOptions, setAccelerationOptions] = useState<any[]>([]);
+  const [declineReason, setDeclineReason] = useState<string | null>(null);
+  const [canRetry, setCanRetry] = useState(false);
   
   const {
     getTransactionStatus,
@@ -27,8 +38,12 @@ export const TransactionStatusMonitor: React.FC<TransactionStatusMonitorProps> =
   } = useCryptoStore();
 
   // WebSocket connection for real-time updates
+  const wsUrl = transactionType === 'authorization'
+    ? `ws://localhost:8081/ws/payments/authorization?cardContext=${cardContext}&userId=${cardId}`
+    : `ws://localhost:8081/ws/crypto/transactions?cardId=${cardId}`;
+    
   const { isConnected, lastMessage } = useWebSocketConnection(
-    `ws://localhost:8081/ws/crypto/transactions?cardId=${cardId}`,
+    wsUrl,
     {
       onMessage: handleWebSocketMessage,
       reconnectInterval: 5000
@@ -37,19 +52,47 @@ export const TransactionStatusMonitor: React.FC<TransactionStatusMonitorProps> =
 
   const loadTransactionStatus = useCallback(async () => {
     try {
-      const status = await getTransactionStatus(transactionId, cardId);
-      if (status) {
-        setTransaction(status);
-        onStatusChange?.(status.status);
-        
-        if (status.status === 'confirmed') {
-          onTransactionCompleted?.();
+      if (transactionType === 'authorization' && authorizationId) {
+        // Load authorization status from payments API
+        const response = await fetch(`/api/v1/payments/authorization/${authorizationId}/status`);
+        if (response.ok) {
+          const { data } = await response.json();
+          setAuthorization(data);
+          onStatusChange?.(data.status);
+          
+          // Check if authorization is complete (approved/declined/expired)
+          if (['approved', 'declined', 'expired'].includes(data.status)) {
+            onTransactionCompleted?.();
+          }
+          
+          // Set decline information if declined
+          if (data.status === 'declined') {
+            setDeclineReason(data.declineReason);
+            // Check if this decline reason is retryable
+            const reasonResponse = await fetch(`/api/v1/payments/decline-reasons?code=${data.declineCode}`);
+            if (reasonResponse.ok) {
+              const { data: reasons } = await reasonResponse.json();
+              const reason = reasons.find(r => r.declineCode === data.declineCode);
+              setCanRetry(reason?.isRetryable || false);
+            }
+          }
+        }
+      } else if (transactionType === 'crypto' && transactionId) {
+        // Original crypto transaction logic
+        const status = await getTransactionStatus(transactionId, cardId);
+        if (status) {
+          setTransaction(status);
+          onStatusChange?.(status.status);
+          
+          if (status.status === 'confirmed') {
+            onTransactionCompleted?.();
+          }
         }
       }
     } catch (error) {
       console.error('Failed to load transaction status:', error);
     }
-  }, [transactionId, cardId, getTransactionStatus, onStatusChange, onTransactionCompleted]);
+  }, [transactionId, authorizationId, cardId, transactionType, getTransactionStatus, onStatusChange, onTransactionCompleted]);
 
   useEffect(() => {
     loadTransactionStatus();
@@ -59,14 +102,42 @@ export const TransactionStatusMonitor: React.FC<TransactionStatusMonitorProps> =
     try {
       const data = typeof message === 'string' ? JSON.parse(message) : message;
       
-      if (data.type === 'TRANSACTION_STATUS_UPDATE') {
-        const { payload } = data;
-        if (payload.transactionId === transactionId) {
-          setTransaction(payload.processing);
-          onStatusChange?.(payload.processing.status);
+      if (transactionType === 'authorization') {
+        // Handle authorization WebSocket messages
+        if (data.type === 'authorization_status' && data.authorizationId === authorizationId) {
+          setAuthorization(prev => ({ ...prev, status: data.status }));
+          onStatusChange?.(data.status);
           
-          if (payload.processing.status === 'confirmed') {
+          if (['approved', 'declined', 'expired'].includes(data.status)) {
             onTransactionCompleted?.();
+          }
+        } else if (data.type === 'hold_status') {
+          // Update hold information if relevant
+          setAuthorization(prev => prev ? {
+            ...prev,
+            holdStatus: data.status,
+            holdAmount: data.amount,
+            remainingAmount: data.remainingAmount
+          } : null);
+        } else if (data.type === 'retry_attempt' && data.authorizationId === authorizationId) {
+          setAuthorization(prev => prev ? {
+            ...prev,
+            retryAttempt: data.attempt,
+            maxRetryAttempts: data.maxAttempts,
+            nextRetryAt: data.nextRetryAt
+          } : null);
+        }
+      } else if (transactionType === 'crypto') {
+        // Original crypto transaction WebSocket handling
+        if (data.type === 'TRANSACTION_STATUS_UPDATE') {
+          const { payload } = data;
+          if (payload.transactionId === transactionId) {
+            setTransaction(payload.processing);
+            onStatusChange?.(payload.processing.status);
+            
+            if (payload.processing.status === 'confirmed') {
+              onTransactionCompleted?.();
+            }
           }
         }
       }
@@ -82,36 +153,66 @@ export const TransactionStatusMonitor: React.FC<TransactionStatusMonitorProps> =
   };
 
   const handleAccelerate = async () => {
-    try {
-      const options = await accelerateTransaction(transactionId, cardId);
-      setAccelerationOptions(options);
-    } catch (error) {
-      console.error('Failed to get acceleration options:', error);
+    if (transactionType === 'crypto' && transactionId) {
+      try {
+        const options = await accelerateTransaction(transactionId, cardId);
+        setAccelerationOptions(options);
+      } catch (error) {
+        console.error('Failed to get acceleration options:', error);
+      }
+    }
+  };
+
+  const handleRetryAuthorization = async () => {
+    if (transactionType === 'authorization' && authorizationId && canRetry) {
+      onRetryRequested?.();
     }
   };
 
   const getStatusColor = (status: string) => {
-    const colors = {
-      'initiated': '#ffa500',
-      'pending': '#ff8c00',
-      'confirming': '#32cd32',
-      'confirmed': '#008000',
-      'failed': '#dc3545',
-      'refunded': '#6c757d'
-    };
-    return colors[status] || '#6c757d';
+    if (transactionType === 'authorization') {
+      const authColors = {
+        'pending': '#ffa500',
+        'approved': '#008000',
+        'declined': '#dc3545',
+        'expired': '#6c757d',
+        'reversed': '#6c757d'
+      };
+      return authColors[status] || '#6c757d';
+    } else {
+      const cryptoColors = {
+        'initiated': '#ffa500',
+        'pending': '#ff8c00',
+        'confirming': '#32cd32',
+        'confirmed': '#008000',
+        'failed': '#dc3545',
+        'refunded': '#6c757d'
+      };
+      return cryptoColors[status] || '#6c757d';
+    }
   };
 
   const getStatusIcon = (status: string) => {
-    const icons = {
-      'initiated': '🚀',
-      'pending': '⏳',
-      'confirming': '⚡',
-      'confirmed': '✅',
-      'failed': '❌',
-      'refunded': '↩️'
-    };
-    return icons[status] || '📊';
+    if (transactionType === 'authorization') {
+      const authIcons = {
+        'pending': '⏳',
+        'approved': '✅',
+        'declined': '❌',
+        'expired': '⏰',
+        'reversed': '↩️'
+      };
+      return authIcons[status] || '📊';
+    } else {
+      const cryptoIcons = {
+        'initiated': '🚀',
+        'pending': '⏳',
+        'confirming': '⚡',
+        'confirmed': '✅',
+        'failed': '❌',
+        'refunded': '↩️'
+      };
+      return cryptoIcons[status] || '📊';
+    }
   };
 
   const formatTimeRemaining = () => {
@@ -133,24 +234,44 @@ export const TransactionStatusMonitor: React.FC<TransactionStatusMonitorProps> =
   };
 
   const getProgressPercentage = () => {
-    if (!transaction) return 0;
-    
-    if (transaction.status === 'confirmed') return 100;
-    if (transaction.status === 'failed' || transaction.status === 'refunded') return 100;
-    
-    return Math.min(
-      (transaction.confirmationCount / transaction.requiredConfirmations) * 100,
-      95 // Cap at 95% until fully confirmed
-    );
+    if (transactionType === 'authorization') {
+      if (!authorization) return 0;
+      
+      if (authorization.status === 'approved') return 100;
+      if (authorization.status === 'declined' || authorization.status === 'expired') return 100;
+      if (authorization.status === 'pending') return 50;
+      
+      return 0;
+    } else {
+      if (!transaction) return 0;
+      
+      if (transaction.status === 'confirmed') return 100;
+      if (transaction.status === 'failed' || transaction.status === 'refunded') return 100;
+      
+      return Math.min(
+        (transaction.confirmationCount / transaction.requiredConfirmations) * 100,
+        95 // Cap at 95% until fully confirmed
+      );
+    }
   };
 
   const canAccelerate = () => {
-    return transaction && 
+    return transactionType === 'crypto' &&
+           transaction && 
            (transaction.status === 'pending' || transaction.status === 'confirming') &&
            accelerationOptions.length === 0;
   };
 
-  if (!transaction) {
+  if (transactionType === 'authorization' && !authorization) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#007AFF" />
+        <Text style={styles.loadingText}>Loading authorization status...</Text>
+      </View>
+    );
+  }
+  
+  if (transactionType === 'crypto' && !transaction) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#007AFF" />
@@ -159,15 +280,16 @@ export const TransactionStatusMonitor: React.FC<TransactionStatusMonitorProps> =
     );
   }
 
+  const currentData = transactionType === 'authorization' ? authorization : transaction;
   const progressPercentage = getProgressPercentage();
 
   return (
     <View style={styles.container}>
       <View style={styles.header}>
         <View style={styles.statusContainer}>
-          <Text style={styles.statusIcon}>{getStatusIcon(transaction.status)}</Text>
-          <Text style={[styles.statusText, { color: getStatusColor(transaction.status) }]}>
-            {transaction.status.toUpperCase()}
+          <Text style={styles.statusIcon}>{getStatusIcon(currentData.status)}</Text>
+          <Text style={[styles.statusText, { color: getStatusColor(currentData.status) }]}>
+            {currentData.status.toUpperCase()}
           </Text>
         </View>
         
@@ -186,7 +308,7 @@ export const TransactionStatusMonitor: React.FC<TransactionStatusMonitorProps> =
               styles.progressFill, 
               { 
                 width: `${progressPercentage}%`,
-                backgroundColor: getStatusColor(transaction.status)
+                backgroundColor: getStatusColor(currentData.status)
               }
             ]} 
           />
@@ -195,39 +317,104 @@ export const TransactionStatusMonitor: React.FC<TransactionStatusMonitorProps> =
       </View>
 
       <View style={styles.detailsContainer}>
-        <View style={styles.detailRow}>
-          <Text style={styles.detailLabel}>Network:</Text>
-          <Text style={styles.detailValue}>{transaction.networkType}</Text>
-        </View>
+        {transactionType === 'authorization' ? (
+          // Authorization-specific details
+          <>
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>Merchant:</Text>
+              <Text style={styles.detailValue}>{authorization.merchantName}</Text>
+            </View>
 
-        <View style={styles.detailRow}>
-          <Text style={styles.detailLabel}>Confirmations:</Text>
-          <Text style={styles.detailValue}>
-            {transaction.confirmationCount} / {transaction.requiredConfirmations}
-          </Text>
-        </View>
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>Amount:</Text>
+              <Text style={styles.detailValue}>
+                ${(authorization.authorizationAmount / 100).toFixed(2)} {authorization.currencyCode}
+              </Text>
+            </View>
 
-        <View style={styles.detailRow}>
-          <Text style={styles.detailLabel}>Processing ID:</Text>
-          <Text style={styles.detailValue} numberOfLines={1} ellipsizeMode="middle">
-            {transaction.processingId}
-          </Text>
-        </View>
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>Risk Score:</Text>
+              <Text style={styles.detailValue}>
+                {authorization.riskScore}/100 ({authorization.riskScore <= 30 ? 'Low' : authorization.riskScore <= 70 ? 'Medium' : 'High'})
+              </Text>
+            </View>
 
-        {transaction.estimatedCompletion && transaction.status !== 'confirmed' && (
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Time Remaining:</Text>
-            <Text style={styles.detailValue}>{formatTimeRemaining()}</Text>
-          </View>
-        )}
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>Response Time:</Text>
+              <Text style={styles.detailValue}>{authorization.responseTimeMs}ms</Text>
+            </View>
 
-        {transaction.completedAt && (
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Completed:</Text>
-            <Text style={styles.detailValue}>
-              {new Date(transaction.completedAt).toLocaleString()}
-            </Text>
-          </View>
+            {authorization.authorizationCode && (
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>Auth Code:</Text>
+                <Text style={styles.detailValue}>{authorization.authorizationCode}</Text>
+              </View>
+            )}
+
+            {authorization.processedAt && (
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>Processed:</Text>
+                <Text style={styles.detailValue}>
+                  {new Date(authorization.processedAt).toLocaleString()}
+                </Text>
+              </View>
+            )}
+
+            {authorization.currencyConversion && (
+              <>
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Exchange Rate:</Text>
+                  <Text style={styles.detailValue}>
+                    {authorization.currencyConversion.exchangeRate.toFixed(4)}
+                  </Text>
+                </View>
+                <View style={styles.detailRow}>
+                  <Text style={styles.detailLabel}>Conversion Fee:</Text>
+                  <Text style={styles.detailValue}>
+                    ${(authorization.currencyConversion.conversionFee / 100).toFixed(2)}
+                  </Text>
+                </View>
+              </>
+            )}
+          </>
+        ) : (
+          // Crypto transaction details
+          <>
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>Network:</Text>
+              <Text style={styles.detailValue}>{transaction.networkType}</Text>
+            </View>
+
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>Confirmations:</Text>
+              <Text style={styles.detailValue}>
+                {transaction.confirmationCount} / {transaction.requiredConfirmations}
+              </Text>
+            </View>
+
+            <View style={styles.detailRow}>
+              <Text style={styles.detailLabel}>Processing ID:</Text>
+              <Text style={styles.detailValue} numberOfLines={1} ellipsizeMode="middle">
+                {transaction.processingId}
+              </Text>
+            </View>
+
+            {transaction.estimatedCompletion && transaction.status !== 'confirmed' && (
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>Time Remaining:</Text>
+                <Text style={styles.detailValue}>{formatTimeRemaining()}</Text>
+              </View>
+            )}
+
+            {transaction.completedAt && (
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>Completed:</Text>
+                <Text style={styles.detailValue}>
+                  {new Date(transaction.completedAt).toLocaleString()}
+                </Text>
+              </View>
+            )}
+          </>
         )}
       </View>
 
@@ -242,13 +429,23 @@ export const TransactionStatusMonitor: React.FC<TransactionStatusMonitorProps> =
           </Text>
         </TouchableOpacity>
 
-        {canAccelerate() && (
+        {transactionType === 'crypto' && canAccelerate() && (
           <TouchableOpacity
             style={styles.accelerateButton}
             onPress={handleAccelerate}
             disabled={isLoading}
           >
             <Text style={styles.accelerateButtonText}>⚡ Accelerate</Text>
+          </TouchableOpacity>
+        )}
+        
+        {transactionType === 'authorization' && canRetry && authorization?.status === 'declined' && (
+          <TouchableOpacity
+            style={styles.retryButton}
+            onPress={handleRetryAuthorization}
+            disabled={isLoading}
+          >
+            <Text style={styles.retryButtonText}>🔄 Retry</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -277,7 +474,28 @@ export const TransactionStatusMonitor: React.FC<TransactionStatusMonitorProps> =
         </View>
       )}
 
-      {(transaction.status === 'failed' || transaction.status === 'refunded') && (
+      {transactionType === 'authorization' && authorization?.status === 'declined' && (
+        <View style={styles.statusMessage}>
+          <Text style={styles.statusMessageText}>
+            ❌ Authorization declined: {declineReason || authorization.declineReason}
+          </Text>
+          {canRetry && (
+            <Text style={styles.statusMessageSubtext}>
+              This transaction can be retried. Tap the Retry button above to try again.
+            </Text>
+          )}
+        </View>
+      )}
+      
+      {transactionType === 'authorization' && authorization?.status === 'expired' && (
+        <View style={styles.statusMessage}>
+          <Text style={styles.statusMessageText}>
+            ⏰ Authorization expired. Please initiate a new transaction.
+          </Text>
+        </View>
+      )}
+      
+      {transactionType === 'crypto' && (transaction?.status === 'failed' || transaction?.status === 'refunded') && (
         <View style={styles.statusMessage}>
           <Text style={styles.statusMessageText}>
             {transaction.status === 'failed' 
@@ -424,6 +642,19 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
   },
+  retryButton: {
+    flex: 1,
+    backgroundColor: '#007AFF',
+    borderRadius: 8,
+    paddingVertical: 12,
+    alignItems: 'center',
+    marginLeft: 8,
+  },
+  retryButtonText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
   accelerationContainer: {
     backgroundColor: '#fff3cd',
     borderRadius: 8,
@@ -480,5 +711,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#495057',
     lineHeight: 20,
+  },
+  statusMessageSubtext: {
+    fontSize: 12,
+    color: '#6c757d',
+    marginTop: 8,
+    lineHeight: 16,
   },
 });

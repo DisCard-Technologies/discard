@@ -6,7 +6,7 @@ import {
   RateComparisonResponse,
   CryptoRateComparison
 } from '@discard/shared/src/types/crypto';
-import { supabase } from '../../database/connection';
+import { DatabaseService } from '../database.service';
 import { enhancedRatesService } from './rates.service';
 import Decimal from 'decimal.js';
 import { v4 as uuidv4 } from 'uuid';
@@ -27,6 +27,9 @@ interface GasEstimate {
 }
 
 export class ConversionService {
+  private databaseService = new DatabaseService();
+  private supabase = this.databaseService.getClient();
+  
   // Fee structures by currency
   private readonly FEE_STRUCTURES: Record<string, FeeStructure> = {
     'BTC': {
@@ -332,7 +335,7 @@ export class ConversionService {
       };
 
       // Save quote to database
-      const { error } = await supabase
+      const { error } = await this.supabase
         .from('conversion_quotes')
         .insert({
           quote_id: quoteId,
@@ -386,7 +389,7 @@ export class ConversionService {
       }
 
       // Fallback to database
-      const { data, error } = await supabase
+      const { data, error } = await this.supabase
         .from('conversion_quotes')
         .select('*')
         .eq('quote_id', quoteId)
@@ -436,7 +439,7 @@ export class ConversionService {
    */
   async useConversionQuote(quoteId: string): Promise<boolean> {
     try {
-      const { error } = await supabase
+      const { error } = await this.supabase
         .from('conversion_quotes')
         .update({ 
           status: 'used',
@@ -466,7 +469,7 @@ export class ConversionService {
    */
   async cancelConversionQuote(quoteId: string): Promise<boolean> {
     try {
-      const { error } = await supabase
+      const { error } = await this.supabase
         .from('conversion_quotes')
         .update({ 
           status: 'expired',
@@ -496,7 +499,7 @@ export class ConversionService {
    */
   async cleanupExpiredQuotes(): Promise<void> {
     try {
-      await supabase.rpc('expire_old_quotes');
+      await this.supabase.rpc('expire_old_quotes');
     } catch (error) {
       console.error('Cleanup expired quotes error:', error);
     }

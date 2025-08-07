@@ -50,10 +50,11 @@ export class VisaService {
   private readonly sandboxBin = '554948';
 
   constructor() {
-    this.encryptionKey = process.env.CARD_ENCRYPTION_KEY;
-    if (!this.encryptionKey) {
+    const key = process.env.CARD_ENCRYPTION_KEY;
+    if (!key) {
       throw new Error('Card encryption key not configured');
     }
+    this.encryptionKey = key;
   }
 
   /**
@@ -426,7 +427,7 @@ export class VisaService {
    */
   private encryptData(data: string): string {
     const iv = crypto.randomBytes(16);
-    const cipher = crypto.createCipher('aes-256-cbc', this.encryptionKey);
+    const cipher = crypto.createCipheriv('aes-256-cbc', this.encryptionKey, iv);
     let encrypted = cipher.update(data, 'utf8', 'hex');
     encrypted += cipher.final('hex');
     return iv.toString('hex') + ':' + encrypted;
@@ -439,7 +440,7 @@ export class VisaService {
     const parts = encryptedData.split(':');
     const iv = Buffer.from(parts[0], 'hex');
     const encrypted = parts[1];
-    const decipher = crypto.createDecipher('aes-256-cbc', this.encryptionKey);
+    const decipher = crypto.createDecipheriv('aes-256-cbc', this.encryptionKey, iv);
     let decrypted = decipher.update(encrypted, 'hex', 'utf8');
     decrypted += decipher.final('utf8');
     return decrypted;

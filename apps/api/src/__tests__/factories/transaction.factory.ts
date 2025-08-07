@@ -3,23 +3,18 @@
  * Simplifies creation of transaction test data with realistic defaults
  */
 
+import { CryptoTransaction } from '@discard/shared/src/types/crypto';
+
 export interface TransactionFactoryOptions {
   transactionId?: string;
-  walletId?: string;
-  fromAddress?: string;
-  toAddress?: string;
-  amount?: string;
-  currency?: string;
-  network?: 'mainnet' | 'testnet';
-  transactionHash?: string;
-  status?: 'pending' | 'confirmed' | 'failed' | 'cancelled';
-  blockNumber?: number;
-  gasPrice?: string;
-  gasUsed?: string;
-  fee?: string;
-  confirmations?: number;
-  timestamp?: string;
-  type?: 'send' | 'receive' | 'swap' | 'stake';
+  cryptoType?: 'BTC' | 'ETH' | 'USDT' | 'USDC' | 'XRP';
+  cryptoAmount?: string;
+  usdAmount?: number;
+  conversionRate?: string;
+  networkFee?: number;
+  status?: 'pending' | 'confirmed' | 'failed' | 'expired';
+  blockchainTxHash?: string;
+  fundingContext?: string;
 }
 
 export interface BitcoinTransactionOptions extends TransactionFactoryOptions {
@@ -35,52 +30,45 @@ export interface BitcoinTransactionOptions extends TransactionFactoryOptions {
 }
 
 export class TransactionFactory {
-  static create(overrides: TransactionFactoryOptions = {}) {
+  static create(overrides: TransactionFactoryOptions = {}): CryptoTransaction {
     return {
       transactionId: overrides.transactionId || this.generateId(),
-      walletId: overrides.walletId || `wallet-${this.generateShortId()}`,
-      fromAddress: overrides.fromAddress || this.generateEthAddress(),
-      toAddress: overrides.toAddress || this.generateEthAddress(),
-      amount: overrides.amount || '1.0',
-      currency: overrides.currency || 'ETH',
-      network: overrides.network || 'mainnet',
-      transactionHash: overrides.transactionHash || this.generateTxHash(),
+      cryptoType: overrides.cryptoType || 'ETH',
+      cryptoAmount: overrides.cryptoAmount || '1.0',
+      usdAmount: overrides.usdAmount || 300000, // $3000 in cents
+      conversionRate: overrides.conversionRate || '3000.00',
+      networkFee: overrides.networkFee || 4200, // $42 in cents
       status: overrides.status || 'confirmed',
-      blockNumber: overrides.blockNumber || Math.floor(Math.random() * 1000000) + 18000000,
-      gasPrice: overrides.gasPrice || '20000000000', // 20 Gwei
-      gasUsed: overrides.gasUsed || '21000',
-      fee: overrides.fee || '0.00042', // gasPrice * gasUsed
-      confirmations: overrides.confirmations || 12,
-      timestamp: overrides.timestamp || new Date().toISOString(),
-      type: overrides.type || 'send',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+      blockchainTxHash: overrides.blockchainTxHash || this.generateTxHash(),
+      fundingContext: overrides.fundingContext || `card-${this.generateShortId()}`
     };
   }
 
-  static createEthereumTransaction(overrides: TransactionFactoryOptions = {}) {
+  static createEthereumTransaction(overrides: TransactionFactoryOptions = {}): CryptoTransaction {
     return this.create({
-      currency: 'ETH',
-      fromAddress: '0x742d35cc6603c0532c28b8eeaf7896fd5b5e1dca',
-      toAddress: '0x8ba1f109551bD432803012645Hac136c4c4e0e9',
-      gasPrice: '20000000000',
-      gasUsed: '21000',
-      fee: '0.00042',
+      cryptoType: 'ETH',
+      cryptoAmount: '1.0',
+      usdAmount: 300000,
+      conversionRate: '3000.00',
+      networkFee: 4200,
+      blockchainTxHash: '0x742d35cc6603c0532c28b8eeaf7896fd5b5e1dca123456789',
       ...overrides
     });
   }
 
-  static createBitcoinTransaction(overrides: BitcoinTransactionOptions = {}) {
+  static createBitcoinTransaction(overrides: BitcoinTransactionOptions = {}): CryptoTransaction & { utxos: any[]; feeRate: number; psbtHex: string } {
+    const baseTransaction = this.create({
+      cryptoType: 'BTC',
+      cryptoAmount: '1.0',
+      usdAmount: 4500000, // $45,000 in cents
+      conversionRate: '45000.00',
+      networkFee: 1000, // $10 in cents
+      blockchainTxHash: 'abc123def456789abc123def456789abc123def456789abc123def456789',
+      ...overrides
+    });
+    
     return {
-      ...this.create({
-        currency: 'BTC',
-        fromAddress: '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa',
-        toAddress: '1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2',
-        gasPrice: undefined, // Bitcoin uses fee rate instead
-        gasUsed: undefined,
-        fee: '0.00001',
-        ...overrides
-      }),
+      ...baseTransaction,
       utxos: overrides.utxos || [
         {
           txid: 'abc123def456789',
@@ -95,61 +83,58 @@ export class TransactionFactory {
     };
   }
 
-  static createUSDTTransaction(overrides: TransactionFactoryOptions = {}) {
+  static createUSDTTransaction(overrides: TransactionFactoryOptions = {}): CryptoTransaction {
     return this.create({
-      currency: 'USDT',
-      amount: '100.0',
-      fromAddress: '0x742d35cc6603c0532c28b8eeaf7896fd5b5e1dca',
-      toAddress: '0x8ba1f109551bD432803012645Hac136c4c4e0e9',
-      gasPrice: '25000000000',
-      gasUsed: '65000', // Higher gas for token transfers
-      fee: '0.001625',
+      cryptoType: 'USDT',
+      cryptoAmount: '100.0',
+      usdAmount: 10000, // $100 in cents
+      conversionRate: '1.00',
+      networkFee: 162, // $1.62 in cents
       ...overrides
     });
   }
 
-  static createPendingTransaction(overrides: TransactionFactoryOptions = {}) {
+  static createPendingTransaction(overrides: TransactionFactoryOptions = {}): CryptoTransaction {
     return this.create({
       status: 'pending',
-      blockNumber: undefined,
-      confirmations: 0,
       ...overrides
     });
   }
 
-  static createFailedTransaction(overrides: TransactionFactoryOptions = {}) {
+  static createFailedTransaction(overrides: TransactionFactoryOptions = {}): CryptoTransaction {
     return this.create({
       status: 'failed',
-      blockNumber: undefined,
-      confirmations: 0,
       ...overrides
     });
   }
 
-  static createMultiple(count: number, overrides: TransactionFactoryOptions = []) {
+  static createMultiple(count: number, overrides: TransactionFactoryOptions = {}): CryptoTransaction[] {
     return Array.from({ length: count }, (_, index) => 
       this.create({
-        amount: ((index + 1) * 0.5).toString(),
-        timestamp: new Date(Date.now() - (index * 3600000)).toISOString(), // 1 hour apart
+        cryptoAmount: ((index + 1) * 0.5).toString(),
+        usdAmount: Math.floor(((index + 1) * 0.5) * 300000), // Varying USD amounts
         ...overrides
       })
     );
   }
 
-  static createTransactionHistory(walletId: string, count: number = 10) {
+  static createTransactionHistory(fundingContext: string, count: number = 10): CryptoTransaction[] {
     const transactions = [];
-    const statuses = ['confirmed', 'confirmed', 'confirmed', 'pending', 'failed'];
-    const types = ['send', 'receive', 'send', 'receive'];
-    const currencies = ['ETH', 'BTC', 'USDT', 'USDC'];
+    const statuses: Array<'confirmed' | 'pending' | 'failed' | 'expired'> = ['confirmed', 'confirmed', 'confirmed', 'pending', 'failed'];
+    const currencies: Array<'ETH' | 'BTC' | 'USDT' | 'USDC' | 'XRP'> = ['ETH', 'BTC', 'USDT', 'USDC'];
 
     for (let i = 0; i < count; i++) {
+      const cryptoType = currencies[Math.floor(Math.random() * currencies.length)];
+      const amount = (Math.random() * 10).toFixed(4);
+      const rate = cryptoType === 'USDT' ? 1 : Math.random() * 50000; // Mock rates
+      
       transactions.push(this.create({
-        walletId,
+        fundingContext,
         status: statuses[Math.floor(Math.random() * statuses.length)],
-        type: types[Math.floor(Math.random() * types.length)],
-        currency: currencies[Math.floor(Math.random() * currencies.length)],
-        amount: (Math.random() * 10).toFixed(4),
-        timestamp: new Date(Date.now() - (i * 3600000)).toISOString()
+        cryptoType,
+        cryptoAmount: amount,
+        usdAmount: Math.floor(parseFloat(amount) * rate * 100), // Convert to cents
+        conversionRate: rate.toFixed(2)
       }));
     }
 

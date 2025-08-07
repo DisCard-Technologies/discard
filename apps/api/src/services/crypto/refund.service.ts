@@ -5,6 +5,12 @@ import { DatabaseService } from '../database.service';
 import { TransactionWebSocketService } from './transaction-websocket.service';
 import { FraudDetectionService } from './fraud-detection.service';
 
+// Utility function to handle errors safely
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  return String(error);
+}
+
 export interface RefundTransaction {
   refundId: string;
   originalTransactionId: string;
@@ -147,7 +153,7 @@ export class RefundService {
       [limit, offset]
     );
 
-    return result.rows.map(row => ({
+    return result.rows.map((row: any) => ({
       refundId: row.refund_id,
       originalTransactionId: row.original_transaction_id,
       refundAmount: row.refund_amount,
@@ -168,23 +174,23 @@ export class RefundService {
 
     if (status === 'processing') {
       updateFields.push(`processed_at = $${paramIndex}`);
-      values.push(new Date().toISOString());
+      values.push(new Date().toISOString() as any);
       paramIndex++;
     }
 
     if (status === 'completed') {
       updateFields.push(`completed_at = $${paramIndex}`);
-      values.push(new Date().toISOString());
+      values.push(new Date().toISOString() as any);
       paramIndex++;
     }
 
     if (blockchainHash) {
       updateFields.push(`blockchain_refund_hash = $${paramIndex}`);
-      values.push(blockchainHash);
+      values.push(blockchainHash as any);
       paramIndex++;
     }
 
-    values.push(refundId);
+    values.push(refundId as any);
 
     await this.databaseService.query(
       `UPDATE refund_transactions 
@@ -265,7 +271,7 @@ export class RefundService {
       } catch (error) {
         logger.error('Error processing automatic refund', {
           transactionId,
-          error: error.message
+          error: getErrorMessage(error)
         });
       }
     }
@@ -403,7 +409,7 @@ export class RefundService {
         }
       }
     } catch (error) {
-      throw new Error(`Ethereum address validation failed: ${error.message}`);
+      throw new Error(`Ethereum address validation failed: ${getErrorMessage(error)}`);
     }
   }
 

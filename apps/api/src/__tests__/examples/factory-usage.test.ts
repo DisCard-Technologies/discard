@@ -26,14 +26,13 @@ describe('Factory Usage Examples', () => {
 
     it('should create Bitcoin wallet with specific overrides', () => {
       const wallet = CryptoWalletFactory.createBitcoinWallet({
-        walletName: 'My Bitcoin Wallet',
-        balance: { confirmed: 2.5, total: 2.5 }
+        walletName: 'My Bitcoin Wallet'
       });
       
       expect(wallet.walletType).toBe('bitcoin');
       expect(wallet.walletName).toBe('My Bitcoin Wallet');
-      expect(wallet.balance.confirmed).toBe(2.5);
       expect(wallet.supportedCurrencies).toEqual(['BTC']);
+      expect(wallet.permissions).toEqual(['balance', 'send']);
     });
 
     it('should create multiple wallets with different configurations', () => {
@@ -56,47 +55,46 @@ describe('Factory Usage Examples', () => {
       
       expect(tx).toHaveProperty('transactionId');
       expect(tx).toHaveProperty('status', 'confirmed');
-      expect(tx).toHaveProperty('currency', 'ETH');
-      expect(tx.amount).toBe('1.0');
+      expect(tx).toHaveProperty('cryptoType', 'ETH');
+      expect(tx.cryptoAmount).toBe('1.0');
     });
 
     it('should create specialized transaction types', () => {
       const ethTx = TransactionFactory.createEthereumTransaction({
-        amount: '0.5',
-        type: 'send'
+        cryptoAmount: '0.5'
       });
 
       const btcTx = TransactionFactory.createBitcoinTransaction({
-        amount: '0.001',
+        cryptoAmount: '0.001',
         feeRate: 15
       });
 
       const usdtTx = TransactionFactory.createUSDTTransaction({
-        amount: '100.0'
+        cryptoAmount: '100.0'
       });
       
-      expect(ethTx.currency).toBe('ETH');
-      expect(btcTx.currency).toBe('BTC');
+      expect(ethTx.cryptoType).toBe('ETH');
+      expect(btcTx.cryptoType).toBe('BTC');
       expect(btcTx.feeRate).toBe(15);
-      expect(usdtTx.currency).toBe('USDT');
-      expect(usdtTx.amount).toBe('100.0');
+      expect(usdtTx.cryptoType).toBe('USDT');
+      expect(usdtTx.cryptoAmount).toBe('100.0');
     });
 
     it('should create transaction history', () => {
-      const walletId = 'wallet-123';
-      const history = TransactionFactory.createTransactionHistory(walletId, 10);
+      const fundingContext = 'card-123';
+      const history = TransactionFactory.createTransactionHistory(fundingContext, 10);
       
       expect(history).toHaveLength(10);
-      expect(history.every(tx => tx.walletId === walletId)).toBe(true);
+      expect(history.every(tx => tx.fundingContext === fundingContext)).toBe(true);
       
       // Should have variety in transaction properties
-      const currencies = history.map(tx => tx.currency);
-      const types = history.map(tx => tx.type);
+      const cryptoTypes = history.map(tx => tx.cryptoType);
+      const statuses = history.map(tx => tx.status);
       
       // With 10 transactions, we should have some variety
-      expect(currencies.length).toBe(10);
-      expect(types.length).toBe(10);
-      expect(history[0].timestamp).not.toBe(history[1].timestamp); // Different timestamps
+      expect(cryptoTypes.length).toBe(10);
+      expect(statuses.length).toBe(10);
+      expect(history[0].transactionId).not.toBe(history[1].transactionId); // Different IDs
     });
   });
 
@@ -200,9 +198,9 @@ describe('Factory Usage Examples', () => {
       const user = UserFactory.create({ email: 'test@example.com' });
       const session = SessionFactory.create({ userId: user.userId });
       const wallet = CryptoWalletFactory.createBitcoinWallet({ 
-        balance: { confirmed: 1.5, total: 1.5 }
+        walletName: 'Test Bitcoin Wallet'
       });
-      const transactions = TransactionFactory.createTransactionHistory(wallet.walletId, 3);
+      const transactions = TransactionFactory.createTransactionHistory('card-123', 3);
 
       // Setup database mocks
       const userMock = SupabaseMockFactory.createChainableMock();
@@ -215,11 +213,11 @@ describe('Factory Usage Examples', () => {
 
       // Test assertions
       expect(user.userId).toBe(session.userId);
-      expect(transactions.every(tx => tx.walletId === wallet.walletId)).toBe(true);
+      expect(transactions.every(tx => tx.fundingContext === 'card-123')).toBe(true);
       
       // All test data is properly related and realistic
       expect(wallet.walletType).toBe('bitcoin');
-      expect(wallet.balance.confirmed).toBe(1.5);
+      expect(wallet.walletName).toBe('Test Bitcoin Wallet');
       expect(transactions).toHaveLength(3);
     });
   });

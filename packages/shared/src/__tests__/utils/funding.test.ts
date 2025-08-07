@@ -12,9 +12,9 @@ import {
   generateTransactionId,
   validateCardId,
   calculateAvailableBalance
-} from '../utils/funding';
-import { FUNDING_CONSTANTS } from '../constants/funding';
-import { FundingTransaction, AccountBalance } from '../types/funding';
+} from '../../utils/funding';
+import { FUNDING_CONSTANTS } from '../../constants/funding';
+import { FundingTransaction, AccountBalance } from '../../types/funding';
 
 describe('Funding Utilities', () => {
   describe('validateFundingAmount', () => {

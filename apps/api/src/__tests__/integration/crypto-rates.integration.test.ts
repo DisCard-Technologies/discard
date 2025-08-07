@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from '@jest/globals';
 import request from 'supertest';
-import { app } from '../../app';
-import { supabase } from '../../database/connection';
+import app from '../../app';
+import { supabase } from '../../app';
 import { redis } from '../../config/redis';
 import nock from 'nock';
 import jwt from 'jsonwebtoken';

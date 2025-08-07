@@ -4,7 +4,7 @@ import {
   validateCurrency,
   validateEmail,
   validateNotificationThreshold
-} from '../utils/validation';
+} from '../../utils/validation';
 
 describe('Validation Utilities', () => {
   describe('validateStripePaymentMethodId', () => {

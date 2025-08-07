@@ -8,6 +8,12 @@ import { FraudDetectionService } from './fraud-detection.service';
 import { RefundService } from './refund.service';
 import { TransactionWebSocketService } from './transaction-websocket.service';
 
+// Utility function to handle errors safely
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  return String(error);
+}
+
 export interface CryptoTransactionProcessing {
   processingId: string;
   transactionId: string;
@@ -93,11 +99,10 @@ export class CryptoTransactionService {
     });
 
     // Get locked conversion rate
-    const conversionQuote = await this.conversionService.getConversionQuote({
-      fromCurrency: networkType,
-      toCurrency: 'USD',
-      amount: amount
-    });
+    const conversionQuote = await this.conversionService.getConversionQuote(transactionId);
+    if (!conversionQuote) {
+      throw new Error('Unable to get conversion quote for transaction');
+    }
 
     // Calculate network fee estimate
     const networkFee = await this.estimateNetworkFee(networkType, 'standard');
@@ -207,7 +212,7 @@ export class CryptoTransactionService {
       [limit, offset]
     );
 
-    return result.rows.map(row => ({
+    return result.rows.map((row: any) => ({
       processingId: row.processing_id,
       transactionId: row.transaction_id,
       blockchainTxHash: row.blockchain_tx_hash,

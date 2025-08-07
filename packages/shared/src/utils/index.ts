@@ -81,9 +81,9 @@ export const debounce = <T extends (...args: any[]) => any>(
   func: T,
   wait: number
 ): (...args: Parameters<T>) => void => {
-  let timeout: NodeJS.Timeout;
+  let timeout: number | NodeJS.Timeout;
   return (...args: Parameters<T>) => {
-    clearTimeout(timeout);
+    clearTimeout(timeout as any);
     timeout = setTimeout(() => func(...args), wait);
   };
 };

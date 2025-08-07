@@ -5,10 +5,16 @@ import {
   HistoricalRateResponse,
   HistoricalRatePoint
 } from '@discard/shared/src/types/crypto';
-import { supabase } from '../../database/connection';
+import { DatabaseService } from '../database.service';
 import WebSocket from 'ws';
 import Decimal from 'decimal.js';
 import { cacheService } from '../../config/redis';
+
+// Utility function to handle errors safely
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return getErrorMessage(error);
+  return String(error);
+}
 
 interface RateCache {
   rates: ConversionRates;
@@ -25,9 +31,11 @@ interface RateSource {
 }
 
 export class EnhancedRatesService {
+  private databaseService = new DatabaseService();
+  private supabase = this.databaseService.getClient();
   private cache: RateCache | null = null;
   private readonly CACHE_TTL = 30 * 1000; // 30 seconds for real-time updates
-  private refreshInterval: NodeJS.Timer | null = null;
+  private refreshInterval: any = null;
   private wsClients: Set<WebSocket> = new Set();
   
   // Rate sources with failover priority
@@ -156,7 +164,7 @@ export class EnhancedRatesService {
       } catch (error) {
         console.error(`Failed to fetch rates from ${source.name}:`, error);
         lastError = error as Error;
-        source.lastError = error.message;
+        source.lastError = getErrorMessage(error);
         
         // Consider deactivating source after multiple failures
         // This could be enhanced with more sophisticated logic
@@ -269,7 +277,7 @@ export class EnhancedRatesService {
       const currentTime = new Date().toISOString();
 
       for (const currency of currencies) {
-        const { data, error } = await supabase
+        const { data, error } = await this.supabase
           .from('crypto_rates')
           .select('usd_price, timestamp')
           .eq('symbol', currency)
@@ -333,7 +341,7 @@ export class EnhancedRatesService {
 
       for (const [symbol, rateData] of Object.entries(rates)) {
         // Save to crypto_rates table (latest rates)
-        await supabase
+        await this.supabase
           .from('crypto_rates')
           .upsert({
             symbol,
@@ -346,7 +354,7 @@ export class EnhancedRatesService {
           });
 
         // Save to rate_history table
-        await supabase
+        await this.supabase
           .from('rate_history')
           .insert({
             symbol,
@@ -357,7 +365,7 @@ export class EnhancedRatesService {
       }
 
       // Clean up old rate history (7-day retention)
-      await supabase.rpc('cleanup_rate_history');
+      await this.supabase.rpc('cleanup_rate_history');
       
     } catch (error) {
       console.error('Failed to save rates to database:', error);
@@ -372,7 +380,7 @@ export class EnhancedRatesService {
       const timeframe = this.getTimeframeInterval(request.timeframe);
       const resolution = request.resolution || '1h';
       
-      const { data, error } = await supabase
+      const { data, error } = await this.supabase
         .from('rate_history')
         .select('usd_price, timestamp, volume')
         .eq('symbol', request.symbol)
@@ -380,7 +388,7 @@ export class EnhancedRatesService {
         .order('timestamp', { ascending: true });
 
       if (error) {
-        throw new Error(`Database error: ${error.message}`);
+        throw new Error(`Database error: ${getErrorMessage(error)}`);
       }
 
       const dataPoints: HistoricalRatePoint[] = (data || []).map(point => ({

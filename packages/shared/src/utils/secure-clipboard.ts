@@ -17,11 +17,11 @@ export interface SecureClipboardOptions {
 export interface ClipboardResult {
   success: boolean;
   message: string;
-  timeoutId?: NodeJS.Timeout;
+  timeoutId?: number | NodeJS.Timeout;
 }
 
 class SecureClipboard {
-  private activeTimeouts: Map<string, NodeJS.Timeout> = new Map();
+  private activeTimeouts: Map<string, number | NodeJS.Timeout> = new Map();
 
   /**
    * Copy sensitive data to clipboard with automatic timeout clearing
@@ -116,7 +116,7 @@ class SecureClipboard {
   private clearTimeout(identifier: string): void {
     const timeout = this.activeTimeouts.get(identifier);
     if (timeout) {
-      clearTimeout(timeout);
+      clearTimeout(timeout as any);
       this.activeTimeouts.delete(identifier);
     }
   }

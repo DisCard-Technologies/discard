@@ -6,8 +6,7 @@
  */
 
 import React from 'react';
-import { formatCurrency } from '@discard/shared/src/utils/funding';
-import { AccountBalance } from '@discard/shared';
+import { formatCurrency, AccountBalance } from '@discard/shared';
 
 interface BalanceDisplayProps {
   accountBalance?: AccountBalance | null;

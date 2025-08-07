@@ -18,8 +18,9 @@ export class Logger {
   }
 
   debug(message: string, data?: any): void {
-    if (process.env.NODE_ENV === 'development') {
-      console.debug(`[${new Date().toISOString()}] [${this.service}] DEBUG: ${message}`, data ? JSON.stringify(data, null, 2) : '');
-    }
+    console.debug(`[${new Date().toISOString()}] [${this.service}] DEBUG: ${message}`, data ? JSON.stringify(data, null, 2) : '');
   }
 }
+
+// Export default logger instance
+export const logger = new Logger('App');

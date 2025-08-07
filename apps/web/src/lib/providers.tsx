@@ -24,7 +24,7 @@ interface ProvidersProps {
 
 export function Providers({ children }: ProvidersProps) {
   return (
-    <QueryClientProvider client={queryClient}>
+    <QueryClientProvider>
       {children}
     </QueryClientProvider>
   );

@@ -188,7 +188,7 @@ export class WalletConnectService {
       const proposalId = uuidv4();
       
       // Store the approval promise for later resolution
-      this.storePendingApproval(proposalId, approval, userId);
+      this.storePendingApproval(proposalId, approval(), userId);
 
       console.log('WalletConnect session proposal created:', proposalId);
 

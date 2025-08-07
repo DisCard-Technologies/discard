@@ -6,22 +6,22 @@
 import { jest } from '@jest/globals';
 
 export interface SupabaseChainMock {
-  select: jest.MockedFunction<any>;
-  insert: jest.MockedFunction<any>;
-  update: jest.MockedFunction<any>;
-  delete: jest.MockedFunction<any>;
-  eq: jest.MockedFunction<any>;
-  not: jest.MockedFunction<any>;
-  lt: jest.MockedFunction<any>;
-  gt: jest.MockedFunction<any>;
-  gte: jest.MockedFunction<any>;
-  lte: jest.MockedFunction<any>;
-  order: jest.MockedFunction<any>;
-  limit: jest.MockedFunction<any>;
-  single: jest.MockedFunction<any>;
-  then: jest.MockedFunction<any>;
-  mockResolvedValue: jest.MockedFunction<any>;
-  mockRejectedValue: jest.MockedFunction<any>;
+  select: jest.MockedFunction<(...args: any[]) => any>;
+  insert: jest.MockedFunction<(...args: any[]) => any>;
+  update: jest.MockedFunction<(...args: any[]) => any>;
+  delete: jest.MockedFunction<(...args: any[]) => any>;
+  eq: jest.MockedFunction<(...args: any[]) => any>;
+  not: jest.MockedFunction<(...args: any[]) => any>;
+  lt: jest.MockedFunction<(...args: any[]) => any>;
+  gt: jest.MockedFunction<(...args: any[]) => any>;
+  gte: jest.MockedFunction<(...args: any[]) => any>;
+  lte: jest.MockedFunction<(...args: any[]) => any>;
+  order: jest.MockedFunction<(...args: any[]) => any>;
+  limit: jest.MockedFunction<(...args: any[]) => any>;
+  single: jest.MockedFunction<(...args: any[]) => Promise<any>>;
+  then: jest.MockedFunction<(resolve: (value: any) => any, reject?: (error: any) => any) => any>;
+  mockResolvedValue: jest.MockedFunction<(value: any) => any>;
+  mockRejectedValue: jest.MockedFunction<(error: any) => any>;
 }
 
 export class SupabaseMockFactory {
@@ -78,13 +78,13 @@ export class SupabaseMockFactory {
     // Mock helper method implementations
     mockChain.mockResolvedValue.mockImplementation(function(this: any, value: any) {
       this.then = jest.fn((resolve: (value: any) => any) => resolve(value));
-      this.single = jest.fn().mockResolvedValue(value);
+      this.single = jest.fn(() => Promise.resolve(value));
       return this;
     });
     
     mockChain.mockRejectedValue.mockImplementation(function(this: any, error: any) {
-      this.then = jest.fn((resolve: (value: any) => any, reject: (error: any) => any) => reject(error));
-      this.single = jest.fn().mockRejectedValue(error);
+      this.then = jest.fn((resolve: (value: any) => any, reject: (error: any) => any) => reject && reject(error));
+      this.single = jest.fn(() => Promise.reject(error));
       return this;
     });
 
@@ -115,7 +115,7 @@ export class SupabaseMockFactory {
 
   static setupInsertQuery(mock: SupabaseChainMock, insertedData: any): void {
     const insertChain = {
-      select: jest.fn().mockResolvedValue(this.createSuccessResponse(insertedData))
+      select: jest.fn(() => Promise.resolve(this.createSuccessResponse(insertedData)))
     };
     mock.insert.mockReturnValue(insertChain);
   }

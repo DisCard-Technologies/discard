@@ -6,6 +6,12 @@ import * as bitcoin from 'bitcoinjs-lib';
 import { isValidAddress, toChecksumAddress } from 'ethereumjs-util';
 import { isValidClassicAddress, isValidXAddress } from 'ripple-address-codec';
 
+// Utility function to handle errors safely
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  return String(error);
+}
+
 export interface FraudValidationRequest {
   cardId: string;
   networkType: 'BTC' | 'ETH' | 'USDT' | 'USDC' | 'XRP';
@@ -355,7 +361,7 @@ export class FraudDetectionService {
   }> {
     try {
       // Primary validation using wallet-address-validator
-      const isPrimaryValid = WAValidator.validate(address, networkType);
+      const isPrimaryValid = WAValidator(address, networkType);
       
       if (isPrimaryValid) {
         const normalized = await this.normalizeAddress(address, networkType);
@@ -373,7 +379,7 @@ export class FraudDetectionService {
       
       return fallbackResult;
     } catch (error) {
-      logger.error('Address validation error', { address, networkType, error: error.message });
+      logger.error('Address validation error', { address, networkType, error: getErrorMessage(error) });
       return {
         isValid: false,
         error: 'Address validation failed'
@@ -409,7 +415,7 @@ export class FraudDetectionService {
     } catch (error) {
       return {
         isValid: false,
-        error: error.message
+        error: getErrorMessage(error)
       };
     }
   }
@@ -447,7 +453,7 @@ export class FraudDetectionService {
     } catch (error) {
       return {
         isValid: false,
-        error: error.message
+        error: getErrorMessage(error)
       };
     }
   }
@@ -491,7 +497,7 @@ export class FraudDetectionService {
     } catch (error) {
       return {
         isValid: false,
-        error: error.message
+        error: getErrorMessage(error)
       };
     }
   }
@@ -528,7 +534,7 @@ export class FraudDetectionService {
     } catch (error) {
       return {
         isValid: false,
-        error: error.message
+        error: getErrorMessage(error)
       };
     }
   }

@@ -1,6 +1,5 @@
 import { Request, Response } from 'express';
 import { blockchainService } from './blockchain.service';
-import { ratesService } from './rates.service';
 import { enhancedRatesService } from './rates.service';
 import { conversionService } from './conversion.service';
 import { walletConnectService } from './walletconnect.service';
@@ -420,7 +419,7 @@ export class CryptoController {
       }
 
       // Get current conversion rates
-      const rates = await ratesService.getCurrentRates(wallet.supported_currencies);
+      const rates = await enhancedRatesService.getCurrentRates(wallet.supported_currencies);
 
       // Calculate USD values
       const balancesWithUsd = balanceData.balances.map(balance => ({

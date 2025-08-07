@@ -106,11 +106,24 @@ describe('TransactionStatusMonitor', () => {
     });
 
     it('should calculate progress percentage correctly', async () => {
-      render(<TransactionStatusMonitor {...defaultProps} />);
+      render(<TransactionStatusMonitor {...defaultCryptoProps} />);
 
       await waitFor(() => {
         // 2 out of 3 confirmations = 67%
         expect(screen.getByText('67%')).toBeTruthy();
+      });
+    });
+
+    it('should show authorization progress correctly', async () => {
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ data: { ...mockAuthorization, status: 'pending' } })
+      });
+
+      render(<TransactionStatusMonitor {...defaultAuthProps} />);
+
+      await waitFor(() => {
+        expect(screen.getByText('50%')).toBeTruthy(); // Pending = 50% progress
       });
     });
 
@@ -123,7 +136,7 @@ describe('TransactionStatusMonitor', () => {
       };
       mockGetTransactionStatus.mockResolvedValue(confirmedTransaction);
 
-      render(<TransactionStatusMonitor {...defaultProps} />);
+      render(<TransactionStatusMonitor {...defaultCryptoProps} />);
 
       await waitFor(() => {
         expect(screen.getByText('100%')).toBeTruthy();
@@ -134,7 +147,7 @@ describe('TransactionStatusMonitor', () => {
 
   describe('WebSocket Integration', () => {
     it('should show connection status', async () => {
-      render(<TransactionStatusMonitor {...defaultProps} />);
+      render(<TransactionStatusMonitor {...defaultCryptoProps} />);
 
       await waitFor(() => {
         expect(screen.getByText('Live')).toBeTruthy();
@@ -148,7 +161,7 @@ describe('TransactionStatusMonitor', () => {
       };
       (useWebSocketConnection as jest.Mock).mockReturnValue(disconnectedWebSocket);
 
-      render(<TransactionStatusMonitor {...defaultProps} />);
+      render(<TransactionStatusMonitor {...defaultCryptoProps} />);
 
       await waitFor(() => {
         expect(screen.getByText('Offline')).toBeTruthy();
@@ -426,9 +439,122 @@ describe('TransactionStatusMonitor', () => {
     });
   });
 
+  describe('Authorization-Specific Features', () => {
+    it('should show retry button for declined retryable authorizations', async () => {
+      const declinedAuth = {
+        ...mockAuthorization,
+        status: 'declined',
+        declineReason: 'Insufficient funds',
+        declineCode: 'INSUFFICIENT_FUNDS'
+      };
+      
+      global.fetch = jest.fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ data: declinedAuth })
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ data: { reasons: [{ declineCode: 'INSUFFICIENT_FUNDS', isRetryable: true }] } })
+        });
+
+      const onRetryRequested = jest.fn();
+      render(
+        <TransactionStatusMonitor 
+          {...defaultAuthProps} 
+          onRetryRequested={onRetryRequested}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText('🔄 Retry')).toBeTruthy();
+        expect(screen.getByText(/Authorization declined: Insufficient funds/)).toBeTruthy();
+      });
+
+      const retryButton = screen.getByText('🔄 Retry');
+      fireEvent.press(retryButton);
+
+      expect(onRetryRequested).toHaveBeenCalled();
+    });
+
+    it('should show currency conversion details', async () => {
+      const authWithConversion = {
+        ...mockAuthorization,
+        currencyCode: 'EUR',
+        currencyConversion: {
+          exchangeRate: 1.1050,
+          conversionFee: 250
+        }
+      };
+      
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ data: authWithConversion })
+      });
+
+      render(<TransactionStatusMonitor {...defaultAuthProps} />);
+
+      await waitFor(() => {
+        expect(screen.getByText('1.1050')).toBeTruthy(); // Exchange rate
+        expect(screen.getByText('$2.50')).toBeTruthy(); // Conversion fee
+      });
+    });
+
+    it('should handle authorization WebSocket messages', async () => {
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ data: mockAuthorization })
+      });
+
+      const onStatusChange = jest.fn();
+      const wsUrl = `ws://localhost:8081/ws/payments/authorization?cardContext=card-context-456&userId=test-card-456`;
+      
+      (useWebSocketConnection as jest.Mock).mockImplementation((url, options) => {
+        if (url === wsUrl) {
+          // Simulate authorization status update
+          setTimeout(() => {
+            options.onMessage({
+              type: 'authorization_status',
+              authorizationId: 'auth-123',
+              status: 'approved',
+              timestamp: new Date().toISOString()
+            });
+          }, 100);
+        }
+        return mockWebSocket;
+      });
+
+      render(
+        <TransactionStatusMonitor 
+          {...defaultAuthProps} 
+          onStatusChange={onStatusChange}
+        />
+      );
+
+      await waitFor(() => {
+        expect(onStatusChange).toHaveBeenCalledWith('approved');
+      }, { timeout: 1000 });
+    });
+
+    it('should show expired authorization message', async () => {
+      const expiredAuth = { ...mockAuthorization, status: 'expired' };
+      
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ data: expiredAuth })
+      });
+
+      render(<TransactionStatusMonitor {...defaultAuthProps} />);
+
+      await waitFor(() => {
+        expect(screen.getByText(/Authorization expired. Please initiate a new transaction./)).toBeTruthy();
+      });
+    });
+  });
+
   describe('Accessibility', () => {
-    it('should have proper accessibility features', async () => {
-      render(<TransactionStatusMonitor {...defaultProps} />);
+    it('should have proper accessibility features for crypto transactions', async () => {
+      render(<TransactionStatusMonitor {...defaultCryptoProps} />);
 
       await waitFor(() => {
         // Progress bar should be accessible
@@ -437,6 +563,22 @@ describe('TransactionStatusMonitor', () => {
 
         // Status should be clearly indicated
         expect(screen.getByText('CONFIRMING')).toBeTruthy();
+      });
+    });
+
+    it('should have proper accessibility features for authorizations', async () => {
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ data: mockAuthorization })
+      });
+
+      render(<TransactionStatusMonitor {...defaultAuthProps} />);
+
+      await waitFor(() => {
+        // Status should be clearly indicated
+        expect(screen.getByText('APPROVED')).toBeTruthy();
+        // Risk score should be accessible
+        expect(screen.getByText('15/100 (Low)')).toBeTruthy();
       });
     });
   });

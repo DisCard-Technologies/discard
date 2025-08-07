@@ -1,6 +1,10 @@
 import { createClient } from '@supabase/supabase-js';
 import { Logger } from '../../utils/logger';
 import { RestrictionsService } from './restrictions.service';
+import { FraudDetectionService } from './fraud-detection.service';
+import { CurrencyConversionService } from './currency-conversion.service';
+import { DeclineReasonsService } from './decline-reasons.service';
+import { AuthorizationHoldsService } from './authorization-holds.service';
 
 interface AuthorizationRequest {
   cardContext: string;
@@ -11,18 +15,50 @@ interface AuthorizationRequest {
   currencyCode: string;
   merchantLocation?: {
     country: string;
-    city: string;
-    state: string;
+    city?: string;
+    coordinates?: { lat: number; lng: number; };
   };
 }
 
+interface AuthorizationTransaction {
+  authorizationId: string;
+  cardContext: string;
+  marqetaTransactionToken: string;
+  merchantName: string;
+  merchantCategoryCode: string;
+  authorizationAmount: number;
+  currencyCode: string;
+  exchangeRate?: number;
+  convertedAmount?: number;
+  authorizationCode?: string;
+  status: 'pending' | 'approved' | 'declined' | 'expired' | 'reversed';
+  declineReason?: string;
+  declineCode?: string;
+  responseTimeMs: number;
+  riskScore: number;
+  processedAt: Date;
+  expiresAt: Date;
+  merchantLocationCountry?: string;
+  merchantLocationCity?: string;
+  retryCount: number;
+}
+
 interface AuthorizationResponse {
-  approved: boolean;
+  authorizationId: string;
+  status: 'approved' | 'declined' | 'pending';
   authorizationCode?: string;
   declineReason?: string;
   declineCode?: string;
   holdId?: string;
   responseTimeMs: number;
+  riskScore: number;
+  currencyConversion?: {
+    originalAmount: number;
+    originalCurrency: string;
+    convertedAmount: number;
+    exchangeRate: number;
+    conversionFee: number;
+  };
 }
 
 interface AuthorizationHold {
@@ -52,20 +88,28 @@ export class AuthorizationService {
     process.env.SUPABASE_SERVICE_KEY!
   );
   private restrictionsService = new RestrictionsService();
+  private fraudDetectionService = new FraudDetectionService();
+  private currencyConversionService = new CurrencyConversionService();
+  private declineReasonsService = new DeclineReasonsService();
+  private authorizationHoldsService = new AuthorizationHoldsService();
   private logger = new Logger('AuthorizationService');
-  private readonly maxResponseTime = parseInt(process.env.PAYMENT_PROCESSING_TIMEOUT || '800');
+  private readonly maxResponseTime = parseInt(process.env.AUTHORIZATION_RESPONSE_TIMEOUT_MS || '800');
+  private readonly maxRetries = parseInt(process.env.MAX_AUTHORIZATION_RETRIES || '3');
+  private readonly retryDelayMs = parseInt(process.env.AUTHORIZATION_RETRY_DELAY_MS || '1000');
 
   /**
-   * Process authorization request with sub-second response time
+   * Process authorization request with sub-second response time and comprehensive fraud detection
    */
-  async processAuthorization(request: AuthorizationRequest): Promise<AuthorizationResponse> {
+  async processAuthorization(request: AuthorizationRequest, retryCount: number = 0): Promise<AuthorizationResponse> {
     const startTime = Date.now();
+    let authorizationId: string | null = null;
     
     try {
       this.logger.info('Processing authorization request', { 
         cardContext: request.cardContext,
         merchantName: request.merchantName,
-        amount: request.amount 
+        amount: request.amount,
+        retryCount
       });
 
       // Set row-level security context
@@ -74,7 +118,20 @@ export class AuthorizationService {
       // 1. Validate request format
       this.validateAuthorizationRequest(request);
 
-      // 2. Check merchant restrictions (geographic and category)
+      // 2. Handle multi-currency conversion if needed
+      let conversionResult = null;
+      let processedAmount = request.amount;
+      
+      if (request.currencyCode !== 'USD') {
+        conversionResult = await this.currencyConversionService.convertCurrency(
+          request.amount,
+          request.currencyCode,
+          'USD'
+        );
+        processedAmount = conversionResult.convertedAmount;
+      }
+
+      // 3. Check merchant restrictions (geographic and category)
       const restrictionCheck = await this.restrictionsService.validateTransaction(
         request.cardContext,
         request.merchantCategoryCode,
@@ -82,63 +139,113 @@ export class AuthorizationService {
       );
 
       if (!restrictionCheck.allowed) {
+        authorizationId = await this.createAuthorizationTransaction(
+          request, startTime, 'declined', 'RESTRICTION_VIOLATION', 0, retryCount, conversionResult
+        );
         return this.createDeclinedResponse(
           startTime,
+          authorizationId,
           'RESTRICTION_VIOLATION',
-          restrictionCheck.reason || 'Transaction violates card restrictions'
+          restrictionCheck.reason || 'Transaction violates card restrictions',
+          0
         );
       }
 
-      // 3. Check card status and balance
-      const balanceCheck = await this.checkCardBalance(request.cardContext, request.amount);
+      // 4. Check card status and balance with overdraft protection
+      const balanceCheck = await this.checkCardBalanceWithOverdraft(request.cardContext, processedAmount);
       
       if (!balanceCheck.hasBalance) {
+        authorizationId = await this.createAuthorizationTransaction(
+          request, startTime, 'declined', 'INSUFFICIENT_FUNDS', 0, retryCount, conversionResult
+        );
         return this.createDeclinedResponse(
           startTime,
+          authorizationId,
           'INSUFFICIENT_FUNDS',
-          'Insufficient balance for transaction'
+          'Insufficient balance for transaction',
+          0
         );
       }
 
-      // 4. Fraud detection check
-      const fraudCheck = await this.performFraudCheck(request);
-      
-      if (!fraudCheck.approved) {
+      // 5. Comprehensive fraud detection with privacy isolation
+      const fraudAnalysis = await this.fraudDetectionService.analyzeTransaction({
+        cardContext: request.cardContext,
+        amount: processedAmount,
+        merchantName: request.merchantName,
+        merchantCategoryCode: request.merchantCategoryCode,
+        merchantCountry: request.merchantLocation?.country || 'US',
+        transactionTime: new Date()
+      });
+
+      // 6. Create authorization transaction record
+      authorizationId = await this.createAuthorizationTransaction(
+        request, startTime, 'pending', null, fraudAnalysis.riskScore, retryCount, conversionResult
+      );
+
+      // 7. Make authorization decision based on risk score
+      if (fraudAnalysis.action === 'decline') {
+        await this.updateAuthorizationStatus(authorizationId, 'declined', 'FRAUD_SUSPECTED');
         return this.createDeclinedResponse(
           startTime,
+          authorizationId,
           'FRAUD_SUSPECTED',
-          fraudCheck.reason || 'Transaction flagged for suspected fraud'
+          'Transaction flagged for suspected fraud',
+          fraudAnalysis.riskScore
         );
       }
 
-      // 5. Create authorization hold
+      // 8. Create authorization hold
       const authorizationCode = this.generateAuthorizationCode();
-      const hold = await this.createAuthorizationHold(request, authorizationCode);
+      const hold = await this.authorizationHoldsService.createHold({
+        cardContext: request.cardContext,
+        authorizationId,
+        marqetaTransactionToken: request.marqetaTransactionToken,
+        merchantName: request.merchantName,
+        merchantCategoryCode: request.merchantCategoryCode,
+        authorizationAmount: request.amount,
+        holdAmount: processedAmount,
+        currencyCode: request.currencyCode,
+        authorizationCode,
+        riskScore: fraudAnalysis.riskScore,
+        responseTimeMs: Date.now() - startTime
+      });
 
-      // 6. Update card balance (reserve funds)
-      await this.reserveFunds(request.cardContext, request.amount);
+      // 9. Reserve funds with balance update
+      await this.reserveFunds(request.cardContext, processedAmount);
+
+      // 10. Update authorization status to approved
+      await this.updateAuthorizationStatus(authorizationId, 'approved', null, authorizationCode);
 
       const responseTime = Date.now() - startTime;
       
-      // Ensure sub-second response
+      // Ensure sub-second response time monitoring
       if (responseTime > this.maxResponseTime) {
         this.logger.warn('Authorization response time exceeded threshold', { 
           responseTime, 
-          threshold: this.maxResponseTime 
+          threshold: this.maxResponseTime,
+          authorizationId
         });
       }
 
+      // 11. Record authorization metrics
+      await this.recordAuthorizationMetrics(request.cardContext, responseTime, true, fraudAnalysis.riskScore);
+
       const response: AuthorizationResponse = {
-        approved: true,
+        authorizationId,
+        status: 'approved',
         authorizationCode,
         holdId: hold.holdId,
-        responseTimeMs: responseTime
+        responseTimeMs: responseTime,
+        riskScore: fraudAnalysis.riskScore,
+        currencyConversion: conversionResult || undefined
       };
 
       this.logger.info('Authorization approved', { 
         cardContext: request.cardContext,
+        authorizationId,
         authorizationCode,
-        responseTime 
+        responseTime,
+        riskScore: fraudAnalysis.riskScore
       });
 
       return response;
@@ -147,13 +254,30 @@ export class AuthorizationService {
       this.logger.error('Authorization processing failed', { 
         error, 
         request,
-        responseTime 
+        responseTime,
+        authorizationId,
+        retryCount
       });
+
+      // Update authorization status if we have an ID
+      if (authorizationId) {
+        await this.updateAuthorizationStatus(authorizationId, 'declined', 'PROCESSING_ERROR');
+      } else {
+        // Create a failed authorization record
+        authorizationId = await this.createAuthorizationTransaction(
+          request, startTime, 'declined', 'PROCESSING_ERROR', 0, retryCount
+        );
+      }
+
+      // Record failed authorization metrics
+      await this.recordAuthorizationMetrics(request.cardContext, responseTime, false, 0);
 
       return this.createDeclinedResponse(
         startTime,
+        authorizationId,
         'PROCESSING_ERROR',
-        'Authorization processing failed'
+        'Authorization processing failed',
+        0
       );
     }
   }
@@ -343,12 +467,12 @@ export class AuthorizationService {
   }
 
   /**
-   * Private: Check card balance and status
+   * Private: Check card balance with overdraft protection
    */
-  private async checkCardBalance(cardContext: string, amount: number): Promise<BalanceCheckResult> {
+  private async checkCardBalanceWithOverdraft(cardContext: string, amount: number): Promise<BalanceCheckResult> {
     const { data: card } = await this.supabase
       .from('cards')
-      .select('status, current_balance, spending_limit')
+      .select('status, current_balance, spending_limit, overdraft_limit')
       .eq('card_context', cardContext)
       .single();
 
@@ -370,52 +494,136 @@ export class AuthorizationService {
       };
     }
 
-    const hasBalance = card.current_balance >= amount;
+    // Calculate available balance including overdraft protection
+    const overdraftLimit = card.overdraft_limit || 0;
+    const totalAvailable = card.current_balance + overdraftLimit;
+    const hasBalance = totalAvailable >= amount;
     
     return {
       hasBalance,
-      availableBalance: card.current_balance,
+      availableBalance: totalAvailable,
       cardStatus: card.status,
       spendingLimit: card.spending_limit
     };
   }
 
   /**
-   * Private: Perform fraud detection checks
+   * Private: Check card balance and status (legacy method)
    */
-  private async performFraudCheck(request: AuthorizationRequest): Promise<{ approved: boolean; reason?: string }> {
+  private async checkCardBalance(cardContext: string, amount: number): Promise<BalanceCheckResult> {
+    return this.checkCardBalanceWithOverdraft(cardContext, amount);
+  }
+
+  /**
+   * Private: Create authorization transaction record
+   */
+  private async createAuthorizationTransaction(
+    request: AuthorizationRequest,
+    startTime: number,
+    status: 'pending' | 'approved' | 'declined',
+    declineCode?: string | null,
+    riskScore: number = 0,
+    retryCount: number = 0,
+    conversionResult?: any
+  ): Promise<string> {
+    const authorizationId = crypto.randomUUID();
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hour expiry
+
+    const { error } = await this.supabase
+      .from('authorization_transactions')
+      .insert({
+        authorization_id: authorizationId,
+        card_context: request.cardContext,
+        marqeta_transaction_token: request.marqetaTransactionToken,
+        merchant_name: request.merchantName,
+        merchant_category_code: request.merchantCategoryCode,
+        authorization_amount: request.amount,
+        currency_code: request.currencyCode,
+        exchange_rate: conversionResult?.exchangeRate,
+        converted_amount: conversionResult?.convertedAmount,
+        status,
+        decline_code: declineCode,
+        response_time_ms: Date.now() - startTime,
+        risk_score: riskScore,
+        expires_at: expiresAt.toISOString(),
+        merchant_location_country: request.merchantLocation?.country,
+        merchant_location_city: request.merchantLocation?.city,
+        retry_count: retryCount
+      });
+
+    if (error) {
+      this.logger.error('Failed to create authorization transaction', { error, authorizationId });
+      throw error;
+    }
+
+    return authorizationId;
+  }
+
+  /**
+   * Private: Update authorization transaction status
+   */
+  private async updateAuthorizationStatus(
+    authorizationId: string,
+    status: 'approved' | 'declined' | 'expired',
+    declineCode?: string | null,
+    authorizationCode?: string
+  ): Promise<void> {
+    const { error } = await this.supabase
+      .from('authorization_transactions')
+      .update({
+        status,
+        decline_code: declineCode,
+        authorization_code: authorizationCode
+      })
+      .eq('authorization_id', authorizationId);
+
+    if (error) {
+      this.logger.error('Failed to update authorization status', { error, authorizationId, status });
+      throw error;
+    }
+  }
+
+  /**
+   * Private: Record authorization metrics for monitoring
+   */
+  private async recordAuthorizationMetrics(
+    cardContext: string,
+    responseTime: number,
+    success: boolean,
+    riskScore: number
+  ): Promise<void> {
     try {
-      // Basic fraud checks - in production, this would be more sophisticated
-      
-      // 1. Check for unusual spending patterns
-      const recentTransactions = await this.getRecentTransactions(request.cardContext, 24); // Last 24 hours
-      
-      if (recentTransactions.length > 10) {
-        this.logger.warn('High transaction frequency detected', { 
-          cardContext: request.cardContext,
-          transactionCount: recentTransactions.length 
-        });
-        return { approved: false, reason: 'High transaction frequency' };
-      }
+      const now = new Date();
+      const windowStart = new Date(now.getTime() - 60000); // 1-minute window
 
-      // 2. Check for large amount compared to normal spending
-      if (recentTransactions.length > 0) {
-        const avgAmount = recentTransactions.reduce((sum, tx) => sum + tx.amount, 0) / recentTransactions.length;
-        if (request.amount > avgAmount * 5) {
-          this.logger.warn('Large amount compared to normal spending', { 
-            cardContext: request.cardContext,
-            requestAmount: request.amount,
-            avgAmount 
-          });
-          return { approved: false, reason: 'Unusually large transaction amount' };
-        }
-      }
-
-      return { approved: true };
+      await this.supabase
+        .from('authorization_metrics')
+        .insert([
+          {
+            card_context: cardContext,
+            metric_type: 'response_time',
+            metric_value: responseTime,
+            measurement_window_start: windowStart.toISOString(),
+            measurement_window_end: now.toISOString()
+          },
+          {
+            card_context: cardContext,
+            metric_type: success ? 'success_rate' : 'decline_rate',
+            metric_value: 1,
+            measurement_window_start: windowStart.toISOString(),
+            measurement_window_end: now.toISOString()
+          },
+          {
+            card_context: cardContext,
+            metric_type: 'fraud_detection',
+            metric_value: riskScore,
+            measurement_window_start: windowStart.toISOString(),
+            measurement_window_end: now.toISOString()
+          }
+        ]);
     } catch (error) {
-      this.logger.error('Fraud check failed', { error, request });
-      // Fail open for now - approve transaction if fraud check fails
-      return { approved: true };
+      // Don't fail authorization processing if metrics recording fails
+      this.logger.warn('Failed to record authorization metrics', { error, cardContext });
     }
   }
 
@@ -471,24 +679,28 @@ export class AuthorizationService {
    * Private: Reserve funds in card balance
    */
   private async reserveFunds(cardContext: string, amount: number): Promise<void> {
-    await this.supabase
-      .from('cards')
-      .update({
-        current_balance: this.supabase.raw(`current_balance - ${amount}`)
-      })
-      .eq('card_context', cardContext);
+    const { error } = await this.supabase.rpc('decrement_card_balance', {
+      p_card_context: cardContext,
+      p_amount: amount
+    });
+    
+    if (error) {
+      throw new Error(`Failed to reserve funds: ${error.message}`);
+    }
   }
 
   /**
    * Private: Release reserved funds
    */
   private async releaseFunds(cardContext: string, amount: number): Promise<void> {
-    await this.supabase
-      .from('cards')
-      .update({
-        current_balance: this.supabase.raw(`current_balance + ${amount}`)
-      })
-      .eq('card_context', cardContext);
+    const { error } = await this.supabase.rpc('increment_card_balance', {
+      p_card_context: cardContext,
+      p_amount: amount
+    });
+    
+    if (error) {
+      throw new Error(`Failed to release funds: ${error.message}`);
+    }
   }
 
   /**
@@ -499,14 +711,85 @@ export class AuthorizationService {
   }
 
   /**
-   * Private: Create declined response
+   * Process authorization retry with exponential backoff
    */
-  private createDeclinedResponse(startTime: number, declineCode: string, declineReason: string): AuthorizationResponse {
+  async retryAuthorization(originalRequest: AuthorizationRequest, previousAuthorizationId: string): Promise<AuthorizationResponse> {
+    try {
+      // Get the previous authorization attempt
+      const { data: prevAuth } = await this.supabase
+        .from('authorization_transactions')
+        .select('retry_count')
+        .eq('authorization_id', previousAuthorizationId)
+        .single();
+
+      const currentRetryCount = (prevAuth?.retry_count || 0) + 1;
+
+      if (currentRetryCount > this.maxRetries) {
+        this.logger.warn('Maximum retry attempts exceeded', { 
+          previousAuthorizationId, 
+          retryCount: currentRetryCount 
+        });
+        
+        return this.createDeclinedResponse(
+          Date.now(),
+          previousAuthorizationId,
+          'MAX_RETRIES_EXCEEDED',
+          'Maximum retry attempts exceeded',
+          0
+        );
+      }
+
+      // Apply exponential backoff delay
+      const delay = this.retryDelayMs * Math.pow(2, currentRetryCount - 1);
+      await new Promise(resolve => setTimeout(resolve, delay));
+
+      // Process retry
+      return await this.processAuthorization(originalRequest, currentRetryCount);
+    } catch (error) {
+      this.logger.error('Authorization retry failed', { error, previousAuthorizationId });
+      throw error;
+    }
+  }
+
+  /**
+   * Get authorization status
+   */
+  async getAuthorizationStatus(authorizationId: string): Promise<AuthorizationTransaction | null> {
+    try {
+      const { data } = await this.supabase
+        .from('authorization_transactions')
+        .select('*')
+        .eq('authorization_id', authorizationId)
+        .single();
+
+      if (!data) return null;
+
+      return this.mapToAuthorizationTransaction(data);
+    } catch (error) {
+      this.logger.error('Failed to get authorization status', { error, authorizationId });
+      throw error;
+    }
+  }
+
+  /**
+   * Private: Create declined response with enhanced data
+   */
+  private createDeclinedResponse(
+    startTime: number, 
+    authorizationId: string,
+    declineCode: string, 
+    declineReason: string,
+    riskScore: number
+  ): AuthorizationResponse {
+    const responseTime = Date.now() - startTime;
+    
     return {
-      approved: false,
+      authorizationId,
+      status: 'declined',
       declineCode,
       declineReason,
-      responseTimeMs: Date.now() - startTime
+      responseTimeMs: responseTime,
+      riskScore
     };
   }
 
@@ -537,6 +820,34 @@ export class AuthorizationService {
       authorizationCode: dbRecord.authorization_code,
       expiresAt: new Date(dbRecord.expires_at),
       status: dbRecord.status
+    };
+  }
+
+  /**
+   * Private: Map database record to AuthorizationTransaction interface
+   */
+  private mapToAuthorizationTransaction(dbRecord: any): AuthorizationTransaction {
+    return {
+      authorizationId: dbRecord.authorization_id,
+      cardContext: dbRecord.card_context,
+      marqetaTransactionToken: dbRecord.marqeta_transaction_token,
+      merchantName: dbRecord.merchant_name,
+      merchantCategoryCode: dbRecord.merchant_category_code,
+      authorizationAmount: dbRecord.authorization_amount,
+      currencyCode: dbRecord.currency_code,
+      exchangeRate: dbRecord.exchange_rate,
+      convertedAmount: dbRecord.converted_amount,
+      authorizationCode: dbRecord.authorization_code,
+      status: dbRecord.status,
+      declineReason: dbRecord.decline_reason,
+      declineCode: dbRecord.decline_code,
+      responseTimeMs: dbRecord.response_time_ms,
+      riskScore: dbRecord.risk_score,
+      processedAt: new Date(dbRecord.processed_at),
+      expiresAt: new Date(dbRecord.expires_at),
+      merchantLocationCountry: dbRecord.merchant_location_country,
+      merchantLocationCity: dbRecord.merchant_location_city,
+      retryCount: dbRecord.retry_count
     };
   }
 }

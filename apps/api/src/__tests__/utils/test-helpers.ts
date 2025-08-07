@@ -52,6 +52,16 @@ export const testDataFactory = {
     created_at: '2024-01-01T00:00:00.000Z',
     metadata: {},
     ...overrides
+  }),
+
+  createToken: (overrides = {}) => ({
+    id: 'test-token-id',
+    user_id: 'test-user-id',
+    token: 'test-token-string',
+    type: 'email_verification',
+    expires_at: new Date(Date.now() + 3600000).toISOString(), // 1 hour from now
+    created_at: '2024-01-01T00:00:00.000Z',
+    ...overrides
   })
 };
 

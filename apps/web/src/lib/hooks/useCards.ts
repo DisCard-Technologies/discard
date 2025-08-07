@@ -3,7 +3,7 @@
  */
 
 import { useQuery, useMutation, useQueryClient } from '../stubs';
-import { Card, CreateCardRequest, CardListRequest } from '../../../../packages/shared/src/types';
+import { Card, CreateCardRequest, CardListRequest } from '@discard/shared';
 import { CardApiService } from '../api';
 
 // Query keys

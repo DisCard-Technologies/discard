@@ -12,13 +12,17 @@ interface MarqetaWebhookEvent {
   object_token: string;
   created_time: string;
   data: {
-    // Transaction data
+    // Common fields
     token?: string;
-    type?: 'authorization' | 'clearing' | 'completion';
-    state?: 'PENDING' | 'COMPLETION' | 'DECLINED' | 'ERROR';
-    identifier?: string;
     user_token?: string;
     card_token?: string;
+    created_time?: string;
+    last_modified_time?: string;
+    
+    // Transaction-specific data
+    transaction_type?: 'authorization' | 'clearing' | 'completion';
+    transaction_state?: 'PENDING' | 'COMPLETION' | 'DECLINED' | 'ERROR';
+    identifier?: string;
     amount?: number;
     currency_code?: string;
     merchant?: {
@@ -32,16 +36,13 @@ interface MarqetaWebhookEvent {
       code: string;
       memo: string;
     };
-    // Card data
-    card_token?: string;
-    user_token?: string;
-    state?: 'ACTIVE' | 'SUSPENDED' | 'TERMINATED' | 'UNACTIVATED';
+    
+    // Card-specific data
+    card_state?: 'ACTIVE' | 'SUSPENDED' | 'TERMINATED' | 'UNACTIVATED';
     last_four?: string;
     pan?: string;
     cvv_number?: string;
     expiration?: string;
-    created_time?: string;
-    last_modified_time?: string;
   };
 }
 

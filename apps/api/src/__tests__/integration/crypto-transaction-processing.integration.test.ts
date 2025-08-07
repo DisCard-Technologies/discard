@@ -1,22 +1,19 @@
 import { jest } from '@jest/globals';
 import request from 'supertest';
-import { Express } from 'express';
-import { setupTestApp } from '../setup/test-app';
+import app from '../../app';
 import { DatabaseService } from '../../services/database.service';
 
 describe('Crypto Transaction Processing Integration', () => {
-  let app: Express;
   let databaseService: DatabaseService;
   let authToken: string;
 
   beforeAll(async () => {
-    app = await setupTestApp();
     databaseService = new DatabaseService();
     authToken = 'test-auth-token'; // Mock token for tests
   });
 
   afterAll(async () => {
-    await databaseService.disconnect?.();
+    // Cleanup if needed - Supabase connections are automatically managed
   });
 
   beforeEach(async () => {
