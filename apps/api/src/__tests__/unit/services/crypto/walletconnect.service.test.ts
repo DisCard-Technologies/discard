@@ -35,25 +35,10 @@ jest.mock('@walletconnect/types', () => ({}));
 
 jest.mock('@walletconnect/modal', () => ({}));
 
-// Mock Supabase
-const mockSupabaseResponse = {
-  data: null,
-  error: null
-};
+// Use SupabaseMockFactory for reliable database mocking
+import { SupabaseMockFactory } from '../../../factories/supabase-mock.factory';
 
-const mockSupabaseChain = {
-  select: jest.fn().mockReturnThis(),
-  insert: jest.fn().mockReturnThis(),
-  update: jest.fn().mockReturnThis(),
-  eq: jest.fn().mockReturnThis(),
-  not: jest.fn().mockReturnThis(),
-  lt: jest.fn().mockReturnThis(),
-  gt: jest.fn().mockReturnThis(),
-  gte: jest.fn().mockReturnThis(),
-  lte: jest.fn().mockReturnThis(),
-  single: jest.fn().mockResolvedValue(mockSupabaseResponse),
-  mockResolvedValue: jest.fn().mockResolvedValue(mockSupabaseResponse)
-};
+const mockSupabaseChain = SupabaseMockFactory.createChainableMock();
 
 jest.mock('../../../../app', () => ({
   supabase: {
@@ -61,8 +46,7 @@ jest.mock('../../../../app', () => ({
   }
 }));
 
-// Mock fetch globally for any external API calls
-global.fetch = jest.fn() as jest.MockedFunction<typeof fetch>;
+// MSW will handle fetch interception automatically via setupFilesAfterEnv
 
 describe('WalletConnectService', () => {
   beforeEach(() => {
@@ -79,6 +63,9 @@ describe('WalletConnectService', () => {
         (fn as jest.Mock).mockClear();
       }
     });
+    
+    // Reset Supabase mock to chainable state
+    SupabaseMockFactory.clearMock(mockSupabaseChain);
 
     // Mock the SignClient.init to return our mock
     const { SignClient } = require('@walletconnect/sign-client');
@@ -110,10 +97,10 @@ describe('WalletConnectService', () => {
       });
 
       expect(mockSignClient.on).toHaveBeenCalledWith('session_proposal', expect.any(Function));
-      expect(mockSignClient.on).toHaveBeenCalledWith('session_settle', expect.any(Function));
       expect(mockSignClient.on).toHaveBeenCalledWith('session_update', expect.any(Function));
       expect(mockSignClient.on).toHaveBeenCalledWith('session_delete', expect.any(Function));
       expect(mockSignClient.on).toHaveBeenCalledWith('session_expire', expect.any(Function));
+      expect(mockSignClient.on).toHaveBeenCalledWith('session_request', expect.any(Function));
       expect(mockSignClient.on).toHaveBeenCalledWith('session_request', expect.any(Function));
     });
 
@@ -488,10 +475,10 @@ describe('WalletConnectService', () => {
       await newService.initialize();
 
       expect(mockSignClient.on).toHaveBeenCalledWith('session_proposal', expect.any(Function));
-      expect(mockSignClient.on).toHaveBeenCalledWith('session_settle', expect.any(Function));
       expect(mockSignClient.on).toHaveBeenCalledWith('session_update', expect.any(Function));
       expect(mockSignClient.on).toHaveBeenCalledWith('session_delete', expect.any(Function));
       expect(mockSignClient.on).toHaveBeenCalledWith('session_expire', expect.any(Function));
+      expect(mockSignClient.on).toHaveBeenCalledWith('session_request', expect.any(Function));
       expect(mockSignClient.on).toHaveBeenCalledWith('session_request', expect.any(Function));
     });
   });

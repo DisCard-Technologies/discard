@@ -217,7 +217,7 @@ export class MetaMaskService {
 
       return connection;
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to establish MetaMask connection:', error);
       throw {
         code: CRYPTO_ERROR_CODES.METAMASK_NOT_DETECTED,

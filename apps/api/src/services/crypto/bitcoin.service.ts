@@ -1,7 +1,7 @@
 import * as bitcoin from 'bitcoinjs-lib';
 import { ECPairFactory } from 'ecpair';
 import * as ecc from 'tiny-secp256k1';
-import * as qrcode from 'qrcode';
+import qrcode from 'qrcode';
 import { v4 as uuidv4 } from 'uuid';
 import { supabase } from '../../app';
 import { blockchainService } from './blockchain.service';
@@ -157,7 +157,6 @@ export class BitcoinService {
       const qrCodeDataUrl = await qrcode.toDataURL(bitcoinUri, {
         errorCorrectionLevel: 'M',
         type: 'image/png',
-        quality: 0.92,
         margin: 1,
         color: {
           dark: '#000000',
@@ -488,29 +487,45 @@ export class BitcoinService {
         throw new Error('Insufficient funds for transaction');
       }
 
-      // Create transaction builder
-      const txb = new bitcoin.TransactionBuilder(networkConfig.network);
+      // Create Partially Signed Bitcoin Transaction (PSBT)
+      const psbt = new bitcoin.Psbt({ network: networkConfig.network });
 
       // Add inputs
       for (const utxo of selectedUtxos) {
-        txb.addInput(utxo.txid, utxo.vout);
+        // For PSBT, we need to provide the full transaction hex or witnessUtxo
+        // This is a simplified version - in production, you'd fetch the full transaction
+        psbt.addInput({
+          hash: utxo.txid,
+          index: utxo.vout,
+          witnessUtxo: {
+            script: Buffer.from(utxo.scriptPubKey, 'hex'),
+            value: utxo.value
+          }
+        });
       }
 
       // Add outputs
-      txb.addOutput(toAddress, amountSatoshis);
+      psbt.addOutput({
+        address: toAddress,
+        value: amountSatoshis
+      });
 
       // Add change output if needed
       const change = totalInput - amountSatoshis - transactionFee;
       if (change > 546) { // Dust threshold
-        txb.addOutput(fromAddress, change);
+        psbt.addOutput({
+          address: fromAddress,
+          value: change
+        });
       }
 
-      // Build unsigned transaction
-      const transaction = txb.buildIncomplete();
-      const txid = transaction.getId();
+      // Extract unsigned transaction hex
+      const unsignedTx = psbt.extractTransaction(false); // false = don't finalize
+      const txHex = unsignedTx.toHex();
+      const txid = unsignedTx.getId();
 
       return {
-        transaction: transaction.toHex(),
+        transaction: txHex,
         txid,
         size: transactionSize,
         fee: transactionFee / 100000000, // Convert back to BTC

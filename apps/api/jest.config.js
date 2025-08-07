@@ -6,6 +6,7 @@ module.exports = {
   testPathIgnorePatterns: [
     '<rootDir>/src/__tests__/setup/',
     '<rootDir>/src/__tests__/utils/',
+    '<rootDir>/src/__tests__/factories/',
     '<rootDir>/node_modules/'
   ],
   transform: {
@@ -29,7 +30,74 @@ module.exports = {
       statements: 60
     }
   },
-  setupFilesAfterEnv: ['<rootDir>/src/setupTests.ts'],
+  setupFilesAfterEnv: [
+    '<rootDir>/src/setupTests.ts',
+    '<rootDir>/src/__tests__/setup/msw-setup.ts'
+  ],
+  
+  // Separate Jest projects for different test types
+  projects: [
+    {
+      displayName: 'unit',
+      preset: 'ts-jest',
+      testEnvironment: 'node',
+      roots: ['<rootDir>/src'],
+      testMatch: ['<rootDir>/src/__tests__/unit/**/*.test.ts'],
+      setupFilesAfterEnv: [
+        '<rootDir>/src/setupTests.ts',
+        '<rootDir>/src/__tests__/setup/msw-setup.ts'
+      ],
+      testPathIgnorePatterns: [
+        '<rootDir>/src/__tests__/setup/',
+        '<rootDir>/src/__tests__/utils/',
+        '<rootDir>/src/__tests__/factories/',
+        '<rootDir>/node_modules/'
+      ],
+      transform: {
+        '^.+\\.(ts|tsx)$': 'ts-jest',
+      },
+      moduleNameMapper: {
+        '^@discard/shared$': '<rootDir>/../../packages/shared/src/index.ts'
+      },
+      globals: {
+        'ts-jest': {
+          isolatedModules: true,
+          diagnostics: { warnOnly: true }
+        }
+      }
+    },
+    {
+      displayName: 'integration',
+      preset: 'ts-jest',
+      testEnvironment: 'node',
+      roots: ['<rootDir>/src'],
+      testMatch: ['<rootDir>/src/__tests__/integration/**/*.test.ts'],
+      setupFilesAfterEnv: [
+        '<rootDir>/src/setupTests.ts',
+        '<rootDir>/src/__tests__/setup/msw-setup.ts',
+        '<rootDir>/src/__tests__/setup/testcontainers-setup.ts'
+      ],
+      testPathIgnorePatterns: [
+        '<rootDir>/src/__tests__/setup/',
+        '<rootDir>/src/__tests__/utils/',
+        '<rootDir>/src/__tests__/factories/',
+        '<rootDir>/node_modules/'
+      ],
+      transform: {
+        '^.+\\.(ts|tsx)$': 'ts-jest',
+      },
+      moduleNameMapper: {
+        '^@discard/shared$': '<rootDir>/../../packages/shared/src/index.ts'
+      },
+      testTimeout: 60000, // Longer timeout for TestContainers
+      globals: {
+        'ts-jest': {
+          isolatedModules: true,
+          diagnostics: { warnOnly: true }
+        }
+      }
+    }
+  ],
   moduleNameMapper: {
     '^@discard/shared$': '<rootDir>/../../packages/shared/src/index.ts'
   },

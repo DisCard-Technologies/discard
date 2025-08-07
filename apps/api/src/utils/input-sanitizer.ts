@@ -16,6 +16,11 @@ export class InputSanitizer {
       .trim()
       .replace(/[<>]/g, '') // Remove < and > to prevent XSS
       .replace(/['"]/g, '') // Remove quotes to prevent injection
+      .replace(/--/g, '') // Remove SQL comment markers
+      .replace(/DROP\s+TABLE/gi, '') // Remove DROP TABLE
+      .replace(/DELETE\s+FROM/gi, '') // Remove DELETE FROM
+      .replace(/UNION\s+SELECT/gi, '') // Remove UNION SELECT
+      .replace(/OR\s+1\s*=\s*1/gi, '') // Remove OR 1=1 patterns
       .substring(0, 1000); // Limit length
   }
 

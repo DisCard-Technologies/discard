@@ -10,24 +10,12 @@ import {
   FundingTransaction 
 } from '@discard/shared/src/types/funding';
 import { FUNDING_STATUSES, FUNDING_TYPES } from '@discard/shared/src/constants/funding';
+import { createMockSupabaseClient } from '../../utils/supabase-mock';
 
 // Mock dependencies
+const mockSupabase = createMockSupabaseClient();
 jest.mock('../../../app', () => ({
-  supabase: {
-    from: jest.fn(() => ({
-      insert: jest.fn().mockReturnThis(),
-      select: jest.fn().mockReturnThis(),
-      update: jest.fn().mockReturnThis(),
-      eq: jest.fn().mockReturnThis(),
-      order: jest.fn().mockReturnThis(),
-      limit: jest.fn().mockReturnThis(),
-      range: jest.fn().mockReturnThis(),
-      gte: jest.fn().mockReturnThis(),
-      lte: jest.fn().mockReturnThis(),
-      upsert: jest.fn().mockReturnThis(),
-      single: jest.fn()
-    }))
-  }
+  supabase: mockSupabase
 }));
 
 jest.mock('../../../services/funding/balance.service', () => ({

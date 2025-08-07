@@ -11,24 +11,59 @@ export interface MockQuery {
   select: jest.MockedFunction<any>;
   update: jest.MockedFunction<any>;
   delete: jest.MockedFunction<any>;
+  upsert: jest.MockedFunction<any>;
   eq: jest.MockedFunction<any>;
+  neq: jest.MockedFunction<any>;
+  gt: jest.MockedFunction<any>;
+  gte: jest.MockedFunction<any>;
+  lt: jest.MockedFunction<any>;
+  lte: jest.MockedFunction<any>;
+  like: jest.MockedFunction<any>;
+  ilike: jest.MockedFunction<any>;
+  is: jest.MockedFunction<any>;
+  in: jest.MockedFunction<any>;
+  contains: jest.MockedFunction<any>;
+  containedBy: jest.MockedFunction<any>;
+  not: jest.MockedFunction<any>;
+  or: jest.MockedFunction<any>;
+  filter: jest.MockedFunction<any>;
   order: jest.MockedFunction<any>;
   limit: jest.MockedFunction<any>;
+  range: jest.MockedFunction<any>;
   single: jest.MockedFunction<any>;
+  maybeSingle: jest.MockedFunction<any>;
 }
 
 export function createMockSupabaseClient(): MockSupabaseClient {
+  const createMockQueryChain = () => {
+    const chain: any = {};
+    
+    // All chainable methods that return this
+    const chainableMethods = [
+      'insert', 'select', 'update', 'delete', 'upsert',
+      'eq', 'neq', 'gt', 'gte', 'lt', 'lte', 'like', 'ilike',
+      'is', 'in', 'contains', 'containedBy', 'not', 'or', 'filter',
+      'order', 'limit', 'range'
+    ];
+    
+    chainableMethods.forEach(method => {
+      chain[method] = jest.fn().mockReturnValue(chain);
+    });
+    
+    // Terminal methods that resolve
+    chain.single = jest.fn().mockResolvedValue({ data: null, error: null });
+    chain.maybeSingle = jest.fn().mockResolvedValue({ data: null, error: null });
+    
+    // Make it thenable for direct await
+    chain.then = jest.fn((resolve: (value: any) => any) => {
+      return resolve({ data: [], error: null });
+    });
+    
+    return chain;
+  };
+
   return {
-    from: jest.fn(() => ({
-      insert: jest.fn().mockReturnThis(),
-      select: jest.fn().mockReturnThis(),
-      update: jest.fn().mockReturnThis(),
-      delete: jest.fn().mockReturnThis(),
-      eq: jest.fn().mockReturnThis(),
-      order: jest.fn().mockReturnThis(),
-      limit: jest.fn().mockReturnThis(),
-      single: jest.fn()
-    }))
+    from: jest.fn(() => createMockQueryChain())
   };
 }
 
