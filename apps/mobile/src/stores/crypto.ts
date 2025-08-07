@@ -32,9 +32,16 @@ interface CryptoState {
   rateComparison: RateComparisonResponse | null;
   historicalRates: Record<string, HistoricalRateResponse>; // keyed by symbol
   
+  // Transaction Processing State
+  activeTransactions: Record<string, any>; // keyed by transaction ID
+  transactionHistory: Record<string, any[]>; // keyed by card ID
+  networkCongestion: Record<string, any>; // keyed by network type
+  refundHistory: Record<string, any[]>; // keyed by card ID
+  
   // WebSocket State
   wsConnected: boolean;
   wsReconnectAttempts: number;
+  transactionWsConnected: boolean;
   
   // UI State
   isLoading: boolean;
@@ -42,15 +49,18 @@ interface CryptoState {
   isRefreshing: boolean;
   isCalculatingConversion: boolean;
   isComparingRates: boolean;
+  isProcessingTransaction: boolean;
   
   // Error State
   error: string | null;
   walletErrors: Record<string, string>;
   conversionError: string | null;
+  transactionError: string | null;
   
   // Cache State
   lastBalanceUpdate: Date | null;
   lastRateUpdate: Date | null;
+  lastTransactionUpdate: Date | null;
   autoRefreshEnabled: boolean;
   refreshInterval: number; // milliseconds
 }
@@ -77,10 +87,21 @@ interface CryptoActions {
   cancelConversionQuote: (quoteId: string) => Promise<boolean>;
   clearActiveQuote: () => void;
   
+  // Transaction Processing Actions
+  processTransaction: (params: any) => Promise<any>;
+  getTransactionStatus: (transactionId: string, cardId: string) => Promise<any>;
+  getTransactionHistory: (cardId: string, limit?: number, offset?: number) => Promise<any>;
+  accelerateTransaction: (transactionId: string, cardId: string) => Promise<any>;
+  processRefund: (refundRequest: any) => Promise<any>;
+  getNetworkCongestion: (networkType: string) => Promise<void>;
+  handleTransactionUpdate: (update: any) => void;
+  
   // WebSocket Actions
   connectWebSocket: () => void;
   disconnectWebSocket: () => void;
   handleRateUpdate: (rates: ConversionRates) => void;
+  connectTransactionWebSocket: (cardId: string) => void;
+  disconnectTransactionWebSocket: () => void;
   
   // Session Management
   loadActiveSessions: () => Promise<void>;
@@ -90,6 +111,7 @@ interface CryptoActions {
   setError: (error: string | null) => void;
   setWalletError: (walletId: string, error: string | null) => void;
   setConversionError: (error: string | null) => void;
+  setTransactionError: (error: string | null) => void;
   clearAllErrors: () => void;
   setAutoRefresh: (enabled: boolean, interval?: number) => void;
   
@@ -107,18 +129,26 @@ const initialState: CryptoState = {
   activeConversionQuote: null,
   rateComparison: null,
   historicalRates: {},
+  activeTransactions: {},
+  transactionHistory: {},
+  networkCongestion: {},
+  refundHistory: {},
   wsConnected: false,
   wsReconnectAttempts: 0,
+  transactionWsConnected: false,
   isLoading: false,
   isConnecting: false,
   isRefreshing: false,
   isCalculatingConversion: false,
   isComparingRates: false,
+  isProcessingTransaction: false,
   error: null,
   walletErrors: {},
   conversionError: null,
+  transactionError: null,
   lastBalanceUpdate: null,
   lastRateUpdate: null,
+  lastTransactionUpdate: null,
   autoRefreshEnabled: true,
   refreshInterval: 30000, // 30 seconds
 };
@@ -625,6 +655,233 @@ const useCrypto = create<CryptoStore>((set, get) => {
       set({ activeConversionQuote: null });
     },
 
+    // Transaction Processing Actions
+    processTransaction: async (params: any): Promise<any> => {
+      set({ isProcessingTransaction: true, transactionError: null });
+      
+      try {
+        const response = await fetch('/api/v1/crypto/transactions/process', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${await getAuthToken()}`,
+          },
+          body: JSON.stringify(params),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Failed to process transaction');
+        }
+
+        const data = await response.json();
+        const result = data.data;
+
+        // Update active transactions
+        set(state => ({
+          activeTransactions: {
+            ...state.activeTransactions,
+            [params.transactionId]: result,
+          },
+          isProcessingTransaction: false,
+        }));
+
+        return result;
+
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Failed to process transaction';
+        set({ 
+          transactionError: errorMessage,
+          isProcessingTransaction: false 
+        });
+        console.error('Process transaction error:', error);
+        throw error;
+      }
+    },
+
+    getTransactionStatus: async (transactionId: string, cardId: string): Promise<any> => {
+      try {
+        const response = await fetch(`/api/v1/crypto/transactions/status/${transactionId}?cardId=${cardId}`, {
+          headers: {
+            'Authorization': `Bearer ${await getAuthToken()}`,
+          },
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Failed to get transaction status');
+        }
+
+        const data = await response.json();
+        const status = data.data;
+
+        // Update active transaction
+        set(state => ({
+          activeTransactions: {
+            ...state.activeTransactions,
+            [transactionId]: status,
+          },
+          lastTransactionUpdate: new Date(),
+        }));
+
+        return status;
+
+      } catch (error) {
+        console.error('Get transaction status error:', error);
+        throw error;
+      }
+    },
+
+    getTransactionHistory: async (cardId: string, limit: number = 50, offset: number = 0): Promise<any> => {
+      try {
+        const response = await fetch(
+          `/api/v1/crypto/transactions/history?cardId=${cardId}&limit=${limit}&offset=${offset}`, 
+          {
+            headers: {
+              'Authorization': `Bearer ${await getAuthToken()}`,
+            },
+          }
+        );
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Failed to get transaction history');
+        }
+
+        const data = await response.json();
+        const history = data.data;
+
+        // Update transaction history
+        if (offset === 0) {
+          // New request, replace existing history
+          set(state => ({
+            transactionHistory: {
+              ...state.transactionHistory,
+              [cardId]: history.transactions,
+            },
+          }));
+        } else {
+          // Append to existing history
+          set(state => ({
+            transactionHistory: {
+              ...state.transactionHistory,
+              [cardId]: [
+                ...(state.transactionHistory[cardId] || []),
+                ...history.transactions,
+              ],
+            },
+          }));
+        }
+
+        return history;
+
+      } catch (error) {
+        console.error('Get transaction history error:', error);
+        throw error;
+      }
+    },
+
+    accelerateTransaction: async (transactionId: string, cardId: string): Promise<any> => {
+      try {
+        const response = await fetch(`/api/v1/crypto/transactions/accelerate/${transactionId}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${await getAuthToken()}`,
+          },
+          body: JSON.stringify({ cardId }),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Failed to accelerate transaction');
+        }
+
+        const data = await response.json();
+        return data.data.accelerationOptions;
+
+      } catch (error) {
+        console.error('Accelerate transaction error:', error);
+        throw error;
+      }
+    },
+
+    processRefund: async (refundRequest: any): Promise<any> => {
+      try {
+        const response = await fetch(`/api/v1/crypto/transactions/refund/${refundRequest.transactionId}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${await getAuthToken()}`,
+          },
+          body: JSON.stringify(refundRequest),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Failed to process refund');
+        }
+
+        const data = await response.json();
+        const refund = data.data;
+
+        // Update refund history
+        set(state => ({
+          refundHistory: {
+            ...state.refundHistory,
+            [refundRequest.cardId]: [
+              refund,
+              ...(state.refundHistory[refundRequest.cardId] || []),
+            ],
+          },
+        }));
+
+        return refund;
+
+      } catch (error) {
+        console.error('Process refund error:', error);
+        throw error;
+      }
+    },
+
+    getNetworkCongestion: async (networkType: string): Promise<void> => {
+      try {
+        // This would integrate with your network congestion API
+        // For now, creating mock data based on the components' expectations
+        const mockCongestion = {
+          level: 'medium' as 'low' | 'medium' | 'high',
+          feeEstimates: {
+            slow: 1500,  // cents
+            standard: 3000,
+            fast: 5000,
+          },
+          lastUpdated: new Date().toISOString(),
+        };
+
+        set(state => ({
+          networkCongestion: {
+            ...state.networkCongestion,
+            [networkType]: mockCongestion,
+          },
+        }));
+
+      } catch (error) {
+        console.error('Get network congestion error:', error);
+      }
+    },
+
+    handleTransactionUpdate: (update: any) => {
+      const { transactionId } = update;
+      
+      set(state => ({
+        activeTransactions: {
+          ...state.activeTransactions,
+          [transactionId]: update,
+        },
+        lastTransactionUpdate: new Date(),
+      }));
+    },
+
     // WebSocket Actions
     connectWebSocket: () => {
       const ws = new WebSocket(`${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws/crypto/rates`);
@@ -683,6 +940,49 @@ const useCrypto = create<CryptoStore>((set, get) => {
       }));
     },
 
+    connectTransactionWebSocket: (cardId: string) => {
+      const transactionWs = new WebSocket(
+        `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws/crypto/transactions?cardId=${cardId}`
+      );
+      
+      transactionWs.onopen = () => {
+        set({ transactionWsConnected: true });
+        console.log('Transaction WebSocket connected');
+      };
+
+      transactionWs.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === 'TRANSACTION_STATUS_UPDATE') {
+            get().handleTransactionUpdate(data.payload.processing);
+          }
+        } catch (error) {
+          console.error('Transaction WebSocket message error:', error);
+        }
+      };
+
+      transactionWs.onerror = (error) => {
+        console.error('Transaction WebSocket error:', error);
+      };
+
+      transactionWs.onclose = () => {
+        set({ transactionWsConnected: false });
+        console.log('Transaction WebSocket disconnected');
+      };
+
+      // Store WebSocket instance
+      (window as any).__transactionWS = transactionWs;
+    },
+
+    disconnectTransactionWebSocket: () => {
+      const transactionWs = (window as any).__transactionWS;
+      if (transactionWs) {
+        transactionWs.close();
+        delete (window as any).__transactionWS;
+      }
+      set({ transactionWsConnected: false });
+    },
+
     // UI Actions
     setError: (error: string | null) => {
       set({ error });
@@ -690,6 +990,10 @@ const useCrypto = create<CryptoStore>((set, get) => {
 
     setConversionError: (error: string | null) => {
       set({ conversionError: error });
+    },
+
+    setTransactionError: (error: string | null) => {
+      set({ transactionError: error });
     },
 
     setWalletError: (walletId: string, error: string | null) => {
@@ -703,7 +1007,7 @@ const useCrypto = create<CryptoStore>((set, get) => {
     },
 
     clearAllErrors: () => {
-      set({ error: null, walletErrors: {}, conversionError: null });
+      set({ error: null, walletErrors: {}, conversionError: null, transactionError: null });
     },
 
     setAutoRefresh: (enabled: boolean, interval?: number) => {
@@ -802,5 +1106,46 @@ export const useHistoricalRates = (symbol: string) => {
       store.getHistoricalRates({ symbol, timeframe, resolution }),
   };
 };
+
+// Helper hook for transaction processing
+export const useTransactionProcessing = (cardId?: string) => {
+  const store = useCrypto();
+  
+  return {
+    activeTransactions: store.activeTransactions,
+    transactionHistory: cardId ? store.transactionHistory[cardId] || [] : {},
+    refundHistory: cardId ? store.refundHistory[cardId] || [] : {},
+    networkCongestion: store.networkCongestion,
+    isProcessingTransaction: store.isProcessingTransaction,
+    transactionError: store.transactionError,
+    transactionWsConnected: store.transactionWsConnected,
+    lastTransactionUpdate: store.lastTransactionUpdate,
+    processTransaction: store.processTransaction,
+    getTransactionStatus: store.getTransactionStatus,
+    getTransactionHistory: store.getTransactionHistory,
+    accelerateTransaction: store.accelerateTransaction,
+    processRefund: store.processRefund,
+    getNetworkCongestion: store.getNetworkCongestion,
+    connectTransactionWebSocket: store.connectTransactionWebSocket,
+    disconnectTransactionWebSocket: store.disconnectTransactionWebSocket,
+    setTransactionError: store.setTransactionError,
+    clearTransactionError: () => store.setTransactionError(null),
+  };
+};
+
+// Helper hook for network congestion monitoring
+export const useNetworkCongestion = (networkType: string) => {
+  const store = useCrypto();
+  const congestion = store.networkCongestion[networkType];
+  
+  return {
+    congestion,
+    isLoading: !congestion,
+    refresh: () => store.getNetworkCongestion(networkType),
+  };
+};
+
+// Export the main hook with a more convenient name
+export const useCryptoStore = useCrypto;
 
 export default useCrypto;
