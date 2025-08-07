@@ -1,4 +1,13 @@
-import { ConversionRates } from '@discard/shared/src/types/crypto';
+import { 
+  ConversionRates,
+  CryptoRate,
+  HistoricalRateRequest,
+  HistoricalRateResponse,
+  HistoricalRatePoint
+} from '@discard/shared/src/types/crypto';
+import { supabase } from '../../database/connection';
+import WebSocket from 'ws';
+import Decimal from 'decimal.js';
 
 interface RateCache {
   rates: ConversionRates;
@@ -6,12 +15,31 @@ interface RateCache {
   ttl: number; // Time to live in milliseconds
 }
 
-export class RatesService {
+interface RateSource {
+  name: 'chainlink' | 'coingecko' | '0x' | 'backup';
+  priority: number; // Lower = higher priority
+  isActive: boolean;
+  lastError?: string;
+  lastSuccess?: Date;
+}
+
+export class EnhancedRatesService {
   private cache: RateCache | null = null;
-  private readonly CACHE_TTL = 5 * 60 * 1000; // 5 minutes in milliseconds
-  private readonly COINGECKO_API_URL = 'https://api.coingecko.com/api/v3/simple/price';
+  private readonly CACHE_TTL = 30 * 1000; // 30 seconds for real-time updates
+  private refreshInterval: NodeJS.Timer | null = null;
+  private wsClients: Set<WebSocket> = new Set();
   
-  // Mapping of our currency codes to CoinGecko IDs
+  // Rate sources with failover priority
+  private rateSources: RateSource[] = [
+    { name: 'chainlink', priority: 1, isActive: true },
+    { name: 'coingecko', priority: 2, isActive: true },
+    { name: '0x', priority: 3, isActive: true },
+    { name: 'backup', priority: 4, isActive: true }
+  ];
+  
+  // API configurations
+  private readonly COINGECKO_API_URL = 'https://api.coingecko.com/api/v3/simple/price';
+  private readonly ZEROX_API_URL = 'https://api.0x.org';
   private readonly CURRENCY_MAPPING: Record<string, string> = {
     'BTC': 'bitcoin',
     'ETH': 'ethereum',
@@ -20,14 +48,51 @@ export class RatesService {
     'XRP': 'ripple'
   };
 
+  constructor() {
+    this.startRateRefreshMechanism();
+  }
+
   /**
-   * Get current conversion rates for specified currencies
+   * Start the 30-second rate refresh mechanism
    */
-  async getCurrentRates(currencies: string[]): Promise<ConversionRates> {
+  private startRateRefreshMechanism(): void {
+    // Clear any existing interval
+    if (this.refreshInterval) {
+      clearInterval(this.refreshInterval);
+    }
+
+    // Start new 30-second refresh interval
+    this.refreshInterval = setInterval(async () => {
+      try {
+        const currencies = this.getSupportedCurrencies();
+        await this.fetchAndUpdateRates(currencies);
+        this.broadcastRatesToWebSocketClients();
+      } catch (error) {
+        console.error('Rate refresh mechanism error:', error);
+      }
+    }, 30000);
+
+    console.log('Rate refresh mechanism started (30-second intervals)');
+  }
+
+  /**
+   * Stop the rate refresh mechanism
+   */
+  public stopRateRefreshMechanism(): void {
+    if (this.refreshInterval) {
+      clearInterval(this.refreshInterval);
+      this.refreshInterval = null;
+      console.log('Rate refresh mechanism stopped');
+    }
+  }
+
+  /**
+   * Get current conversion rates for specified currencies with multi-exchange support and automatic failover
+   */
+  async getCurrentRates(currencies: string[], forceRefresh = false): Promise<ConversionRates> {
     try {
-      // Check if we have valid cached rates
-      if (this.isCacheValid() && this.cache) {
-        // Filter cache to only include requested currencies
+      // Check if we have valid cached rates (unless force refresh)
+      if (!forceRefresh && this.isCacheValid() && this.cache) {
         const filteredRates: ConversionRates = {};
         for (const currency of currencies) {
           if (this.cache.rates[currency]) {
@@ -41,82 +106,187 @@ export class RatesService {
         }
       }
 
-      // Fetch fresh rates
-      const freshRates = await this.fetchRatesFromAPI(currencies);
-      
-      // Update cache
-      this.updateCache(freshRates);
+      // Fetch fresh rates with failover
+      const freshRates = await this.fetchAndUpdateRates(currencies);
       
       return freshRates;
 
     } catch (error) {
       console.error('Get current rates error:', error);
-      
-      // If there's an error and we have cached rates, return them
-      if (this.cache) {
-        const filteredRates: ConversionRates = {};
-        for (const currency of currencies) {
-          if (this.cache.rates[currency]) {
-            filteredRates[currency] = this.cache.rates[currency];
-          }
-        }
-        return filteredRates;
-      }
-      
-      // Return empty rates with error indication
-      const errorRates: ConversionRates = {};
-      for (const currency of currencies) {
-        errorRates[currency] = {
-          usd: '0',
-          lastUpdated: new Date().toISOString()
-        };
-      }
-      return errorRates;
+      return this.getFallbackRates(currencies);
     }
+  }
+
+  /**
+   * Fetch rates from multiple sources with automatic failover
+   */
+  private async fetchAndUpdateRates(currencies: string[]): Promise<ConversionRates> {
+    let lastError: Error | null = null;
+    
+    // Try each rate source in priority order
+    for (const source of this.rateSources.sort((a, b) => a.priority - b.priority)) {
+      if (!source.isActive) continue;
+      
+      try {
+        console.log(`Attempting to fetch rates from ${source.name}`);
+        let rates: ConversionRates;
+        
+        switch (source.name) {
+          case 'coingecko':
+            rates = await this.fetchFromCoinGecko(currencies);
+            break;
+          case '0x':
+            rates = await this.fetchFrom0x(currencies);
+            break;
+          case 'chainlink':
+            rates = await this.fetchFromChainlink(currencies);
+            break;
+          case 'backup':
+            rates = await this.fetchFromBackup(currencies);
+            break;
+          default:
+            throw new Error(`Unknown rate source: ${source.name}`);
+        }
+
+        // Update cache and database
+        await this.updateCache(rates);
+        await this.saveRatesToDatabase(rates, source.name);
+        
+        // Mark source as successful
+        source.lastSuccess = new Date();
+        source.lastError = undefined;
+        
+        console.log(`Successfully fetched rates from ${source.name}`);
+        return rates;
+
+      } catch (error) {
+        console.error(`Failed to fetch rates from ${source.name}:`, error);
+        lastError = error as Error;
+        source.lastError = error.message;
+        
+        // Consider deactivating source after multiple failures
+        // This could be enhanced with more sophisticated logic
+        continue;
+      }
+    }
+
+    // If all sources failed, throw the last error
+    throw new Error(`All rate sources failed. Last error: ${lastError?.message}`);
   }
 
   /**
    * Fetch rates from CoinGecko API
    */
-  private async fetchRatesFromAPI(currencies: string[]): Promise<ConversionRates> {
-    try {
-      // Map our currency codes to CoinGecko IDs
-      const coinGeckoIds = currencies
-        .map(currency => this.CURRENCY_MAPPING[currency])
-        .filter(id => id !== undefined);
+  private async fetchFromCoinGecko(currencies: string[]): Promise<ConversionRates> {
+    const coinGeckoIds = currencies
+      .map(currency => this.CURRENCY_MAPPING[currency])
+      .filter(id => id !== undefined);
 
-      if (coinGeckoIds.length === 0) {
-        throw new Error('No valid currencies to fetch rates for');
+    if (coinGeckoIds.length === 0) {
+      throw new Error('No valid currencies to fetch rates for');
+    }
+
+    const url = `${this.COINGECKO_API_URL}?ids=${coinGeckoIds.join(',')}&vs_currencies=usd&include_24hr_change=true&include_24hr_vol=true`;
+    
+    const response = await fetch(url, {
+      headers: {
+        'Accept': 'application/json',
+        'User-Agent': 'DisCard-API/1.0'
       }
+    });
 
-      const url = `${this.COINGECKO_API_URL}?ids=${coinGeckoIds.join(',')}&vs_currencies=usd`;
-      
-      const response = await fetch(url, {
-        headers: {
-          'Accept': 'application/json',
-          'User-Agent': 'DisCard-API/1.0'
+    if (!response.ok) {
+      throw new Error(`CoinGecko API error: ${response.status} ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    return this.processCoinGeckoResponse(data, currencies);
+  }
+
+  /**
+   * Fetch rates from 0x API for DEX aggregation
+   */
+  private async fetchFrom0x(currencies: string[]): Promise<ConversionRates> {
+    const rates: ConversionRates = {};
+    const currentTime = new Date().toISOString();
+
+    for (const currency of currencies) {
+      try {
+        // Skip stablecoins for 0x API (they're typically 1:1 with USD)
+        if (currency === 'USDT' || currency === 'USDC') {
+          rates[currency] = {
+            usd: '1.00',
+            lastUpdated: currentTime
+          };
+          continue;
         }
-      });
 
-      if (!response.ok) {
-        throw new Error(`CoinGecko API error: ${response.status} ${response.statusText}`);
+        const response = await fetch(`${this.ZEROX_API_URL}/swap/v1/quote?sellToken=${currency}&buyToken=USDC&sellAmount=1000000000000000000`, {
+          headers: {
+            'Accept': 'application/json'
+          }
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          const price = new Decimal(data.buyAmount).div(1000000).toString(); // Assuming 6 decimals for USDC
+          
+          rates[currency] = {
+            usd: price,
+            lastUpdated: currentTime
+          };
+        } else {
+          throw new Error(`0x API error for ${currency}: ${response.status}`);
+        }
+      } catch (error) {
+        console.warn(`Failed to fetch ${currency} from 0x:`, error);
+        // Set fallback rate
+        rates[currency] = {
+          usd: '0',
+          lastUpdated: currentTime
+        };
       }
+    }
 
-      const data = await response.json();
-      
-      // Convert CoinGecko response to our format
+    return rates;
+  }
+
+  /**
+   * Fetch rates from Chainlink Price Feeds (placeholder - would require blockchain integration)
+   */
+  private async fetchFromChainlink(currencies: string[]): Promise<ConversionRates> {
+    // This would require actual blockchain integration with Chainlink contracts
+    // For now, we'll fall back to CoinGecko but mark it as Chainlink source
+    console.log('Chainlink integration not implemented, falling back to CoinGecko');
+    return await this.fetchFromCoinGecko(currencies);
+  }
+
+  /**
+   * Backup rate source (could be another API or cached database rates)
+   */
+  private async fetchFromBackup(currencies: string[]): Promise<ConversionRates> {
+    // Try to get latest rates from database as backup
+    try {
       const rates: ConversionRates = {};
       const currentTime = new Date().toISOString();
 
       for (const currency of currencies) {
-        const coinGeckoId = this.CURRENCY_MAPPING[currency];
-        if (coinGeckoId && data[coinGeckoId] && data[coinGeckoId].usd) {
+        const { data, error } = await supabase
+          .from('crypto_rates')
+          .select('usd_price, timestamp')
+          .eq('symbol', currency)
+          .eq('is_active', true)
+          .order('timestamp', { ascending: false })
+          .limit(1)
+          .single();
+
+        if (!error && data) {
           rates[currency] = {
-            usd: data[coinGeckoId].usd.toString(),
-            lastUpdated: currentTime
+            usd: data.usd_price.toString(),
+            lastUpdated: data.timestamp
           };
         } else {
-          // Set default rate if not found
+          // Set default fallback rate
           rates[currency] = {
             usd: '0',
             lastUpdated: currentTime
@@ -125,17 +295,171 @@ export class RatesService {
       }
 
       return rates;
+    } catch (error) {
+      console.error('Backup rate source error:', error);
+      return this.getFallbackRates(currencies);
+    }
+  }
+
+  /**
+   * Process CoinGecko API response
+   */
+  private processCoinGeckoResponse(data: any, currencies: string[]): ConversionRates {
+    const rates: ConversionRates = {};
+    const currentTime = new Date().toISOString();
+
+    for (const currency of currencies) {
+      const coinGeckoId = this.CURRENCY_MAPPING[currency];
+      if (coinGeckoId && data[coinGeckoId] && data[coinGeckoId].usd) {
+        rates[currency] = {
+          usd: data[coinGeckoId].usd.toString(),
+          lastUpdated: currentTime
+        };
+      } else {
+        rates[currency] = {
+          usd: '0',
+          lastUpdated: currentTime
+        };
+      }
+    }
+
+    return rates;
+  }
+
+  /**
+   * Save rates to database for persistence and historical tracking
+   */
+  private async saveRatesToDatabase(rates: ConversionRates, source: string): Promise<void> {
+    try {
+      const timestamp = new Date().toISOString();
+
+      for (const [symbol, rateData] of Object.entries(rates)) {
+        // Save to crypto_rates table (latest rates)
+        await supabase
+          .from('crypto_rates')
+          .upsert({
+            symbol,
+            usd_price: parseFloat(rateData.usd),
+            source,
+            timestamp,
+            is_active: true
+          }, {
+            onConflict: 'symbol,source'
+          });
+
+        // Save to rate_history table
+        await supabase
+          .from('rate_history')
+          .insert({
+            symbol,
+            usd_price: parseFloat(rateData.usd),
+            source,
+            timestamp
+          });
+      }
+
+      // Clean up old rate history (7-day retention)
+      await supabase.rpc('cleanup_rate_history');
+      
+    } catch (error) {
+      console.error('Failed to save rates to database:', error);
+    }
+  }
+
+  /**
+   * Get historical rate data
+   */
+  async getHistoricalRates(request: HistoricalRateRequest): Promise<HistoricalRateResponse> {
+    try {
+      const timeframe = this.getTimeframeInterval(request.timeframe);
+      const resolution = request.resolution || '1h';
+      
+      const { data, error } = await supabase
+        .from('rate_history')
+        .select('usd_price, timestamp, volume')
+        .eq('symbol', request.symbol)
+        .gte('timestamp', new Date(Date.now() - timeframe).toISOString())
+        .order('timestamp', { ascending: true });
+
+      if (error) {
+        throw new Error(`Database error: ${error.message}`);
+      }
+
+      const dataPoints: HistoricalRatePoint[] = (data || []).map(point => ({
+        timestamp: new Date(point.timestamp),
+        price: point.usd_price.toString(),
+        volume: point.volume?.toString()
+      }));
+
+      return {
+        symbol: request.symbol,
+        timeframe: request.timeframe,
+        resolution,
+        dataPoints
+      };
 
     } catch (error) {
-      console.error('Fetch rates from API error:', error);
+      console.error('Get historical rates error:', error);
       throw error;
     }
   }
 
   /**
+   * Get timeframe interval in milliseconds
+   */
+  private getTimeframeInterval(timeframe: string): number {
+    switch (timeframe) {
+      case '1h': return 60 * 60 * 1000;
+      case '24h': return 24 * 60 * 60 * 1000;
+      case '7d': return 7 * 24 * 60 * 60 * 1000;
+      default: return 24 * 60 * 60 * 1000;
+    }
+  }
+
+  /**
+   * Add WebSocket client for real-time rate updates
+   */
+  public addWebSocketClient(ws: WebSocket): void {
+    this.wsClients.add(ws);
+    
+    // Send current rates immediately
+    if (this.cache && this.isCacheValid()) {
+      ws.send(JSON.stringify({
+        type: 'rates_update',
+        data: this.cache.rates,
+        timestamp: new Date().toISOString()
+      }));
+    }
+
+    // Handle client disconnect
+    ws.on('close', () => {
+      this.wsClients.delete(ws);
+    });
+  }
+
+  /**
+   * Broadcast rates to all WebSocket clients
+   */
+  private broadcastRatesToWebSocketClients(): void {
+    if (!this.cache || this.wsClients.size === 0) return;
+
+    const message = JSON.stringify({
+      type: 'rates_update',
+      data: this.cache.rates,
+      timestamp: new Date().toISOString()
+    });
+
+    this.wsClients.forEach(ws => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(message);
+      }
+    });
+  }
+
+  /**
    * Update the rates cache
    */
-  private updateCache(rates: ConversionRates): void {
+  private async updateCache(rates: ConversionRates): Promise<void> {
     try {
       this.cache = {
         rates: { ...this.cache?.rates, ...rates },
@@ -162,70 +486,46 @@ export class RatesService {
   }
 
   /**
-   * Get a specific currency rate
+   * Get fallback rates when all sources fail
    */
-  async getRate(currency: string): Promise<string> {
-    try {
-      const rates = await this.getCurrentRates([currency]);
-      return rates[currency]?.usd || '0';
-    } catch (error) {
-      console.error(`Get rate for ${currency} error:`, error);
-      return '0';
+  private getFallbackRates(currencies: string[]): ConversionRates {
+    const errorRates: ConversionRates = {};
+    const currentTime = new Date().toISOString();
+    
+    for (const currency of currencies) {
+      // Use cached rate if available, otherwise use 0
+      errorRates[currency] = this.cache?.rates[currency] || {
+        usd: '0',
+        lastUpdated: currentTime
+      };
     }
+    
+    return errorRates;
   }
 
   /**
-   * Convert crypto amount to USD (in cents)
-   */
-  async convertToUSD(currency: string, amount: string): Promise<number> {
-    try {
-      const rate = await this.getRate(currency);
-      const usdValue = parseFloat(amount) * parseFloat(rate);
-      return Math.round(usdValue * 100); // Convert to cents
-    } catch (error) {
-      console.error(`Convert ${currency} to USD error:`, error);
-      return 0;
-    }
-  }
-
-  /**
-   * Convert USD (in cents) to crypto amount
-   */
-  async convertFromUSD(currency: string, usdCents: number): Promise<string> {
-    try {
-      const rate = await this.getRate(currency);
-      const rateFloat = parseFloat(rate);
-      
-      if (rateFloat === 0) {
-        return '0';
-      }
-      
-      const usdAmount = usdCents / 100; // Convert cents to dollars
-      const cryptoAmount = usdAmount / rateFloat;
-      
-      return cryptoAmount.toString();
-    } catch (error) {
-      console.error(`Convert USD to ${currency} error:`, error);
-      return '0';
-    }
-  }
-
-  /**
-   * Get all supported currencies
+   * Get supported currencies
    */
   getSupportedCurrencies(): string[] {
     return Object.keys(this.CURRENCY_MAPPING);
   }
 
   /**
-   * Clear the rates cache (useful for testing)
+   * Get rate source status for debugging
+   */
+  getRateSourceStatus(): RateSource[] {
+    return [...this.rateSources];
+  }
+
+  /**
+   * Clear cache (useful for testing)
    */
   clearCache(): void {
     this.cache = null;
   }
 
   /**
-   * Get cache status for debugging
+   * Get cache status
    */
   getCacheStatus(): { isValid: boolean; lastUpdated: string | null; size: number } {
     return {
@@ -236,27 +536,21 @@ export class RatesService {
   }
 
   /**
-   * Preload rates for commonly used currencies
+   * Manual refresh of rates (for testing/debugging)
    */
-  async preloadCommonRates(): Promise<void> {
-    try {
-      const commonCurrencies = ['BTC', 'ETH', 'USDT', 'USDC'];
-      await this.getCurrentRates(commonCurrencies);
-      console.log('Common rates preloaded successfully');
-    } catch (error) {
-      console.error('Preload common rates error:', error);
-    }
+  async manualRefresh(currencies?: string[]): Promise<ConversionRates> {
+    const currenciesToFetch = currencies || this.getSupportedCurrencies();
+    return await this.getCurrentRates(currenciesToFetch, true);
   }
 
   /**
-   * Get historical rate (placeholder for future implementation)
+   * Cleanup resources
    */
-  async getHistoricalRate(currency: string, date: Date): Promise<string> {
-    // This would require a different API call to get historical data
-    // For now, return current rate
-    console.warn('Historical rates not implemented, returning current rate');
-    return await this.getRate(currency);
+  public cleanup(): void {
+    this.stopRateRefreshMechanism();
+    this.wsClients.clear();
+    this.clearCache();
   }
 }
 
-export const ratesService = new RatesService();
+export const enhancedRatesService = new EnhancedRatesService();

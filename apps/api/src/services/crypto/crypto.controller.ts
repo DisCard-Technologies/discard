@@ -1,6 +1,8 @@
 import { Request, Response } from 'express';
 import { blockchainService } from './blockchain.service';
 import { ratesService } from './rates.service';
+import { enhancedRatesService } from './rates.service';
+import { conversionService } from './conversion.service';
 import { walletConnectService } from './walletconnect.service';
 import { metamaskService } from './metamask.service';
 import { bitcoinService } from './bitcoin.service';
@@ -16,7 +18,13 @@ import {
   BitcoinBroadcastRequest,
   CryptoWalletError,
   CRYPTO_ERROR_CODES,
-  ConversionRates
+  ConversionRates,
+  ConversionCalculatorRequest,
+  ConversionCalculatorResponse,
+  RateComparisonRequest,
+  RateComparisonResponse,
+  HistoricalRateRequest,
+  HistoricalRateResponse
 } from '@discard/shared/src/types/crypto';
 import { supabase } from '../../app';
 import { v4 as uuidv4 } from 'uuid';
@@ -1816,12 +1824,12 @@ export class CryptoController {
   }
 
   /**
-   * Get current conversion rates for cryptocurrencies
+   * Get current conversion rates for cryptocurrencies with enhanced real-time streaming capability
    * GET /api/v1/crypto/rates
    */
   async getCurrentRates(req: Request, res: Response): Promise<void> {
     try {
-      const { currencies } = req.query;
+      const { currencies, forceRefresh } = req.query;
       
       // Default currencies if none specified
       let currencyList: string[] = ['BTC', 'ETH', 'USDT', 'USDC'];
@@ -1837,7 +1845,7 @@ export class CryptoController {
       }
 
       // Validate currency codes
-      const validCurrencies = ['BTC', 'ETH', 'USDT', 'USDC', 'XRP'];
+      const validCurrencies = enhancedRatesService.getSupportedCurrencies();
       const filteredCurrencies = currencyList.filter(currency => 
         validCurrencies.includes(currency)
       );
@@ -1851,15 +1859,33 @@ export class CryptoController {
         return;
       }
 
-      // Get rates from rates service
-      const rates: ConversionRates = await ratesService.getCurrentRates(filteredCurrencies);
+      // Get rates from enhanced rates service with multi-exchange support
+      const rates: ConversionRates = await enhancedRatesService.getCurrentRates(
+        filteredCurrencies, 
+        forceRefresh === 'true'
+      );
+
+      // Include source status for debugging
+      const sourceStatus = enhancedRatesService.getRateSourceStatus();
+      const cacheStatus = enhancedRatesService.getCacheStatus();
 
       res.status(200).json({
         success: true,
         data: {
           rates,
           requestedCurrencies: filteredCurrencies,
-          lastUpdated: new Date().toISOString()
+          lastUpdated: new Date().toISOString(),
+          sourceStatus: sourceStatus.map(s => ({
+            name: s.name,
+            isActive: s.isActive,
+            lastSuccess: s.lastSuccess?.toISOString(),
+            lastError: s.lastError
+          })),
+          cache: {
+            isValid: cacheStatus.isValid,
+            lastUpdated: cacheStatus.lastUpdated,
+            size: cacheStatus.size
+          }
         }
       });
 
@@ -1868,6 +1894,386 @@ export class CryptoController {
       res.status(500).json({
         success: false,
         error: 'Failed to get conversion rates',
+        details: error.message
+      });
+    }
+  }
+
+  /**
+   * Calculate exact cryptocurrency amounts needed for desired USD card funding
+   * POST /api/v1/crypto/rates/conversion-calculator
+   */
+  async calculateConversion(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      if (!req.user) {
+        res.status(401).json({ 
+          success: false,
+          error: 'Authentication required' 
+        });
+        return;
+      }
+
+      const { fromCrypto, toUsd, slippageLimit }: ConversionCalculatorRequest = req.body;
+
+      if (!fromCrypto || !toUsd) {
+        res.status(400).json({
+          success: false,
+          error: 'fromCrypto and toUsd are required'
+        });
+        return;
+      }
+
+      // Validate crypto currency
+      const supportedCurrencies = conversionService.getSupportedCurrencies();
+      if (!supportedCurrencies.includes(fromCrypto)) {
+        res.status(400).json({
+          success: false,
+          error: 'Unsupported cryptocurrency',
+          supportedCurrencies
+        });
+        return;
+      }
+
+      // Validate USD amount (minimum $1.00, maximum $10,000.00)
+      if (toUsd < 100 || toUsd > 1000000) {
+        res.status(400).json({
+          success: false,
+          error: 'USD amount must be between $1.00 and $10,000.00'
+        });
+        return;
+      }
+
+      // Validate slippage limit if provided
+      if (slippageLimit && !conversionService.validateSlippageLimit(slippageLimit)) {
+        res.status(400).json({
+          success: false,
+          error: 'Invalid slippage limit (must be between 0.1% and 5%)'
+        });
+        return;
+      }
+
+      const result: ConversionCalculatorResponse = await conversionService.calculateConversion({
+        fromCrypto,
+        toUsd,
+        slippageLimit
+      });
+
+      res.status(200).json({
+        success: true,
+        data: result
+      });
+
+    } catch (error: any) {
+      console.error('Calculate conversion error:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to calculate conversion',
+        details: error.message
+      });
+    }
+  }
+
+  /**
+   * Compare rates across multiple cryptocurrencies for optimal funding source selection
+   * POST /api/v1/crypto/rates/comparison
+   */
+  async compareRates(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      if (!req.user) {
+        res.status(401).json({ 
+          success: false,
+          error: 'Authentication required' 
+        });
+        return;
+      }
+
+      const { targetUsdAmount, cryptoSymbols }: RateComparisonRequest = req.body;
+
+      if (!targetUsdAmount) {
+        res.status(400).json({
+          success: false,
+          error: 'targetUsdAmount is required'
+        });
+        return;
+      }
+
+      // Validate USD amount
+      if (targetUsdAmount < 100 || targetUsdAmount > 1000000) {
+        res.status(400).json({
+          success: false,
+          error: 'USD amount must be between $1.00 and $10,000.00'
+        });
+        return;
+      }
+
+      // Validate crypto symbols if provided
+      if (cryptoSymbols) {
+        const supportedCurrencies = conversionService.getSupportedCurrencies();
+        const invalidSymbols = cryptoSymbols.filter(symbol => 
+          !supportedCurrencies.includes(symbol)
+        );
+        
+        if (invalidSymbols.length > 0) {
+          res.status(400).json({
+            success: false,
+            error: 'Unsupported cryptocurrencies',
+            invalidSymbols,
+            supportedCurrencies
+          });
+          return;
+        }
+      }
+
+      const result: RateComparisonResponse = await conversionService.compareRates({
+        targetUsdAmount,
+        cryptoSymbols
+      });
+
+      res.status(200).json({
+        success: true,
+        data: result
+      });
+
+    } catch (error: any) {
+      console.error('Compare rates error:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to compare rates',
+        details: error.message
+      });
+    }
+  }
+
+  /**
+   * Get historical rate information for price trends
+   * GET /api/v1/crypto/rates/historical
+   */
+  async getHistoricalRates(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      if (!req.user) {
+        res.status(401).json({ 
+          success: false,
+          error: 'Authentication required' 
+        });
+        return;
+      }
+
+      const { symbol, timeframe = '24h', resolution } = req.query;
+
+      if (!symbol || typeof symbol !== 'string') {
+        res.status(400).json({
+          success: false,
+          error: 'symbol parameter is required'
+        });
+        return;
+      }
+
+      // Validate symbol
+      const supportedCurrencies = enhancedRatesService.getSupportedCurrencies();
+      if (!supportedCurrencies.includes(symbol.toUpperCase())) {
+        res.status(400).json({
+          success: false,
+          error: 'Unsupported cryptocurrency symbol',
+          supportedCurrencies
+        });
+        return;
+      }
+
+      // Validate timeframe
+      const validTimeframes = ['1h', '24h', '7d'];
+      if (!validTimeframes.includes(timeframe as string)) {
+        res.status(400).json({
+          success: false,
+          error: 'Invalid timeframe',
+          supportedTimeframes: validTimeframes
+        });
+        return;
+      }
+
+      // Validate resolution if provided
+      if (resolution) {
+        const validResolutions = ['1m', '5m', '1h'];
+        if (!validResolutions.includes(resolution as string)) {
+          res.status(400).json({
+            success: false,
+            error: 'Invalid resolution',
+            supportedResolutions: validResolutions
+          });
+          return;
+        }
+      }
+
+      const request: HistoricalRateRequest = {
+        symbol: symbol.toUpperCase(),
+        timeframe: timeframe as '1h' | '24h' | '7d',
+        resolution: resolution as '1m' | '5m' | '1h' | undefined
+      };
+
+      const result: HistoricalRateResponse = await enhancedRatesService.getHistoricalRates(request);
+
+      res.status(200).json({
+        success: true,
+        data: result
+      });
+
+    } catch (error: any) {
+      console.error('Get historical rates error:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to get historical rates',
+        details: error.message
+      });
+    }
+  }
+
+  /**
+   * Create slippage-protected conversion quote
+   * POST /api/v1/crypto/quotes
+   */
+  async createConversionQuote(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      if (!req.user) {
+        res.status(401).json({ 
+          success: false,
+          error: 'Authentication required' 
+        });
+        return;
+      }
+
+      const { fromCrypto, toUsd, slippageLimit }: ConversionCalculatorRequest = req.body;
+
+      if (!fromCrypto || !toUsd) {
+        res.status(400).json({
+          success: false,
+          error: 'fromCrypto and toUsd are required'
+        });
+        return;
+      }
+
+      // This creates a quote internally as part of the conversion calculation
+      const result = await conversionService.calculateConversion({
+        fromCrypto,
+        toUsd,
+        slippageLimit
+      });
+
+      res.status(201).json({
+        success: true,
+        data: {
+          quoteId: result.quoteId,
+          expiresAt: result.expiresAt,
+          fromCrypto,
+          fromAmount: result.fromAmount,
+          toAmount: result.toAmount,
+          rate: result.rate,
+          fees: result.fees,
+          slippageProtection: result.slippageProtection
+        }
+      });
+
+    } catch (error: any) {
+      console.error('Create conversion quote error:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to create conversion quote',
+        details: error.message
+      });
+    }
+  }
+
+  /**
+   * Get active conversion quote details
+   * GET /api/v1/crypto/quotes/:quoteId
+   */
+  async getConversionQuote(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      if (!req.user) {
+        res.status(401).json({ 
+          success: false,
+          error: 'Authentication required' 
+        });
+        return;
+      }
+
+      const { quoteId } = req.params;
+
+      if (!quoteId) {
+        res.status(400).json({
+          success: false,
+          error: 'Quote ID is required'
+        });
+        return;
+      }
+
+      const quote = await conversionService.getConversionQuote(quoteId);
+
+      if (!quote) {
+        res.status(404).json({
+          success: false,
+          error: 'Conversion quote not found or expired'
+        });
+        return;
+      }
+
+      res.status(200).json({
+        success: true,
+        data: quote
+      });
+
+    } catch (error: any) {
+      console.error('Get conversion quote error:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to get conversion quote',
+        details: error.message
+      });
+    }
+  }
+
+  /**
+   * Cancel active conversion quote
+   * DELETE /api/v1/crypto/quotes/:quoteId
+   */
+  async cancelConversionQuote(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      if (!req.user) {
+        res.status(401).json({ 
+          success: false,
+          error: 'Authentication required' 
+        });
+        return;
+      }
+
+      const { quoteId } = req.params;
+
+      if (!quoteId) {
+        res.status(400).json({
+          success: false,
+          error: 'Quote ID is required'
+        });
+        return;
+      }
+
+      const success = await conversionService.cancelConversionQuote(quoteId);
+
+      if (!success) {
+        res.status(404).json({
+          success: false,
+          error: 'Conversion quote not found or already expired'
+        });
+        return;
+      }
+
+      res.status(200).json({
+        success: true,
+        message: 'Conversion quote cancelled successfully'
+      });
+
+    } catch (error: any) {
+      console.error('Cancel conversion quote error:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to cancel conversion quote',
         details: error.message
       });
     }

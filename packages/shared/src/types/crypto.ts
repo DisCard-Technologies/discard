@@ -165,3 +165,99 @@ export const CRYPTO_ERROR_CODES = {
 } as const;
 
 export type CryptoErrorCode = typeof CRYPTO_ERROR_CODES[keyof typeof CRYPTO_ERROR_CODES];
+
+// Real-time rate and conversion types for Story 2.2
+export interface CryptoRate {
+  rateId: string; // UUID v4
+  symbol: string; // BTC, ETH, USDT, USDC, XRP
+  usdPrice: string; // Decimal string for precision
+  change24h: number; // Percentage
+  volume24h: string; // Decimal string
+  source: 'chainlink' | 'coingecko' | '0x' | 'backup';
+  timestamp: Date;
+  isActive: boolean;
+}
+
+export interface ConversionQuote {
+  quoteId: string; // UUID v4
+  fromCrypto: string; // Source cryptocurrency
+  toCrypto: string; // Target (usually USD equivalent)
+  fromAmount: string; // Input amount
+  toAmount: string; // Expected output amount
+  rate: string; // Conversion rate at quote time
+  slippageLimit: number; // Maximum acceptable slippage
+  networkFee: number; // Cents
+  conversionFee: number; // Cents
+  platformFee: number; // Cents
+  totalFee: number; // Cents
+  expiresAt: Date; // Quote expiration
+  status: 'active' | 'expired' | 'used';
+}
+
+export interface ConversionCalculatorRequest {
+  fromCrypto: string; // BTC, ETH, USDT, USDC, XRP
+  toUsd: number; // Desired USD amount in cents
+  slippageLimit?: number; // Optional, default 2%
+}
+
+export interface ConversionCalculatorResponse {
+  fromAmount: string; // Required crypto amount
+  toAmount: number; // USD amount in cents
+  rate: string; // Current conversion rate
+  fees: {
+    networkFee: number; // Cents
+    conversionFee: number; // Cents
+    platformFee: number; // Cents
+    totalFee: number; // Cents
+  };
+  slippageProtection: {
+    maxSlippage: number; // Percentage
+    guaranteedMinOutput: string; // Minimum guaranteed output
+  };
+  quoteId: string; // For slippage protection
+  expiresAt: Date;
+}
+
+export interface RateComparisonRequest {
+  targetUsdAmount: number; // Desired USD amount in cents
+  cryptoSymbols?: string[]; // Optional filter, defaults to all supported
+}
+
+export interface RateComparisonResponse {
+  targetUsdAmount: number;
+  comparisons: CryptoRateComparison[];
+  bestOption: string; // Symbol of the most cost-effective option
+}
+
+export interface CryptoRateComparison {
+  symbol: string;
+  requiredAmount: string; // Crypto amount needed
+  currentRate: string;
+  totalCost: number; // Including all fees, in cents
+  fees: {
+    networkFee: number;
+    conversionFee: number;
+    platformFee: number;
+    totalFee: number;
+  };
+  costEfficiency: number; // Lower is better
+}
+
+export interface HistoricalRateRequest {
+  symbol: string;
+  timeframe: '1h' | '24h' | '7d';
+  resolution?: '1m' | '5m' | '1h'; // Data point resolution
+}
+
+export interface HistoricalRateResponse {
+  symbol: string;
+  timeframe: string;
+  resolution: string;
+  dataPoints: HistoricalRatePoint[];
+}
+
+export interface HistoricalRatePoint {
+  timestamp: Date;
+  price: string; // Decimal string
+  volume?: string; // Optional volume data
+}
