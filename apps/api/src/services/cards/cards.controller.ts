@@ -4,10 +4,15 @@ import { privacyService } from './privacy.service';
 import { AuthenticatedRequest } from '../../middleware/auth';
 import { InputSanitizer } from '../../utils/input-sanitizer';
 import { CreateCardRequest, CardListRequest } from '@discard/shared/src/types/index';
+import { VisaService } from '../payments/visa.service';
+import { RestrictionsService } from '../payments/restrictions.service';
 
 export class CardsController {
+  private visaService = new VisaService();
+  private restrictionsService = new RestrictionsService();
+
   /**
-   * Create a new disposable virtual card
+   * Create a new disposable virtual card with Visa provisioning
    * POST /api/v1/cards
    */
   async createCard(req: AuthenticatedRequest, res: Response): Promise<void> {
@@ -49,6 +54,36 @@ export class CardsController {
       };
 
       const result = await cardsService.createCard(sanitizedData);
+
+      // Create Visa card details via Marqeta
+      try {
+        const visaCard = await this.visaService.generateCard({
+          cardId: result.card.cardId,
+          cardContext: result.card.cardId, // Use cardId as context for now
+          userToken: req.user.id,
+          metadata: {
+            spending_limit: spendingLimit,
+            merchant_restrictions: merchantRestrictions
+          }
+        });
+
+        // Apply merchant restrictions if provided
+        if (merchantRestrictions && merchantRestrictions.length > 0) {
+          const restrictions = merchantRestrictions.map(mcc => ({
+            restrictionType: 'merchant_category' as const,
+            restrictionValue: mcc,
+            isAllowed: false
+          }));
+          
+          await this.restrictionsService.bulkUpdateRestrictions(
+            result.card.cardId,
+            restrictions
+          );
+        }
+      } catch (visaError) {
+        console.error('Visa provisioning failed:', visaError);
+        // Continue with basic card creation even if Visa provisioning fails
+      }
 
       res.status(201).json({
         success: true,
@@ -353,6 +388,232 @@ export class CardsController {
       res.status(statusCode).json({
         success: false,
         error: errorMessage
+      });
+    }
+  }
+
+  /**
+   * Activate a Visa card
+   * PUT /api/v1/cards/:cardId/activate
+   */
+  async activateCard(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      if (!req.user) {
+        res.status(401).json({ 
+          success: false,
+          error: 'Authentication required' 
+        });
+        return;
+      }
+
+      const { cardId } = req.params;
+      
+      if (!cardId) {
+        res.status(400).json({ 
+          success: false,
+          error: 'Card ID is required' 
+        });
+        return;
+      }
+
+      // Verify card ownership
+      await cardsService.getCardDetails(req.user.id, cardId);
+
+      // Get visa card details
+      const visaCard = await this.visaService.getCardDetails(cardId);
+      if (!visaCard) {
+        res.status(404).json({
+          success: false,
+          error: 'Visa card not found'
+        });
+        return;
+      }
+
+      // Activate the card
+      const activatedCard = await this.visaService.activateCard({
+        cardContext: cardId,
+        marqetaCardToken: visaCard.marqetaCardToken
+      });
+
+      res.json({
+        success: true,
+        message: 'Card activated successfully',
+        data: {
+          visaCardId: activatedCard.visaCardId,
+          provisioningStatus: activatedCard.provisioningStatus,
+          activationDate: activatedCard.activationDate
+        }
+      });
+    } catch (error) {
+      console.error('Card activation error:', error);
+      
+      const errorMessage = error instanceof Error ? error.message : 'Failed to activate card';
+      const statusCode = errorMessage.includes('not found') ? 404 : 500;
+      
+      res.status(statusCode).json({
+        success: false,
+        error: errorMessage
+      });
+    }
+  }
+
+  /**
+   * Update card restrictions
+   * PUT /api/v1/cards/:cardId/restrictions
+   */
+  async updateRestrictions(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      if (!req.user) {
+        res.status(401).json({ 
+          success: false,
+          error: 'Authentication required' 
+        });
+        return;
+      }
+
+      const { cardId } = req.params;
+      const { restrictions, template } = req.body;
+      
+      if (!cardId) {
+        res.status(400).json({ 
+          success: false,
+          error: 'Card ID is required' 
+        });
+        return;
+      }
+
+      // Verify card ownership
+      await cardsService.getCardDetails(req.user.id, cardId);
+
+      let updatedRestrictions;
+
+      if (template) {
+        // Apply template
+        updatedRestrictions = await this.restrictionsService.applyTemplate(cardId, template);
+      } else if (restrictions && Array.isArray(restrictions)) {
+        // Update individual restrictions
+        updatedRestrictions = await this.restrictionsService.bulkUpdateRestrictions(
+          cardId, 
+          restrictions
+        );
+      } else {
+        res.status(400).json({
+          success: false,
+          error: 'Either restrictions array or template name is required'
+        });
+        return;
+      }
+
+      res.json({
+        success: true,
+        message: 'Restrictions updated successfully',
+        data: {
+          restrictions: updatedRestrictions,
+          count: updatedRestrictions.length
+        }
+      });
+    } catch (error) {
+      console.error('Restrictions update error:', error);
+      
+      const errorMessage = error instanceof Error ? error.message : 'Failed to update restrictions';
+      const statusCode = errorMessage.includes('not found') ? 404 : 500;
+      
+      res.status(statusCode).json({
+        success: false,
+        error: errorMessage
+      });
+    }
+  }
+
+  /**
+   * Get card status including provisioning
+   * GET /api/v1/cards/:cardId/status
+   */
+  async getCardStatus(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      if (!req.user) {
+        res.status(401).json({ 
+          success: false,
+          error: 'Authentication required' 
+        });
+        return;
+      }
+
+      const { cardId } = req.params;
+      
+      if (!cardId) {
+        res.status(400).json({ 
+          success: false,
+          error: 'Card ID is required' 
+        });
+        return;
+      }
+
+      // Verify card ownership and get basic details
+      const cardDetails = await cardsService.getCardDetails(req.user.id, cardId);
+
+      // Get Visa-specific details
+      const visaCard = await this.visaService.getCardDetails(cardId);
+      const provisioningStatus = await this.visaService.getProvisioningStatus(cardId);
+      const restrictions = await this.restrictionsService.getCardRestrictions(cardId);
+
+      res.json({
+        success: true,
+        data: {
+          cardId,
+          basicStatus: cardDetails.card.status,
+          visaCard: visaCard ? {
+            provisioningStatus: visaCard.provisioningStatus,
+            activationDate: visaCard.activationDate,
+            networkRegistrationId: visaCard.networkRegistrationId
+          } : null,
+          provisioningHistory: provisioningStatus,
+          restrictions: {
+            count: restrictions.length,
+            templates: this.restrictionsService.getAvailableTemplates().map(t => t.name)
+          }
+        }
+      });
+    } catch (error) {
+      console.error('Card status error:', error);
+      
+      const errorMessage = error instanceof Error ? error.message : 'Failed to get card status';
+      const statusCode = errorMessage.includes('not found') ? 404 : 500;
+      
+      res.status(statusCode).json({
+        success: false,
+        error: errorMessage
+      });
+    }
+  }
+
+  /**
+   * Get network status
+   * GET /api/v1/network/status
+   */
+  async getNetworkStatus(req: Request, res: Response): Promise<void> {
+    try {
+      const networkStatus = await this.visaService.checkNetworkStatus();
+
+      res.json({
+        success: true,
+        data: {
+          network: 'Marqeta/Visa',
+          ...networkStatus
+        }
+      });
+    } catch (error) {
+      console.error('Network status error:', error);
+      
+      res.status(500).json({
+        success: false,
+        error: 'Failed to check network status',
+        data: {
+          network: 'Marqeta/Visa',
+          isHealthy: false,
+          status: 'Error checking status',
+          lastChecked: new Date().toISOString()
+        }
       });
     }
   }

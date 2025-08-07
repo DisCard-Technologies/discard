@@ -38,18 +38,45 @@ const CardCreationScreen: React.FC<CardCreationScreenProps> = ({
   const [expirationMonths, setExpirationMonths] = useState('12');
   const [merchantRestrictions, setMerchantRestrictions] = useState<string[]>([]);
   const [customMerchant, setCustomMerchant] = useState('');
+  const [geographicRestrictions, setGeographicRestrictions] = useState<string[]>([]);
+  const [selectedTemplate, setSelectedTemplate] = useState<string>('');
+  const [activateImmediately, setActivateImmediately] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
 
-  // Predefined merchant categories
+  // Predefined merchant categories (updated with more comprehensive list)
   const merchantCategories = [
-    { code: '5411', name: 'Grocery Stores' },
-    { code: '5812', name: 'Restaurants' },
-    { code: '5541', name: 'Gas Stations' },
-    { code: '5399', name: 'Online Shopping' },
-    { code: '4900', name: 'Utilities' },
-    { code: '5691', name: 'Clothing Stores' },
-    { code: '5732', name: 'Electronics' },
-    { code: '5942', name: 'Books/Media' },
+    { code: '5411', name: 'Grocery Stores', riskLevel: 'low' },
+    { code: '5812', name: 'Restaurants', riskLevel: 'low' },
+    { code: '5542', name: 'Gas Stations', riskLevel: 'low' },
+    { code: '4900', name: 'Utilities', riskLevel: 'low' },
+    { code: '5912', name: 'Pharmacies', riskLevel: 'low' },
+    { code: '5691', name: 'Clothing Stores', riskLevel: 'medium' },
+    { code: '5732', name: 'Electronics', riskLevel: 'medium' },
+    { code: '5999', name: 'Online Shopping', riskLevel: 'medium' },
+    { code: '7995', name: 'Gambling', riskLevel: 'high' },
+    { code: '5967', name: 'Adult Content', riskLevel: 'high' },
+    { code: '6010', name: 'Cash Advances', riskLevel: 'high' },
+    { code: '6011', name: 'ATM Withdrawals', riskLevel: 'medium' },
+  ];
+
+  // Geographic restrictions (countries)
+  const commonCountries = [
+    { code: 'US', name: 'United States' },
+    { code: 'CA', name: 'Canada' },
+    { code: 'GB', name: 'United Kingdom' },
+    { code: 'FR', name: 'France' },
+    { code: 'DE', name: 'Germany' },
+    { code: 'JP', name: 'Japan' },
+    { code: 'AU', name: 'Australia' },
+    { code: 'SG', name: 'Singapore' },
+  ];
+
+  // Restriction templates
+  const restrictionTemplates = [
+    { name: 'Safe Spending', description: 'Blocks gambling, adult content, and cash advances' },
+    { name: 'US Only', description: 'Restricts usage to United States only' },
+    { name: 'No High-Risk Countries', description: 'Blocks transactions in high-risk countries' },
+    { name: 'Essential Services Only', description: 'Allows only groceries, gas, utilities, and pharmacies' },
   ];
 
   const validateForm = (): string | null => {
@@ -228,14 +255,90 @@ const CardCreationScreen: React.FC<CardCreationScreenProps> = ({
             )}
           </View>
 
-          {/* Merchant Restrictions */}
+          {/* Restriction Templates */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Merchant Restrictions</Text>
+            <Text style={styles.sectionTitle}>Security Templates</Text>
             <Text style={styles.sectionDescription}>
-              Limit where this card can be used (optional)
+              Quick setup with pre-configured security restrictions
+            </Text>
+            
+            <View style={styles.templateGrid}>
+              {restrictionTemplates.map((template) => (
+                <TouchableOpacity
+                  key={template.name}
+                  style={[
+                    styles.templateButton,
+                    selectedTemplate === template.name && styles.templateButtonActive,
+                  ]}
+                  onPress={() => setSelectedTemplate(
+                    selectedTemplate === template.name ? '' : template.name
+                  )}
+                >
+                  <Text
+                    style={[
+                      styles.templateButtonTitle,
+                      selectedTemplate === template.name && styles.templateButtonTitleActive,
+                    ]}
+                  >
+                    {template.name}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.templateButtonDescription,
+                      selectedTemplate === template.name && styles.templateButtonDescriptionActive,
+                    ]}
+                  >
+                    {template.description}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
+          {/* Geographic Restrictions */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Geographic Restrictions</Text>
+            <Text style={styles.sectionDescription}>
+              Limit card usage to specific countries (optional)
             </Text>
 
-            {/* Predefined Categories */}
+            <View style={styles.merchantGrid}>
+              {commonCountries.map((country) => (
+                <TouchableOpacity
+                  key={country.code}
+                  style={[
+                    styles.merchantButton,
+                    geographicRestrictions.includes(country.code) && styles.merchantButtonActive,
+                  ]}
+                  onPress={() => {
+                    if (geographicRestrictions.includes(country.code)) {
+                      setGeographicRestrictions(geographicRestrictions.filter(c => c !== country.code));
+                    } else {
+                      setGeographicRestrictions([...geographicRestrictions, country.code]);
+                    }
+                  }}
+                >
+                  <Text
+                    style={[
+                      styles.merchantButtonText,
+                      geographicRestrictions.includes(country.code) && styles.merchantButtonTextActive,
+                    ]}
+                  >
+                    {country.name}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
+          {/* Merchant Category Restrictions */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Merchant Category Blocks</Text>
+            <Text style={styles.sectionDescription}>
+              Block specific types of merchants (optional)
+            </Text>
+
+            {/* Predefined Categories with risk indicators */}
             <View style={styles.merchantGrid}>
               {merchantCategories.map((category) => (
                 <TouchableOpacity
@@ -243,17 +346,23 @@ const CardCreationScreen: React.FC<CardCreationScreenProps> = ({
                   style={[
                     styles.merchantButton,
                     merchantRestrictions.includes(category.code) && styles.merchantButtonActive,
+                    category.riskLevel === 'high' && styles.highRiskButton,
                   ]}
                   onPress={() => toggleMerchantRestriction(category.code)}
                 >
-                  <Text
-                    style={[
-                      styles.merchantButtonText,
-                      merchantRestrictions.includes(category.code) && styles.merchantButtonTextActive,
-                    ]}
-                  >
-                    {category.name}
-                  </Text>
+                  <View style={styles.merchantButtonContent}>
+                    <Text
+                      style={[
+                        styles.merchantButtonText,
+                        merchantRestrictions.includes(category.code) && styles.merchantButtonTextActive,
+                      ]}
+                    >
+                      {category.name}
+                    </Text>
+                    {category.riskLevel === 'high' && (
+                      <Text style={styles.riskIndicator}>⚠️</Text>
+                    )}
+                  </View>
                 </TouchableOpacity>
               ))}
             </View>
@@ -304,6 +413,24 @@ const CardCreationScreen: React.FC<CardCreationScreenProps> = ({
             )}
           </View>
 
+          {/* Card Activation */}
+          <View style={styles.section}>
+            <View style={styles.switchRow}>
+              <View style={styles.switchLabel}>
+                <Text style={styles.sectionTitle}>Activate Immediately</Text>
+                <Text style={styles.sectionDescription}>
+                  Enable the card for transactions right after creation
+                </Text>
+              </View>
+              <Switch
+                value={activateImmediately}
+                onValueChange={setActivateImmediately}
+                trackColor={{ false: '#E5E7EB', true: '#93C5FD' }}
+                thumbColor={activateImmediately ? '#3B82F6' : '#9CA3AF'}
+              />
+            </View>
+          </View>
+
           {/* Action Buttons */}
           <View style={styles.actionButtons}>
             {onCancel && (
@@ -332,8 +459,9 @@ const CardCreationScreen: React.FC<CardCreationScreenProps> = ({
           {/* Privacy Notice */}
           <View style={styles.privacyNotice}>
             <Text style={styles.privacyNoticeText}>
-              🔒 Your card will be created with cryptographic isolation and privacy protection.
+              🔒 Your card will be provisioned through the Visa network via Marqeta with cryptographic isolation and privacy protection.
               Card details will be temporarily visible after creation for secure copying.
+              {selectedTemplate && ` Security template "${selectedTemplate}" will be applied.`}
             </Text>
           </View>
         </View>
@@ -579,6 +707,62 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#92400E',
     fontWeight: 'bold',
+  },
+
+  // Templates
+  templateGrid: {
+    gap: 12,
+  },
+
+  templateButton: {
+    backgroundColor: 'white',
+    borderWidth: 2,
+    borderColor: '#E5E7EB',
+    borderRadius: 8,
+    padding: 12,
+  },
+
+  templateButtonActive: {
+    backgroundColor: '#EBF8FF',
+    borderColor: '#3B82F6',
+  },
+
+  templateButtonTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginBottom: 4,
+  },
+
+  templateButtonTitleActive: {
+    color: '#1E40AF',
+  },
+
+  templateButtonDescription: {
+    fontSize: 12,
+    color: '#6B7280',
+    lineHeight: 16,
+  },
+
+  templateButtonDescriptionActive: {
+    color: '#3B82F6',
+  },
+
+  // Enhanced merchant buttons
+  merchantButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+
+  highRiskButton: {
+    borderColor: '#F59E0B',
+    backgroundColor: '#FFFBEB',
+  },
+
+  riskIndicator: {
+    fontSize: 10,
+    marginLeft: 4,
   },
 
   // Action buttons
