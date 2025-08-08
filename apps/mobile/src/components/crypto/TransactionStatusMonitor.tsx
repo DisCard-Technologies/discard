@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, RefreshControl, Alert } from 'react-native';
 import { useCryptoStore } from '../../stores/crypto';
 import { useWebSocketConnection } from '../../hooks/useWebSocketConnection';
 
@@ -12,6 +12,8 @@ export interface TransactionStatusMonitorProps {
   onStatusChange?: (status: string) => void;
   onTransactionCompleted?: () => void;
   onRetryRequested?: () => void;
+  showNotifications?: boolean; // New: Show notification alerts for this transaction
+  notificationPreferences?: any; // New: User's notification preferences
 }
 
 export const TransactionStatusMonitor: React.FC<TransactionStatusMonitorProps> = ({
@@ -22,7 +24,9 @@ export const TransactionStatusMonitor: React.FC<TransactionStatusMonitorProps> =
   transactionType = 'crypto',
   onStatusChange,
   onTransactionCompleted,
-  onRetryRequested
+  onRetryRequested,
+  showNotifications = true,
+  notificationPreferences
 }) => {
   const [transaction, setTransaction] = useState<any>(null);
   const [authorization, setAuthorization] = useState<any>(null);
@@ -30,6 +34,11 @@ export const TransactionStatusMonitor: React.FC<TransactionStatusMonitorProps> =
   const [accelerationOptions, setAccelerationOptions] = useState<any[]>([]);
   const [declineReason, setDeclineReason] = useState<string | null>(null);
   const [canRetry, setCanRetry] = useState(false);
+  
+  // New notification-related state
+  const [activeNotification, setActiveNotification] = useState<any>(null);
+  const [notificationHistory, setNotificationHistory] = useState<any[]>([]);
+  const [showNotificationBadge, setShowNotificationBadge] = useState(false);
   
   const {
     getTransactionStatus,
@@ -98,15 +107,108 @@ export const TransactionStatusMonitor: React.FC<TransactionStatusMonitorProps> =
     loadTransactionStatus();
   }, [loadTransactionStatus]);
 
+  // New notification handling functions
+  const showInAppNotification = useCallback((notification: any) => {
+    if (!showNotifications) return;
+    
+    setActiveNotification(notification);
+    setShowNotificationBadge(true);
+    setNotificationHistory(prev => [notification, ...prev]);
+    
+    // Auto-dismiss notification after 5 seconds
+    setTimeout(() => {
+      setActiveNotification(null);
+    }, 5000);
+  }, [showNotifications]);
+
+  const handleNotificationAction = useCallback((action: string, notification: any) => {
+    switch (action) {
+      case 'View Details':
+        // Handle view details action
+        console.log('View transaction details');
+        break;
+      case 'Dispute':
+        Alert.alert(
+          'Dispute Transaction',
+          'Are you sure you want to dispute this transaction?',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Dispute', style: 'destructive', onPress: () => console.log('Dispute initiated') }
+          ]
+        );
+        break;
+      case 'Add Funds':
+        // Handle add funds action
+        console.log('Add funds to card');
+        break;
+      case 'Contact Support':
+        // Handle contact support action
+        console.log('Contact support');
+        break;
+    }
+    setActiveNotification(null);
+  }, []);
+
+  const dismissNotification = useCallback(() => {
+    setActiveNotification(null);
+    setShowNotificationBadge(false);
+  }, []);
+
   function handleWebSocketMessage(message: any) {
     try {
       const data = typeof message === 'string' ? JSON.parse(message) : message;
+      
+      // Handle notification updates first
+      if (data.type === 'notification_status') {
+        const notificationUpdate = {
+          id: data.notificationId,
+          status: data.status,
+          timestamp: data.timestamp
+        };
+        
+        setNotificationHistory(prev => 
+          prev.map(notif => 
+            notif.id === data.notificationId 
+              ? { ...notif, status: data.status, timestamp: data.timestamp }
+              : notif
+          )
+        );
+      }
       
       if (transactionType === 'authorization') {
         // Handle authorization WebSocket messages
         if (data.type === 'authorization_status' && data.authorizationId === authorizationId) {
           setAuthorization(prev => ({ ...prev, status: data.status }));
           onStatusChange?.(data.status);
+          
+          // Show notification for status changes
+          if (showNotifications) {
+            let notificationContent;
+            switch (data.status) {
+              case 'approved':
+                notificationContent = {
+                  id: `auth-${authorizationId}-approved`,
+                  title: 'Transaction Approved',
+                  message: `Your transaction has been approved`,
+                  type: 'success',
+                  actionButtons: ['View Details']
+                };
+                break;
+              case 'declined':
+                notificationContent = {
+                  id: `auth-${authorizationId}-declined`,
+                  title: 'Transaction Declined',
+                  message: `Transaction was declined`,
+                  type: 'error',
+                  actionButtons: ['View Details', 'Contact Support']
+                };
+                break;
+            }
+            
+            if (notificationContent) {
+              showInAppNotification(notificationContent);
+            }
+          }
           
           if (['approved', 'declined', 'expired'].includes(data.status)) {
             onTransactionCompleted?.();
@@ -285,6 +387,57 @@ export const TransactionStatusMonitor: React.FC<TransactionStatusMonitorProps> =
 
   return (
     <View style={styles.container}>
+      {/* Active Notification Banner */}
+      {activeNotification && (
+        <View style={[
+          styles.notificationBanner,
+          activeNotification.type === 'success' ? styles.successBanner :
+          activeNotification.type === 'error' ? styles.errorBanner :
+          styles.infoBanner
+        ]}>
+          <View style={styles.notificationContent}>
+            <Text style={styles.notificationTitle}>{activeNotification.title}</Text>
+            <Text style={styles.notificationMessage}>{activeNotification.message}</Text>
+            
+            {activeNotification.actionButtons && (
+              <View style={styles.notificationActions}>
+                {activeNotification.actionButtons.map((action: string, index: number) => (
+                  <TouchableOpacity
+                    key={index}
+                    style={styles.notificationActionButton}
+                    onPress={() => handleNotificationAction(action, activeNotification)}
+                  >
+                    <Text style={styles.notificationActionText}>{action}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+          </View>
+          
+          <TouchableOpacity
+            style={styles.dismissButton}
+            onPress={dismissNotification}
+          >
+            <Text style={styles.dismissButtonText}>✕</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+      
+      {/* Notification Badge */}
+      {showNotificationBadge && !activeNotification && (
+        <TouchableOpacity
+          style={styles.notificationBadge}
+          onPress={() => {
+            if (notificationHistory.length > 0) {
+              setActiveNotification(notificationHistory[0]);
+            }
+          }}
+        >
+          <Text style={styles.notificationBadgeText}>
+            {notificationHistory.length} notification{notificationHistory.length !== 1 ? 's' : ''}
+          </Text>
+        </TouchableOpacity>
+      )}
       <View style={styles.header}>
         <View style={styles.statusContainer}>
           <Text style={styles.statusIcon}>{getStatusIcon(currentData.status)}</Text>
@@ -717,5 +870,85 @@ const styles = StyleSheet.create({
     color: '#6c757d',
     marginTop: 8,
     lineHeight: 16,
+  },
+  // New notification-related styles
+  notificationBanner: {
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 16,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  successBanner: {
+    backgroundColor: '#d1f2eb',
+    borderColor: '#27ae60',
+    borderWidth: 1,
+  },
+  errorBanner: {
+    backgroundColor: '#fadbd8',
+    borderColor: '#e74c3c',
+    borderWidth: 1,
+  },
+  infoBanner: {
+    backgroundColor: '#d6eaf8',
+    borderColor: '#3498db',
+    borderWidth: 1,
+  },
+  notificationContent: {
+    flex: 1,
+  },
+  notificationTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1a1a1a',
+    marginBottom: 4,
+  },
+  notificationMessage: {
+    fontSize: 14,
+    color: '#333333',
+    lineHeight: 20,
+    marginBottom: 8,
+  },
+  notificationActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  notificationActionButton: {
+    backgroundColor: 'rgba(0, 0, 0, 0.1)',
+    borderRadius: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    marginRight: 8,
+    marginBottom: 4,
+  },
+  notificationActionText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#1a1a1a',
+  },
+  dismissButton: {
+    width: 24,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 8,
+  },
+  dismissButtonText: {
+    fontSize: 16,
+    color: '#666666',
+    fontWeight: '600',
+  },
+  notificationBadge: {
+    backgroundColor: '#007AFF',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    alignSelf: 'flex-start',
+    marginBottom: 12,
+  },
+  notificationBadgeText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '600',
   },
 });
