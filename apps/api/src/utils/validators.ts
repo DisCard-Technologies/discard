@@ -287,3 +287,56 @@ export class InputValidator {
     return { valid: true };
   }
 }
+
+/**
+ * Pagination parameters validation
+ */
+export function validatePaginationParams(page: number, limit: number, maxLimit: number = 100) {
+  const validPage = Math.max(1, Math.floor(page) || 1);
+  const validLimit = Math.min(maxLimit, Math.max(1, Math.floor(limit) || 20));
+  
+  return {
+    page: validPage,
+    limit: validLimit
+  };
+}
+
+/**
+ * Date range validation
+ */
+export function validateDateRange(startDate?: string, endDate?: string, maxDays: number = 90) {
+  const errors: string[] = [];
+  
+  if (!startDate && !endDate) {
+    return { valid: true, errors: [] };
+  }
+  
+  const start = startDate ? new Date(startDate) : null;
+  const end = endDate ? new Date(endDate) : null;
+  
+  if (start && isNaN(start.getTime())) {
+    errors.push('Invalid start date format');
+  }
+  
+  if (end && isNaN(end.getTime())) {
+    errors.push('Invalid end date format');
+  }
+  
+  if (start && end && start > end) {
+    errors.push('Start date must be before end date');
+  }
+  
+  if (start && end) {
+    const diffTime = end.getTime() - start.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    
+    if (diffDays > maxDays) {
+      errors.push(`Date range cannot exceed ${maxDays} days`);
+    }
+  }
+  
+  return {
+    valid: errors.length === 0,
+    errors
+  };
+}

@@ -15,6 +15,25 @@ interface TransactionFeedUpdate {
   status: 'authorized' | 'settled' | 'declined';
 }
 
+interface TransactionHistoryUpdate {
+  type: 'transactionHistoryUpdated';
+  cardId: string;
+  update: {
+    type: 'new' | 'status_change' | 'refund';
+    transaction: {
+      transactionId: string;
+      merchantName: string;
+      amount: number;
+      status: string;
+      processedAt: string;
+    };
+    affectedAnalytics?: {
+      totalSpentChange: number;
+      categoryChange: { [category: string]: number };
+    };
+  };
+}
+
 interface SpendingAlertUpdate {
   type: 'spending_alert';
   cardContext: string;
@@ -32,7 +51,7 @@ interface NotificationUpdate {
   timestamp: string;
 }
 
-type WebSocketMessage = TransactionFeedUpdate | SpendingAlertUpdate | NotificationUpdate;
+type WebSocketMessage = TransactionFeedUpdate | TransactionHistoryUpdate | SpendingAlertUpdate | NotificationUpdate;
 
 interface AuthenticatedWebSocket extends WebSocket {
   userId?: string;
@@ -350,6 +369,26 @@ class TransactionFeedWebSocketService {
       const hasSubscription = 
         connection.subscriptions.has(`${alert.cardContext}:all`) ||
         connection.subscriptions.has(`${alert.cardContext}:alerts`);
+
+      if (hasSubscription) {
+        this.sendMessage(connection.ws, message);
+      }
+    }
+  }
+
+  async broadcastTransactionHistoryUpdate(update: TransactionHistoryUpdate): Promise<void> {
+    const message = { ...update, timestamp: new Date().toISOString() };
+    
+    for (const [connectionId, connection] of this.connections) {
+      // Check if user has access to this card context
+      if (!connection.cardContexts.includes(update.cardId)) {
+        continue;
+      }
+
+      // Check if subscribed to transaction history updates for this card
+      const hasSubscription = 
+        connection.subscriptions.has(`${update.cardId}:all`) ||
+        connection.subscriptions.has(`${update.cardId}:history`);
 
       if (hasSubscription) {
         this.sendMessage(connection.ws, message);
