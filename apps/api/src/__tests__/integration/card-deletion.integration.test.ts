@@ -1,15 +1,21 @@
 import request from 'supertest';
-import { app } from '../../app';
+import app from '../../app';
 import { supabase } from '../../utils/supabase';
-import { marqetaService } from '../../services/payments/marqeta.service';
+import { MarqetaService } from '../../services/payments/marqeta.service';
 
 // Mock external dependencies
 jest.mock('../../utils/supabase');
-jest.mock('../../services/payments/marqeta.service');
+jest.mock('../../services/payments/marqeta.service', () => ({
+  MarqetaService: jest.fn().mockImplementation(() => ({
+    cancelCard: jest.fn()
+  }))
+}));
 jest.mock('../../utils/logger');
 
 const mockSupabase = supabase as jest.Mocked<typeof supabase>;
-const mockMarqetaService = marqetaService as jest.Mocked<typeof marqetaService>;
+const mockMarqetaInstance = {
+  cancelCard: jest.fn()
+};
 
 describe('Card Deletion Integration Tests', () => {
   const mockUser = {
@@ -64,11 +70,14 @@ describe('Card Deletion Integration Tests', () => {
     } as any);
 
     // Mock Marqeta service
-    mockMarqetaService.cancelCard.mockResolvedValue({
+    mockMarqetaInstance.cancelCard.mockResolvedValue({
       token: 'test-marqeta-token',
       state: 'TERMINATED',
       state_reason: 'CARD_DELETION_REQUEST'
     } as any);
+
+    // Mock the constructor to return our mocked instance
+    (MarqetaService as jest.MockedClass<typeof MarqetaService>).mockImplementation(() => mockMarqetaInstance as any);
   });
 
   describe('DELETE /api/v1/cards/:cardId', () => {
@@ -161,7 +170,7 @@ describe('Card Deletion Integration Tests', () => {
     });
 
     it('should handle network cancellation failures gracefully', async () => {
-      mockMarqetaService.cancelCard.mockRejectedValue(new Error('Network timeout'));
+      mockMarqetaInstance.cancelCard.mockRejectedValue(new Error('Network timeout'));
 
       const response = await request(app)
         .delete('/api/v1/cards/test-card-id')
@@ -563,7 +572,7 @@ describe('Card Deletion Integration Tests', () => {
       expect(proofResponse.body.data.deletionProof).toBe(deletionProof);
 
       // Verify all services were called appropriately
-      expect(mockMarqetaService.cancelCard).toHaveBeenCalledWith('test-marqeta-token');
+      expect(mockMarqetaInstance.cancelCard).toHaveBeenCalledWith('test-marqeta-token');
     });
   });
 });

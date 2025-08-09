@@ -1,5 +1,5 @@
 import request from 'supertest';
-import { app } from '../../app';
+import app  from '../../app';
 import { createClient } from '@supabase/supabase-js';
 import { VisaService } from '../../services/payments/visa.service';
 import { MarqetaService } from '../../services/payments/marqeta.service';
