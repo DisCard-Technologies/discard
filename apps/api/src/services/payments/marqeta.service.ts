@@ -283,6 +283,60 @@ export class MarqetaService {
   }
 
   /**
+   * Cancel a card for secure deletion (alias for terminate with additional logging)
+   */
+  async cancelCard(marqetaCardToken: string): Promise<MarqetaCard> {
+    try {
+      this.logger.info('Cancelling Marqeta card for deletion', { marqetaCardToken });
+
+      // Use terminate state for permanent cancellation
+      const response = await this.client.put<MarqetaCard>(`/cards/${marqetaCardToken}`, {
+        state: 'TERMINATED',
+        state_reason: 'CARD_DELETION_REQUEST'
+      });
+
+      // Log network cancellation confirmation
+      await this.logNetworkCancellation(marqetaCardToken, response.data);
+
+      this.logger.info('Marqeta card cancelled successfully for deletion', { 
+        cardToken: marqetaCardToken,
+        state: response.data.state,
+        stateReason: response.data.state_reason
+      });
+
+      return response.data;
+    } catch (error) {
+      this.logger.error('Failed to cancel Marqeta card', { error, marqetaCardToken });
+      throw new Error(`Network card cancellation failed: ${this.extractErrorMessage(error)}`);
+    }
+  }
+
+  /**
+   * Verify card cancellation status with network
+   */
+  async verifyCardCancellation(marqetaCardToken: string): Promise<{ cancelled: boolean; status: string }> {
+    try {
+      const card = await this.getCard(marqetaCardToken);
+      
+      const cancelled = card.state === 'TERMINATED';
+      
+      this.logger.info('Card cancellation status verified', { 
+        marqetaCardToken, 
+        cancelled, 
+        status: card.state 
+      });
+
+      return { 
+        cancelled, 
+        status: card.state 
+      };
+    } catch (error) {
+      this.logger.error('Failed to verify card cancellation', { error, marqetaCardToken });
+      throw error;
+    }
+  }
+
+  /**
    * Get transactions for a card
    */
   async getCardTransactions(cardToken: string, count: number = 50): Promise<MarqetaTransaction[]> {
@@ -554,5 +608,39 @@ export class MarqetaService {
            error.response?.data?.message || 
            error.message || 
            'Unknown error occurred';
+  }
+
+  /**
+   * Private: Log network cancellation for audit trail
+   */
+  private async logNetworkCancellation(marqetaCardToken: string, cardData: MarqetaCard): Promise<void> {
+    try {
+      // Log the successful network cancellation
+      await this.supabase
+        .from('network_status_log')
+        .insert({
+          network_name: 'marqeta',
+          endpoint_url: `/cards/${marqetaCardToken}`,
+          response_time_ms: 0, // Not tracked for cancellation
+          status_code: 200,
+          is_healthy: true,
+          error_message: `Card cancelled for deletion: ${cardData.state}`
+        });
+
+      // Update card details with cancellation timestamp
+      await this.supabase
+        .from('visa_card_details')
+        .update({
+          provisioning_status: 'terminated',
+          deactivation_date: new Date().toISOString(),
+          network_cancellation_confirmed_at: new Date().toISOString()
+        })
+        .eq('marqeta_card_token', marqetaCardToken);
+
+      this.logger.info('Network cancellation logged', { marqetaCardToken });
+    } catch (error) {
+      this.logger.error('Failed to log network cancellation', { error, marqetaCardToken });
+      // Don't throw - cancellation was successful even if logging failed
+    }
   }
 }
