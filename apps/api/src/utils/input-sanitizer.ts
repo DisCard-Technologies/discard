@@ -42,4 +42,22 @@ export class InputSanitizer {
     const num = Number(input);
     return isNaN(num) ? null : num;
   }
+
+  /**
+   * Sanitize card ID input
+   */
+  static sanitizeCardId(cardId: string): string | null {
+    if (!cardId || typeof cardId !== 'string') {
+      return null;
+    }
+
+    // UUID pattern validation
+    const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const sanitized = cardId.trim();
+    
+    return uuidPattern.test(sanitized) ? sanitized : null;
+  }
 }
+
+// Export instance for convenience
+export const inputSanitizer = InputSanitizer;
