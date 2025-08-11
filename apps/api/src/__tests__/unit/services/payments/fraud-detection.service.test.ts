@@ -7,6 +7,15 @@ describe('FraudDetectionService', () => {
   let fraudDetectionService: FraudDetectionService;
   let mockSupabase: any;
 
+  const baseRequest = {
+    cardContext: 'card_123',
+    amount: 10000, // $100.00
+    merchantName: 'Test Store',
+    merchantCategoryCode: '5411', // Grocery store
+    merchantCountry: 'US',
+    transactionTime: new Date('2024-01-15T14:30:00Z') // Monday 2:30 PM
+  };
+
   beforeEach(() => {
     jest.clearAllMocks();
     
