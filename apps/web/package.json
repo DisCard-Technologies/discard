@@ -24,18 +24,19 @@
     "prettier": "^3.6.2"
   },
   "dependencies": {
-    "next": "^15.4.6",
-    "react": "^19.1.1",
-    "react-dom": "^19.1.1",
+    "@discard/shared": "*",
+    "@heroicons/react": "^2.0.18",
+    "@tailwindcss/postcss": "^4.1.11",
+    "@tanstack/react-query": "^5.84.2",
     "@types/react": "^19.1.10",
     "@types/react-dom": "^19.1.7",
     "autoprefixer": "^10.4.21",
-    "postcss": "^8.5.6",
-    "tailwindcss": "^4.1.11",
-    "@discard/shared": "*",
-    "@tanstack/react-query": "^5.84.2",
-    "react-hook-form": "^7.45.0",
     "axios": "^1.4.0",
-    "@heroicons/react": "^2.0.18"
+    "next": "^15.4.6",
+    "postcss": "^8.5.6",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "react-hook-form": "^7.45.0",
+    "tailwindcss": "^4.1.11"
   }
 }

@@ -2,15 +2,16 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import dotenv from 'dotenv';
-import { createClient } from '@supabase/supabase-js';
-import userRoutes from './routes/users';
-import authRoutes from './services/auth/auth.routes';
-import cardRoutes from './services/cards/cards.routes';
-import fundingRoutes from './services/funding/funding.routes';
-import cryptoRoutes from './services/crypto/crypto.routes';
 
-// Load environment variables
+// Load environment variables FIRST before any other imports that might use them
 dotenv.config();
+
+import { createClient } from '@supabase/supabase-js';
+// import userRoutes from './routes/users';
+// import authRoutes from './services/auth/auth.routes';
+// import cardRoutes from './services/cards/cards.routes';
+// import fundingRoutes from './services/funding/funding.routes';
+// import cryptoRoutes from './services/crypto/crypto.routes';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -66,19 +67,19 @@ app.get('/api/v1', (req, res) => {
 });
 
 // Authentication routes
-app.use('/api/v1/auth', authRoutes);
+// app.use('/api/v1/auth', authRoutes);
+
+// User routes (start with simple routes first)
+// app.use('/api/v1/users', userRoutes);
 
 // Card management routes
-app.use('/api/v1/cards', cardRoutes);
+// app.use('/api/v1/cards', cardRoutes);
 
 // Funding management routes
-app.use('/api/v1/funding', fundingRoutes);
+// app.use('/api/v1/funding', fundingRoutes);
 
 // Cryptocurrency wallet routes
-app.use('/api/v1/crypto', cryptoRoutes);
-
-// User routes
-app.use('/api/v1/users', userRoutes);
+// app.use('/api/v1/crypto', cryptoRoutes);
 
 // Error handling middleware
 app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {

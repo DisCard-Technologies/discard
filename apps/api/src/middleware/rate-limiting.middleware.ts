@@ -21,9 +21,16 @@ export const cryptoRatesLimiter = rateLimit({
   message: 'Too many rate requests, please try again later',
   standardHeaders: true,
   legacyHeaders: false,
+  validate: false, // Disable IPv6 validation for now
   keyGenerator: (req: AuthenticatedRequest) => {
-    return req.user?.id || req.ip || 'unknown';
+    // Use user ID if authenticated, otherwise use IP
+    if (req.user?.id) {
+      return req.user.id;
+    }
+    // For IP-based limiting, return the IP or a default
+    return req.ip || 'unknown';
   },
+  skip: (req: Request) => false,
   handler: (req: Request, res: Response) => {
     res.status(429).json({
       error: 'Too many requests',
@@ -45,9 +52,16 @@ export const conversionCalculatorLimiter = rateLimit({
   message: 'Too many conversion calculator requests, please try again later',
   standardHeaders: true,
   legacyHeaders: false,
+  validate: false, // Disable IPv6 validation for now
   keyGenerator: (req: AuthenticatedRequest) => {
-    return req.user?.id || req.ip || 'unknown';
+    // Use user ID if authenticated, otherwise use IP
+    if (req.user?.id) {
+      return req.user.id;
+    }
+    // For IP-based limiting, return the IP or a default
+    return req.ip || 'unknown';
   },
+  skip: (req: Request) => false,
   handler: (req: Request, res: Response) => {
     res.status(429).json({
       error: 'Too many requests',
@@ -69,9 +83,16 @@ export const historicalRatesLimiter = rateLimit({
   message: 'Too many historical rate requests, please try again later',
   standardHeaders: true,
   legacyHeaders: false,
+  validate: false, // Disable IPv6 validation for now
   keyGenerator: (req: AuthenticatedRequest) => {
-    return req.user?.id || req.ip || 'unknown';
+    // Use user ID if authenticated, otherwise use IP
+    if (req.user?.id) {
+      return req.user.id;
+    }
+    // For IP-based limiting, return the IP or a default
+    return req.ip || 'unknown';
   },
+  skip: (req: Request) => false,
   handler: (req: Request, res: Response) => {
     res.status(429).json({
       error: 'Too many requests',
