@@ -5,6 +5,7 @@ import { CardFreezeService } from '../../services/security/card-freeze.service';
 import { IncidentResponseService } from '../../services/security/incident-response.service';
 import { SecurityNotificationService } from '../../services/notifications/security-notifications.service';
 import { MFAService } from '../../services/auth/mfa.service';
+import { AuthenticatedRequest } from '../../middleware/validation.middleware';
 import { logger } from '../../utils/logger';
 
 export class FraudController {
@@ -64,7 +65,7 @@ export class FraudController {
         lastUpdated: new Date().toISOString()
       });
 
-    } catch (error) {
+    } catch (error: unknown) {
       logger.error('Get fraud status failed:', error);
       res.status(500).json({ error: 'Failed to retrieve fraud status' });
     }

@@ -81,6 +81,38 @@ export const historicalRatesLimiter = rateLimit({
   },
 });
 
+// Generic rate limiter factory function
+export const rateLimitMiddleware = (options: {
+  windowMs: number;
+  max: number;
+  message: string;
+  prefix?: string;
+}) => {
+  return rateLimit({
+    store: new RedisStore({
+      sendCommand: async (...args: any[]) => {
+        return redis.call(args[0], ...args.slice(1)) as any;
+      },
+      prefix: options.prefix || 'rate_limit:generic:',
+    }),
+    windowMs: options.windowMs,
+    max: options.max,
+    message: options.message,
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: (req: AuthenticatedRequest) => {
+      return req.user?.id || req.ip || 'unknown';
+    },
+    handler: (req: Request, res: Response) => {
+      res.status(429).json({
+        error: 'Too many requests',
+        message: options.message,
+        retryAfter: req.rateLimit?.resetTime,
+      });
+    },
+  });
+};
+
 export const rateLimitingMiddleware = {
   cryptoRates: cryptoRatesLimiter,
   conversionCalculator: conversionCalculatorLimiter,

@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { MFAService } from '../../services/auth/mfa.service';
+import { AuthenticatedRequest } from '../../middleware/validation.middleware';
 import { logger } from '../../utils/logger';
 
 export class MFAController {
