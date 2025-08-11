@@ -4,6 +4,8 @@ import { logger } from '../../utils/logger';
 import * as speakeasy from 'speakeasy';
 import * as QRCode from 'qrcode';
 import { createClient } from 'redis';
+import * as bcrypt from 'bcrypt';
+import { redisKeys, TTL_CONFIG } from '../../utils/redis-keys';
 
 export interface MFASetup {
   secret: string;
@@ -58,18 +60,13 @@ export class MFAService {
   private isolationService: TransactionIsolationService;
   private redis: ReturnType<typeof createClient>;
   
-  private readonly REDIS_KEYS = {
-    MFA_CHALLENGE: (challengeId: string) => `mfa:challenge:${challengeId}`,
-    MFA_ATTEMPTS: (cardId: string) => `mfa:attempts:${cardId}`,
-    DEVICE_TRUST: (cardId: string, deviceId: string) => `mfa:device:${cardId}:${deviceId}`,
-    BIOMETRIC_DATA: (cardId: string) => `mfa:biometric:${cardId}`
-  };
-
-  private readonly TTL = {
-    CHALLENGE: 300, // 5 minutes
-    ATTEMPTS: 3600, // 1 hour
-    DEVICE_TRUST: 2592000, // 30 days
-    BIOMETRIC: 86400 // 24 hours
+  // Using centralized Redis key management
+  private readonly keys = redisKeys.mfa;
+  private readonly ttl = {
+    CHALLENGE: TTL_CONFIG.MFA_CHALLENGE,
+    ATTEMPTS: TTL_CONFIG.MFA_ATTEMPTS,
+    DEVICE_TRUST: TTL_CONFIG.MFA_DEVICE_TRUST,
+    BIOMETRIC: TTL_CONFIG.MFA_BIOMETRIC
   };
 
   private readonly LIMITS = {
@@ -520,7 +517,7 @@ export class MFAService {
   private async verifyBiometric(cardId: string, biometricData: string): Promise<boolean> {
     try {
       // Get stored biometric template
-      const storedTemplate = await this.redis.get(this.REDIS_KEYS.BIOMETRIC_DATA(cardId));
+      const storedTemplate = await this.redis.get(this.keys.biometric(cardId));
       if (!storedTemplate) {
         return false;
       }
@@ -539,25 +536,32 @@ export class MFAService {
     try {
       const isolationContext = await this.isolationService.getCardContext(cardId);
       
-      const { data } = await supabase
+      // Get all unused backup codes for this card
+      const { data: backupCodes } = await supabase
         .from('mfa_backup_codes')
         .select('*')
         .eq('card_context_hash', isolationContext.cardContextHash)
-        .eq('code_hash', this.hashBackupCode(code))
-        .eq('used', false)
-        .single();
+        .eq('used', false);
       
-      if (!data) {
+      if (!backupCodes || backupCodes.length === 0) {
         return false;
       }
       
-      // Mark code as used
-      await supabase
-        .from('mfa_backup_codes')
-        .update({ used: true, used_at: new Date().toISOString() })
-        .eq('code_id', data.code_id);
+      // Check each backup code hash using bcrypt
+      for (const storedCode of backupCodes) {
+        const isMatch = await bcrypt.compare(code, storedCode.code_hash);
+        if (isMatch) {
+          // Mark code as used
+          await supabase
+            .from('mfa_backup_codes')
+            .update({ used: true, used_at: new Date().toISOString() })
+            .eq('code_id', storedCode.code_id);
+          
+          return true;
+        }
+      }
       
-      return true;
+      return false;
       
     } catch (error) {
       logger.error('Backup code verification failed:', error);
@@ -660,17 +664,19 @@ export class MFAService {
     
     // Save backup codes
     for (const code of setupData.backupCodes) {
+      const codeHash = await this.hashBackupCode(code);
       await supabase.from('mfa_backup_codes').insert({
         card_context_hash: isolationContext.cardContextHash,
-        code_hash: this.hashBackupCode(code),
+        code_hash: codeHash,
         used: false
       });
     }
   }
 
-  private hashBackupCode(code: string): string {
-    // Simple hash - in production use proper cryptographic hash
-    return Buffer.from(code).toString('base64');
+  private async hashBackupCode(code: string): Promise<string> {
+    // Use bcrypt for secure backup code hashing
+    const saltRounds = 12;
+    return await bcrypt.hash(code, saltRounds);
   }
 
   private async getDeviceTrust(cardId: string, deviceId: string): Promise<boolean> {

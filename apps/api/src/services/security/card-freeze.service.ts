@@ -2,6 +2,7 @@ import { supabase } from '../../utils/supabase';
 import { TransactionIsolationService } from '../privacy/transaction-isolation.service';
 import { logger } from '../../utils/logger';
 import axios from 'axios';
+import { marqetaCircuitBreaker } from '../../utils/circuit-breaker';
 
 export interface FreezeRequest {
   cardId: string;
@@ -339,55 +340,65 @@ export class CardFreezeService {
   }
 
   private async suspendCardInMarqeta(cardToken: string, reason: string): Promise<MarqetaCardTransition> {
-    try {
-      const response = await axios.post(
-        `${this.marqetaBaseUrl}/cards/${cardToken}/transitions`,
-        {
-          state: 'SUSPENDED',
-          reason: reason.toUpperCase().replace(/ /g, '_'),
-          channel: 'API'
-        },
-        {
-          headers: {
-            'Authorization': `Basic ${this.marqetaAuth}`,
-            'Content-Type': 'application/json'
+    return await marqetaCircuitBreaker.execute(async () => {
+      try {
+        const response = await axios.post(
+          `${this.marqetaBaseUrl}/cards/${cardToken}/transitions`,
+          {
+            state: 'SUSPENDED',
+            reason: reason.toUpperCase().replace(/ /g, '_'),
+            channel: 'API'
           },
-          timeout: this.FREEZE_CONFIG.FREEZE_TIMEOUT_MS
-        }
-      );
-      
-      return response.data;
-      
-    } catch (error) {
-      logger.error('Marqeta card suspension failed:', error);
-      throw new Error('Failed to suspend card in Marqeta');
-    }
+          {
+            headers: {
+              'Authorization': `Basic ${this.marqetaAuth}`,
+              'Content-Type': 'application/json'
+            },
+            timeout: this.FREEZE_CONFIG.FREEZE_TIMEOUT_MS
+          }
+        );
+        
+        return response.data;
+        
+      } catch (error) {
+        logger.error('Marqeta card suspension failed:', error);
+        
+        // Enhance error with circuit breaker context
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        throw new Error(`Failed to suspend card in Marqeta: ${errorMessage}`);
+      }
+    });
   }
 
   private async activateCardInMarqeta(cardToken: string, reason: string): Promise<MarqetaCardTransition> {
-    try {
-      const response = await axios.post(
-        `${this.marqetaBaseUrl}/cards/${cardToken}/transitions`,
-        {
-          state: 'ACTIVE',
-          reason: reason.toUpperCase().replace(/ /g, '_'),
-          channel: 'API'
-        },
-        {
-          headers: {
-            'Authorization': `Basic ${this.marqetaAuth}`,
-            'Content-Type': 'application/json'
+    return await marqetaCircuitBreaker.execute(async () => {
+      try {
+        const response = await axios.post(
+          `${this.marqetaBaseUrl}/cards/${cardToken}/transitions`,
+          {
+            state: 'ACTIVE',
+            reason: reason.toUpperCase().replace(/ /g, '_'),
+            channel: 'API'
           },
-          timeout: this.FREEZE_CONFIG.FREEZE_TIMEOUT_MS
-        }
-      );
-      
-      return response.data;
-      
-    } catch (error) {
-      logger.error('Marqeta card activation failed:', error);
-      throw new Error('Failed to activate card in Marqeta');
-    }
+          {
+            headers: {
+              'Authorization': `Basic ${this.marqetaAuth}`,
+              'Content-Type': 'application/json'
+            },
+            timeout: this.FREEZE_CONFIG.FREEZE_TIMEOUT_MS
+          }
+        );
+        
+        return response.data;
+        
+      } catch (error) {
+        logger.error('Marqeta card activation failed:', error);
+        
+        // Enhance error with circuit breaker context
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        throw new Error(`Failed to activate card in Marqeta: ${errorMessage}`);
+      }
+    });
   }
 
   private async getCardToken(cardId: string, cardContextHash: string): Promise<string | null> {
