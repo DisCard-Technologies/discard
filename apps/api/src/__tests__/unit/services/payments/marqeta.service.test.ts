@@ -46,6 +46,10 @@ describe('MarqetaService', () => {
     // Reset all mocks
     jest.clearAllMocks();
     
+    // Ensure environment variables are set for each test
+    process.env.MARQETA_APPLICATION_TOKEN = 'test_app_token';
+    process.env.MARQETA_ACCESS_TOKEN = 'test_access_token';
+    
     // Mock axios.create
     mockAxiosInstance = {
       post: jest.fn(),
