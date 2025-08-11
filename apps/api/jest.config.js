@@ -10,7 +10,9 @@ module.exports = {
     '<rootDir>/node_modules/'
   ],
   transform: {
-    '^.+\\.(ts|tsx)$': 'ts-jest',
+    '^.+\\.(ts|tsx)$': ['ts-jest', {
+      diagnostics: { warnOnly: true }
+    }],
   },
   collectCoverageFrom: [
     'src/**/*.{ts,js}',
@@ -54,16 +56,12 @@ module.exports = {
         '<rootDir>/node_modules/'
       ],
       transform: {
-        '^.+\\.(ts|tsx)$': 'ts-jest',
+        '^.+\\.(ts|tsx)$': ['ts-jest', {
+          diagnostics: { warnOnly: true }
+        }],
       },
       moduleNameMapper: {
         '^@discard/shared$': '<rootDir>/../../packages/shared/src/index.ts'
-      },
-      globals: {
-        'ts-jest': {
-          isolatedModules: true,
-          diagnostics: { warnOnly: true }
-        }
       }
     },
     {
@@ -84,32 +82,19 @@ module.exports = {
         '<rootDir>/node_modules/'
       ],
       transform: {
-        '^.+\\.(ts|tsx)$': 'ts-jest',
+        '^.+\\.(ts|tsx)$': ['ts-jest', {
+          diagnostics: { warnOnly: true }
+        }],
       },
       moduleNameMapper: {
         '^@discard/shared$': '<rootDir>/../../packages/shared/src/index.ts'
       },
-      testTimeout: 60000, // Longer timeout for TestContainers
-      globals: {
-        'ts-jest': {
-          isolatedModules: true,
-          diagnostics: { warnOnly: true }
-        }
-      }
+      testTimeout: 60000 // Longer timeout for TestContainers
     }
   ],
   moduleNameMapper: {
     '^@discard/shared$': '<rootDir>/../../packages/shared/src/index.ts'
   },
   clearMocks: true,
-  restoreMocks: true,
-  // Allow tests to run with type issues (infrastructure is working)
-  globals: {
-    'ts-jest': {
-      isolatedModules: true,
-      diagnostics: {
-        warnOnly: true
-      }
-    }
-  }
+  restoreMocks: true
 };

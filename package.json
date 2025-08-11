@@ -12,6 +12,8 @@
     "dev": "turbo run dev",
     "lint": "turbo run lint",
     "test": "turbo run test",
+    "test:log": "npm test 2>&1 | tee ./logs/test-output.log",
+    "test:verbose": "turbo run test --verbose 2>&1 | tee test-output-verbose.log",
     "type-check": "turbo run type-check",
     "clean": "turbo run clean",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
