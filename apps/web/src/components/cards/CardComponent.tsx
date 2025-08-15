@@ -3,7 +3,7 @@
  */
 
 import React, { useState } from 'react';
-import { Card } from '../../../../../packages/shared/src/types/index';
+import { Card } from '@discard/shared';
 import { CardClipboard } from '../../../../../packages/shared/src/utils/index';
 import { PrivacyIndicator, getPrivacyStatus } from '../privacy/PrivacyIndicator';
 import { 

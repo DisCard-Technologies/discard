@@ -3,7 +3,7 @@
  */
 
 import React, { useState } from 'react';
-import { Card, CardListRequest } from '../../../../packages/shared/src/types';
+import { Card, CardListRequest } from '@discard/shared';
 import { CardComponent } from './CardComponent';
 import { MagnifyingGlassIcon, FunnelIcon } from '../../lib/stubs';
 

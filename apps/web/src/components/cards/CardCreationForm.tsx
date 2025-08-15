@@ -4,7 +4,7 @@
 
 import React, { useState } from 'react';
 import { useForm } from '../../lib/stubs';
-import { CreateCardRequest } from '../../../../packages/shared/src/types';
+import { CreateCardRequest } from '@discard/shared';
 import { CreditCardIcon, ShieldCheckIcon } from '../../lib/stubs';
 
 interface CardCreationFormProps {
@@ -41,7 +41,7 @@ export function CardCreationForm({ onSubmit, isLoading = false, error }: CardCre
     watch,
     setValue,
     reset,
-  } = useForm<FormData>({
+  } = useForm({
     defaultValues: {
       spendingLimit: '50000', // $500 in cents
       expirationMonths: '12',

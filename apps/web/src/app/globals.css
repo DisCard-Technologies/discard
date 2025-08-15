@@ -1,33 +1,79 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
 
-:root {
-  --foreground-rgb: 0, 0, 0;
-  --background-start-rgb: 214, 219, 220;
-  --background-end-rgb: 255, 255, 255;
-}
-
-@media (prefers-color-scheme: dark) {
+@layer base {
   :root {
-    --foreground-rgb: 255, 255, 255;
-    --background-start-rgb: 0, 0, 0;
-    --background-end-rgb: 0, 0, 0;
+    /* Keep CSS variables for dynamic theming if needed */
+    --background: oklch(1 0 0);
+    --foreground: oklch(0.145 0 0);
+    --primary: oklch(0.205 0 0);
+    --primary-foreground: oklch(0.985 0 0);
+    --radius: 0.625rem;
+  }
+
+  .dark {
+    --background: oklch(0.145 0 0);
+    --foreground: oklch(0.985 0 0);
+    --primary: oklch(0.985 0 0);
+    --primary-foreground: oklch(0.205 0 0);
+  }
+
+  body {
+    @apply bg-crypto-bg text-white m-0 leading-normal;
+  }
+
+  * {
+    @apply outline-none;
   }
 }
 
-body {
-  color: rgb(var(--foreground-rgb));
-  background: linear-gradient(
-      to bottom,
-      transparent,
-      rgb(var(--background-end-rgb))
-    )
-    rgb(var(--background-start-rgb));
+@layer components {
+  /* Custom component styles that are reusable */
+  .btn-primary {
+    @apply rounded-12 bg-lightgreen-100 flex flex-row items-center justify-center px-24 py-[13px] text-crypto-dark font-semibold transition-all hover:bg-opacity-90 hover:scale-105;
+  }
+
+  .chip {
+    @apply rounded-999 bg-lightgreen-200 border border-gray-700 flex flex-row items-center justify-center px-16 py-[6px] text-lightgreen-100;
+  }
+
+  .card-crypto {
+    @apply w-[180px] rounded-16 bg-gray-500 border border-gray-700 flex flex-col items-start justify-start p-20 gap-16;
+  }
+
+  .glass-card {
+    @apply shadow-crypto backdrop-blur-32 rounded-16 bg-gray-500 border border-gray-700;
+  }
+
+  .text-gradient {
+    @apply bg-gradient-to-r from-lightgreen-100 to-royalblue bg-clip-text text-transparent;
+  }
+
+  .section-padding {
+    @apply px-[50px] py-72;
+  }
 }
 
 @layer utilities {
+  /* Custom utilities */
   .text-balance {
     text-wrap: balance;
   }
-} 
+  
+  .animate-float {
+    animation: float 6s ease-in-out infinite;
+  }
+
+  @keyframes float {
+    0%, 100% {
+      transform: translateY(0px);
+    }
+    50% {
+      transform: translateY(-20px);
+    }
+  }
+
+  /* Blur filters for glassmorphism */
+  .blur-circle {
+    filter: blur(100.98px);
+  }
+}

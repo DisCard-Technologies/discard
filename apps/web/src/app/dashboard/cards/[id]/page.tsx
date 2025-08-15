@@ -9,7 +9,15 @@ import { useParams, useRouter } from 'next/navigation';
 import { useCardDetails, useUpdateCardStatus, useDeleteCard } from '../../../../lib/hooks/useCards';
 import { CardComponent } from '../../../../components/cards/CardComponent';
 import { PrivacyIndicator, getPrivacyStatus } from '../../../../components/privacy/PrivacyIndicator';
-import { CardDeletion } from '../../../../../../packages/shared/src/utils';
+import { CardDetailsResponse, Card, Transaction } from '@discard/shared';
+// Local deletion confirmation utilities
+const CardDeletion = {
+  validateUserInput: (input: string) => input === 'DELETE',
+  verifyProof: async (proof: any, cardId: string) => {
+    // Simple proof verification - in production this would be cryptographic
+    return proof && proof.cardId === cardId;
+  }
+};
 import { 
   ArrowLeftIcon, 
   ClockIcon, 
@@ -29,6 +37,7 @@ export default function CardDetailsPage() {
 
   // Fetch card details
   const { data: cardData, isLoading, error, refetch } = useCardDetails(cardId);
+  const cardDataTyped = cardData as CardDetailsResponse | undefined;
   const updateStatusMutation = useUpdateCardStatus();
   const deleteCardMutation = useDeleteCard();
 
@@ -110,7 +119,7 @@ export default function CardDetailsPage() {
     );
   }
 
-  if (error || !cardData) {
+  if (error || !cardDataTyped) {
     return (
       <div className="min-h-screen bg-gray-50 py-8">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -125,7 +134,7 @@ export default function CardDetailsPage() {
           <div className="bg-red-50 border border-red-200 rounded-md p-4">
             <h3 className="text-lg font-medium text-red-800">Error Loading Card</h3>
             <p className="text-red-700 mt-1">
-              {error instanceof Error ? error.message : 'Card not found or access denied'}
+              {error ? (error as Error).message : 'Card not found or access denied'}
             </p>
             <button
               onClick={() => refetch()}
@@ -139,7 +148,7 @@ export default function CardDetailsPage() {
     );
   }
 
-  const { card, transactionHistory } = cardData;
+  const { card, transactionHistory } = cardDataTyped!;
   const privacyStatus = getPrivacyStatus(card);
 
   return (

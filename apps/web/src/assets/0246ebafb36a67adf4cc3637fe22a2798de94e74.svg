@@ -1,0 +1,13 @@
+<svg preserveAspectRatio="none" width="100%" height="100%" overflow="visible" style="display: block;" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="Group-46">
+<g id="Group-45">
+<path id="Oval" d="M24 48C37.2548 48 48 37.2548 48 24C48 10.7452 37.2548 0 24 0C10.7452 0 0 10.7452 0 24C0 37.2548 10.7452 48 24 48Z" fill="var(--fill-0, #627EEA)"/>
+<path id="Path" d="M24.7479 5.99626V19.3019L35.9934 24.3276L24.7479 5.99626Z" fill="var(--fill-0, white)" fill-opacity="0.6"/>
+<path id="Path_1_" d="M24.7481 5.99626L13.5026 24.3276L24.7481 19.3019V5.99626Z" fill="var(--fill-0, white)"/>
+<path id="Path_2_" d="M24.7479 32.9491V41.9901L36 26.4209L24.7479 32.9491Z" fill="var(--fill-0, white)" fill-opacity="0.6"/>
+<path id="Path_3_" d="M24.7481 41.9901V32.9491L13.5026 26.4209L24.7481 41.9901Z" fill="var(--fill-0, white)"/>
+<path id="Path_4_" d="M24.7479 30.8563L35.9934 24.3282L24.7479 19.3025V30.8563Z" fill="var(--fill-0, white)" fill-opacity="0.2"/>
+</g>
+<path id="Path_5_" d="M13.5026 24.3282L24.7481 30.8563V19.3025L13.5026 24.3282Z" fill="var(--fill-0, white)" fill-opacity="0.6"/>
+</g>
+</svg>

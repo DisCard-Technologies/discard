@@ -14,7 +14,9 @@
       "Bash(npm run dev:*)",
       "Bash(timeout 20 npm run dev)",
       "Bash(timeout 15 npm run dev)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(touch:*)",
+      "Bash(npm start)"
     ],
     "deny": []
   }

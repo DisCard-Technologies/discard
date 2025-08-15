@@ -9,7 +9,7 @@ import { useRouter } from 'next/navigation';
 import { useCreateCard } from '../../../../lib/hooks/useCards';
 import { CardCreationForm } from '../../../../components/cards/CardCreationForm';
 import { CardComponent } from '../../../../components/cards/CardComponent';
-import { CreateCardRequest, Card } from '../../../../../../../packages/shared/src/types/index';
+import { CreateCardRequest, Card } from '@discard/shared';
 import { ArrowLeftIcon, CheckCircleIcon } from '../../../../lib/stubs';
 import Link from 'next/link';
 

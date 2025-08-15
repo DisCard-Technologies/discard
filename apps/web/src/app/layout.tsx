@@ -1,9 +1,21 @@
 import type { Metadata } from 'next';
-import { Inter } from 'next/font/google';
+import { DM_Sans, DM_Mono } from 'next/font/google';
 import { Providers } from '../lib/providers';
 import './globals.css';
 
-const inter = Inter({ subsets: ['latin'] });
+const dmSans = DM_Sans({
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--font-dm-sans",
+  weight: ["400", "500", "600", "700"],
+})
+
+const dmMono = DM_Mono({
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--font-dm-mono",
+  weight: ["400", "500"],
+})
 
 export const metadata: Metadata = {
   title: 'DisCard - Privacy-first Crypto-backed Disposable Virtual Cards',
@@ -16,34 +28,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
-      <body className={inter.className}>
+    <html lang="en" className={`${dmSans.variable} ${dmMono.variable}`}>
+      <body className="antialiased">
         <Providers>
-          <div className="min-h-screen bg-gray-50">
-            <header className="bg-white shadow-sm">
-              <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                <div className="flex justify-between items-center py-6">
-                  <div className="flex items-center">
-                    <h1 className="text-2xl font-bold text-gray-900">
-                      DisCard
-                    </h1>
-                  </div>
-                  <nav className="hidden md:flex space-x-8">
-                    <a href="/" className="text-gray-500 hover:text-gray-900">
-                      Home
-                    </a>
-                    <a href="/dashboard/cards" className="text-gray-500 hover:text-gray-900">
-                      Cards
-                    </a>
-                    <a href="/account" className="text-gray-500 hover:text-gray-900">
-                      Account
-                    </a>
-                  </nav>
-                </div>
-              </div>
-            </header>
-            <main>{children}</main>
-          </div>
+            {children}
         </Providers>
       </body>
     </html>

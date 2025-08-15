@@ -10,7 +10,7 @@ import { useCards, useUpdateCardStatus, useDeleteCard } from '../../../lib/hooks
 import { CardList } from '../../../components/cards/CardList';
 import { CardDeletion } from '../../../../../../packages/shared/src/utils';
 import { PlusIcon } from '../../../lib/stubs';
-import { CardListRequest } from '../../../../../../packages/shared/src/types';
+import { CardListRequest } from '@discard/shared';
 
 export default function CardsDashboard() {
   const [filters, setFilters] = useState<CardListRequest>({});

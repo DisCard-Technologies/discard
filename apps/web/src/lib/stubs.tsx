@@ -143,11 +143,21 @@ export function useForm(defaultValues?: any) {
     }),
     handleSubmit: (onSubmit: any) => (e: any) => {
       e.preventDefault();
-      onSubmit({});
+      onSubmit(defaultValues || {});
     },
-    formState: { errors: {} },
-    watch: (name?: string) => defaultValues?.[name] || '',
-    setValue: () => {},
+    formState: { 
+      errors: {
+        spendingLimit: { message: '' },
+        expirationMonths: { message: '' },
+        merchantRestrictions: { message: '' }
+      } 
+    },
+    watch: (name?: string) => defaultValues?.[name as keyof typeof defaultValues] || '',
+    setValue: (name: string, value: any) => {
+      if (defaultValues) {
+        defaultValues[name] = value;
+      }
+    },
     reset: () => {},
   };
 }
