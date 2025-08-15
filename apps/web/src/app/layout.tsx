@@ -1,7 +1,7 @@
+import './globals.css';
 import type { Metadata } from 'next';
 import { DM_Sans, DM_Mono } from 'next/font/google';
 import { Providers } from '../lib/providers';
-import './globals.css';
 
 const dmSans = DM_Sans({
   subsets: ["latin"],
