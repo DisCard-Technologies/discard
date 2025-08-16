@@ -1,5 +1,13 @@
 @import "tailwindcss";
 
+body {
+  background-color: #0a0b0d;
+  color: #fff;
+  margin: 0;
+  line-height: normal;
+  text-foreground: #fff;
+}
+
 @layer base {
   :root {
     --background: oklch(1 0 0);
@@ -16,14 +24,8 @@
     --primary-foreground: oklch(0.205 0 0);
   }
 
-  body {
-    background-color: #0a0b0d;
-    color: #fff;
-    margin: 0;
-    line-height: normal;
-  }
-
   * {
+    border: none;
     outline: none;
   }
 }
@@ -105,6 +107,7 @@
     background-color: #0a0b0d;
   }
 
+  /* Header */
   .header {
     align-self: stretch;
     background-color: #000510;
@@ -115,7 +118,6 @@
     padding: 26px 50px;
     gap: 0px;
   }
-
   .features {
     position: relative;
     letter-spacing: -0.02em;
@@ -144,6 +146,985 @@
     padding: 13px 24px;
     color: #000510;
   }
+
+  /* Hero Section */
+  .futureOfCrypto {
+    position: relative;
+    letter-spacing: -0.02em;
+    line-height: 120%;
+    font-weight: 500;
+  }
+  .chip {
+    border-radius: 999px;
+    background-color: rgba(153, 227, 158, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    padding: 6px 16px;
+    color: #99e39e;
+  }
+  .fastAndSecure {
+    margin: 0;
+  }
+  .fastAndSecureContainer {
+    align-self: stretch;
+    position: relative;
+    font-size: 72px;
+    letter-spacing: -0.01em;
+    line-height: 120%;
+    font-weight: 500;
+  }
+  .tradeCryptocurrenciesWithContainer {
+    align-self: stretch;
+    position: relative;
+    line-height: 140%;
+  }
+  .chipParent {
+    align-self: stretch;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: flex-start;
+    gap: 12px;
+  }
+  .getTemplate {
+      position: relative;
+      line-height: 140%;
+      font-weight: 600;
+  }
+  .rightArrowIcon {
+      width: 20px;
+      position: relative;
+      max-height: 100%;
+      overflow: hidden;
+      flex-shrink: 0;
+  }
+  .button {
+      border-radius: 12px;
+      background-color: #99e39e;
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      justify-content: center;
+      padding: 13px 24px;
+      gap: 8px;
+      color: #000510;
+  }
+  .frameGroup {
+      width: 588px;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      justify-content: flex-start;
+      gap: 40px;
+  }
+  .layer512Icon {
+      position: absolute;
+      top: 0px;
+      left: 0px;
+      width: 584px;
+      height: 582px;
+      object-fit: cover;
+  }
+  .groupChild {
+      position: absolute;
+      top: 66.52px;
+      left: 4.87px;
+      border-radius: 50%;
+      background-color: rgba(255, 255, 255, 0.1);
+      width: 61.6px;
+      height: 62.5px;
+      opacity: 0.35;
+  }
+  .groupItem {
+      position: absolute;
+      top: 0px;
+      left: 0px;
+      box-shadow: 0px 5.678168773651123px 23.52px rgba(153, 227, 158, 0.2);
+      border-radius: 50%;
+      background-color: #99e39e;
+      width: 70.6px;
+      height: 70.6px;
+  }
+  .div {
+      position: absolute;
+      top: calc(50% - 8.51px);
+      left: calc(50% - 15.51px);
+      line-height: 140%;
+      font-weight: 600;
+  }
+  .ellipseParent {
+      width: 70.6px;
+      position: relative;
+      height: 70.6px;
+  }
+  .ellipseDiv {
+    position: absolute;
+    top: -120.42px;
+    left: -98.96px;
+    filter: blur(100.98px);
+    border-radius: 50%;
+    background-color: rgba(255, 255, 255, 0.8);
+    width: 310.5px;
+    height: 310.5px;
+  }
+  .groupWrapper {
+      position: absolute;
+      top: 51px;
+      left: 355px;
+      box-shadow: 0px 4.071434020996094px 6.79px rgba(0, 0, 0, 0.12);
+      backdrop-filter: blur(40px);
+      border-radius: 8px;
+      background-color: rgba(255, 255, 255, 0.1);
+      width: 114px;
+      height: 114px;
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      justify-content: center;
+  }
+  .cartGradient2 {
+      position: absolute;
+      top: 270.85px;
+      left: 8px;
+      width: 227.6px;
+      height: 144px;
+      object-fit: contain;
+  }
+  .j {
+      position: absolute;
+      top: 0px;
+      left: 48.39px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      width: 4.4px;
+      height: 7.3px;
+      transform:  rotate(3.1deg);
+      transform-origin: 0 0;
+  }
+  .o {
+      position: absolute;
+      top: 0.32px;
+      left: 53.57px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      width: 4.4px;
+      height: 7.3px;
+      transform:  rotate(9.3deg);
+      transform-origin: 0 0;
+  }
+  .i {
+      position: absolute;
+      top: 1.2px;
+      left: 58.69px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      width: 4.4px;
+      height: 7.3px;
+      transform:  rotate(15.5deg);
+      transform-origin: 0 0;
+  }
+  .n {
+      position: absolute;
+      top: 2.63px;
+      left: 63.68px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      width: 4.4px;
+      height: 7.3px;
+      transform:  rotate(21.8deg);
+      transform-origin: 0 0;
+  }
+  .div1 {
+      position: absolute;
+      top: 4.61px;
+      left: 68.5px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      width: 4.4px;
+      height: 7.3px;
+      transform:  rotate(28deg);
+      transform-origin: 0 0;
+  }
+  .c {
+      position: absolute;
+      top: 7.08px;
+      left: 73.06px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      width: 4.4px;
+      height: 7.3px;
+      transform:  rotate(34.2deg);
+      transform-origin: 0 0;
+  }
+  .r {
+      position: absolute;
+      top: 10.04px;
+      left: 77.33px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      width: 4.4px;
+      height: 7.3px;
+      transform:  rotate(40.4deg);
+      transform-origin: 0 0;
+  }
+  .y {
+      position: absolute;
+      top: 13.43px;
+      left: 81.26px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      width: 4.4px;
+      height: 7.3px;
+      transform:  rotate(46.5deg);
+      transform-origin: 0 0;
+  }
+  .t {
+      position: absolute;
+      top: 17.23px;
+      left: 84.8px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      width: 4.4px;
+      height: 7.3px;
+      transform:  rotate(52.7deg);
+      transform-origin: 0 0;
+  }
+  .p {
+      position: absolute;
+      top: 21.39px;
+      left: 87.91px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      width: 4.4px;
+      height: 7.3px;
+      transform:  rotate(58.9deg);
+      transform-origin: 0 0;
+  }
+  .o1 {
+      position: absolute;
+      top: 25.86px;
+      left: 90.56px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      width: 4.4px;
+      height: 7.3px;
+      transform:  rotate(65.1deg);
+      transform-origin: 0 0;
+  }
+  .div2 {
+      position: absolute;
+      top: 30.59px;
+      left: 92.7px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      width: 4.4px;
+      height: 7.3px;
+      transform:  rotate(71.4deg);
+      transform-origin: 0 0;
+  }
+  .t1 {
+      position: absolute;
+      top: 35.55px;
+      left: 94.33px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      width: 4.4px;
+      height: 7.3px;
+      transform:  rotate(77.6deg);
+      transform-origin: 0 0;
+  }
+  .r1 {
+      position: absolute;
+      top: 40.61px;
+      left: 95.39px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      width: 4.4px;
+      height: 7.3px;
+      transform:  rotate(83.8deg);
+      transform-origin: 0 0;
+  }
+  .e {
+      position: absolute;
+      top: 45.82px;
+      left: 95.91px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      width: 4.4px;
+      height: 7.3px;
+      transform:  rotate(90deg);
+      transform-origin: 0 0;
+  }
+  .n1 {
+      position: absolute;
+      top: 51.05px;
+      left: 95.86px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      width: 4.4px;
+      height: 7.3px;
+      transform:  rotate(96.2deg);
+      transform-origin: 0 0;
+  }
+  .d {
+      position: absolute;
+      top: 56.18px;
+      left: 95.26px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      width: 4.4px;
+      height: 7.3px;
+      transform:  rotate(102.4deg);
+      transform-origin: 0 0;
+  }
+  .s {
+      position: absolute;
+      top: 61.27px;
+      left: 94.1px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      width: 4.4px;
+      height: 7.3px;
+      transform:  rotate(108.7deg);
+      transform-origin: 0 0;
+  }
+  .div3 {
+      position: absolute;
+      top: 66.17px;
+      left: 92.39px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      width: 4.4px;
+      height: 7.3px;
+      transform:  rotate(114.9deg);
+      transform-origin: 0 0;
+  }
+  .e1 {
+      position: absolute;
+      top: 70.87px;
+      left: 90.16px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      width: 4.4px;
+      height: 7.3px;
+      transform:  rotate(121.1deg);
+      transform-origin: 0 0;
+  }
+  .x {
+      position: absolute;
+      top: 75.3px;
+      left: 87.44px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      width: 4.4px;
+      height: 7.3px;
+      transform:  rotate(127.3deg);
+      transform-origin: 0 0;
+  }
+  .p1 {
+      position: absolute;
+      top: 79.4px;
+      left: 84.26px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      width: 4.4px;
+      height: 7.3px;
+      transform:  rotate(133.5deg);
+      transform-origin: 0 0;
+  }
+  .l {
+      position: absolute;
+      top: 83.13px;
+      left: 80.66px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      width: 4.4px;
+      height: 7.3px;
+      transform:  rotate(139.6deg);
+      transform-origin: 0 0;
+  }
+  .o2 {
+      position: absolute;
+      top: 86.47px;
+      left: 76.67px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      width: 4.4px;
+      height: 7.3px;
+      transform:  rotate(145.8deg);
+      transform-origin: 0 0;
+  }
+  .r2 {
+      position: absolute;
+      top: 89.34px;
+      left: 72.35px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      width: 4.4px;
+      height: 7.3px;
+      transform:  rotate(152deg);
+      transform-origin: 0 0;
+  }
+  .e2 {
+      position: absolute;
+      top: 91.75px;
+      left: 67.74px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      width: 4.4px;
+      height: 7.3px;
+      transform:  rotate(158.3deg);
+      transform-origin: 0 0;
+  }
+  .div4 {
+      position: absolute;
+      top: 93.63px;
+      left: 62.9px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      width: 4.4px;
+      height: 7.3px;
+      transform:  rotate(164.5deg);
+      transform-origin: 0 0;
+  }
+  .div5 {
+      position: absolute;
+      top: 94.97px;
+      left: 57.87px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      width: 4.4px;
+      height: 7.3px;
+      transform:  rotate(170.8deg);
+      transform-origin: 0 0;
+  }
+  .div6 {
+      position: absolute;
+      top: 95.77px;
+      left: 52.75px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      width: 4.4px;
+      height: 7.3px;
+      transform:  rotate(176.9deg);
+      transform-origin: 0 0;
+  }
+  .j1 {
+      position: absolute;
+      top: 96px;
+      left: 47.49px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      width: 4.4px;
+      height: 7.3px;
+      transform:  rotate(-176.9deg);
+      transform-origin: 0 0;
+  }
+  .o3 {
+      position: absolute;
+      top: 95.67px;
+      left: 42.31px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      width: 4.4px;
+      height: 7.3px;
+      transform:  rotate(-170.7deg);
+      transform-origin: 0 0;
+  }
+  .i1 {
+      position: absolute;
+      top: 94.79px;
+      left: 37.19px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      width: 4.4px;
+      height: 7.3px;
+      transform:  rotate(-164.4deg);
+      transform-origin: 0 0;
+  }
+  .n2 {
+      position: absolute;
+      top: 93.36px;
+      left: 32.2px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      width: 4.4px;
+      height: 7.3px;
+      transform:  rotate(-158.2deg);
+      transform-origin: 0 0;
+  }
+  .div7 {
+      position: absolute;
+      top: 91.38px;
+      left: 27.38px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      width: 4.4px;
+      height: 7.3px;
+      transform:  rotate(-152deg);
+      transform-origin: 0 0;
+  }
+  .c1 {
+      position: absolute;
+      top: 88.9px;
+      left: 22.82px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      width: 4.4px;
+      height: 7.3px;
+      transform:  rotate(-145.8deg);
+      transform-origin: 0 0;
+  }
+  .r3 {
+      position: absolute;
+      top: 85.94px;
+      left: 18.55px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      width: 4.4px;
+      height: 7.3px;
+      transform:  rotate(-139.6deg);
+      transform-origin: 0 0;
+  }
+  .y1 {
+      position: absolute;
+      top: 82.55px;
+      left: 14.63px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      width: 4.4px;
+      height: 7.3px;
+      transform:  rotate(-133.4deg);
+      transform-origin: 0 0;
+  }
+  .t2 {
+      position: absolute;
+      top: 78.75px;
+      left: 11.09px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      width: 4.4px;
+      height: 7.3px;
+      transform:  rotate(-127.2deg);
+      transform-origin: 0 0;
+  }
+  .p2 {
+      position: absolute;
+      top: 74.59px;
+      left: 7.98px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      width: 4.4px;
+      height: 7.3px;
+      transform:  rotate(-121.1deg);
+      transform-origin: 0 0;
+  }
+  .o4 {
+      position: absolute;
+      top: 70.11px;
+      left: 5.34px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      width: 4.4px;
+      height: 7.3px;
+      transform:  rotate(-114.8deg);
+      transform-origin: 0 0;
+  }
+  .div8 {
+      position: absolute;
+      top: 65.38px;
+      left: 3.2px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      width: 4.4px;
+      height: 7.3px;
+      transform:  rotate(-108.6deg);
+      transform-origin: 0 0;
+  }
+  .t3 {
+      position: absolute;
+      top: 60.42px;
+      left: 1.57px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      width: 4.4px;
+      height: 7.3px;
+      transform:  rotate(-102.3deg);
+      transform-origin: 0 0;
+  }
+  .r4 {
+      position: absolute;
+      top: 55.36px;
+      left: 0.51px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      width: 4.4px;
+      height: 7.3px;
+      transform:  rotate(-96.1deg);
+      transform-origin: 0 0;
+  }
+  .e3 {
+      position: absolute;
+      top: 50.15px;
+      left: 0px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      width: 4.4px;
+      height: 7.3px;
+      transform:  rotate(-90deg);
+      transform-origin: 0 0;
+  }
+  .n3 {
+      position: absolute;
+      top: 44.92px;
+      left: 0.05px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      width: 4.4px;
+      height: 7.3px;
+      transform:  rotate(-83.8deg);
+      transform-origin: 0 0;
+  }
+  .d1 {
+      position: absolute;
+      top: 39.79px;
+      left: 0.65px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      width: 4.4px;
+      height: 7.3px;
+      transform:  rotate(-77.6deg);
+      transform-origin: 0 0;
+  }
+  .s1 {
+      position: absolute;
+      top: 34.7px;
+      left: 1.82px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      width: 4.4px;
+      height: 7.3px;
+      transform:  rotate(-71.3deg);
+      transform-origin: 0 0;
+  }
+  .div9 {
+      position: absolute;
+      top: 29.8px;
+      left: 3.53px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      width: 4.4px;
+      height: 7.3px;
+      transform:  rotate(-65.1deg);
+      transform-origin: 0 0;
+  }
+  .e4 {
+      position: absolute;
+      top: 25.1px;
+      left: 5.76px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      width: 4.4px;
+      height: 7.3px;
+      transform:  rotate(-58.8deg);
+      transform-origin: 0 0;
+  }
+  .x1 {
+      position: absolute;
+      top: 20.68px;
+      left: 8.48px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      width: 4.4px;
+      height: 7.3px;
+      transform:  rotate(-52.7deg);
+      transform-origin: 0 0;
+  }
+  .p3 {
+      position: absolute;
+      top: 16.58px;
+      left: 11.67px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      width: 4.4px;
+      height: 7.3px;
+      transform:  rotate(-46.5deg);
+      transform-origin: 0 0;
+  }
+  .l1 {
+      position: absolute;
+      top: 12.84px;
+      left: 15.27px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      width: 4.4px;
+      height: 7.3px;
+      transform:  rotate(-40.3deg);
+      transform-origin: 0 0;
+  }
+  .o5 {
+      position: absolute;
+      top: 9.51px;
+      left: 19.26px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      width: 4.4px;
+      height: 7.3px;
+      transform:  rotate(-34.1deg);
+      transform-origin: 0 0;
+  }
+  .r5 {
+      position: absolute;
+      top: 6.64px;
+      left: 23.58px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      width: 4.4px;
+      height: 7.3px;
+      transform:  rotate(-27.9deg);
+      transform-origin: 0 0;
+  }
+  .e5 {
+      position: absolute;
+      top: 4.24px;
+      left: 28.2px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      width: 4.4px;
+      height: 7.3px;
+      transform:  rotate(-21.7deg);
+      transform-origin: 0 0;
+  }
+  .div10 {
+      position: absolute;
+      top: 2.36px;
+      left: 33.04px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      width: 4.4px;
+      height: 7.3px;
+      transform:  rotate(-15.5deg);
+      transform-origin: 0 0;
+  }
+  .div11 {
+      position: absolute;
+      top: 1.02px;
+      left: 38.06px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      width: 4.4px;
+      height: 7.3px;
+      transform:  rotate(-9.2deg);
+      transform-origin: 0 0;
+  }
+  .curveTextChild {
+      position: absolute;
+      top: calc(50% - 14px);
+      left: calc(50% - 13.08px);
+      width: 26.3px;
+      height: 28.2px;
+  }
+  .curveText {
+      position: absolute;
+      top: 24px;
+      left: 24px;
+      width: 95.9px;
+      height: 96px;
+      font-size: 12px;
+      font-family: "DM Mono", monospace;
+  }
+  .layer512Parent {
+      width: 584px;
+      position: relative;
+      height: 582px;
+      font-size: 12px;
+  }
+  .frameParent {
+      width: 100%;
+      position: relative;
+      display: flex;
+      flex-direction: row;
+      align-items: flex-start;
+      justify-content: space-between;
+      padding: 72px 50px 0px;
+      box-sizing: border-box;
+      gap: 0px;
+      text-align: left;
+      font-size: 16px;
+      color: #fff;
+      font-family: "DM Sans", sans-serif;
+  }
+  .rightArrowIcon {
+    width: 20px;
+    position: relative;
+    max-height: 100%;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+  .button1 {
+    border-radius: 12px;
+    background-color: #99e39e;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    padding: 13px 24px;
+    gap: 8px;
+    color: #000510;
+  }
+  .ellipseParent {
+    width: 70.6px;
+    position: relative;
+    height: 70.6px;
+  }
+
+  /* Trusted By */
+  .frameChild {
+    width: 1200px;
+    position: absolute;
+    margin: 0 !important;
+    top: calc(50% - 16px);
+    left: calc(50% - 600px);
+    background: linear-gradient(90deg, #000510, rgba(0, 5, 16, 0) 50%, #000510);
+    height: 32px;
+    z-index: 5;
+  }
+  .frameContainer {
+    align-self: stretch;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    gap: 72px;
+  }
+  .trustedByTopCryptoPlatformParent {
+    align-self: stretch;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 40px;
+  }
+  .frameWrapper {
+    align-self: stretch;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    padding: 72px 0px;
+  }
+  .topCryptoCoins {
+    position: relative;
+    font-size: 40px;
+    letter-spacing: -0.01em;
+    line-height: 120%;
+    font-weight: 500;
+  }
+  .cryptoPlatforms {
+    color: #99e39e;
+  }
+  .frameIcon {
+    width: 187.3px;
+    position: relative;
+    height: 32px;
+    overflow: hidden;
+    flex-shrink: 0;
+    z-index: 0;
+  }
+  .logo55Icon {
+    width: 131.1px;
+    position: relative;
+    height: 32px;
+    overflow: hidden;
+    flex-shrink: 0;
+    z-index: 1;
+  }
+  .logo51Icon {
+    width: 130.3px;
+    position: relative;
+    height: 32px;
+    overflow: hidden;
+    flex-shrink: 0;
+    z-index: 2;
+  }
+  .logo7Icon {
+    width: 124px;
+    position: relative;
+    height: 32px;
+    overflow: hidden;
+    flex-shrink: 0;
+    z-index: 3;
+  }
+  .logo28Icon {
+    width: 117.1px;
+    position: relative;
+    height: 32px;
+    overflow: hidden;
+    flex-shrink: 0;
+    z-index: 4;
+  }
+
 }
 
 @layer utilities {

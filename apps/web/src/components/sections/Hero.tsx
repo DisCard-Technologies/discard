@@ -1,114 +1,131 @@
 import React from 'react';
-import { Button } from '../ui/Button';
+import Image from 'next/image';
+import Link from 'next/link';
 
 // Import assets
-const rightArrow = "D:/builds/_Projects/discard/apps/web/src/assets/a0fee52253d4a59bf5367b249d2420722f23e179.svg";
-const leftArrow = "D:/builds/_Projects/discard/apps/web/src/assets/f7b9a90ff1ddb5422c67508520e29f38ddb20838.svg";
+import card from "../../assets/card-gradient.png";
+import phone from "../../assets/mobile-phone-in-hand.png";
+import star from "../../assets/silver-star.png";
+import arrow from "../../assets/right-arrow.svg";
+
 
 export const Hero: React.FC = () => {
   return (
-    <section className="bg-[#000510] py-[72px] px-[50px]">
-      <div className="max-w-7xl mx-auto">
-        <div className="flex items-start justify-between">
-          {/* Left Content */}
-          <div className="w-[588px] space-y-10">
-            {/* Badge */}
-            <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-[rgba(153,227,158,0.1)] rounded-[999px] border border-[rgba(255,255,255,0.1)]">
-              <span className="text-[#99e39e] text-base font-medium">
-                Future of crypto trading
-              </span>
+    <div className="frameParent">
+        <div className="frameGroup">
+          <div className="chipParent">
+            <div className="chip">
+              <div className="features">Future of crypto trading</div>
             </div>
-
-            {/* Main Heading */}
-            <h1 className="text-[72px] font-medium text-white leading-[1.2] tracking-[-0.432px]">
-              Fast and Secure<br />
-              Cryptocurrency<br />
-              Exchange
-            </h1>
-
-            {/* Description */}
-            <p className="text-white text-base leading-[1.4] opacity-80">
-              Trade cryptocurrencies with ease, security, and advanced<br />
-              features on our cutting-edge platform.
-            </p>
-
-            {/* CTA Button */}
-            <Button variant="primary" size="md" className="inline-flex items-center gap-2">
-              Explore more
-              <div className="w-5 h-5 overflow-hidden">
-                <div className="w-full h-full relative">
-                  <img src={rightArrow} alt="Right Arrow" className="absolute inset-0 w-full h-full" />
-                  <img src={leftArrow} alt="Left Arrow" className="absolute inset-0 w-full h-full" />
-                </div>
-              </div>
-            </Button>
+            <div className="fastAndSecureContainer">
+              <p className="fastAndSecure">{`Fast and Secure `}</p>
+              <p className="fastAndSecure">{`Cryptocurrency `}</p>
+              <p className="fastAndSecure">Exchange</p>
+            </div>
+            <div className="tradeCryptocurrenciesWithContainer">
+              <p className="fastAndSecure">{`Trade cryptocurrencies with ease, security, and advanced `}</p>
+              <p className="fastAndSecure">features on our cutting-edge platform.</p>
+            </div>
           </div>
-
-          {/* Right Content - Card Visualization */}
-          <div className="w-[584px] h-[582px] relative">
-            {/* Background Layer */}
-            <div 
-              className="absolute inset-0 bg-gradient-to-b from-[#00051000] from-[73.454%] to-[#000510]"
-              style={{
-                backgroundImage: `url('D:/builds/_Projects/discard/apps/web/src/assets/60a4f19c220d66e7d5babb226616c5062b619896.png')`,
-                backgroundSize: 'auto 130.8% 132.52%',
-                backgroundPosition: '0% 0%, 13.09% 21.61%'
-              }}
+          <Link className="button1" href="/features">
+            <div className="getTemplate">Explore more</div>
+            <Image
+              className="rightArrowIcon"
+              width={20}
+              height={20}
+              sizes="100vw"
+              alt=""
+              src={arrow}
             />
-            
-            {/* Stats Card */}
-            <div className="absolute left-[355px] top-[51px] w-[114px] h-[114px] backdrop-blur-[20px] bg-[rgba(255,255,255,0.1)] rounded-lg shadow-[0px_4.071px_6.786px_0px_rgba(0,0,0,0.12)] flex items-center justify-center">
-              <div className="text-center">
-                <div className="w-[70.572px] h-[70.572px] mx-auto mb-2">
-                  <div className="w-full h-full relative">
-                    <img src="D:/builds/_Projects/discard/apps/web/src/assets/256d9954dab81014f5763c4914c2c514ea1ec754.svg" alt="Ellipse" className="absolute inset-[-25.29%_-33.33%_-41.38%_-33.33%] w-full h-full" />
-                    <img src="D:/builds/_Projects/discard/apps/web/src/assets/a3650ef85f0e18fef3c1ad415a8b6617524c4459.svg" alt="Ellipse" className="absolute inset-0 w-full h-full" />
-                  </div>
-                </div>
-                <span className="text-white text-xs font-semibold">+75%</span>
-              </div>
+          </Link>
+        </div>
+        <div className="layer512Parent">
+          <Image className="layer512Icon" width={584} height={582} sizes="100vw" alt="" src={phone} />
+          <div className="groupWrapper">
+            <div className="ellipseParent">
+              <div className="groupChild" />
+              <div className="groupItem" />
+              <div className="div">+75%</div>
             </div>
-
-            {/* Credit Card */}
-            <div className="absolute left-6 top-[270.85px] w-[227.561px] h-36 bg-[#000510] rounded-[12.169px] border border-[rgba(255,255,255,0.05)] relative overflow-hidden">
-              {/* Card Content */}
-              <div className="absolute inset-0 p-5">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="w-12 h-8">
-                    <img src="D:/builds/_Projects/discard/apps/web/src/assets/d588ecefa2bfc4216ab7e3775bbf1263c8f6b050.svg" alt="Logo" className="w-full h-full" />
-                  </div>
-                  <div className="w-8 h-6">
-                    <img src="D:/builds/_Projects/discard/apps/web/src/assets/65f235ac5733c39f24df27008c093a4e39fd7d60.svg" alt="Chip" className="w-full h-full" />
-                  </div>
-                </div>
-                
-                <div className="text-white">
-                  <div className="text-base font-medium mb-2">3455 4562 7710 3507</div>
-                  <div className="flex justify-between text-sm">
-                    <div>
-                      <div className="text-[rgba(255,255,255,0.6)] uppercase text-xs">Card holder name</div>
-                      <div className="font-semibold">John Carter</div>
-                    </div>
-                    <div>
-                      <div className="text-[rgba(255,255,255,0.6)] uppercase text-xs">Expiry date</div>
-                      <div className="font-semibold">02/30</div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Curve Text */}
-            <div className="absolute left-6 top-6 w-[120px] h-[120px]">
-              {/* This would contain the curved text "JOIN CRYPTO TRENDS • JOIN CRYPTO TRENDS" */}
-              {/* For now, we'll use a placeholder */}
-              <div className="text-white text-xs font-mono text-center">
-                JOIN CRYPTO<br />TRENDS
-              </div>
+          </div>
+          <Image
+            className="cartGradient2"
+            width={227.6}
+            height={144}
+            sizes="100vw"
+            alt=""
+            src={card}
+          />
+          <div className="curveText">
+            <div className="j">J</div>
+            <div className="o">O</div>
+            <div className="i">I</div>
+            <div className="n">N</div>
+            <div className="div1">{` `}</div>
+            <div className="c">C</div>
+            <div className="r">R</div>
+            <div className="y">Y</div>
+            <div className="t">T</div>
+            <div className="p">P</div>
+            <div className="o1">O</div>
+            <div className="div2">{` `}</div>
+            <div className="t1">T</div>
+            <div className="r1">R</div>
+            <div className="e">E</div>
+            <div className="n1">N</div>
+            <div className="d">D</div>
+            <div className="s">S</div>
+            <div className="div3">{` `}</div>
+            <div className="e1">E</div>
+            <div className="x">X</div>
+            <div className="p1">P</div>
+            <div className="l">L</div>
+            <div className="o2">O</div>
+            <div className="r2">R</div>
+            <div className="e2">E</div>
+            <div className="div4">{` `}</div>
+            <div className="div5">•</div>
+            <div className="div6">{` `}</div>
+            <div className="j1">J</div>
+            <div className="o3">O</div>
+            <div className="i1">I</div>
+            <div className="n2">N</div>
+            <div className="div7">{` `}</div>
+            <div className="c1">C</div>
+            <div className="r3">R</div>
+            <div className="y1">Y</div>
+            <div className="t2">T</div>
+            <div className="p2">P</div>
+            <div className="o4">O</div>
+            <div className="div8">{` `}</div>
+            <div className="t3">T</div>
+            <div className="r4">R</div>
+            <div className="e3">E</div>
+            <div className="n3">N</div>
+            <div className="d1">D</div>
+            <div className="s1">S</div>
+            <div className="div9">{` `}</div>
+            <div className="e4">E</div>
+            <div className="x1">X</div>
+            <div className="p3">P</div>
+            <div className="l1">L</div>
+            <div className="o5">O</div>
+            <div className="r5">R</div>
+            <div className="e5">E</div>
+            <div className="div10">{` `}</div>
+            <div className="div11">•</div>
+            <div className="wrapperVector2">
+              <Image
+                className="wrapperVector2Child"
+                width={26.3}
+                height={28.2}
+                sizes="100vw"
+                alt=""
+                src={star}
+              />
             </div>
           </div>
         </div>
       </div>
-    </section>
   );
 };
