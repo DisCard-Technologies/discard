@@ -9,7 +9,7 @@ import {
   ActivityIndicator
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useCards } from '../../../lib/hooks/useCards';
+import { useCardOperations } from '../../stores/cards';
 
 interface CardFreezeControlProps {
   cardId: string;
@@ -27,7 +27,7 @@ export const CardFreezeControl: React.FC<CardFreezeControlProps> = ({
   const [isFrozen, setIsFrozen] = useState(initialFrozenState);
   const [isLoading, setIsLoading] = useState(false);
   const [lastAction, setLastAction] = useState<'freeze' | 'unfreeze' | null>(null);
-  const { freezeCard, unfreezeCard, getCardStatus } = useCards();
+  const cardOperations = useCardOperations();
 
   useEffect(() => {
     // Fetch current card status on mount
@@ -36,7 +36,7 @@ export const CardFreezeControl: React.FC<CardFreezeControlProps> = ({
 
   const loadCardStatus = async () => {
     try {
-      const status = await getCardStatus(cardId);
+      const status = await cardOperations.getCardStatus(cardId);
       setIsFrozen(status.isFrozen);
     } catch (error) {
       console.error('Failed to load card status:', error);
@@ -68,9 +68,9 @@ export const CardFreezeControl: React.FC<CardFreezeControlProps> = ({
             try {
               let result;
               if (action === 'freeze') {
-                result = await freezeCard(cardId, 'manual_freeze');
+                result = await cardOperations.freezeCard(cardId, 'manual_freeze');
               } else {
-                result = await unfreezeCard(cardId);
+                result = await cardOperations.unfreezeCard(cardId);
               }
 
               if (result.success) {

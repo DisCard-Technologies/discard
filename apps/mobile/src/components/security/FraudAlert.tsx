@@ -8,7 +8,7 @@ import {
   ActivityIndicator
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useCards } from '../../../lib/hooks/useCards';
+import { useCardOperations } from '../../stores/cards';
 
 interface FraudAlertProps {
   notification: {
@@ -41,7 +41,7 @@ export const FraudAlert: React.FC<FraudAlertProps> = ({
   onActionPress
 }) => {
   const [isLoading, setIsLoading] = useState(false);
-  const { reportFalsePositive, freezeCard } = useCards();
+  const cardOperations = useCardOperations();
 
   const getSeverityColor = (severity: string) => {
     switch (severity) {
@@ -81,7 +81,7 @@ export const FraudAlert: React.FC<FraudAlertProps> = ({
         case 'report_false_positive':
           // Report this was a legitimate transaction
           if (notification.metadata?.eventId) {
-            await reportFalsePositive(
+            await cardOperations.reportFalsePositive(
               notification.cardId,
               notification.metadata.eventId
             );
@@ -95,7 +95,7 @@ export const FraudAlert: React.FC<FraudAlertProps> = ({
 
         case 'unfreeze_card': // Actually freezes the card in this context
           // Freeze the card
-          const result = await freezeCard(notification.cardId, 'fraud_detected');
+          const result = await cardOperations.freezeCard(notification.cardId, 'fraud_detected');
           if (result.success) {
             Alert.alert(
               'Card Frozen',

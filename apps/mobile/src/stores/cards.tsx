@@ -323,6 +323,77 @@ export function CardsProvider({ children }: { children: ReactNode }) {
     clearError: () => {
       dispatch({ type: 'SET_ERROR', payload: null });
     },
+
+    // Security-related methods
+    reportFalsePositive: async (cardId: string, eventId: string): Promise<{ success: boolean }> => {
+      try {
+        const response = await apiCall(`/api/v1/cards/${cardId}/security/false-positive`, {
+          method: 'POST',
+          body: JSON.stringify({ eventId }),
+        });
+        return { success: true };
+      } catch (error) {
+        console.error('Failed to report false positive:', error);
+        return { success: false };
+      }
+    },
+
+    freezeCard: async (cardId: string, reason: string): Promise<{ success: boolean }> => {
+      try {
+        const response = await apiCall(`/api/v1/cards/${cardId}/freeze`, {
+          method: 'POST',
+          body: JSON.stringify({ reason }),
+        });
+        
+        // Update card status in state
+        dispatch({ 
+          type: 'UPDATE_CARD', 
+          payload: { 
+            cardId, 
+            updates: { status: 'frozen' } 
+          } 
+        });
+        
+        return { success: true };
+      } catch (error) {
+        console.error('Failed to freeze card:', error);
+        return { success: false };
+      }
+    },
+
+    unfreezeCard: async (cardId: string): Promise<{ success: boolean }> => {
+      try {
+        const response = await apiCall(`/api/v1/cards/${cardId}/unfreeze`, {
+          method: 'POST',
+        });
+        
+        // Update card status in state
+        dispatch({ 
+          type: 'UPDATE_CARD', 
+          payload: { 
+            cardId, 
+            updates: { status: 'active' } 
+          } 
+        });
+        
+        return { success: true };
+      } catch (error) {
+        console.error('Failed to unfreeze card:', error);
+        return { success: false };
+      }
+    },
+
+    getCardStatus: async (cardId: string): Promise<{ isFrozen: boolean }> => {
+      try {
+        const response = await apiCall(`/api/v1/cards/${cardId}/status`);
+        return { isFrozen: response.status === 'frozen' };
+      } catch (error) {
+        console.error('Failed to get card status:', error);
+        // Fallback: check local state
+        const card = state.cards.find(c => c.cardId === cardId);
+        return { isFrozen: card?.status === 'frozen' || false };
+      }
+    },
   };
 
   return (

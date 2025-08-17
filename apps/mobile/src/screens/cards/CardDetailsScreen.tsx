@@ -26,6 +26,7 @@ interface CardDetailsScreenProps {
   onBack?: () => void;
   onCardUpdated?: (card: CardWithDetails) => void;
   onCardDeleted?: () => void;
+  navigation?: any;
 }
 
 const CardDetailsScreen: React.FC<CardDetailsScreenProps> = ({
@@ -33,6 +34,7 @@ const CardDetailsScreen: React.FC<CardDetailsScreenProps> = ({
   onBack,
   onCardUpdated,
   onCardDeleted,
+  navigation,
 }) => {
   const cardOperations = useCardOperations();
   
@@ -429,6 +431,43 @@ const CardDetailsScreen: React.FC<CardDetailsScreenProps> = ({
                 )}
               </TouchableOpacity>
             </View>
+            
+            {/* Navigation Actions */}
+            <View style={styles.navigationActions}>
+              <TouchableOpacity
+                style={styles.navigationButton}
+                onPress={() => {
+                  // Navigate to transaction history
+                  if ((navigation as any)?.navigate) {
+                    (navigation as any).navigate('TransactionHistory', { cardId: card.id });
+                  }
+                }}
+              >
+                <Text style={styles.navigationButtonIcon}>📊</Text>
+                <View style={styles.navigationButtonContent}>
+                  <Text style={styles.navigationButtonText}>Transaction History</Text>
+                  <Text style={styles.navigationButtonDescription}>View all transactions</Text>
+                </View>
+                <Text style={styles.navigationButtonArrow}>→</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={styles.navigationButton}
+                onPress={() => {
+                  // Navigate to privacy settings
+                  if ((navigation as any)?.navigate) {
+                    (navigation as any).navigate('TransactionIsolation', { cardId: card.id });
+                  }
+                }}
+              >
+                <Text style={styles.navigationButtonIcon}>🔒</Text>
+                <View style={styles.navigationButtonContent}>
+                  <Text style={styles.navigationButtonText}>Privacy Settings</Text>
+                  <Text style={styles.navigationButtonDescription}>Configure isolation</Text>
+                </View>
+                <Text style={styles.navigationButtonArrow}>→</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         )}
 
@@ -715,6 +754,48 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: 'white',
+  },
+
+  // Navigation actions
+  navigationActions: {
+    marginTop: 16,
+    gap: 12,
+  },
+
+  navigationButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'white',
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+
+  navigationButtonIcon: {
+    fontSize: 24,
+    marginRight: 12,
+  },
+
+  navigationButtonContent: {
+    flex: 1,
+  },
+
+  navigationButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginBottom: 2,
+  },
+
+  navigationButtonDescription: {
+    fontSize: 14,
+    color: '#6B7280',
+  },
+
+  navigationButtonArrow: {
+    fontSize: 20,
+    color: '#6B7280',
   },
 
   // Bottom spacing

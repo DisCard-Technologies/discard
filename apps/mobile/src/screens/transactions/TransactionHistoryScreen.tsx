@@ -14,7 +14,8 @@ import { TransactionSearchBar, TransactionSearchQuery, TransactionFilters } from
 import { TransactionDetailModal } from '../../components/transactions/TransactionDetailModal';
 import { TransactionAnalytics } from '../../components/transactions/TransactionAnalytics';
 import { useTransactionWebSocket } from '../../hooks/useTransactionWebSocket';
-import { apiClient } from '../../services/api';
+// API base URL - should be moved to environment config
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3001';
 
 interface Transaction {
   transactionId: string;
@@ -120,9 +121,11 @@ const TransactionHistoryScreen: React.FC<TransactionHistoryScreenProps> = ({
 
   // Handle real-time updates
   useEffect(() => {
-    if (lastUpdate && lastUpdate.cardId === cardId) {
-      handleRealTimeUpdate(lastUpdate);
-    }
+    if (lastUpdate && 
+      ((lastUpdate.type === 'transactionHistoryUpdated' && lastUpdate.cardId === cardId) ||
+       (lastUpdate.type === 'new_transaction' && lastUpdate.cardContext === cardId))) {
+    handleRealTimeUpdate(lastUpdate);
+  }
   }, [lastUpdate, cardId]);
 
   /**
@@ -151,7 +154,7 @@ const TransactionHistoryScreen: React.FC<TransactionHistoryScreenProps> = ({
       if (query.category) params.append('category', query.category);
       if (query.status) params.append('status', query.status);
 
-      const response = await apiClient.get(`/api/v1/cards/${cardId}/transactions?${params}`);
+      const response = await fetch(`${API_BASE_URL}/api/v1/cards/${cardId}/transactions?${params}`);
       
       if (response.ok) {
         const data = await response.json();
@@ -185,7 +188,7 @@ const TransactionHistoryScreen: React.FC<TransactionHistoryScreenProps> = ({
    */
   const loadTransactionDetail = async (transactionId: string) => {
     try {
-      const response = await apiClient.get(`/api/v1/transactions/${transactionId}`);
+      const response = await fetch(`${API_BASE_URL}/api/v1/transactions/${transactionId}`);
       
       if (response.ok) {
         const data = await response.json();
