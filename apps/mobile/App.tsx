@@ -80,7 +80,13 @@ function CardsStackNavigator() {
             onCardCreated={(newCard) => {
               props.navigation.navigate('CardDetails', { card: newCard });
             }}
-            onCancel={() => props.navigation.goBack()}
+            onCancel={() => {
+              if (props.navigation.canGoBack()) {
+                props.navigation.goBack();
+              } else {
+                props.navigation.navigate('CardsDashboard');
+              }
+            }}
           />
         )}
       </CardsStack.Screen>
@@ -146,7 +152,7 @@ function MainTabs() {
             // Navigate to create card in the Cards stack
             navigation.navigate('Dashboard', {
               screen: 'CreateCard',
-            });
+            } as any);
           },
         })}
       />
