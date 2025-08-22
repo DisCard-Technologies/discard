@@ -11,6 +11,6 @@ export { TrustedBy } from './sections/TrustedBy';
 export { CryptoCoins } from './sections/CryptoCoins';
 export { Features } from './sections/Features';
 export { Stats } from './sections/Stats';
-export { CTA } from './sections/CTA';
+export { CryptoExchangeSection } from './sections/Mobile';
 export { Support } from './sections/Support';
 export { Newsletter } from './sections/Newsletter';

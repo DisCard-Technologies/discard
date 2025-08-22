@@ -7,12 +7,12 @@ import { useScroll } from "../../lib/hooks/useScroll"
 import Link from 'next/link';
 
 // Import logo assets
-import discardLogo from "../../assets/discard-logo.png";
+import discardLogo from "../../assets/logo-1.png";
 
 export default function Header() {
-  const { isScrolled } = useScroll()
+  // const { isScrolled } = useScroll()
   
-  const navItems = ["Features", "Benefits", "Services", "Why Crypgo", "FAQs"]
+  // const navItems = ["Features", "Benefits", "Services", "Why Discard", "FAQs"]
 
   return (
     <div className="headerParent">
@@ -20,7 +20,7 @@ export default function Header() {
         <Link href="/" className="logo">
           <Image
             className="logoItem"
-            width={93}
+            width={32}
             height={32}
             sizes="100vw"
             alt=""
@@ -32,7 +32,7 @@ export default function Header() {
           <Link href="/features" className="features">Features</Link>
           <Link href="/benefits" className="features">Benefits</Link>
           <Link href="/services" className="features">Services</Link>
-          <Link href="/why-crypgo" className="features">Why Discard</Link>
+          <Link href="/why-discard" className="features">Why Discard</Link>
           <Link href="/faqs" className="features">FAQs</Link>
         </div>
 
