@@ -8,7 +8,7 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import { useCards, useUpdateCardStatus, useDeleteCard } from '../../../lib/hooks/useCards';
 import { CardList } from '../../../components/cards/CardList';
-import { CardDeletion } from '../../../../../../packages/shared/src/utils';
+import { CardDeletion } from '@discard/shared/src/utils';
 import { PlusIcon } from '../../../lib/stubs';
 import { CardListRequest } from '@discard/shared';
 
