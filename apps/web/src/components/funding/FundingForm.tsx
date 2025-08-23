@@ -13,7 +13,6 @@ import {
 } from '@discard/shared/src/utils/funding';
 import { 
   AccountFundingRequest, 
-  CardAllocationRequest, 
   CardTransferRequest 
 } from '@discard/shared';
 
@@ -22,6 +21,7 @@ interface FundingFormProps {
   cardId?: string; // Required for allocate mode
   sourceCardId?: string; // Required for transfer mode
   targetCardId?: string; // Required for transfer mode
+  // eslint-disable-next-line no-unused-vars
   onSuccess?: (transactionId: string) => void;
   onCancel?: () => void;
   availableBalance?: number;
@@ -131,11 +131,6 @@ export function FundingForm({
         const data = await response.json();
         result = data.data.transaction;
       } else if (mode === 'allocate' && cardId) {
-        const request: CardAllocationRequest = {
-          cardId,
-          amount: amountCents,
-        };
-        
         const response = await fetch(`/api/v1/funding/card/${cardId}`, {
           method: 'POST',
           headers: {
@@ -201,19 +196,6 @@ export function FundingForm({
       if (amountError) {
         setAmountError(null);
       }
-    }
-  };
-
-  const getTitle = () => {
-    switch (mode) {
-      case 'fund':
-        return 'Fund Account';
-      case 'allocate':
-        return 'Allocate to Card';
-      case 'transfer':
-        return 'Transfer Between Cards';
-      default:
-        return 'Funding Operation';
     }
   };
 

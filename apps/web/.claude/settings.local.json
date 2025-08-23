@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run build:*)",
+      "Bash(grep:*)",
+      "Bash(rg:*)",
+      "Bash(npm install:*)",
+      "Bash(rm:*)",
+      "Bash(ls:*)",
+      "Bash(if [ -f \"package-lock.json\" ])",
+      "Bash(then rm package-lock.json)",
+      "Bash(else echo \"No package-lock.json in web directory\")",
+      "Bash(fi)"
+    ],
+    "deny": []
+  }
+}

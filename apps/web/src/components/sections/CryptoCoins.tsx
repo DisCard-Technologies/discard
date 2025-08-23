@@ -20,6 +20,7 @@ export const CryptoCoins: React.FC = () => {
         </div>
         <div className={styles.topCryptoCoins}>Top crypto coins updates</div>
       </div>
+      <div className={styles.frameContainer}>
       <div className={styles.cardParent}>
         <div className={styles.card}>
           <div className={styles.tradeCryptocurrenciesWithContainer}>Highest volume</div>
@@ -87,6 +88,7 @@ export const CryptoCoins: React.FC = () => {
             </div>
           </div>
         </div>
+      </div>
       </div>
     </div>
   );

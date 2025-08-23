@@ -49,6 +49,7 @@ export default function BalanceDetailPage() {
 
       setIsEditingThresholds(false);
     } catch (error) {
+      // eslint-disable-next-line no-console
       console.error('Failed to update thresholds:', error);
       alert('Failed to update notification thresholds');
     }

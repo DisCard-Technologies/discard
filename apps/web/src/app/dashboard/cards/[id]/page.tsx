@@ -9,7 +9,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useCardDetails, useUpdateCardStatus, useDeleteCard } from '../../../../lib/hooks/useCards';
 import { CardComponent } from '../../../../components/cards/CardComponent';
 import { PrivacyIndicator, getPrivacyStatus } from '../../../../components/privacy/PrivacyIndicator';
-import { CardDetailsResponse, Card, Transaction } from '@discard/shared';
+import { CardDetailsResponse } from '@discard/shared';
 // Local deletion confirmation utilities
 const CardDeletion = {
   validateUserInput: (input: string) => input === 'DELETE',
@@ -20,7 +20,6 @@ const CardDeletion = {
 };
 import { 
   ArrowLeftIcon, 
-  ClockIcon, 
   CreditCardIcon, 
   ShieldCheckIcon,
   ExclamationTriangleIcon,
@@ -46,6 +45,7 @@ export default function CardDetailsPage() {
     try {
       await updateStatusMutation.mutateAsync({ cardId, status });
     } catch (error) {
+      // eslint-disable-next-line no-console
       console.error('Failed to update card status:', error);
     }
   };
@@ -70,6 +70,7 @@ export default function CardDetailsPage() {
       if (result.deletionProof) {
         const proofValid = await CardDeletion.verifyProof(result.deletionProof, cardId);
         if (!proofValid) {
+          // eslint-disable-next-line no-console
           console.warn('Deletion proof verification failed');
         }
       }
@@ -77,6 +78,7 @@ export default function CardDetailsPage() {
       // Redirect to dashboard after successful deletion
       router.push('/dashboard/cards');
     } catch (error) {
+      // eslint-disable-next-line no-console
       console.error('Failed to delete card:', error);
       setShowDeleteModal(false);
     }
@@ -230,7 +232,7 @@ export default function CardDetailsPage() {
                     <CreditCardIcon className="w-12 h-12 text-gray-400 mx-auto mb-4" />
                     <h4 className="text-lg font-medium text-gray-900 mb-2">No Transactions Yet</h4>
                     <p className="text-gray-500">
-                      This card hasn't been used for any transactions.
+                      This card hasn&apos;t been used for any transactions.
                     </p>
                   </div>
                 )}
@@ -352,7 +354,7 @@ export default function CardDetailsPage() {
 
                 <div className="mb-4">
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Type "DELETE" to confirm:
+                    Type &quot;DELETE&quot; to confirm:
                   </label>
                   <input
                     type="text"

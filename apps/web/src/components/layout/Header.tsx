@@ -1,19 +1,13 @@
 "use client";
 
-import React, { useState } from 'react';
-import Button from '../ui/Button';
+import React from 'react';
 import Image from 'next/image';
-import { useScroll } from "../../lib/hooks/useScroll"
 import Link from 'next/link';
 
 // Import logo assets
 import discardLogo from "../../assets/logo-1.png";
 
 export default function Header() {
-  // const { isScrolled } = useScroll()
-  
-  // const navItems = ["Features", "Benefits", "Services", "Why Discard", "FAQs"]
-
   return (
     <div className="headerParent">
       <div className="header">

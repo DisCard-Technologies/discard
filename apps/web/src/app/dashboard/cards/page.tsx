@@ -29,6 +29,7 @@ export default function CardsDashboard() {
     try {
       await updateStatusMutation.mutateAsync({ cardId, status });
     } catch (error) {
+      // eslint-disable-next-line no-console
       console.error('Failed to update card status:', error);
       // TODO: Show error toast
     }
@@ -60,6 +61,7 @@ export default function CardsDashboard() {
       if (result.deletionProof) {
         const proofValid = await CardDeletion.verifyProof(result.deletionProof, deletingCardId);
         if (!proofValid) {
+          // eslint-disable-next-line no-console
           console.warn('Deletion proof verification failed');
         }
       }
@@ -70,6 +72,7 @@ export default function CardsDashboard() {
       // Refetch cards to update the list
       refetch();
     } catch (error) {
+      // eslint-disable-next-line no-console
       console.error('Failed to delete card:', error);
       // TODO: Show error toast
     }
@@ -227,7 +230,7 @@ export default function CardsDashboard() {
 
                 <div className="mb-4">
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Type "DELETE" to confirm:
+                    Type &quot;DELETE&quot; to confirm:
                   </label>
                   <input
                     type="text"

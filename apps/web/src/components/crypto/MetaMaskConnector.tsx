@@ -9,28 +9,34 @@ import React, { useState, useEffect } from 'react';
 import {
   CryptoWallet,
   MetaMaskConnectionRequest,
-  WalletBalanceResponse,
   CryptoWalletError,
   CRYPTO_ERROR_CODES,
 } from '@discard/shared';
 
 interface MetaMaskConnectorProps {
+  // eslint-disable-next-line no-unused-vars
   onWalletConnected?: (wallet: CryptoWallet) => void;
+  // eslint-disable-next-line no-unused-vars
   onWalletDisconnected?: (walletId: string) => void;
+  // eslint-disable-next-line no-unused-vars
   onError?: (error: CryptoWalletError) => void;
   className?: string;
 }
 
 interface MetaMaskProvider {
   isMetaMask: boolean;
+  // eslint-disable-next-line no-unused-vars
   request: (args: { method: string; params?: any[] }) => Promise<any>;
+  // eslint-disable-next-line no-unused-vars
   on: (event: string, handler: (args: any) => void) => void;
+  // eslint-disable-next-line no-unused-vars
   removeListener: (event: string, handler: (args: any) => void) => void;
   selectedAddress: string | null;
   chainId: string;
 }
 
 declare global {
+  // eslint-disable-next-line no-unused-vars
   interface Window {
     ethereum?: MetaMaskProvider;
   }
@@ -58,6 +64,7 @@ const MetaMaskConnector: React.FC<MetaMaskConnectorProps> = ({
     return () => {
       removeEventListeners();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const getAuthToken = async (): Promise<string> => {
@@ -92,6 +99,7 @@ const MetaMaskConnector: React.FC<MetaMaskConnectorProps> = ({
         await loadConnectedWallet(accounts[0]);
       }
     } catch (error) {
+      // eslint-disable-next-line no-console
       console.error('Error checking existing connection:', error);
     }
   };
@@ -117,6 +125,7 @@ const MetaMaskConnector: React.FC<MetaMaskConnectorProps> = ({
         }
       }
     } catch (error) {
+      // eslint-disable-next-line no-console
       console.error('Failed to load connected wallet:', error);
     }
   };
@@ -266,6 +275,7 @@ const MetaMaskConnector: React.FC<MetaMaskConnectorProps> = ({
         params: [{ chainId: '0x1' }], // Ethereum Mainnet
       });
     } catch (error) {
+      // eslint-disable-next-line no-console
       console.error('Failed to switch to Ethereum mainnet:', error);
     }
   };

@@ -41,6 +41,7 @@ export default function CreateCardPage() {
       }, 5 * 60 * 1000);
 
     } catch (error: any) {
+      // eslint-disable-next-line no-console
       console.error('Failed to create card:', error);
       // Error handling is done in the form component
     }
@@ -148,7 +149,7 @@ export default function CreateCardPage() {
         <CardCreationForm
           onSubmit={handleCreateCard}
           isLoading={createCardMutation.isLoading}
-          error={(createCardMutation.error as any).message || null}
+          error={(createCardMutation.error as any)?.message || null}
         />
       </div>
     </div>

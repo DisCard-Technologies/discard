@@ -19,8 +19,11 @@ import {
 interface CardComponentProps {
   card: Card;
   showSensitiveData?: boolean;
+  // eslint-disable-next-line no-unused-vars
   onStatusChange?: (cardId: string, status: 'active' | 'paused') => void;
+  // eslint-disable-next-line no-unused-vars
   onDelete?: (cardId: string) => void;
+  // eslint-disable-next-line no-unused-vars
   onViewDetails?: (cardId: string) => void;
   cardNumber?: string;
   cvv?: string;

@@ -1,5 +1,7 @@
 // Temporary stubs for missing dependencies until they can be properly installed
 
+import React from 'react';
+
 export const MagnifyingGlassIcon = ({ className }: { className?: string }) => (
   <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -98,6 +100,7 @@ export const ExclamationTriangleIcon = ({ className }: { className?: string }) =
 );
 
 // React Query stubs
+// eslint-disable-next-line no-unused-vars
 export function useQuery(options: any) {
   return {
     data: undefined,
@@ -107,6 +110,7 @@ export function useQuery(options: any) {
   };
 }
 
+// eslint-disable-next-line no-unused-vars
 export function useMutation(options: any) {
   return {
     mutateAsync: async (data: any) => data,
@@ -118,9 +122,12 @@ export function useMutation(options: any) {
 
 export function useQueryClient() {
   return {
-    invalidateQueries: () => {},
-    setQueryData: () => {},
-    removeQueries: () => {},
+    // eslint-disable-next-line no-unused-vars
+    invalidateQueries: (options?: any) => {},
+    // eslint-disable-next-line no-unused-vars
+    setQueryData: (queryKey: any, updater?: any) => {},
+    // eslint-disable-next-line no-unused-vars
+    removeQueries: (options?: any) => {},
   };
 }
 
@@ -129,12 +136,14 @@ export function QueryClientProvider({ children }: { children: React.ReactNode })
 }
 
 export class QueryClient {
+  // eslint-disable-next-line no-unused-vars
   constructor(options?: any) {}
 }
 
 // React Hook Form stubs
 export function useForm(defaultValues?: any) {
   return {
+    // eslint-disable-next-line no-unused-vars
     register: (name: string, options?: any) => ({
       name,
       onChange: () => {},
@@ -163,7 +172,7 @@ export function useForm(defaultValues?: any) {
 }
 
 // Axios stub
-export default {
+const axiosStub = {
   create: () => ({
     post: async () => ({}),
     get: async () => ({}),
@@ -175,3 +184,5 @@ export default {
     },
   }),
 };
+
+export default axiosStub;

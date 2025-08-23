@@ -8,6 +8,7 @@ import { CreateCardRequest } from '@discard/shared';
 import { CreditCardIcon, ShieldCheckIcon } from '../../lib/stubs';
 
 interface CardCreationFormProps {
+  // eslint-disable-next-line no-unused-vars
   onSubmit: (data: CreateCardRequest) => void;
   isLoading?: boolean;
   error?: string | null;

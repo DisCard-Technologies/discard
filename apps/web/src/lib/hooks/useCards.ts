@@ -19,7 +19,7 @@ export function useCards(filters?: CardListRequest) {
     queryKey: QUERY_KEYS.cardsList(filters),
     queryFn: () => CardApiService.getCards(filters),
     keepPreviousData: true,
-  });
+  }) as { data: Card[] | undefined; isLoading: boolean; error: any; refetch: () => void };
 }
 
 export function useCardDetails(cardId: string, enabled = true) {

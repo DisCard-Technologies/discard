@@ -9,7 +9,7 @@ import Link from 'next/link';
 import { AllocationManager } from '../../../../components/funding/AllocationManager';
 
 export default function AllocateFundsPage() {
-  const handleAllocationSuccess = (transactionId: string) => {
+  const handleAllocationSuccess = () => {
     // Redirect to funding dashboard with success message
     window.location.href = '/dashboard/funding?success=allocation';
   };

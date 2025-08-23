@@ -7,12 +7,13 @@
 
 import React, { useState } from 'react';
 import { useCards } from '../../lib/hooks/useCards';
-import { useAccountBalance, useAllocateToCard } from '../../lib/hooks/useFunding';
+import { useAccountBalance } from '../../lib/hooks/useFunding';
 import { FundingForm } from './FundingForm';
 import { formatCurrency } from '@discard/shared/src/utils/funding';
 
 interface AllocationManagerProps {
   preselectedCardId?: string;
+  // eslint-disable-next-line no-unused-vars
   onSuccess?: (transactionId: string) => void;
   onCancel?: () => void;
 }
@@ -27,7 +28,6 @@ export function AllocationManager({
 
   const { data: cards = [], isLoading: isLoadingCards } = useCards({ status: 'active' });
   const { data: balanceData, isLoading: isLoadingBalance } = useAccountBalance();
-  const allocateToCardMutation = useAllocateToCard();
 
   const accountBalance = balanceData?.balance;
   const availableBalance = accountBalance?.availableBalance || 0;

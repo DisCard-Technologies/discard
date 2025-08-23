@@ -15,15 +15,6 @@ import { FAQ } from "../components/sections/FAQ"
 import { Footer } from "../components/layout/Footer"
 
 export default function Home() {
-  const cryptoCoins = [
-    { label: "Highest volume", name: "Bitcoin", price: "93575.5" },
-    { label: "Top gainer", name: "Ethereum", price: "3337.28" },
-    { label: "New listing", name: "Litecoin", price: "105.000" },
-    { label: "Most traded", name: "Polkadot", price: "6.6423" },
-    { label: "Biggest gainers", name: "Solana", price: "189.63" },
-    { label: "Trending", name: "Chainlink", price: "19.991" }
-  ]
-
   return (
     <div className="w-full relative flex flex-col items-start justify-start text-left text-16 text-white font-sans bg-crypto-bg min-h-screen">
       {/* Header */}
