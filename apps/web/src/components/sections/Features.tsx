@@ -28,22 +28,22 @@ export const Features: React.FC = () => {
           <div className={styles.frameParent4}>
             <Image className={styles.frameItem} width={40} height={40} sizes="100vw" alt="" src={linkIcon} />
             <div className={styles.features}>
-              <p className={styles.fastAndSecure}>{`Designed for crypto `}</p>
-              <p className={styles.fastAndSecure}>trading platforms</p>
+              <p className={styles.fastAndSecure}>{`Your privacy shield `}</p>
+              <p className={styles.fastAndSecure}>for crypto spending</p>
             </div>
           </div>
           <div className={styles.frameParent4}>
             <Image className={styles.frameItem} width={40} height={40} sizes="100vw" alt="" src={boltIcon} />
             <div className={styles.features}>
-              <p className={styles.fastAndSecure}>{`Kickstart your crypto `}</p>
-              <p className={styles.fastAndSecure}>website today</p>
+              <p className={styles.fastAndSecure}>{`Designed for everyday `}</p>
+              <p className={styles.fastAndSecure}>transactions</p>
             </div>
           </div>
           <div className={styles.frameParent4}>
             <Image className={styles.frameItem} width={40} height={40} sizes="100vw" alt="" src={gearIcon} />
             <div className={styles.features}>
-              <p className={styles.fastAndSecure}>{`Launch your blockchain `}</p>
-              <p className={styles.fastAndSecure}>platform today</p>
+              <p className={styles.fastAndSecure}>{`Fund with crypto `}</p>
+              <p className={styles.fastAndSecure}>spend anywhere</p>
             </div>
           </div>
         </div>

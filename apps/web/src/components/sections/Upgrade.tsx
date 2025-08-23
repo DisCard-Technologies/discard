@@ -23,11 +23,11 @@ export const Upgrade: React.FC = () => {
               <span className={styles.span2}>{`  `}</span>
             </div>
             <div className={styles.upgradeYourCryptoBusinessParent}>
-              <div className={styles.crypgoPoweredBy}>Upgrade your crypto business</div>
+              <div className={styles.crypgoPoweredBy}>Upgrade your spending privacy</div>
               <div className={styles.getFasterSaferContainer}>
                 <p
                   className={styles.fastAndSecure}
-                >{`Get faster, safer, more affordable cloud object storage with `}</p>
+                >{`Get faster, safer, more affordable virtual cards with `}</p>
                 <p className={styles.fastAndSecure}>no central point of failure.</p>
               </div>
             </div>
@@ -36,7 +36,7 @@ export const Upgrade: React.FC = () => {
             <div className={styles.frameParent42}>
               <div className={styles.frameParent43}>
                 <Image className={styles.rightArrowIcon} width={20} height={20} sizes="100vw" alt="" src={checkCircle} />
-                <div className={styles.features}>100% secure</div>
+                <div className={styles.features}>100% transaction isolation</div>
               </div>
               <div className={styles.frameParent43}>
                 <Image className={styles.rightArrowIcon} width={20} height={20} sizes="100vw" alt="" src={checkCircle} />
@@ -44,7 +44,7 @@ export const Upgrade: React.FC = () => {
               </div>
               <div className={styles.frameParent43}>
                 <Image className={styles.rightArrowIcon} width={20} height={20} sizes="100vw" alt="" src={checkCircle} />
-                <div className={styles.features}>More durable</div>
+                <div className={styles.features}>More private</div>
               </div>
               <div className={styles.frameParent43}>
                 <Image className={styles.rightArrowIcon} width={20} height={20} sizes="100vw" alt="" src={checkCircle} />
@@ -54,7 +54,7 @@ export const Upgrade: React.FC = () => {
             <div className={styles.frameParent42}>
               <div className={styles.frameParent43}>
                 <Image className={styles.rightArrowIcon} width={20} height={20} sizes="100vw" alt="" src={checkCircle} />
-                <div className={styles.features}>Free figma file</div>
+                <div className={styles.features}>Free card*</div>
               </div>
               <div className={styles.frameParent43}>
                 <Image className={styles.rightArrowIcon} width={20} height={20} sizes="100vw" alt="" src={checkCircle} />
@@ -62,11 +62,11 @@ export const Upgrade: React.FC = () => {
               </div>
               <div className={styles.frameParent43}>
                 <Image className={styles.rightArrowIcon} width={20} height={20} sizes="100vw" alt="" src={checkCircle} />
-                <div className={styles.features}>Designed for crypto</div>
+                <div className={styles.features}>Designed for everyday</div>
               </div>
               <div className={styles.frameParent43}>
                 <Image className={styles.rightArrowIcon} width={20} height={20} sizes="100vw" alt="" src={checkCircle} />
-                <div className={styles.features}>100% free framer template</div>
+                <div className={styles.features}>Cryptographic deletion</div>
               </div>
             </div>
           </div>

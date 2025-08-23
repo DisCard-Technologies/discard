@@ -18,7 +18,7 @@ export const CryptoCoins: React.FC = () => {
           <span>{`Featured `}</span>
           <span className={styles.cryptoPlatforms}>crypto coins</span>
         </div>
-        <div className={styles.topCryptoCoins}>Top crypto coins updates</div>
+        <div className={styles.topCryptoCoins}>Supported cryptocurrencies for instant card funding</div>
       </div>
       <div className={styles.frameContainer}>
       <div className={styles.cardParent}>
@@ -56,7 +56,7 @@ export const CryptoCoins: React.FC = () => {
           </div>
         </div>
         <div className={styles.card}>
-          <div className={styles.tradeCryptocurrenciesWithContainer}>Most traded</div>
+          <div className={styles.tradeCryptocurrenciesWithContainer}>Most converted</div>
           <Image className={styles.logoChild} width={32} height={32} sizes="100vw" alt="" src={polkadotIcon} />
           <div className={styles.bitcoinParent}>
             <div className={styles.bitcoin}>Polkadot</div>

@@ -15,15 +15,15 @@ export const Hero: React.FC = () => {
         <div className="frameGroup">
           <div className="chipParent">
             <div className="chip">
-              <div className="features">Future of crypto trading</div>
+              <div className="features">Future of privacy protection</div>
             </div>
             <div className="fastAndSecureContainer">
-              <p className="fastAndSecure">{`Fast and Secure `}</p>
-              <p className="fastAndSecure">{`Cryptocurrency `}</p>
-              <p className="fastAndSecure">Exchange</p>
+              <p className="fastAndSecure">{`Privacy-First Disposable `}</p>
+              <p className="fastAndSecure">{`Virtual Crypto `}</p>
+              <p className="fastAndSecure">Cards</p>
             </div>
             <div className="tradeCryptocurrenciesWithContainer">
-              <p className="fastAndSecure">{`Trade cryptocurrencies with ease, security, and advanced `}</p>
+              <p className="fastAndSecure">{`Create virtual cards with ease, security, and advanced `}</p>
               <p className="fastAndSecure">features on our cutting-edge platform.</p>
             </div>
           </div>

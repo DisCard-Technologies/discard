@@ -33,11 +33,11 @@ export const MobileApp: React.FC = () => {
       <div className={styles.featuredCryptoCoinsParent}>
         <div className={styles.features}>
           <span>{` We deliver `}</span>
-          <span className={styles.cryptoPlatforms}>best solution</span>
+          <span className={styles.cryptoPlatforms}>modern solutions</span>
         </div>
         <div className={styles.oneApplicationWithContainer}>
-          <p className={styles.fastAndSecure}>One application with multiple options to give</p>
-          <p className={styles.fastAndSecure}>{`you freedom of buying & selling`}</p>
+          <p className={styles.fastAndSecure}>One app with unlimited disposable cards to give</p>
+          <p className={styles.fastAndSecure}>{`you complete payment privacy`}</p>
         </div>
       </div>
       <div className={styles.imgParent}>
@@ -122,7 +122,7 @@ export const MobileApp: React.FC = () => {
               <div className={styles.frameChild4} />
               <div className={styles.screen} />
               <div className={styles.exchangeNowWrapper}>
-                <div className={styles.getTemplate}>Exchange now</div>
+                <div className={styles.getTemplate}>Create card now</div>
               </div>
               <div className={styles.iosStatusBar}>
                 <div className={styles.getTemplate}>9:41</div>

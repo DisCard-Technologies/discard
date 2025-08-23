@@ -137,30 +137,30 @@ export const Portfolio: React.FC = () => {
               <span className={styles.cryptoPlatforms}>platform</span>
             </div>
             <div className={styles.topCryptoCoins}>
-              <p className={styles.fastAndSecure}>{`Create your cryptocurrency `}</p>
-              <p className={styles.fastAndSecure}>portfolio today</p>
+              <p className={styles.fastAndSecure}>{`Create your private payment `}</p>
+              <p className={styles.fastAndSecure}>ecosystem today</p>
             </div>
             <div className={styles.coinbaseHasAContainer}>
               <p
                 className={styles.fastAndSecure}
-              >{`Coinbase has a variety of features that make it the best place `}</p>
-              <p className={styles.fastAndSecure}>to start trading.</p>
+              >{`Start protecting your financial privacy with disposable cards `}</p>
+              <p className={styles.fastAndSecure}>that truly disappear.</p>
             </div>
           </div>
           <div className={styles.frameParent35}>
             <div className={styles.frameParent36}>
               <Image className={styles.frameChild7} width={48} height={48} sizes="100vw" alt="" src={pieChartCircle} />
-              <div className={styles.features}>Manage your portfolio</div>
+              <div className={styles.features}>Fund your cards</div>
             </div>
             <div className={styles.frameChild16} />
             <div className={styles.frameParent36}>
               <Image className={styles.frameChild7} width={48} height={48} sizes="100vw" alt="" src={shieldCircle} />
-              <div className={styles.features}>Vault protection</div>
+              <div className={styles.features}>Privacy protection</div>
             </div>
             <div className={styles.frameChild16} />
             <div className={styles.frameParent36}>
               <Image className={styles.frameChild7} width={48} height={48} sizes="100vw" alt="" src={mobileCircle} />
-              <div className={styles.features}>Mobile apps</div>
+              <div className={styles.features}>Mobile cards</div>
             </div>
           </div>
         </div>

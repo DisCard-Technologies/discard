@@ -8,26 +8,26 @@ export const Stats: React.FC = () => {
         <div className={styles.frameParent12}>
           <div className={styles.frameWrapper3}>
             <div className={styles.mParent}>
-              <div className={styles.features}>6M+</div>
-              <div className={styles.activeUsers}>Active users</div>
+              <div className={styles.features}>5+</div>
+              <div className={styles.activeUsers}>Major cryptos supported</div>
             </div>
           </div>
           <div className={styles.frameWrapper3}>
             <div className={styles.mParent}>
-              <div className={styles.features}>{`24/7 `}</div>
-              <div className={styles.activeUsers}>Users support</div>
+              <div className={styles.features}>{`100% `}</div>
+              <div className={styles.activeUsers}>Transaction Isolation</div>
             </div>
           </div>
           <div className={styles.frameWrapper3}>
             <div className={styles.mParent}>
-              <div className={styles.features}>160+</div>
-              <div className={styles.activeUsers}>Countries</div>
+              <div className={styles.features}>0</div>
+              <div className={styles.activeUsers}>Data Correlation</div>
             </div>
           </div>
           <div className={styles.frameWrapper3}>
             <div className={styles.mParent}>
-              <div className={styles.features}>$22B+</div>
-              <div className={styles.activeUsers}>Trade volume</div>
+              <div className={styles.features}>$0</div>
+              <div className={styles.activeUsers}>Privacy Compromise</div>
             </div>
           </div>
         </div>

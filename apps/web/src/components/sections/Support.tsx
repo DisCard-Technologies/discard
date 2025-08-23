@@ -18,7 +18,7 @@ export const Support: React.FC = () => {
           <span className={styles.cryptoPlatforms}>your side</span>
         </div>
         <div className={styles.beTheFirstToUseOurCrypgoParent}>
-          <div className={styles.crypgoPoweredBy}>Be the first to use our Discard!</div>
+          <div className={styles.crypgoPoweredBy}>Be the first to experience payment privacy!</div>
           <div className={styles.getFasterSaferContainer1}>
             <p className={styles.fastAndSecure}>{`Get faster, safer, more affordable virtual cards with `}</p>
             <p className={styles.fastAndSecure}>no central point of failure.</p>

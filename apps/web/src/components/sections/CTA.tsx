@@ -11,12 +11,12 @@ export const CTA: React.FC = () => {
         <div className={styles.frameWrapper7}>
         <div className={styles.frameParent28}>
           <div className={styles.crypgoPoweredByFramerPlatfParent}>
-            <div className={styles.crypgoPoweredBy}>Discard powered by visa platform</div>
+            <div className={styles.crypgoPoweredBy}>Experience true payment privacy</div>
             <div className={styles.refineImproveContainer}>
               <p
                 className={styles.fastAndSecure}
               >{`Our virtual cards empower crypto adopters to have free, safer `}</p>
-              <p className={styles.fastAndSecure}>and more trustworthy experiences</p>
+              <p className={styles.fastAndSecure}>and more private experiences</p>
             </div>
           </div>
           <div className={styles.button2}>
