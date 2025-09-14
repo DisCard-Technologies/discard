@@ -18,7 +18,7 @@
     "framer-motion": "^11.0.25",
     "gsap": "^3.12.5",
     "locomotive-scroll": "^5.0.0-beta.8",
-    "lucide-react": "^0.365.0",
+    "lucide-react": "^0.400.0",
     "next": "15.5.2",
     "prisma": "^6.16.1",
     "react": "19.1.1",
@@ -41,7 +41,12 @@
     "typescript": "^5"
   },
   "overrides": {
-    "@types/react": "19.1.12",
-    "@types/react-dom": "19.1.9"
+    "react": "19.0.0",
+    "react-dom": "19.0.0",
+    "react-test-renderer": "19.0.0",
+    "lucide-react": {
+      "react": "19.0.0",
+      "react-dom": "19.0.0"
+    }
   }
 }
