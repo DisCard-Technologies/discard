@@ -15,6 +15,7 @@ import {
   RefreshControl,
   ActivityIndicator,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { formatUSD } from '@discard/shared';
 import { useCards, useCardOperations } from '../../stores/cards';
 import CardComponent from '../../components/cards/CardComponent';
@@ -45,16 +46,28 @@ const CardDashboardScreen: React.FC<CardDashboardScreenProps> = ({
 
   // Load cards on mount
   useEffect(() => {
+    console.log('CardDashboardScreen: Loading cards on mount');
     loadCards();
   }, []);
 
+  // Reload cards when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      console.log('CardDashboardScreen: Screen focused, reloading cards');
+      loadCards();
+    }, [loadCards])
+  );
+
   const loadCards = useCallback(async () => {
     try {
+      console.log('CardDashboardScreen: Calling loadCards with filter:', activeFilter);
       await cardOperations.loadCards({
         status: activeFilter === 'all' ? undefined : activeFilter,
         limit: 50,
       });
+      console.log('CardDashboardScreen: Cards loaded, current state:', state.cards?.length || 0, 'cards');
     } catch (error) {
+      console.error('CardDashboardScreen: Error loading cards:', error);
       Alert.alert('Error', 'Failed to load cards');
     }
   }, [activeFilter, cardOperations]);
@@ -93,7 +106,7 @@ const CardDashboardScreen: React.FC<CardDashboardScreenProps> = ({
   }, [cardOperations]);
 
   // Filter cards based on search and status
-  const filteredCards = state.cards.filter(card => {
+  const filteredCards = (state.cards || []).filter(card => {
     // Status filter
     if (activeFilter !== 'all' && card.status !== activeFilter) {
       return false;
@@ -102,7 +115,7 @@ const CardDashboardScreen: React.FC<CardDashboardScreenProps> = ({
     // Search filter
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
-      const cardId = card.cardId.toLowerCase();
+      const cardId = (card.cardId || '').toLowerCase();
       const matchesId = cardId.includes(query);
       
       return matchesId;
@@ -110,19 +123,25 @@ const CardDashboardScreen: React.FC<CardDashboardScreenProps> = ({
 
     return true;
   });
+  
+  // Debug logging
+  console.log('CardDashboardScreen: All cards count:', state.cards?.length || 0);
+  console.log('CardDashboardScreen: Filtered cards count:', filteredCards.length);
+  console.log('CardDashboardScreen: Active filter:', activeFilter);
+  console.log('CardDashboardScreen: Search query:', searchQuery);
 
   // Calculate stats
   const stats = {
-    total: state.cards.length,
-    active: state.cards.filter(c => c.status === 'active').length,
-    paused: state.cards.filter(c => c.status === 'paused').length,
-    deleted: state.cards.filter(c => c.status === 'deleted').length,
-    totalBalance: state.cards
+    total: (state.cards || []).length,
+    active: (state.cards || []).filter(c => c.status === 'active').length,
+    paused: (state.cards || []).filter(c => c.status === 'paused').length,
+    deleted: (state.cards || []).filter(c => c.status === 'deleted').length,
+    totalBalance: (state.cards || [])
       .filter(c => c.status === 'active')
-      .reduce((sum, card) => sum + card.currentBalance, 0),
-    totalLimit: state.cards
+      .reduce((sum, card) => sum + (card.currentBalance || 0), 0),
+    totalLimit: (state.cards || [])
       .filter(c => c.status === 'active')
-      .reduce((sum, card) => sum + card.spendingLimit, 0),
+      .reduce((sum, card) => sum + (card.spendingLimit || 0), 0),
   };
 
   const renderFilterButton = (filter: FilterType, label: string, count: number) => (
@@ -203,8 +222,8 @@ const CardDashboardScreen: React.FC<CardDashboardScreenProps> = ({
       </View>
 
       {/* Privacy Summary */}
-      {state.cards.length > 0 && (
-        <PrivacyStatusSummary cards={state.cards} style={styles.privacySummary} />
+      {(state.cards || []).length > 0 && (
+        <PrivacyStatusSummary cards={state.cards || []} style={styles.privacySummary} />
       )}
 
       {/* Search Bar */}
@@ -294,7 +313,7 @@ const CardDashboardScreen: React.FC<CardDashboardScreenProps> = ({
         <FlatList
           data={filteredCards}
           renderItem={renderCard}
-          keyExtractor={(item) => item.cardId}
+          keyExtractor={(item) => item.cardId || 'no-id'}
           ListHeaderComponent={ListHeaderComponent}
           ListEmptyComponent={renderEmptyState}
           refreshControl={

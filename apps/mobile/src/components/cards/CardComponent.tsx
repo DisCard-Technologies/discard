@@ -148,7 +148,8 @@ const CardComponent: React.FC<CardComponentProps> = ({
       // Show full number temporarily after creation
       return card.cardNumber.replace(/(\d{4})/g, '$1 ').trim();
     }
-    return maskCardNumber(card.cardId.slice(0, 16)); // Fallback using card ID
+    // Fallback using card ID with safe check
+    return maskCardNumber((card.cardId || '0000000000000000').slice(0, 16));
   };
 
   const CardContainer = onPress ? TouchableOpacity : View;
@@ -162,7 +163,7 @@ const CardComponent: React.FC<CardComponentProps> = ({
       >
         <View style={styles.compactHeader}>
           <Text style={styles.compactStatus}>{getStatusIcon()}</Text>
-          <Text style={styles.compactTitle}>Card {card.cardId.slice(0, 8)}</Text>
+          <Text style={styles.compactTitle}>Card {(card.cardId || 'Unknown').slice(0, 8)}</Text>
           <Text style={[styles.compactAmount, { color: getStatusColor() }]}>
             {formatUSD(card.currentBalance / 100)}
           </Text>
@@ -189,7 +190,7 @@ const CardComponent: React.FC<CardComponentProps> = ({
         <View style={styles.statusContainer}>
           <Text style={styles.statusIcon}>{getStatusIcon()}</Text>
           <Text style={[styles.statusText, { color: getStatusColor() }]}>
-            {card.status.toUpperCase()}
+            {card.status?.toUpperCase() || 'UNKNOWN'}
           </Text>
         </View>
         <PrivacyIndicator status={privacyStatus} size="small" />
@@ -260,7 +261,7 @@ const CardComponent: React.FC<CardComponentProps> = ({
       </View>
 
       {/* Merchant Restrictions */}
-      {card.merchantRestrictions && card.merchantRestrictions.length > 0 && (
+      {card.merchantRestrictions && Array.isArray(card.merchantRestrictions) && card.merchantRestrictions.length > 0 && (
         <View style={styles.merchantRestrictions}>
           <Text style={styles.merchantRestrictionsLabel}>Merchant Restrictions:</Text>
           <Text style={styles.merchantRestrictionsText}>

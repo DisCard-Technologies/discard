@@ -189,8 +189,18 @@ CREATE POLICY crypto_transactions_isolation_policy ON crypto_transactions
 CREATE POLICY crypto_rates_read_policy ON crypto_rates
     FOR SELECT USING (true);
 
-CREATE POLICY crypto_rates_write_policy ON crypto_rates
-    FOR INSERT, UPDATE, DELETE USING (
+CREATE POLICY crypto_rates_insert_policy ON crypto_rates
+    FOR INSERT WITH CHECK (
+        current_setting('app.bypass_rls', true)::boolean = true
+    );
+
+CREATE POLICY crypto_rates_update_policy ON crypto_rates
+    FOR UPDATE USING (
+        current_setting('app.bypass_rls', true)::boolean = true
+    );
+
+CREATE POLICY crypto_rates_delete_policy ON crypto_rates
+    FOR DELETE USING (
         current_setting('app.bypass_rls', true)::boolean = true
     );
 

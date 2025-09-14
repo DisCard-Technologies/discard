@@ -174,7 +174,7 @@ const BulkCardDeletionScreen: React.FC<BulkCardDeletionScreenProps> = ({
       const simulatedResults: BulkDeletionResult[] = cardIdsArray.map(cardId => ({
         cardId,
         status: Math.random() > 0.1 ? 'completed' : 'failed', // 90% success rate
-        deletionProof: Math.random() > 0.1 ? `proof-${Date.now()}-${cardId.slice(-8)}` : undefined,
+        deletionProof: Math.random() > 0.1 ? `proof-${Date.now()}-${(cardId || 'unknown').slice(-8)}` : undefined,
         error: Math.random() > 0.1 ? undefined : 'Network timeout',
       }));
 
@@ -391,7 +391,7 @@ const BulkCardDeletionScreen: React.FC<BulkCardDeletionScreenProps> = ({
       </Text>
       {progress.currentCard && (
         <Text style={styles.processingCurrentCard}>
-          Current: •••• {progress.currentCard.slice(-4)}
+          Current: •••• {(progress.currentCard || 'unknown').slice(-4)}
         </Text>
       )}
     </View>
@@ -423,8 +423,8 @@ const BulkCardDeletionScreen: React.FC<BulkCardDeletionScreenProps> = ({
         <View style={styles.errorsSection}>
           <Text style={styles.errorsTitle}>Errors:</Text>
           {progress.errors.map((error, index) => (
-            <View key={index} style={styles.errorItem}>
-              <Text style={styles.errorCardId}>Card: •••• {error.cardId.slice(-4)}</Text>
+            <View key={`${error.cardId}-${index}`} style={styles.errorItem}>
+              <Text style={styles.errorCardId}>Card: •••• {(error.cardId || 'unknown').slice(-4)}</Text>
               <Text style={styles.errorMessage}>{error.error}</Text>
             </View>
           ))}
@@ -435,8 +435,8 @@ const BulkCardDeletionScreen: React.FC<BulkCardDeletionScreenProps> = ({
         <View style={styles.detailedResults}>
           <Text style={styles.detailedResultsTitle}>Detailed Results:</Text>
           {deletionResults.map((result, index) => (
-            <View key={index} style={styles.resultItem}>
-              <Text style={styles.resultCardId}>•••• {result.cardId.slice(-4)}</Text>
+            <View key={`${result.cardId}-${index}`} style={styles.resultItem}>
+              <Text style={styles.resultCardId}>•••• {(result.cardId || 'unknown').slice(-4)}</Text>
               <Text style={[
                 styles.resultStatus,
                 result.status === 'completed' ? styles.successText : styles.errorText
@@ -444,7 +444,7 @@ const BulkCardDeletionScreen: React.FC<BulkCardDeletionScreenProps> = ({
                 {result.status}
               </Text>
               {result.deletionProof && (
-                <Text style={styles.resultProof}>Proof: {result.deletionProof.slice(0, 16)}...</Text>
+                <Text style={styles.resultProof}>Proof: {(result.deletionProof || 'none').slice(0, 16)}...</Text>
               )}
               {result.error && (
                 <Text style={styles.resultError}>{result.error}</Text>

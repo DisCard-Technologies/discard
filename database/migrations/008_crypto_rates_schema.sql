@@ -2,6 +2,7 @@
 -- Story 2.2: Database schema for crypto rates, historical data, and conversion quotes
 
 -- Create crypto_rates table for storing real-time rate data
+DROP TABLE IF EXISTS crypto_rates CASCADE;
 CREATE TABLE crypto_rates (
     rate_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     symbol VARCHAR(10) NOT NULL, -- BTC, ETH, USDT, USDC, XRP
@@ -109,7 +110,7 @@ RETURNS TABLE(
     change_24h DECIMAL,
     volume_24h DECIMAL,
     source VARCHAR,
-    timestamp TIMESTAMP WITH TIME ZONE
+    "timestamp" TIMESTAMP WITH TIME ZONE
 ) AS $$
 BEGIN
     RETURN QUERY
@@ -136,7 +137,7 @@ RETURNS TABLE(
     usd_price DECIMAL,
     change_24h DECIMAL,
     source VARCHAR,
-    timestamp TIMESTAMP WITH TIME ZONE
+    "timestamp" TIMESTAMP WITH TIME ZONE
 ) AS $$
 BEGIN
     RETURN QUERY

@@ -3,12 +3,14 @@ import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
-import { View, Text, Platform, TouchableOpacity } from 'react-native';
+import { View, Text, Platform, TouchableOpacity, Alert } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 // Import our screens and providers
-import { CardsProvider } from './src/stores/cards';
+import { AuthProvider, useAuth, useAuthOperations } from './src/stores/auth';
+import { CardsProvider, useCardsState, useCardOperations } from './src/stores/cards';
 import { FundingProvider } from './src/stores/funding';
+import LoginScreen from './src/screens/auth/LoginScreen';
 import CardDashboardScreen from './src/screens/cards/CardDashboardScreen';
 import CardCreationScreen from './src/screens/cards/CardCreationScreen';
 import CardDetailsScreen from './src/screens/cards/CardDetailsScreen';
@@ -112,7 +114,7 @@ function CardsStackNavigator() {
         {(props) => (
           <CardCreationScreen
             onCardCreated={(newCard) => {
-              props.navigation.navigate('CardDetails', { card: newCard });
+              props.navigation.navigate('CardsDashboard');
             }}
             onCancel={() => {
               if (props.navigation.canGoBack()) {
@@ -190,63 +192,141 @@ function FundingStackNavigator() {
   return <FundingStackScreen />;
 }
 
+// Wrapper component for BulkCardDeletionScreen to provide required props
+function BulkCardDeletionWrapper({ navigation }: { navigation: any }) {
+  const cardsState = useCardsState();
+  const cardOperations = useCardOperations();
+
+  const handleBulkDelete = async (cardIds: string[], confirmationPhrase: string, scheduledDeletion?: Date) => {
+    try {
+      // For demo purposes, simulate individual deletions
+      // In production, this would call a dedicated bulk delete API
+      for (const cardId of cardIds) {
+        await cardOperations.deleteCard(cardId);
+      }
+    } catch (error) {
+      throw new Error('Bulk deletion failed');
+    }
+  };
+
+  const handleGoBack = () => {
+    navigation.goBack();
+  };
+
+  return (
+    <BulkCardDeletionScreen
+      cards={cardsState.cards || []}
+      onBulkDelete={handleBulkDelete}
+      onGoBack={handleGoBack}
+    />
+  );
+}
+
 // Settings Stack Navigator
 function SettingsStackNavigator() {
-  const SettingsMainScreen = ({ navigation }: any) => (
-    <View style={{ flex: 1, backgroundColor: '#F9FAFB' }}>
-      <View style={{ padding: 16 }}>
-        <Text style={{ fontSize: 28, fontWeight: '700', color: '#1F2937', marginBottom: 24 }}>Settings</Text>
-        
-        <TouchableOpacity
-          style={{
-            backgroundColor: 'white',
-            padding: 16,
-            borderRadius: 12,
-            marginBottom: 12,
-            flexDirection: 'row',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            shadowColor: '#000',
-            shadowOffset: { width: 0, height: 1 },
-            shadowOpacity: 0.05,
-            shadowRadius: 4,
-            elevation: 2,
-          }}
-          onPress={() => navigation.navigate('SecurityDashboard')}
-        >
-          <View>
-            <Text style={{ fontSize: 18, fontWeight: '600', color: '#1F2937' }}>Security Dashboard</Text>
-            <Text style={{ fontSize: 14, color: '#6B7280', marginTop: 4 }}>Monitor security alerts and incidents</Text>
-          </View>
-          <Text style={{ fontSize: 20, color: '#6B7280' }}>→</Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity
-          style={{
-            backgroundColor: 'white',
-            padding: 16,
-            borderRadius: 12,
-            marginBottom: 12,
-            flexDirection: 'row',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            shadowColor: '#000',
-            shadowOffset: { width: 0, height: 1 },
-            shadowOpacity: 0.05,
-            shadowRadius: 4,
-            elevation: 2,
-          }}
-          onPress={() => navigation.navigate('BulkCardDeletion')}
-        >
-          <View>
-            <Text style={{ fontSize: 18, fontWeight: '600', color: '#1F2937' }}>Bulk Card Deletion</Text>
-            <Text style={{ fontSize: 14, color: '#6B7280', marginTop: 4 }}>Delete multiple cards at once</Text>
-          </View>
-          <Text style={{ fontSize: 20, color: '#6B7280' }}>→</Text>
-        </TouchableOpacity>
+  const SettingsMainScreen = ({ navigation }: any) => {
+    const { logout } = useAuthOperations();
+    
+    const handleLogout = () => {
+      Alert.alert(
+        'Logout',
+        'Are you sure you want to logout?',
+        [
+          {
+            text: 'Cancel',
+            style: 'cancel',
+          },
+          {
+            text: 'Logout',
+            onPress: async () => {
+              await logout();
+            },
+            style: 'destructive',
+          },
+        ],
+      );
+    };
+
+    return (
+      <View style={{ flex: 1, backgroundColor: '#F9FAFB' }}>
+        <View style={{ padding: 16 }}>
+          <Text style={{ fontSize: 28, fontWeight: '700', color: '#1F2937', marginBottom: 24 }}>Settings</Text>
+          
+          <TouchableOpacity
+            style={{
+              backgroundColor: 'white',
+              padding: 16,
+              borderRadius: 12,
+              marginBottom: 12,
+              flexDirection: 'row',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 1 },
+              shadowOpacity: 0.05,
+              shadowRadius: 4,
+              elevation: 2,
+            }}
+            onPress={() => navigation.navigate('SecurityDashboard')}
+          >
+            <View>
+              <Text style={{ fontSize: 18, fontWeight: '600', color: '#1F2937' }}>Security Dashboard</Text>
+              <Text style={{ fontSize: 14, color: '#6B7280', marginTop: 4 }}>Monitor security alerts and incidents</Text>
+            </View>
+            <Text style={{ fontSize: 20, color: '#6B7280' }}>→</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={{
+              backgroundColor: 'white',
+              padding: 16,
+              borderRadius: 12,
+              marginBottom: 12,
+              flexDirection: 'row',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 1 },
+              shadowOpacity: 0.05,
+              shadowRadius: 4,
+              elevation: 2,
+            }}
+            onPress={() => navigation.navigate('BulkCardDeletion')}
+          >
+            <View>
+              <Text style={{ fontSize: 18, fontWeight: '600', color: '#1F2937' }}>Bulk Card Deletion</Text>
+              <Text style={{ fontSize: 14, color: '#6B7280', marginTop: 4 }}>Delete multiple cards at once</Text>
+            </View>
+            <Text style={{ fontSize: 20, color: '#6B7280' }}>→</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={{
+              backgroundColor: '#FEE2E2',
+              padding: 16,
+              borderRadius: 12,
+              marginTop: 24,
+              flexDirection: 'row',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 1 },
+              shadowOpacity: 0.05,
+              shadowRadius: 4,
+              elevation: 2,
+            }}
+            onPress={handleLogout}
+          >
+            <View>
+              <Text style={{ fontSize: 18, fontWeight: '600', color: '#DC2626' }}>Logout</Text>
+              <Text style={{ fontSize: 14, color: '#EF4444', marginTop: 4 }}>Sign out of your account</Text>
+            </View>
+            <Text style={{ fontSize: 20, color: '#DC2626' }}>→</Text>
+          </TouchableOpacity>
+        </View>
       </View>
-    </View>
-  );
+    );
+  };
 
   const SettingsStackScreen = () => (
     <SettingsStack.Navigator 
@@ -270,9 +350,12 @@ function SettingsStackNavigator() {
       
       <SettingsStack.Screen 
         name="BulkCardDeletion" 
-        component={BulkCardDeletionScreen}
         options={{ title: 'Bulk Card Deletion' }}
-      />
+      >
+        {(props) => (
+          <BulkCardDeletionWrapper navigation={props.navigation} />
+        )}
+      </SettingsStack.Screen>
     </SettingsStack.Navigator>
   );
 
@@ -353,18 +436,42 @@ function MainTabs() {
   );
 }
 
+// Auth Guard component
+function AuthGuard() {
+  const auth = useAuth();
+
+  if (auth.isLoading) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F9FAFB' }}>
+        <Text style={{ fontSize: 64, marginBottom: 16 }}>💳</Text>
+        <Text style={{ fontSize: 18, fontWeight: '600', color: '#1F2937' }}>Loading...</Text>
+      </View>
+    );
+  }
+
+  if (!auth.isAuthenticated) {
+    return <LoginScreen />;
+  }
+
+  return (
+    <CardsProvider>
+      <FundingProvider>
+        <NavigationContainer>
+          <MainTabs />
+        </NavigationContainer>
+      </FundingProvider>
+    </CardsProvider>
+  );
+}
+
 // Main App component
 export default function App() {
   return (
     <SafeAreaProvider>
-      <CardsProvider>
-        <FundingProvider>
-          <NavigationContainer>
-            <MainTabs />
-            <StatusBar style="auto" />
-          </NavigationContainer>
-        </FundingProvider>
-      </CardsProvider>
+      <AuthProvider>
+        <AuthGuard />
+        <StatusBar style="auto" />
+      </AuthProvider>
     </SafeAreaProvider>
   );
 } 

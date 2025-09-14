@@ -42,7 +42,7 @@ interface NetworkHealthStatus {
 export class VisaService {
   private supabase = createClient(
     process.env.SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_KEY!
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
   private marqetaService = new MarqetaService();
   private logger = new Logger('VisaService');
@@ -74,13 +74,25 @@ export class VisaService {
         request.metadata
       );
 
+      // Activate card if it's not active (required for PAN/CVV retrieval)
+      if (marqetaCard.state !== 'ACTIVE') {
+        this.logger.info('Card needs activation before PAN/CVV retrieval', { 
+          cardToken: marqetaCard.token, 
+          currentState: marqetaCard.state 
+        });
+        await this.marqetaService.activateCard(request.cardContext, marqetaCard.token);
+      }
+
+      // Get full card details including PAN and CVV
+      const cardDetails = await this.marqetaService.getCardDetails(marqetaCard.token);
+
       // Extract card details
-      const cardNumber = marqetaCard.pan;
-      const cvv = marqetaCard.cvv_number;
+      const cardNumber = cardDetails.pan;
+      const cvv = cardDetails.cvv;
       const lastFour = marqetaCard.last_four;
 
       // Parse expiration date
-      const { month, year } = this.parseExpirationDate(marqetaCard.expiration);
+      const { month, year } = this.parseExpirationDate(cardDetails.expiration);
 
       // Encrypt sensitive data
       const encryptedCardNumber = this.encryptData(cardNumber);
@@ -397,7 +409,7 @@ export class VisaService {
     lastFourDigits: string;
     provisioningStatus: string;
   }): Promise<VisaCardDetails> {
-    const { data: insertedCard } = await this.supabase
+    const { data: insertedCard, error } = await this.supabase
       .from('visa_card_details')
       .insert({
         card_id: details.cardId,
@@ -415,8 +427,9 @@ export class VisaService {
       .select()
       .single();
 
-    if (!insertedCard) {
-      throw new Error('Failed to store card details');
+    if (error || !insertedCard) {
+      this.logger.error('Database insert failed', { error, details: { cardId: details.cardId, cardContext: details.cardContext } });
+      throw new Error(`Failed to store card details: ${error?.message || 'Unknown database error'}`);
     }
 
     return this.mapToVisaCardDetails(insertedCard);

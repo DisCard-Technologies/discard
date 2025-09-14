@@ -2,8 +2,7 @@
 -- This migration creates tables for AML monitoring, KYC records, and compliance audit trails
 -- while maintaining privacy isolation and GDPR/CCPA compliance
 
--- Enable RLS on all compliance tables
-ALTER DATABASE CURRENT SET row_level_security = on;
+-- RLS will be enabled on individual tables below
 
 -- Compliance Events table for AML monitoring and suspicious activity tracking
 CREATE TABLE IF NOT EXISTS compliance_events (
@@ -200,12 +199,12 @@ CREATE INDEX IF NOT EXISTS idx_compliance_events_card_context ON compliance_even
 CREATE INDEX IF NOT EXISTS idx_compliance_events_detected_at ON compliance_events(detected_at);
 CREATE INDEX IF NOT EXISTS idx_compliance_events_risk_score ON compliance_events(risk_score) WHERE risk_score >= 50;
 CREATE INDEX IF NOT EXISTS idx_compliance_events_pattern_type ON compliance_events(pattern_type) WHERE pattern_type IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_compliance_events_retention ON compliance_events(retention_until) WHERE retention_until <= NOW();
+CREATE INDEX IF NOT EXISTS idx_compliance_events_retention ON compliance_events(retention_until);
 
 -- KYC records indexes
 CREATE INDEX IF NOT EXISTS idx_kyc_records_user_context ON kyc_records(user_context_hash);
 CREATE INDEX IF NOT EXISTS idx_kyc_records_status ON kyc_records(verification_status);
-CREATE INDEX IF NOT EXISTS idx_kyc_records_retention ON kyc_records(retention_until) WHERE retention_until <= NOW();
+CREATE INDEX IF NOT EXISTS idx_kyc_records_retention ON kyc_records(retention_until);
 CREATE INDEX IF NOT EXISTS idx_kyc_records_level ON kyc_records(kyc_level);
 
 -- SAR reports indexes

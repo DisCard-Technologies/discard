@@ -115,8 +115,6 @@ describe('MarqetaService', () => {
       expect(mockAxiosInstance.post).toHaveBeenCalledWith('/cards', {
         card_product_token: 'sandbox_card_product',
         user_token: 'user_123',
-        show_cvv_number: true,
-        show_pan: true,
         metadata: {
           card_context: 'test_card_context',
           created_by: 'discard_app',
@@ -265,6 +263,86 @@ describe('MarqetaService', () => {
       });
 
       expect(result).toEqual(mockTerminatedCard);
+    });
+  });
+
+  describe('getCardDetails', () => {
+    const mockCardDetails = {
+      pan: '5549481234567890',
+      cvv_number: '123',
+      expiration: '1225',
+      expiration_time: '2025-12-31T23:59:59Z'
+    };
+
+    it('should retrieve card details with CVV successfully', async () => {
+      mockAxiosInstance.get.mockResolvedValue({ data: mockCardDetails });
+
+      const result = await marqetaService.getCardDetails('card_token_123');
+
+      expect(mockAxiosInstance.get).toHaveBeenCalledWith(
+        '/cards/card_token_123/showpan?show_cvv_number=true&show_pan=true'
+      );
+
+      expect(result).toEqual({
+        pan: '5549481234567890',
+        cvv: '123',
+        expiration: '1225',
+        expiration_time: '2025-12-31T23:59:59Z'
+      });
+    });
+
+    it('should handle alternative CVV field names', async () => {
+      const mockCardDetailsWithCvv = {
+        ...mockCardDetails,
+        cvv: '456' // Alternative field name
+      };
+      delete mockCardDetailsWithCvv.cvv_number;
+
+      mockAxiosInstance.get.mockResolvedValue({ data: mockCardDetailsWithCvv });
+
+      const result = await marqetaService.getCardDetails('card_token_123');
+
+      expect(result.cvv).toBe('456');
+    });
+
+    it('should retry when CVV is not available', async () => {
+      const incompleteDetails = {
+        pan: '5549481234567890',
+        expiration: '1225',
+        expiration_time: '2025-12-31T23:59:59Z'
+        // Missing CVV
+      };
+
+      const completeDetails = {
+        ...incompleteDetails,
+        cvv_number: '123'
+      };
+
+      mockAxiosInstance.get
+        .mockResolvedValueOnce({ data: incompleteDetails })
+        .mockResolvedValueOnce({ data: completeDetails });
+
+      const result = await marqetaService.getCardDetails('card_token_123');
+
+      expect(mockAxiosInstance.get).toHaveBeenCalledTimes(2);
+      expect(result.cvv).toBe('123');
+    });
+
+    it('should throw error after max retries', async () => {
+      const incompleteDetails = {
+        pan: '5549481234567890',
+        expiration: '1225',
+        expiration_time: '2025-12-31T23:59:59Z'
+        // Missing CVV
+      };
+
+      mockAxiosInstance.get.mockResolvedValue({ data: incompleteDetails });
+
+      await expect(
+        marqetaService.getCardDetails('card_token_123')
+      ).rejects.toThrow('Card details incomplete: PAN or CVV not returned after retries');
+
+      expect(mockAxiosInstance.get).toHaveBeenCalledTimes(4); // Initial + 3 retries
     });
   });
 

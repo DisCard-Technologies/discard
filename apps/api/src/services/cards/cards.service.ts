@@ -3,6 +3,7 @@ import { supabase } from '../../app';
 import { privacyService, DeletionProof } from './privacy.service';
 import { InputValidator, InputSanitizer } from '../../utils/validators';
 import { Card, CreateCardRequest, CardListRequest, CardDetailsResponse, Transaction } from '@discard/shared/src/types/index';
+import { createClient } from '@supabase/supabase-js';
 
 export interface CreateCardData {
   userId: string;
@@ -18,6 +19,20 @@ export interface CardWithCredentials {
 }
 
 export class CardsService {
+  /**
+   * Get Supabase service role client for admin operations
+   * This bypasses RLS policies for system operations
+   */
+  private getServiceRoleClient() {
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    
+    if (!supabaseUrl || !supabaseServiceKey) {
+      throw new Error('Missing Supabase service role configuration');
+    }
+    
+    return createClient(supabaseUrl, supabaseServiceKey);
+  }
   /**
    * Map database card record to API Card interface
    */
@@ -66,8 +81,9 @@ export class CardsService {
       : new Date(Date.now() + (2 * 365 * 24 * 60 * 60 * 1000)); // 2 years default
 
     try {
-      // Insert card with privacy isolation
-      const { data: cardRecord, error } = await supabase
+      // Insert card with privacy isolation using service role to bypass RLS
+      const serviceClient = this.getServiceRoleClient();
+      const { data: cardRecord, error } = await serviceClient
         .from('cards')
         .insert([{
           card_id: cardId,
@@ -124,7 +140,9 @@ export class CardsService {
     const requestLimit = Math.min(limit, 50);
     
     try {
-      let query = supabase
+      // Use service role client for admin operations
+      const serviceClient = this.getServiceRoleClient();
+      let query = serviceClient
         .from('cards')
         .select('*')
         .eq('user_id', userId)
@@ -154,8 +172,9 @@ export class CardsService {
    */
   async getCardDetails(userId: string, cardId: string): Promise<CardDetailsResponse> {
     try {
-      // Get card with privacy isolation check
-      const { data: cardRecord, error: cardError } = await supabase
+      // Get card with privacy isolation check using service role
+      const serviceClient = this.getServiceRoleClient();
+      const { data: cardRecord, error: cardError } = await serviceClient
         .from('cards')
         .select('*')
         .eq('card_id', cardId)
@@ -167,7 +186,7 @@ export class CardsService {
       }
 
       // Get transaction history
-      const { data: transactions, error: transactionError } = await supabase
+      const { data: transactions, error: transactionError } = await serviceClient
         .from('transactions')
         .select('*')
         .eq('card_id', cardId)
@@ -206,7 +225,8 @@ export class CardsService {
   async deleteCard(userId: string, cardId: string): Promise<DeletionProof> {
     try {
       // Verify card ownership and get deletion key
-      const { data: cardRecord, error: cardError } = await supabase
+      const serviceClient = this.getServiceRoleClient();
+      const { data: cardRecord, error: cardError } = await serviceClient
         .from('cards')
         .select('card_id, deletion_key, status')
         .eq('card_id', cardId)
@@ -225,7 +245,7 @@ export class CardsService {
       const deletionProof = privacyService.createDeletionProof(cardId, cardRecord.deletion_key);
 
       // Update card status to deleted
-      const { error: updateError } = await supabase
+      const { error: updateError } = await serviceClient
         .from('cards')
         .update({
           status: 'deleted',
@@ -254,7 +274,8 @@ export class CardsService {
    */
   async updateCardStatus(userId: string, cardId: string, status: 'active' | 'paused'): Promise<Card> {
     try {
-      const { data: cardRecord, error } = await supabase
+      const serviceClient = this.getServiceRoleClient();
+      const { data: cardRecord, error } = await serviceClient
         .from('cards')
         .update({
           status,
@@ -281,7 +302,8 @@ export class CardsService {
    */
   async getCardCredentials(userId: string, cardId: string): Promise<{ cardNumber: string; cvv: string }> {
     try {
-      const { data: cardRecord, error } = await supabase
+      const serviceClient = this.getServiceRoleClient();
+      const { data: cardRecord, error } = await serviceClient
         .from('cards')
         .select('encrypted_card_number, encrypted_cvv')
         .eq('card_id', cardId)

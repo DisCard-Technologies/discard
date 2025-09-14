@@ -1,0 +1,36 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("POSTGRES_URL")
+}
+
+model Waitlist {
+  id               Int       @id @default(autoincrement())
+  name             String    @db.VarChar(255)
+  email            String    @unique @db.VarChar(255)
+  company          String?   @db.VarChar(255)
+  product          Product
+  useCase          String?   @map("use_case") @db.Text
+  agreeToUpdates   Boolean   @default(false) @map("agree_to_updates")
+  ipAddress        String?   @map("ip_address") @db.Inet
+  userAgent        String?   @map("user_agent") @db.Text
+  referrer         String?   @db.Text
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  emailSent        Boolean   @default(false) @map("email_sent")
+  emailSentAt      DateTime? @map("email_sent_at") @db.Timestamptz(6)
+
+  @@index([email], map: "idx_waitlist_email")
+  @@index([product], map: "idx_waitlist_product")
+  @@index([createdAt], map: "idx_waitlist_created_at")
+  @@map("waitlist")
+}
+
+enum Product {
+  discard
+  textpay
+  both
+}

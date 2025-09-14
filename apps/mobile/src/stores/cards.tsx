@@ -5,9 +5,10 @@
 
 import React, { createContext, useContext, useReducer, ReactNode } from 'react';
 import { Card, CreateCardRequest, CardListRequest, CardDetailsResponse } from '@discard/shared';
+import { useAuthOperations } from './auth';
 
 // API base URL - should be moved to environment config
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3001';
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://10.0.2.2:3001';
 
 export interface CardWithDetails extends Card {
   cardNumber?: string; // Only available temporarily after creation
@@ -55,10 +56,15 @@ function cardsReducer(state: CardsState, action: CardsAction): CardsState {
       return { ...state, error: action.payload };
     
     case 'SET_CARDS':
+      console.log('Reducer: SET_CARDS with', action.payload?.length || 0, 'cards');
       return { ...state, cards: action.payload };
     
     case 'ADD_CARD':
-      return { ...state, cards: [action.payload, ...state.cards] };
+      console.log('Reducer: ADD_CARD with card:', action.payload?.cardId);
+      console.log('Reducer: Current cards count before add:', state.cards.length);
+      const newState = { ...state, cards: [action.payload, ...state.cards] };
+      console.log('Reducer: New cards count after add:', newState.cards.length);
+      return newState;
     
     case 'UPDATE_CARD':
       return {
@@ -134,11 +140,11 @@ export interface CardsActions {
 // Provider component
 export function CardsProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(cardsReducer, initialState);
+  const authOperations = useAuthOperations();
 
-  // Get auth token from secure storage (placeholder for now)
+  // Get auth token from auth store
   const getAuthToken = async (): Promise<string | null> => {
-    // TODO: Implement actual token retrieval from secure storage
-    return 'mock-token';
+    return authOperations.getAuthToken();
   };
 
   // API helper function
@@ -165,6 +171,7 @@ export function CardsProvider({ children }: { children: ReactNode }) {
   const actions: CardsActions = {
     loadCards: async (params?: CardListRequest) => {
       try {
+        console.log('Cards Store: Starting loadCards with params:', params);
         dispatch({ type: 'SET_LOADING', payload: true });
         dispatch({ type: 'SET_ERROR', payload: null });
 
@@ -176,9 +183,13 @@ export function CardsProvider({ children }: { children: ReactNode }) {
         const queryString = queryParams.toString();
         const endpoint = `/api/v1/cards${queryString ? `?${queryString}` : ''}`;
         
+        console.log('Cards Store: Making API call to:', endpoint);
         const response = await apiCall(endpoint);
-        dispatch({ type: 'SET_CARDS', payload: response.cards || [] });
+        console.log('Cards Store: API response:', response);
+        console.log('Cards Store: Cards in response:', response.data?.length || 0);
+        dispatch({ type: 'SET_CARDS', payload: response.data || [] });
       } catch (error) {
+        console.error('Cards Store: Error loading cards:', error);
         const errorMessage = error instanceof Error ? error.message : 'Failed to load cards';
         dispatch({ type: 'SET_ERROR', payload: errorMessage });
       } finally {
@@ -188,6 +199,7 @@ export function CardsProvider({ children }: { children: ReactNode }) {
 
     createCard: async (cardData: CreateCardRequest): Promise<CardWithDetails | null> => {
       try {
+        console.log('Cards Store: Creating card with data:', cardData);
         dispatch({ type: 'SET_CREATE_LOADING', payload: true });
         dispatch({ type: 'SET_ERROR', payload: null });
 
@@ -196,12 +208,14 @@ export function CardsProvider({ children }: { children: ReactNode }) {
           body: JSON.stringify(cardData),
         });
 
+        console.log('Cards Store: Card creation response:', response);
         const newCard: CardWithDetails = {
-          ...response.card,
-          cardNumber: response.cardNumber, // Temporary exposure
-          cvv: response.cvv, // Temporary exposure
+          ...response.data.card,
+          cardNumber: response.data.cardNumber, // Temporary exposure
+          cvv: response.data.cvv, // Temporary exposure
         };
 
+        console.log('Cards Store: Adding new card to store:', newCard);
         dispatch({ type: 'ADD_CARD', payload: newCard });
 
         // Auto-clear sensitive data after 60 seconds

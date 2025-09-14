@@ -82,30 +82,30 @@ ADD COLUMN IF NOT EXISTS audit_trail_integrity_hash TEXT,
 ADD COLUMN IF NOT EXISTS bulk_batch_id UUID REFERENCES bulk_deletion_batches(batch_id);
 
 -- Indexes for performance optimization
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_cards_deleted_at ON cards(deleted_at);
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_cards_deletion_status ON cards(status) WHERE status = 'deleted';
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_cards_network_cancellation ON cards(network_cancellation_status);
+CREATE INDEX IF NOT EXISTS idx_cards_deleted_at ON cards(deleted_at);
+CREATE INDEX IF NOT EXISTS idx_cards_deletion_status ON cards(status) WHERE status = 'deleted';
+CREATE INDEX IF NOT EXISTS idx_cards_network_cancellation ON cards(network_cancellation_status);
 
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_deletion_proofs_context ON deletion_proofs(card_context_hash);
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_deletion_proofs_created ON deletion_proofs(created_at);
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_deletion_proofs_type ON deletion_proofs(deletion_type);
+CREATE INDEX IF NOT EXISTS idx_deletion_proofs_context ON deletion_proofs(card_context_hash);
+CREATE INDEX IF NOT EXISTS idx_deletion_proofs_created ON deletion_proofs(created_at);
+CREATE INDEX IF NOT EXISTS idx_deletion_proofs_type ON deletion_proofs(deletion_type);
 
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_network_cancellation_log_token ON network_cancellation_log(marqeta_card_token);
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_network_cancellation_log_status ON network_cancellation_log(status);
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_network_cancellation_log_retry ON network_cancellation_log(next_retry_at) WHERE status = 'pending';
+CREATE INDEX IF NOT EXISTS idx_network_cancellation_log_token ON network_cancellation_log(marqeta_card_token);
+CREATE INDEX IF NOT EXISTS idx_network_cancellation_log_status ON network_cancellation_log(status);
+CREATE INDEX IF NOT EXISTS idx_network_cancellation_log_retry ON network_cancellation_log(next_retry_at) WHERE status = 'pending';
 
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_bulk_deletion_batches_user ON bulk_deletion_batches(initiated_by);
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_bulk_deletion_batches_status ON bulk_deletion_batches(batch_status);
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_bulk_deletion_batches_scheduled ON bulk_deletion_batches(deletion_scheduled_for) WHERE deletion_scheduled_for IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_bulk_deletion_batches_user ON bulk_deletion_batches(initiated_by);
+CREATE INDEX IF NOT EXISTS idx_bulk_deletion_batches_status ON bulk_deletion_batches(batch_status);
+CREATE INDEX IF NOT EXISTS idx_bulk_deletion_batches_scheduled ON bulk_deletion_batches(deletion_scheduled_for) WHERE deletion_scheduled_for IS NOT NULL;
 
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_bulk_deletion_items_batch ON bulk_deletion_items(batch_id);
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_bulk_deletion_items_status ON bulk_deletion_items(status);
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_bulk_deletion_items_card ON bulk_deletion_items(card_context_hash);
+CREATE INDEX IF NOT EXISTS idx_bulk_deletion_items_batch ON bulk_deletion_items(batch_id);
+CREATE INDEX IF NOT EXISTS idx_bulk_deletion_items_status ON bulk_deletion_items(status);
+CREATE INDEX IF NOT EXISTS idx_bulk_deletion_items_card ON bulk_deletion_items(card_context_hash);
 
 -- Enhanced indexes for compliance audit
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_data_deletion_audit_batch ON data_deletion_audit(bulk_batch_id);
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_data_deletion_audit_retention ON data_deletion_audit(compliance_retention_until) WHERE compliance_retention_until < NOW();
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_data_deletion_audit_integrity ON data_deletion_audit(audit_trail_integrity_hash);
+CREATE INDEX IF NOT EXISTS idx_data_deletion_audit_batch ON data_deletion_audit(bulk_batch_id);
+CREATE INDEX IF NOT EXISTS idx_data_deletion_audit_retention ON data_deletion_audit(compliance_retention_until) WHERE compliance_retention_until IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_data_deletion_audit_integrity ON data_deletion_audit(audit_trail_integrity_hash);
 
 -- Row Level Security (RLS) policies
 ALTER TABLE deletion_proofs ENABLE ROW LEVEL SECURITY;

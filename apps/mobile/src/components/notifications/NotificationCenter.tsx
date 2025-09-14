@@ -236,7 +236,7 @@ const NotificationCenter: React.FC<NotificationCenterProps> = ({
         <View style={styles.actionButtons}>
           {item.content.actionButtons.map((buttonText, index) => (
             <TouchableOpacity
-              key={index}
+              key={`${item.notificationId}-${buttonText}-${index}`}
               style={styles.actionButton}
               onPress={() => {
                 // Handle action button press

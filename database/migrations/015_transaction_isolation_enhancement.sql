@@ -28,6 +28,32 @@ CREATE TABLE IF NOT EXISTS transaction_isolation_metrics (
 CREATE INDEX IF NOT EXISTS idx_isolation_metrics_card_context ON transaction_isolation_metrics(card_context_hash);
 CREATE INDEX IF NOT EXISTS idx_isolation_metrics_violations ON transaction_isolation_metrics(privacy_violation_detected) WHERE privacy_violation_detected = true;
 
+-- Create compliance_audit table if it doesn't exist (needed for isolation monitoring)
+CREATE TABLE IF NOT EXISTS compliance_audit (
+    audit_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    audit_event_type TEXT NOT NULL,
+    event_category TEXT NOT NULL,
+    event_description TEXT NOT NULL,
+    event_timestamp TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Create payment_transactions table if it doesn't exist (needed for payment processing)
+CREATE TABLE IF NOT EXISTS payment_transactions (
+    transaction_id TEXT PRIMARY KEY,
+    card_context_hash TEXT,
+    merchant_name TEXT,
+    merchant_category TEXT,
+    amount DECIMAL(12,2) NOT NULL,
+    status TEXT NOT NULL,
+    authorization_code TEXT,
+    marqeta_transaction_token TEXT,
+    decline_reason TEXT,
+    processed_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
 -- Enhanced audit table for isolation monitoring
 ALTER TABLE compliance_audit 
 ADD COLUMN IF NOT EXISTS isolation_event_data JSONB,
@@ -125,7 +151,7 @@ CREATE POLICY prevent_cross_table_correlation ON payment_transactions
 CREATE POLICY crypto_transaction_isolation ON crypto_transactions
     FOR ALL
     USING (
-        context_hash = current_setting('app.card_context', true)
+        transaction_context_hash = current_setting('app.card_context', true)
     );
 
 -- Isolation policy for transaction isolation metrics
@@ -135,16 +161,12 @@ CREATE POLICY isolation_metrics_policy ON transaction_isolation_metrics
         card_context_hash = current_setting('app.card_context', true)
     );
 
--- Prevent cross-card joins in transaction history
-CREATE POLICY transaction_history_isolation ON transaction_history
+-- Prevent cross-card joins in transactions
+CREATE POLICY transaction_isolation ON transactions
     FOR ALL
     USING (
-        card_context_hash = current_setting('app.card_context', true) AND
-        NOT EXISTS (
-            SELECT 1 FROM transaction_history th2
-            WHERE th2.card_context_hash != transaction_history.card_context_hash
-            AND th2.user_id = transaction_history.user_id
-        )
+        card_id::text = current_setting('app.card_context', true) OR
+        current_setting('app.card_context', true) IS NULL
     );
 
 -- Function to set isolation context

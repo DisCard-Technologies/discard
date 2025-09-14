@@ -50,8 +50,52 @@ interface MarqetaTransaction {
 interface MarqetaCardRequest {
   card_product_token: string;
   user_token: string;
-  show_cvv_number: boolean;
-  show_pan: boolean;
+  fulfillment?: {
+    card_personalization?: {
+      text?: {
+        name_line_1?: {
+          value: string;
+        };
+      };
+    };
+  };
+  metadata?: Record<string, any>;
+}
+
+interface MarqetaUser {
+  token: string;
+  email: string;
+  first_name: string;
+  last_name: string;
+  phone: string | null;
+  address1: string | null;
+  address2: string | null;
+  city: string | null;
+  state: string | null;
+  zip: string | null;
+  country: string;
+  birth_date: string | null;
+  ssn: string | null;
+  status: 'ACTIVE' | 'SUSPENDED' | 'CLOSED';
+  metadata: Record<string, any>;
+  created_time: string;
+  last_modified_time: string;
+}
+
+interface MarqetaUserRequest {
+  token?: string;
+  email: string;
+  first_name: string;
+  last_name: string;
+  phone?: string;
+  address1?: string;
+  address2?: string;
+  city?: string;
+  state?: string;
+  zip?: string;
+  country?: string;
+  birth_date?: string;
+  ssn?: string;
   metadata?: Record<string, any>;
 }
 
@@ -99,7 +143,7 @@ export class MarqetaService {
         'Content-Type': 'application/json',
         'Accept': 'application/json'
       },
-      timeout: parseInt(process.env.PAYMENT_PROCESSING_TIMEOUT || '800')
+      timeout: parseInt(process.env.PAYMENT_PROCESSING_TIMEOUT || '5000')
     });
 
     // Request interceptor for rate limiting
@@ -118,23 +162,129 @@ export class MarqetaService {
   }
 
   /**
-   * Create a new card in Marqeta system
+   * Create or get a user in Marqeta system
    */
-  async createCard(cardContext: string, userToken: string, metadata?: Record<string, any>): Promise<MarqetaCard> {
+  async createUser(userToken: string, userData?: Partial<MarqetaUserRequest>): Promise<MarqetaUser> {
+    try {
+      this.logger.info('Creating Marqeta user', { userToken });
+
+      // Try to get existing user first
+      try {
+        const existingUser = await this.getUser(userToken);
+        this.logger.info('User already exists in Marqeta', { userToken });
+        return existingUser;
+      } catch (error) {
+        this.logger.info('User not found, creating new user', { 
+          userToken,
+          getUserError: this.extractErrorMessage(error),
+          getUserErrorCode: this.extractErrorCode(error)
+        });
+      }
+
+      const userRequest: MarqetaUserRequest = {
+        token: userToken,
+        email: userData?.email || `user-${userToken}@discard.app`,
+        first_name: userData?.first_name || 'Discard',
+        last_name: userData?.last_name || 'User',
+        phone: userData?.phone,
+        address1: userData?.address1,
+        address2: userData?.address2,
+        city: userData?.city,
+        state: userData?.state,
+        zip: userData?.zip,
+        country: userData?.country || 'US',
+        birth_date: userData?.birth_date,
+        ssn: userData?.ssn,
+        metadata: {
+          created_by: 'discard_app',
+          user_context: userToken,
+          ...userData?.metadata
+        }
+      };
+
+      this.logger.info('Attempting user creation with request', { 
+        userToken,
+        email: userRequest.email,
+        country: userRequest.country
+      });
+
+      const response = await this.client.post<MarqetaUser>('/users', userRequest);
+      
+      this.logger.info('Marqeta user created successfully', { 
+        userToken: response.data.token,
+        email: response.data.email
+      });
+
+      return response.data;
+    } catch (error) {
+      this.logger.error('Failed to create Marqeta user', { 
+        error: this.extractErrorMessage(error),
+        errorCode: this.extractErrorCode(error),
+        userToken,
+        statusCode: (error as any)?.response?.status,
+        responseData: (error as any)?.response?.data
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Get user details from Marqeta
+   */
+  async getUser(userToken: string): Promise<MarqetaUser> {
+    try {
+      const response = await this.client.get<MarqetaUser>(`/users/${userToken}`);
+      return response.data;
+    } catch (error) {
+      this.logger.error('Failed to get Marqeta user', { error, userToken });
+      throw error;
+    }
+  }
+
+  /**
+   * Create a new card in Marqeta system (ensures user exists first)
+   */
+  async createCard(cardContext: string, userToken: string, metadata?: Record<string, any>, userData?: Partial<MarqetaUserRequest>): Promise<MarqetaCard> {
     try {
       this.logger.info('Creating Marqeta card', { cardContext, userToken });
 
+      // Try to ensure user exists before creating card, but continue if it fails
+      try {
+        await this.createUser(userToken, userData);
+        this.logger.info('User creation/verification completed', { userToken });
+      } catch (userError) {
+        this.logger.warn('User creation failed, attempting card creation anyway', { 
+          userToken, 
+          userError: this.extractErrorMessage(userError),
+          errorCode: this.extractErrorCode(userError)
+        });
+        // Continue with card creation - maybe user already exists but API doesn't have read permissions
+      }
+
       const cardRequest: MarqetaCardRequest = {
-        card_product_token: process.env.MARQETA_CARD_PRODUCT_TOKEN || 'sandbox_card_product',
+        card_product_token: process.env.MARQETA_CARD_PRODUCT_TOKEN!,
         user_token: userToken,
-        show_cvv_number: true,
-        show_pan: true,
+        fulfillment: {
+          card_personalization: {
+            text: {
+              name_line_1: {
+                value: "DISCARD"
+              }
+            }
+          }
+        },
         metadata: {
           card_context: cardContext,
           created_by: 'discard_app',
           ...metadata
         }
       };
+
+      this.logger.info('Attempting card creation with request', { 
+        cardProductToken: process.env.MARQETA_CARD_PRODUCT_TOKEN,
+        userToken,
+        metadata: cardRequest.metadata
+      });
 
       const response = await this.client.post<MarqetaCard>('/cards', cardRequest);
       
@@ -153,7 +303,14 @@ export class MarqetaService {
 
       return response.data;
     } catch (error) {
-      this.logger.error('Failed to create Marqeta card', { error, cardContext });
+      this.logger.error('Failed to create Marqeta card', { 
+        error: this.extractErrorMessage(error),
+        errorCode: this.extractErrorCode(error),
+        cardContext,
+        userToken,
+        statusCode: (error as any)?.response?.status,
+        responseData: (error as any)?.response?.data
+      });
       
       await this.updateProvisioningStatus(
         cardContext,
@@ -164,6 +321,84 @@ export class MarqetaService {
         this.extractErrorMessage(error)
       );
       
+      throw error;
+    }
+  }
+
+  /**
+   * Retrieve full card details including PAN and CVV
+   */
+  async getCardDetails(cardToken: string, retryCount: number = 0): Promise<{
+    pan: string;
+    cvv: string;
+    expiration: string;
+    expiration_time: string;
+  }> {
+    try {
+      this.logger.info('Retrieving card PAN and CVV', { cardToken, retryCount });
+
+      const response = await this.client.get(`/cards/${cardToken}/showpan?show_cvv_number=true&show_pan=true`);
+      
+      this.logger.info('Showpan API response', { 
+        cardToken,
+        responseData: response.data,
+        responseKeys: Object.keys(response.data || {})
+      });
+      
+      // Check if card details are available - try multiple CVV field names
+      const cvvValue = response.data?.cvv_number || response.data?.cvv || response.data?.cvv2;
+      if (!response.data.pan || !cvvValue) {
+        this.logger.warn('Card details not immediately available', {
+          hasData: !!response.data,
+          hasPan: !!response.data?.pan,
+          hasCvv: !!cvvValue,
+          cvvFieldChecked: ['cvv_number', 'cvv', 'cvv2'],
+          actualKeys: Object.keys(response.data || {}),
+          responseData: response.data,
+          retryCount
+        });
+        
+        // Retry up to 3 times with exponential backoff for virtual card processing
+        if (retryCount < 3) {
+          const delay = Math.pow(2, retryCount) * 1000; // 1s, 2s, 4s
+          this.logger.info(`Retrying card details retrieval in ${delay}ms`, { cardToken, retryCount });
+          await new Promise(resolve => setTimeout(resolve, delay));
+          return this.getCardDetails(cardToken, retryCount + 1);
+        }
+        
+        this.logger.error('Card details validation failed after retries', {
+          hasData: !!response.data,
+          hasPan: !!response.data?.pan,
+          hasCvv: !!cvvValue,
+          cvvFieldChecked: ['cvv_number', 'cvv', 'cvv2'],
+          actualKeys: Object.keys(response.data || {}),
+          responseData: response.data,
+          finalRetryCount: retryCount
+        });
+        throw new Error('Card details incomplete: PAN or CVV not returned after retries');
+      }
+
+      this.logger.info('Card details retrieved successfully', { 
+        cardToken,
+        hasPan: !!response.data.pan,
+        hasCvv: !!cvvValue,
+        retryCount
+      });
+
+      return {
+        pan: response.data.pan,
+        cvv: cvvValue,
+        expiration: response.data.expiration,
+        expiration_time: response.data.expiration_time
+      };
+    } catch (error) {
+      this.logger.error('Failed to retrieve card details', {
+        error: this.extractErrorMessage(error),
+        errorCode: this.extractErrorCode(error),
+        cardToken,
+        statusCode: (error as any)?.response?.status,
+        retryCount
+      });
       throw error;
     }
   }

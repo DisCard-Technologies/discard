@@ -1,39 +1,39 @@
 -- Migration 013: Transaction History Privacy Enhancements
 -- Adds indexes and retention fields for privacy-preserving transaction history
 
--- Add retention policy tracking to payment_transactions
-ALTER TABLE payment_transactions 
+-- Add retention policy tracking to transactions
+ALTER TABLE transactions 
 ADD COLUMN retention_until TIMESTAMP WITH TIME ZONE;
 
--- Update retention timestamps for existing records (365 days from processed date)
-UPDATE payment_transactions 
-SET retention_until = processed_at + INTERVAL '365 days'
+-- Update retention timestamps for existing records (365 days from created date)
+UPDATE transactions 
+SET retention_until = created_at + INTERVAL '365 days'
 WHERE retention_until IS NULL;
 
 -- Make retention_until not null for future records
-ALTER TABLE payment_transactions 
+ALTER TABLE transactions 
 ALTER COLUMN retention_until SET DEFAULT (NOW() + INTERVAL '365 days');
 
 -- Add performance indexes for transaction history queries
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_payment_transactions_card_context_date 
-ON payment_transactions(card_context_hash, processed_at DESC);
+CREATE INDEX IF NOT EXISTS idx_transactions_card_date 
+ON transactions(card_id, created_at DESC);
 
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_payment_transactions_merchant_search 
-ON payment_transactions(card_context_hash, lower(merchant_name));
+CREATE INDEX IF NOT EXISTS idx_transactions_merchant_search 
+ON transactions(card_id, lower(merchant_name));
 
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_payment_transactions_amount_range 
-ON payment_transactions(card_context_hash, amount);
+CREATE INDEX IF NOT EXISTS idx_transactions_amount_range 
+ON transactions(card_id, amount_usd);
 
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_payment_transactions_category_search
-ON payment_transactions(card_context_hash, merchant_category);
+CREATE INDEX IF NOT EXISTS idx_transactions_category_search
+ON transactions(card_id, merchant_category);
 
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_payment_transactions_retention
-ON payment_transactions(retention_until) WHERE retention_until < NOW();
+CREATE INDEX IF NOT EXISTS idx_transactions_retention
+ON transactions(retention_until);
 
 -- Create table for tracking transaction disputes/refunds
 CREATE TABLE IF NOT EXISTS transaction_disputes (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  transaction_id UUID NOT NULL REFERENCES payment_transactions(transaction_id) ON DELETE CASCADE,
+  transaction_id UUID NOT NULL REFERENCES transactions(id) ON DELETE CASCADE,
   dispute_type VARCHAR(50) NOT NULL CHECK (dispute_type IN ('chargeback', 'refund', 'unauthorized')),
   amount INTEGER NOT NULL, -- Amount in cents
   status VARCHAR(50) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'denied', 'resolved')),
@@ -51,9 +51,9 @@ CREATE POLICY transaction_disputes_isolation ON transaction_disputes
 FOR ALL
 USING (
   EXISTS (
-    SELECT 1 FROM payment_transactions pt 
-    WHERE pt.transaction_id = transaction_disputes.transaction_id 
-    AND pt.card_context_hash = current_setting('app.card_context', true)
+    SELECT 1 FROM transactions pt 
+    WHERE pt.id = transaction_disputes.transaction_id 
+    AND pt.card_id = current_setting('rls.card_id')::UUID
   )
 );
 
@@ -73,7 +73,7 @@ CREATE INDEX IF NOT EXISTS idx_compliance_archive_ref
 ON compliance_archive(compliance_ref);
 
 CREATE INDEX IF NOT EXISTS idx_compliance_archive_retention
-ON compliance_archive(retention_until) WHERE retention_until < NOW();
+ON compliance_archive(retention_until);
 
 -- Create data deletion audit table
 CREATE TABLE IF NOT EXISTS data_deletion_audit (
@@ -135,14 +135,14 @@ CREATE OR REPLACE FUNCTION set_transaction_retention()
 RETURNS TRIGGER AS $$
 BEGIN
     IF NEW.retention_until IS NULL THEN
-        NEW.retention_until := NEW.processed_at + INTERVAL '365 days';
+        NEW.retention_until := NEW.created_at + INTERVAL '365 days';
     END IF;
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 
 CREATE TRIGGER set_transaction_retention_trigger
-BEFORE INSERT ON payment_transactions
+BEFORE INSERT ON transactions
 FOR EACH ROW EXECUTE FUNCTION set_transaction_retention();
 
 -- Grant necessary permissions

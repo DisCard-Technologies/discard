@@ -6,7 +6,7 @@
 -- Transaction Processing Log Table
 CREATE TABLE transaction_processing_log (
     processing_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    transaction_id UUID NOT NULL REFERENCES crypto_transactions(transaction_id),
+    transaction_id VARCHAR(64) NOT NULL REFERENCES crypto_transactions(transaction_id),
     blockchain_tx_hash VARCHAR(128) NOT NULL UNIQUE,
     status VARCHAR(20) NOT NULL CHECK (status IN ('initiated', 'pending', 'confirming', 'confirmed', 'failed', 'refunded')),
     confirmation_count INTEGER NOT NULL DEFAULT 0,
@@ -45,7 +45,7 @@ CREATE TABLE network_fee_estimates (
 -- Refund Transactions Table
 CREATE TABLE refund_transactions (
     refund_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    original_transaction_id UUID NOT NULL REFERENCES crypto_transactions(transaction_id),
+    original_transaction_id VARCHAR(64) NOT NULL REFERENCES crypto_transactions(transaction_id),
     refund_amount DECIMAL(20, 8) NOT NULL,
     refund_address VARCHAR(128) NOT NULL,
     status VARCHAR(20) NOT NULL CHECK (status IN ('pending', 'processing', 'completed', 'failed')),
