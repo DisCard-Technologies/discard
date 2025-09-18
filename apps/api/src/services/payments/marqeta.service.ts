@@ -1,4 +1,4 @@
-import axios, { AxiosInstance, AxiosResponse } from 'axios';
+import axios, { AxiosError, AxiosInstance, AxiosResponse, InternalAxiosRequestConfig } from 'axios';
 import { createClient } from '@supabase/supabase-js';
 import { Logger } from '../../utils/logger';
 import { createHash, createHmac } from 'crypto';
@@ -147,15 +147,15 @@ export class MarqetaService {
     });
 
     // Request interceptor for rate limiting
-    this.client.interceptors.request.use(async (config) => {
+    this.client.interceptors.request.use(async (config: InternalAxiosRequestConfig) => {
       await this.enforceRateLimit();
       return config;
     });
 
     // Response interceptor for error handling and retries
     this.client.interceptors.response.use(
-      (response) => response,
-      async (error) => {
+      (response: AxiosResponse) => response,
+      async (error: AxiosError) => {
         return this.handleResponseError(error);
       }
     );
@@ -707,9 +707,9 @@ export class MarqetaService {
   /**
    * Private: Handle response errors with retry logic
    */
-  private async handleResponseError(error: any): Promise<never> {
+  private async handleResponseError(error: AxiosError): Promise<never> {
     const config = error.config;
-    const retryCount = config._retryCount || 0;
+    const retryCount = (config as any)._retryCount || 0;
 
     // Don't retry client errors (4xx) except 429
     if (error.response && error.response.status >= 400 && error.response.status < 500 && error.response.status !== 429) {
@@ -722,13 +722,13 @@ export class MarqetaService {
       error.response.status >= 500 || 
       error.response.status === 429
     )) {
-      config._retryCount = retryCount + 1;
+      (config as any)._retryCount = retryCount + 1;
       const delay = this.RETRY_DELAYS[retryCount];
       
       this.logger.warn('Retrying request', { retryCount: retryCount + 1, delay });
       await new Promise(resolve => setTimeout(resolve, delay));
       
-      return this.client.request(config);
+      return this.client.request(config!);
     }
 
     throw error;

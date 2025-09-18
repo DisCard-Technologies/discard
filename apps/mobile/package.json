@@ -27,10 +27,13 @@
   "license": "ISC",
   "dependencies": {
     "@discard/shared": "*",
+    "@expo/metro-runtime": "~5.0.4",
     "@expo/vector-icons": "^14.0.0",
     "@react-navigation/bottom-tabs": "^7.4.6",
     "@react-navigation/native": "^7.1.17",
     "@react-navigation/stack": "^7.4.7",
+    "@solana-mobile/wallet-adapter-mobile": "^2.0.2",
+    "@solana/web3.js": "^1.91.8",
     "expo": "^53.0.20",
     "expo-crypto": "14.1.5",
     "expo-secure-store": "14.2.3",
@@ -41,12 +44,14 @@
     "react-native-gesture-handler": "2.24.0",
     "react-native-reanimated": "3.17.4",
     "react-native-safe-area-context": "5.4.0",
-    "react-native-screens": "4.11.1"
+    "react-native-screens": "4.11.1",
+    "react-native-web": "^0.20.0"
   },
   "devDependencies": {
     "@testing-library/jest-native": "^5.4.3",
     "@testing-library/react-native": "^13.2.2",
     "@types/jest": "^30.0.0",
+    "@types/react": "^19.1.13",
     "detox": "^20.14.7",
     "jest": "29.7.0",
     "jest-expo": "53.0.9",

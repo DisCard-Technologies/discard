@@ -95,4 +95,10 @@ router.put('/notifications',
   fundingController.updateNotificationThresholds.bind(fundingController)
 );
 
+// Add a new funding source (e.g., a crypto wallet)
+router.post('/sources', 
+  fundingRateLimit, 
+  fundingController.addFundingSource.bind(fundingController)
+);
+
 export default router;

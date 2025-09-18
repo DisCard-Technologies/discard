@@ -17,6 +17,8 @@ import {
 import { useFunding } from '../../stores/funding';
 import BalanceIndicator from '../../components/funding/BalanceIndicator';
 import FundingComponent from '../../components/funding/FundingComponent';
+import CryptoFundingComponent from '../../components/funding/CryptoFundingComponent';
+import FundingMethodSelectionScreen from './FundingMethodSelectionScreen';
 
 interface FundingScreenProps {
   navigation?: any;
@@ -24,7 +26,13 @@ interface FundingScreenProps {
   onNavigateToTransactions?: () => void;
 }
 
-type FundingMode = 'overview' | 'fund' | 'allocate' | 'transfer';
+type FundingMode =
+  | 'overview'
+  | 'selectMethod'
+  | 'fundStripe'
+  | 'fundCrypto'
+  | 'allocate'
+  | 'transfer';
 
 const FundingScreen: React.FC<FundingScreenProps> = ({
   navigation,
@@ -63,11 +71,11 @@ const FundingScreen: React.FC<FundingScreenProps> = ({
       'Success',
       'Funding operation completed successfully',
       [
-        { 
-          text: 'View Transactions', 
-          onPress: () => onNavigateToTransactions?.() 
+        {
+          text: 'View Transactions',
+          onPress: () => onNavigateToTransactions?.(),
         },
-        { text: 'OK' }
+        { text: 'OK' },
       ]
     );
   };
@@ -78,17 +86,21 @@ const FundingScreen: React.FC<FundingScreenProps> = ({
       <View style={styles.actionButtons}>
         <TouchableOpacity
           style={[styles.actionButton, styles.primaryAction]}
-          onPress={() => setCurrentMode('fund')}
+          onPress={() => setCurrentMode('selectMethod')}
         >
           <Text style={styles.actionIcon}>💳</Text>
           <Text style={styles.actionText}>Fund Account</Text>
-          <Text style={styles.actionSubtext}>Add money from bank or card</Text>
+          <Text style={styles.actionSubtext}>
+            Add money via Crypto, Bank, or Card
+          </Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           style={styles.actionButton}
           onPress={() => setCurrentMode('allocate')}
-          disabled={!state.accountBalance || state.accountBalance.availableBalance <= 0}
+          disabled={
+            !state.accountBalance || state.accountBalance.availableBalance <= 0
+          }
         >
           <Text style={styles.actionIcon}>📤</Text>
           <Text style={styles.actionText}>Allocate to Card</Text>
@@ -131,19 +143,25 @@ const FundingScreen: React.FC<FundingScreenProps> = ({
             <Text style={styles.viewAllText}>View All</Text>
           </TouchableOpacity>
         </View>
-        
+
         <View style={styles.transactionList}>
           {state.transactions.slice(0, 3).map((transaction) => (
             <View key={transaction.id} style={styles.transactionItem}>
               <View style={styles.transactionLeft}>
                 <Text style={styles.transactionIcon}>
-                  {transaction.type === 'account_funding' ? '💳' :
-                   transaction.type === 'card_allocation' ? '📤' : '🔄'}
+                  {transaction.type === 'account_funding'
+                    ? '💳'
+                    : transaction.type === 'card_allocation'
+                    ? '📤'
+                    : '🔄'}
                 </Text>
                 <View style={styles.transactionDetails}>
                   <Text style={styles.transactionTitle}>
-                    {transaction.type === 'account_funding' ? 'Account Funding' :
-                     transaction.type === 'card_allocation' ? 'Card Allocation' : 'Card Transfer'}
+                    {transaction.type === 'account_funding'
+                      ? 'Account Funding'
+                      : transaction.type === 'card_allocation'
+                      ? 'Card Allocation'
+                      : 'Card Transfer'}
                   </Text>
                   <Text style={styles.transactionDate}>
                     {new Date(transaction.createdAt).toLocaleDateString()}
@@ -151,19 +169,29 @@ const FundingScreen: React.FC<FundingScreenProps> = ({
                 </View>
               </View>
               <View style={styles.transactionRight}>
-                <Text style={[
-                  styles.transactionAmount,
-                  transaction.type === 'account_funding' ? styles.positiveAmount : styles.neutralAmount
-                ]}>
+                <Text
+                  style={[
+                    styles.transactionAmount,
+                    transaction.type === 'account_funding'
+                      ? styles.positiveAmount
+                      : styles.neutralAmount,
+                  ]}
+                >
                   {transaction.type === 'account_funding' ? '+' : ''}
                   ${(transaction.amount / 100).toFixed(2)}
                 </Text>
-                <View style={[
-                  styles.statusBadge,
-                  transaction.status === 'completed' ? styles.completedStatus :
-                  transaction.status === 'pending' ? styles.pendingStatus :
-                  transaction.status === 'failed' ? styles.failedStatus : styles.processingStatus
-                ]}>
+                <View
+                  style={[
+                    styles.statusBadge,
+                    transaction.status === 'completed'
+                      ? styles.completedStatus
+                      : transaction.status === 'pending'
+                      ? styles.pendingStatus
+                      : transaction.status === 'failed'
+                      ? styles.failedStatus
+                      : styles.processingStatus,
+                  ]}
+                >
                   <Text style={styles.statusText}>{transaction.status}</Text>
                 </View>
               </View>
@@ -189,7 +217,9 @@ const FundingScreen: React.FC<FundingScreenProps> = ({
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.title}>Funding</Text>
-        <Text style={styles.subtitle}>Manage your account balance and funding</Text>
+        <Text style={styles.subtitle}>
+          Manage your account balance and funding
+        </Text>
       </View>
 
       {/* Balance Overview */}
@@ -230,12 +260,41 @@ const FundingScreen: React.FC<FundingScreenProps> = ({
     );
   }
 
-  if (currentMode === 'fund') {
+  if (currentMode === 'selectMethod') {
+    return (
+      <FundingMethodSelectionScreen
+        onSelectCrypto={() => setCurrentMode('fundCrypto')}
+        onSelectStripe={() => setCurrentMode('fundStripe')}
+        onCancel={() => setCurrentMode('overview')}
+      />
+    );
+  }
+
+  if (currentMode === 'fundCrypto') {
     return (
       <View style={styles.container}>
         <View style={styles.modalHeader}>
           <TouchableOpacity
-            onPress={() => setCurrentMode('overview')}
+            onPress={() => setCurrentMode('selectMethod')}
+            style={styles.backButton}
+          >
+            <Text style={styles.backButtonText}>← Back</Text>
+          </TouchableOpacity>
+        </View>
+        <CryptoFundingComponent
+          onSuccess={handleFundingSuccess}
+          onCancel={() => setCurrentMode('selectMethod')}
+        />
+      </View>
+    );
+  }
+
+  if (currentMode === 'fundStripe') {
+    return (
+      <View style={styles.container}>
+        <View style={styles.modalHeader}>
+          <TouchableOpacity
+            onPress={() => setCurrentMode('selectMethod')}
             style={styles.backButton}
           >
             <Text style={styles.backButtonText}>← Back</Text>
@@ -244,7 +303,7 @@ const FundingScreen: React.FC<FundingScreenProps> = ({
         <FundingComponent
           mode="fund"
           onSuccess={handleFundingSuccess}
-          onCancel={() => setCurrentMode('overview')}
+          onCancel={() => setCurrentMode('selectMethod')}
         />
       </View>
     );
@@ -280,7 +339,8 @@ const FundingScreen: React.FC<FundingScreenProps> = ({
           </TouchableOpacity>
         </View>
         <Text style={styles.modalNote}>
-          Select source and target cards from the card dashboard to transfer funds
+          Select source and target cards from the card dashboard to transfer
+          funds
         </Text>
       </View>
     );

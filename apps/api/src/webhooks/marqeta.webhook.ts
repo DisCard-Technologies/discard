@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { Logger } from '../utils/logger';
 import { MarqetaService } from '../services/payments/marqeta.service';
 import { AuthorizationService } from '../services/payments/authorization.service';
+import { FundingService } from '../services/funding/funding.service'; // Import FundingService
 import { Server as SocketIOServer } from 'socket.io';
 
 interface MarqetaWebhookEvent {
@@ -60,6 +61,7 @@ export class MarqetaWebhookHandler {
   );
   private marqetaService = new MarqetaService();
   private authorizationService = new AuthorizationService();
+  private fundingService = new FundingService(); // Add funding service instance
   private logger = new Logger('MarqetaWebhookHandler');
   private io?: SocketIOServer;
 
@@ -151,22 +153,54 @@ export class MarqetaWebhookHandler {
     try {
       const transactionData = event.data;
       
-      if (!transactionData.card_token || !transactionData.token) {
-        this.logger.error('Missing required transaction data', { event });
+      if (!transactionData.card_token || !transactionData.token || !transactionData.amount) {
+        this.logger.error('Missing required transaction data for authorization', { event });
         return;
       }
 
-      // Get card context from our database
+      // 1. Identify User from Marqeta card token
       const cardContext = await this.getCardContextFromMarqetaToken(transactionData.card_token);
-      
       if (!cardContext) {
         this.logger.error('Card context not found for Marqeta token', { 
           cardToken: transactionData.card_token 
         });
+        // TODO: Respond to Marqeta to DECLINE the transaction
         return;
       }
 
-      // Store transaction record
+      // 2. Fetch User's Active Funding Source and Balance
+      const fundingSource = await this.fundingService.getActiveFundingSource(cardContext);
+      if (!fundingSource) {
+        this.logger.error('No active funding source found for user', { cardContext });
+        // TODO: Respond to Marqeta to DECLINE the transaction
+        return;
+      }
+
+      const balance = await this.fundingService.getBalance(fundingSource.id);
+      const transactionAmount = transactionData.amount;
+
+      // 3. Compare Balance with Transaction Amount
+      if (balance.balance < transactionAmount) {
+        this.logger.error('Insufficient funds for transaction', {
+          cardContext,
+          balance: balance.balance,
+          transactionAmount
+        });
+        // TODO: Respond to Marqeta to DECLINE the transaction
+        // For now, we will just log it and stop processing.
+        await this.handleDeclinedEvent(event); // Trigger our internal decline flow
+        return;
+      }
+
+      this.logger.info('Sufficient funds found. Proceeding with authorization.', {
+        cardContext,
+        balance: balance.balance,
+        transactionAmount
+      });
+
+      // 4. If sufficient, proceed with existing logic
+      // TODO: Implement logic to place a hold on the crypto funds before storing the record.
+
       await this.storeTransactionRecord({
         transactionId: transactionData.token,
         merchantName: transactionData.merchant?.name || 'Unknown Merchant',
@@ -178,6 +212,8 @@ export class MarqetaWebhookHandler {
         cardContext,
         marqetaTransactionToken: transactionData.token
       });
+
+      // TODO: Respond to Marqeta to APPROVE the transaction.
 
       // Send WebSocket notification
       await this.sendWebSocketNotification({
@@ -194,7 +230,7 @@ export class MarqetaWebhookHandler {
         timestamp: new Date().toISOString()
       });
 
-      this.logger.info('Authorization event processed', { 
+      this.logger.info('Authorization event processed successfully', { 
         transactionToken: transactionData.token,
         cardContext
       });

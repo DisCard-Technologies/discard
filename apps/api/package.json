@@ -61,6 +61,7 @@
     "@walletconnect/sign-client": "2.21.8",
     "@walletconnect/types": "2.21.8",
     "@walletconnect/utils": "2.21.8",
+    "axios": "^1.12.2",
     "bcryptjs": "^3.0.2",
     "bitcoinjs-lib": "^6.1.7",
     "cors": "^2.8.5",

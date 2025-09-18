@@ -39,6 +39,9 @@ export class BlockchainService {
         
         case 'bitcoin':
           return this.validateBitcoinAddress(address);
+
+        case 'solana':
+          return this.validateSolanaAddress(address);
         
         default:
           return {
@@ -86,6 +89,23 @@ export class BlockchainService {
       return {
         isValid: false,
         error: 'Invalid Bitcoin address format'
+      };
+    }
+
+    return { isValid: true };
+  }
+
+  /**
+   * Validate Solana address format
+   */
+  private validateSolanaAddress(address: string): WalletValidationResult {
+    // Basic Solana address validation (Base58 characters)
+    const solanaAddressRegex = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+    
+    if (!solanaAddressRegex.test(address)) {
+      return {
+        isValid: false,
+        error: 'Invalid Solana address format'
       };
     }
 
@@ -155,6 +175,9 @@ export class BlockchainService {
       
       case 'bitcoin':
         return ['BTC'];
+
+      case 'solana':
+        return ['SOL'];
       
       default:
         return [];
@@ -178,6 +201,9 @@ export class BlockchainService {
         
         case 'bitcoin':
           return await this.getBitcoinBalance(address);
+
+        case 'solana':
+          return await this.getSolanaBalance(address);
         
         default:
           return {
@@ -387,6 +413,59 @@ export class BlockchainService {
         error: {
           code: CRYPTO_ERROR_CODES.NETWORK_ERROR,
           message: 'Failed to fetch Bitcoin balance'
+        }
+      };
+    }
+  }
+
+  /**
+   * Fetch Solana balance
+   */
+  private async getSolanaBalance(address: string): Promise<BalanceResult> {
+    try {
+      const response = await fetch(`https://api.mainnet-beta.solana.com`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'getBalance',
+          params: [address],
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Solana API error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      if (data.error) {
+        throw new Error(data.error.message);
+      }
+
+      // Convert from lamports to SOL (9 decimals)
+      const balanceSol = (data.result.value / Math.pow(10, 9)).toString();
+
+      return {
+        success: true,
+        balances: [{
+          currency: 'SOL',
+          balance: balanceSol,
+          usdValue: 0, // Will be calculated by the controller
+          conversionRate: '0' // Will be set by the controller
+        }]
+      };
+
+    } catch (error) {
+      console.error('Solana balance fetch error:', error);
+      return {
+        success: false,
+        balances: [],
+        error: {
+          code: CRYPTO_ERROR_CODES.NETWORK_ERROR,
+          message: 'Failed to fetch Solana balance'
         }
       };
     }

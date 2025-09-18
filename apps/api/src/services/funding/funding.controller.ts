@@ -475,6 +475,55 @@ export class FundingController {
   }
 
   /**
+   * Add a new funding source
+   * POST /api/v1/funding/sources
+   */
+  async addFundingSource(req: AuthenticatedRequest, res: Response): Promise<void> {
+    try {
+      if (!req.user) {
+        res.status(401).json({ 
+          success: false,
+          error: 'Authentication required' 
+        });
+        return;
+      }
+
+      const { sourceType, sourceIdentifier } = req.body;
+
+      if (!sourceType || !sourceIdentifier) {
+        res.status(400).json({ 
+          success: false,
+          error: 'sourceType and sourceIdentifier are required' 
+        });
+        return;
+      }
+
+      // TODO: Add validation for sourceType and sourceIdentifier (e.g., check for valid address format)
+
+      const sanitizedRequest = {
+        sourceType: InputSanitizer.sanitizeString(sourceType),
+        sourceIdentifier: InputSanitizer.sanitizeString(sourceIdentifier),
+      };
+
+      const fundingSource = await fundingService.addFundingSource(req.user.id, sanitizedRequest);
+
+      res.status(201).json({
+        success: true,
+        message: 'Funding source added successfully',
+        data: fundingSource
+      });
+    } catch (error) {
+      console.error('Add funding source error:', error);
+      
+      const errorMessage = error instanceof Error ? error.message : 'Failed to add funding source';
+      res.status(500).json({
+        success: false,
+        error: errorMessage
+      });
+    }
+  }
+
+  /**
    * Health check for funding service
    * GET /api/v1/funding/health
    */

@@ -194,6 +194,38 @@ export class FundingService {
   }
 
   /**
+   * Add a new funding source for a user
+   */
+  async addFundingSource(userId: string, request: { sourceType: string; sourceIdentifier: string }): Promise<any> {
+    try {
+      const { data: newSource, error } = await supabase
+        .from('funding_sources')
+        .insert({
+          user_id: userId,
+          source_type: request.sourceType,
+          source_identifier: request.sourceIdentifier,
+          is_active: true, // Set as active by default
+        })
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Error adding funding source:', error);
+        // Handle potential unique constraint violation gracefully
+        if (error.code === '23505') { // unique_violation
+          throw new Error('This funding source has already been added.');
+        }
+        throw new Error('Failed to add funding source');
+      }
+
+      return newSource;
+    } catch (error) {
+      console.error('Add funding source error:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Get funding transaction history
    */
   async getFundingTransactions(

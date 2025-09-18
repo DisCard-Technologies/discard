@@ -5,6 +5,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
 import { View, Text, Platform, TouchableOpacity, Alert } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { ConnectionProvider, WalletProvider } from '@solana-mobile/wallet-adapter-mobile';
 
 // Import our screens and providers
 import { AuthProvider, useAuth, useAuthOperations } from './src/stores/auth';
@@ -16,6 +17,7 @@ import CardCreationScreen from './src/screens/cards/CardCreationScreen';
 import CardDetailsScreen from './src/screens/cards/CardDetailsScreen';
 import BulkCardDeletionScreen from './src/screens/cards/BulkCardDeletionScreen';
 import { CardWithDetails } from './src/stores/cards';
+import ConnectWallet from './src/components/ConnectWallet'; // Import the new component
 
 // Funding screens
 import FundingScreen from './src/screens/funding/FundingScreen';
@@ -252,6 +254,8 @@ function SettingsStackNavigator() {
         <View style={{ padding: 16 }}>
           <Text style={{ fontSize: 28, fontWeight: '700', color: '#1F2937', marginBottom: 24 }}>Settings</Text>
           
+          <ConnectWallet />
+
           <TouchableOpacity
             style={{
               backgroundColor: 'white',
@@ -266,6 +270,7 @@ function SettingsStackNavigator() {
               shadowOpacity: 0.05,
               shadowRadius: 4,
               elevation: 2,
+              marginTop: 20,
             }}
             onPress={() => navigation.navigate('SecurityDashboard')}
           >
@@ -469,7 +474,11 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <AuthProvider>
-        <AuthGuard />
+        <ConnectionProvider endpoint="https://api.mainnet-beta.solana.com">
+          <WalletProvider>
+            <AuthGuard />
+          </WalletProvider>
+        </ConnectionProvider>
         <StatusBar style="auto" />
       </AuthProvider>
     </SafeAreaProvider>
