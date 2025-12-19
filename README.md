@@ -1,255 +1,190 @@
-# DisCard 🪪
+# DisCard
 
-> Privacy-first crypto-backed disposable virtual cards
+> Intent-Centric Virtual Card Platform powered by Expo + Convex
 
-DisCard is a mobile application that enables users to create disposable virtual debit cards funded with cryptocurrency. Users can instantly generate cards for one-time purchases, maintaining complete privacy and preventing fraud by never exposing their main wallet or real payment methods.
+DisCard is a mobile application that enables users to create disposable virtual debit cards funded with cryptocurrency. Natural language commands power an AI-driven interface where users simply describe what they want to do, and the system handles the complexity.
 
-## 🚀 Features
+## Features
 
 ### Core Features
+- **Intent-Centric UI**: Natural language command bar ("Fund my card with ETH yield")
 - **Instant Card Creation**: Generate virtual debit cards in seconds
-- **Crypto Funding**: Support for USDT, USDC, BTC, ETH, and major stablecoins
-- **Privacy-First**: Cards auto-delete after use, no transaction history stored
-- **WalletConnect Integration**: Seamless connection with existing crypto wallets
-- **Smart Limits**: Set spending limits and merchant restrictions per card
+- **Crypto Funding**: Support for ETH, SOL, USDT, USDC, and major tokens
+- **DeFi Integration**: Fund cards directly from yield-generating positions
+- **Privacy-First**: Cards with cryptographic isolation, no cross-card correlation
+- **Self-Healing Cards**: Automatic reissue when breach detected
 
-### 🔒 Advanced Security & Fraud Prevention
-- **Real-time Fraud Detection**: <200ms transaction analysis with 5 anomaly detection algorithms
-- **Automated Card Freezing**: Instant security response with Marqeta integration
-- **Multi-Factor Authentication**: TOTP, biometric, and backup code support
-- **Risk-based Authentication**: Dynamic security for high-value transactions
-- **Comprehensive Security Dashboard**: Real-time security monitoring and controls
+### Security & Fraud Prevention
+- **Real-time Fraud Detection**: Sub-800ms transaction analysis with 5 anomaly algorithms
+- **Passkey Authentication**: WebAuthn with P-256 keys, no passwords
+- **Automated Card Freezing**: Instant security response via Marqeta
+- **Risk Scoring**: Velocity, amount, location, time, and merchant analysis
 
-### 📋 Compliance & Regulatory
-- **AML Monitoring**: Anti-Money Laundering with privacy preservation
-- **KYC Integration**: Know Your Customer with minimal data collection
-- **GDPR/CCPA Compliance**: Automated data protection and user rights management
-- **Suspicious Activity Reporting**: Automated SAR generation and filing
-- **7-Year Audit Trails**: Cryptographically secured compliance records
+### Compliance
+- **AML Monitoring**: Privacy-preserving anti-money laundering
+- **KYC Integration**: Minimal data collection with document verification
+- **Transaction Isolation**: Database-level separation preventing correlation
 
-### 🔐 Transaction Isolation & Privacy
-- **Database-level Isolation**: Complete transaction separation preventing correlation
-- **Cryptographic Context Separation**: Enhanced privacy protection
-- **Differential Privacy Analytics**: Aggregate reporting without individual exposure
-- **Privacy Rights Management**: Data access, deletion, and portability controls
-
-## 🏗️ Architecture
+## Architecture
 
 ```
-DisCard/
-├── frontend/          # React Native mobile app
-├── backend/           # Node.js API services
-├── contracts/         # Solidity smart contracts
-├── infrastructure/    # Docker, K8s configs
-├── docs/             # Architecture & API documentation
-└── scripts/          # Deployment and utility scripts
+discard/
+├── App.tsx                 # Main app entry
+├── convex/                 # Convex backend
+│   ├── schema.ts           # Database schema (11 tables)
+│   ├── auth/               # Passkey authentication
+│   ├── cards/              # Card management + Marqeta
+│   ├── funding/            # Stripe + crypto funding
+│   ├── intents/            # AI intent processing (Claude)
+│   ├── fraud/              # Fraud detection engine
+│   ├── http/               # Webhook handlers
+│   ├── crons/              # Scheduled jobs
+│   └── migrations/         # Data migration tools
+├── src/
+│   ├── components/         # React Native components
+│   │   └── command/        # Command bar UI
+│   ├── hooks/              # Convex subscription hooks
+│   ├── screens/            # App screens
+│   ├── stores/             # State management (Convex-based)
+│   ├── types/              # TypeScript definitions
+│   └── lib/                # Utilities (passkeys, etc.)
+├── assets/                 # Static assets
+└── docs/                   # Documentation
 ```
 
-## 🛠️ Tech Stack
+## Tech Stack
 
-- **Frontend**: React Native, WalletConnect, TypeScript
-- **Backend**: Node.js, Express, PostgreSQL, Redis
-- **Security**: bcrypt, TOTP, Circuit Breakers, Rate Limiting
-- **Privacy**: Differential Privacy, Cryptographic Isolation, Row-Level Security
-- **Compliance**: AML/KYC Integration, GDPR/CCPA Automation, Audit Trail System
-- **Blockchain**: Solidity, Hardhat, OpenZeppelin
-- **Card Issuing**: Marqeta API (or Stripe Issuing)
-- **Off-Ramp**: MoonPay/Circle for USD conversion
-- **Monitoring**: Health Checks, Prometheus/StatsD Metrics, Operational Dashboards
-- **Infrastructure**: Docker, GitHub Actions CI/CD
+- **Frontend**: React Native, Expo, TypeScript
+- **Backend**: Convex (real-time database + serverless functions)
+- **Authentication**: WebAuthn Passkeys (react-native-passkey)
+- **AI**: Claude API for intent parsing
+- **Card Issuing**: Marqeta JIT Funding
+- **Payments**: Stripe for fiat funding
+- **Blockchain**: Solana (via @solana/web3.js)
 
-## 🚦 Getting Started
+## Getting Started
 
 ### Prerequisites
 
 - Node.js 18+
-- Docker & Docker Compose
-- PostgreSQL 14+
-- Redis 7+
-- Ethereum wallet for testing
+- Expo CLI (`npm install -g expo-cli`)
+- Convex CLI (`npm install -g convex`)
+- iOS Simulator or Android Emulator
 
-### Local Development
-
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/[your-username]/discard.git
-   cd discard
-   ```
-
-2. **Install dependencies**
-   ```bash
-   # Install root dependencies
-   npm install
-
-   # Install frontend dependencies
-   cd frontend && npm install
-
-   # Install backend dependencies
-   cd ../backend && npm install
-   ```
-
-3. **Environment setup**
-   ```bash
-   # Copy environment variables
-   cp .env.example .env
-   
-   # Edit .env with your API keys
-   # Required: WalletConnect, Marqeta/Stripe, Off-ramp provider
-   ```
-
-4. **Start services**
-   ```bash
-   # Start Docker services (PostgreSQL, Redis)
-   docker-compose up -d
-
-   # Run database migrations
-   cd backend && npm run migrate
-
-   # Start backend (separate terminal)
-   npm run dev
-
-   # Start frontend (separate terminal)
-   cd frontend && npm start
-   ```
-
-5. **Deploy smart contracts (local)**
-   ```bash
-   cd contracts
-   npx hardhat node  # Start local blockchain
-   npx hardhat run scripts/deploy.js --network localhost
-   ```
-
-## 📋 Project Management
-
-We use **Linear** for task management. Key workflows:
-
-- Feature branches: `feature/[linear-ticket-id]-description`
-- Bug fixes: `fix/[linear-ticket-id]-description`
-- All PRs must reference Linear ticket
-
-## 🔒 Security Considerations
-
-### Data Protection
-- All card data is encrypted at rest with bcrypt
-- Automatic data purging after card expiration
-- No transaction history stored (privacy-first)
-- Database-level Row-Level Security (RLS) policies
-- Cryptographic audit trails with tamper detection
-
-### Fraud Prevention
-- Real-time fraud detection with 5 anomaly algorithms
-- Automated card freezing and security incident response
-- Risk-based authentication for suspicious activities
-- Velocity and pattern analysis for transaction monitoring
-
-### Privacy Protection
-- Transaction isolation preventing cross-card correlation
-- Differential privacy for analytics without individual exposure
-- Internal access controls preventing employee profiling
-- GDPR/CCPA compliance with automated data rights management
-
-### Infrastructure Security
-- Multi-factor authentication (MFA) with TOTP and biometrics
-- Rate limiting with sliding window algorithms
-- Circuit breaker patterns for external service resilience
-- Comprehensive input validation and sanitization
-- Smart contract audits required before mainnet
-- Webhook signature verification
-
-## 🧪 Testing
+### Installation
 
 ```bash
-# Run all tests
-npm test
+# Clone the repository
+git clone https://github.com/Braze76/discard.git
+cd discard
 
-# Backend tests
-cd backend && npm test
+# Install dependencies
+npm install
 
-# Frontend tests
-cd frontend && npm test
+# Start Convex development server
+npx convex dev
 
-# Smart contract tests
-cd contracts && npx hardhat test
+# In another terminal, start Expo
+npm start
 ```
 
-## 📚 API Documentation
+### Environment Setup
 
-API documentation is available at `http://localhost:3000/api-docs` when running locally.
-
-### Core Card Endpoints
-- `POST /api/funding/create-card` - Create new disposable card
-- `POST /api/funding/fund-card/:id` - Add funds to existing card
-- `DELETE /api/funding/delete-card/:id` - Delete card and refund
-- `GET /api/funding/card-status/:id` - Get card balance/status
-
-### Security & Fraud Prevention
-- `GET /api/v1/security/fraud/status/:cardId` - Check fraud detection status
-- `POST /api/v1/security/fraud/analyze` - Analyze transaction risk
-- `POST /api/v1/security/cards/:cardId/freeze` - Freeze/unfreeze card manually
-- `POST /api/v1/security/mfa/enroll` - Setup multi-factor authentication
-
-### Compliance & Privacy
-- `POST /api/v1/compliance/kyc` - Submit minimal KYC information
-- `GET /api/v1/compliance/privacy-controls` - User privacy settings
-- `DELETE /api/v1/compliance/user-data` - GDPR data deletion request
-- `GET /api/v1/compliance/data-export` - Data portability export
-
-### Privacy & Isolation
-- `GET /api/v1/privacy/isolation/status` - Verify transaction isolation
-- `GET /api/v1/analytics/private` - Privacy-preserving analytics
-- `POST /api/v1/privacy/context/switch` - Switch isolation context
-
-### Health & Monitoring
-- `GET /health/basic` - Basic health check
-- `GET /health/comprehensive` - Comprehensive system health
-- `GET /health/readiness` - Kubernetes readiness probe
-- `GET /health/liveness` - Kubernetes liveness probe
-
-## 🚀 Deployment
-
-Production deployments are handled via GitHub Actions on merge to `main`.
+Copy `.env.example` to `.env` and configure:
 
 ```bash
-# Manual deployment (staging)
-./scripts/deploy-staging.sh
+# Required
+EXPO_PUBLIC_CONVEX_URL=https://your-deployment.convex.cloud
 
-# Production requires approval
-./scripts/deploy-production.sh
+# Card Issuing (Marqeta)
+MARQETA_BASE_URL=https://sandbox-api.marqeta.com/v3
+MARQETA_APPLICATION_TOKEN=your_token
+MARQETA_ACCESS_TOKEN=your_token
+
+# Payments (Stripe)
+STRIPE_SECRET_KEY=sk_test_...
+STRIPE_WEBHOOK_SECRET=whsec_...
+
+# AI (Anthropic)
+ANTHROPIC_API_KEY=your_key
+
+# Blockchain
+SOLANA_RPC_URL=https://api.mainnet-beta.solana.com
 ```
 
-## 🤝 Contributing
+## Convex Backend
 
-1. Check Linear for available tasks
-2. Create feature branch from `develop`
-3. Make changes following our style guide
-4. Write tests for new functionality
-5. Submit PR with Linear ticket reference
-6. Await code review
+### Schema (11 Tables)
 
-### Code Style
+| Table | Purpose |
+|-------|---------|
+| `users` | Passkey credentials, KYC status |
+| `intents` | Command bar entries, AI parsing results |
+| `cards` | Virtual cards with Marqeta tokens |
+| `wallets` | Connected crypto wallets |
+| `authorizations` | Payment authorizations |
+| `authorizationHolds` | Reserved funds |
+| `fraud` | Fraud analysis results |
+| `defi` | DeFi positions for yield funding |
+| `compliance` | KYC documents |
+| `fundingTransactions` | Money movement records |
+| `cryptoRates` | Cached crypto prices |
 
-- ESLint configuration provided
-- Prettier for formatting
-- Commit convention: `type(scope): message [LINEAR-123]`
+### Cron Jobs
 
-## 📄 License
+| Job | Schedule | Purpose |
+|-----|----------|---------|
+| `expireHolds` | Every 5 min | Release expired authorization holds |
+| `syncDefi` | Every 15 min | Sync DeFi positions |
+| `syncRates` | Every 1 min | Update crypto prices |
+| `selfHealingCheck` | Hourly | Check breach databases |
+| `cleanupSessions` | Daily | Remove expired wallet sessions |
+| `cleanupMetrics` | Weekly | Purge old fraud records |
 
-[License Type] - see LICENSE file
+### HTTP Endpoints
 
-## 🔗 Resources
+- `POST /marqeta` - Marqeta authorization webhooks
+- `POST /stripe` - Stripe payment webhooks
 
-- [Linear Board](https://linear.app/discard)
-- [Figma Designs](https://figma.com/...)
-- [Architecture Docs](./docs/architecture.md)
-- [Smart Contract Docs](./contracts/README.md)
+## Scripts
 
-## 👥 Team
+```bash
+# Development
+npm start              # Start Expo
+npx convex dev         # Start Convex dev server
 
-- **[Your Name]** - Product & Architecture
-- **[Dev Partner]** - Engineering Lead
+# Testing
+npm test               # Run Jest tests
+npm run type-check     # TypeScript check
 
----
+# Deployment
+npx convex deploy      # Deploy Convex to production
+```
 
-**Status**: 🟢 Production Ready - Enterprise Security & Compliance Enabled
+## Intent Examples
 
-For questions, reach out in our internal Slack channel.
+The command bar understands natural language:
+
+- "Create a card with $50 limit"
+- "Fund my travel card with $100 from Aave"
+- "Transfer $25 from shopping to groceries card"
+- "Freeze my Amazon card"
+- "What's my total balance across all cards?"
+
+## Security
+
+- **Passkeys**: Hardware-bound keys via Secure Enclave / StrongBox
+- **No Passwords**: Biometric authentication only
+- **Encryption**: All sensitive data encrypted at rest
+- **Isolation**: Cryptographic card context prevents correlation
+- **Real-time Monitoring**: Sub-second fraud detection
+
+## License
+
+MIT
+
+## Links
+
+- [Convex Dashboard](https://dashboard.convex.dev)
+- [Expo Documentation](https://docs.expo.dev)
+- [Marqeta Docs](https://www.marqeta.com/docs)
