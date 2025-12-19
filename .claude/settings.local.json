@@ -23,7 +23,8 @@
       "Bash(npx expo:*)",
       "Bash(npm ls:*)",
       "Bash(npm uninstall:*)",
-      "Bash(npm:*)"
+      "Bash(npm:*)",
+      "Bash(cat:*)"
     ],
     "deny": []
   }

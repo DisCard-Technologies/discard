@@ -1,17 +1,14 @@
 {
-  "root": true,
-  "extends": ["eslint:recommended"],
-  "parserOptions": {
-    "ecmaVersion": 2020,
-    "sourceType": "module"
-  },
+  "extends": ["../../.eslintrc.json", "expo"],
   "env": {
-    "node": true,
-    "es2020": true
+    "react-native/react-native": true
   },
+  "parserOptions": {
+    "project": "./tsconfig.json"
+  },
+  "plugins": ["react-native"],
   "rules": {
-    "no-unused-vars": "error",
-    "no-console": "warn"
-  },
-  "ignorePatterns": ["dist/", "build/", "node_modules/", ".next/"]
+    "react/react-in-jsx-scope": "off",
+    "@typescript-eslint/no-unused-vars": ["error", { "argsIgnorePattern": "^_" }]
+  }
 }
