@@ -1,7 +1,7 @@
 {
-  "name": "@discard/mobile",
+  "name": "discard",
   "version": "1.0.0",
-  "description": "DisCard Mobile Application",
+  "description": "DisCard - Intent-Centric Virtual Card Platform",
   "main": "index.js",
   "scripts": {
     "start": "expo start",

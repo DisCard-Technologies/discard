@@ -1,136 +1,67 @@
-// Shared types for mobile DeFi integration
-export interface DeFiPosition {
-  positionId: string; // UUID v4
-  protocolName: 'Aave' | 'Compound' | 'Uniswap' | 'SushiSwap';
-  networkType: 'ETH' | 'POLYGON' | 'ARBITRUM';
-  positionType: 'lending' | 'liquidity_pool' | 'yield_farming';
-  underlyingAssets: AssetPosition[];
-  currentYield: string; // Decimal string for APY
-  totalValueLocked: string; // USD value in decimal string
-  availableForFunding: string; // USD value available for card funding
-  riskLevel: 'low' | 'medium' | 'high';
-  createdAt: Date;
-  lastUpdated: Date;
-}
+/**
+ * DeFi Type Definitions
+ */
 
-export interface AssetPosition {
-  asset: 'ETH' | 'USDC' | 'USDT' | 'DAI' | 'WBTC';
-  amount: string; // Decimal string for precision
-  usdValue: string; // Current USD value
-  weight: number; // Position weight percentage
+export interface DeFiPosition {
+  id: string;
+  positionId: string;
+  userId: string;
+  walletId: string;
+  protocolName: string;
+  protocolVersion?: string;
+  networkType: string;
+  positionType: 'lending' | 'borrowing' | 'liquidity_pool' | 'staking' | 'yield_farming';
+  depositedAssets: Array<{
+    symbol: string;
+    amount: number;
+    decimals: number;
+  }>;
+  totalValueUsd: number;
+  depositedValueUsd: number;
+  earnedValueUsd: number;
+  availableForFunding: number;
+  currentYieldApy: number;
+  estimatedDailyYield: number;
+  riskLevel: 'low' | 'medium' | 'high';
+  healthFactor?: number;
+  lastSyncedAt: string;
+  createdAt: string;
 }
 
 export interface YieldOptimization {
   optimizationId: string;
-  sourcePosition: DeFiPosition;
-  suggestedPosition: DeFiPosition;
-  yieldImprovement: string; // Percentage improvement
-  gasSavings: string; // USD cost
+  optimizationType: 'yield_comparison' | 'gas_optimization' | 'rebalance_suggestion';
+  sourceProtocol: string;
+  suggestedProtocol: string;
+  sourceNetwork: string;
+  suggestedNetwork: string;
+  yieldImprovement: number;
+  gasSavings: number;
   riskAssessment: 'lower' | 'same' | 'higher';
-  expiresAt: Date;
-}
-
-export interface MultiChainBridge {
-  bridgeId: string; // UUID v4
-  fromChain: 'ETH' | 'POLYGON' | 'ARBITRUM';
-  toChain: 'ETH' | 'POLYGON' | 'ARBITRUM';
-  fromAsset: string; // Asset on source chain
-  toAsset: string; // Asset on destination chain
-  bridgeProvider: 'Polygon_Bridge' | 'Arbitrum_Bridge' | 'Multichain';
-  estimatedTime: number; // Minutes
-  bridgeFee: string; // Fee in USD
-  gasEstimate: string; // Gas cost estimate
-  status: 'pending' | 'bridging' | 'completed' | 'failed';
-  transactionHash: string; // Source chain tx hash
-  bridgeTransactionHash?: string; // Bridge tx hash
-}
-
-export interface TransactionBatch {
-  batchId: string; // UUID v4
-  transactions: string[]; // Array of transaction IDs
-  totalGasOptimization: string; // Gas savings in USD
-  batchStatus: 'pending' | 'executing' | 'completed' | 'failed';
-  estimatedCompletion: Date;
-  createdAt: Date;
+  recommendationData: any;
+  status: 'pending' | 'accepted' | 'declined' | 'expired';
+  expiresAt: string;
+  createdAt: string;
 }
 
 export interface BridgeEstimate {
-  fromChain: 'ETH' | 'POLYGON' | 'ARBITRUM';
-  toChain: 'ETH' | 'POLYGON' | 'ARBITRUM';
+  bridgeId: string;
+  fromChain: string;
+  toChain: string;
   fromAsset: string;
   toAsset: string;
-  amount: string;
+  bridgeProvider: string;
+  amount: number;
   estimatedTime: number;
-  bridgeFee: string;
-  gasEstimate: string;
-  bestProvider: 'Polygon_Bridge' | 'Arbitrum_Bridge' | 'Multichain';
-  alternatives: BridgeOption[];
+  bridgeFee: number;
+  gasEstimate: number;
+  status: 'pending' | 'bridging' | 'completed' | 'failed';
 }
 
 export interface BridgeOption {
-  provider: 'Polygon_Bridge' | 'Arbitrum_Bridge' | 'Multichain';
+  provider: string;
   estimatedTime: number;
-  bridgeFee: string;
-  gasEstimate: string;
-  totalCost: string;
-  reliability: 'high' | 'medium' | 'low';
+  fee: number;
+  gasEstimate: number;
+  recommended: boolean;
 }
-
-export interface PortfolioImpactAnalysis {
-  currentAllocation: AssetAllocation[];
-  projectedAllocation: AssetAllocation[];
-  riskImpact: {
-    current: number;
-    projected: number;
-    change: number;
-  };
-  yieldImpact: {
-    current: string;
-    projected: string;
-    change: string;
-  };
-  rebalanceRecommendations: RebalanceRecommendation[];
-}
-
-export interface AssetAllocation {
-  asset: string;
-  protocol: string;
-  network: string;
-  allocation: number; // Percentage
-  value: string; // USD value
-}
-
-export interface RebalanceRecommendation {
-  action: 'increase' | 'decrease' | 'maintain';
-  asset: string;
-  protocol: string;
-  network: string;
-  currentAllocation: number;
-  recommendedAllocation: number;
-  reason: string;
-  priority: 'high' | 'medium' | 'low';
-}
-
-// WebSocket message types for real-time updates
-export interface DeFiPositionUpdate {
-  type: 'position_update';
-  positionId: string;
-  updates: Partial<DeFiPosition>;
-}
-
-export interface YieldOptimizationUpdate {
-  type: 'yield_optimization';
-  optimizations: YieldOptimization[];
-}
-
-export interface BridgeStatusUpdate {
-  type: 'bridge_status';
-  bridgeId: string;
-  status: MultiChainBridge['status'];
-  transactionHash?: string;
-}
-
-export type DeFiWebSocketMessage = 
-  | DeFiPositionUpdate 
-  | YieldOptimizationUpdate 
-  | BridgeStatusUpdate;
