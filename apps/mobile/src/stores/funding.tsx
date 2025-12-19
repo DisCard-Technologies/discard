@@ -1,6 +1,17 @@
 /**
  * Funding management state store for React Native mobile app
  * Provides funding operations with balance management and transaction tracking
+ *
+ * @deprecated This store uses the legacy Express/Supabase API.
+ * Use `fundingConvex.tsx` instead for the new Convex-based funding operations.
+ *
+ * Migration guide:
+ * - Replace `useFunding()` with `useConvexFunding()` from fundingConvex.tsx
+ * - Replace manual API calls with Convex mutations (`useFundingOperations()`)
+ * - Stripe payment intents are now created via Convex actions
+ * - Real-time balance updates are automatic with Convex subscriptions
+ *
+ * This file will be removed after the Convex migration is complete.
  */
 
 import React, { createContext, useContext, useReducer, ReactNode } from 'react';

@@ -1,6 +1,16 @@
 /**
  * Card management state store for React Native mobile app
  * Provides card CRUD operations with privacy isolation and secure state management
+ *
+ * @deprecated This store uses the legacy Express/Supabase API.
+ * Use `cardsConvex.tsx` instead for the new Convex-based card management.
+ *
+ * Migration guide:
+ * - Replace `useCards()` with `useConvexCards()` from cardsConvex.tsx
+ * - Replace manual API calls with Convex mutations (`useCardOperations()`)
+ * - Real-time updates are automatic with Convex subscriptions
+ *
+ * This file will be removed after the Convex migration is complete.
  */
 
 import React, { createContext, useContext, useReducer, ReactNode } from 'react';

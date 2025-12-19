@@ -1,3 +1,17 @@
+/**
+ * useWebSocketConnection Hook
+ * Generic WebSocket connection management hook
+ *
+ * @deprecated This hook is deprecated and will be removed in a future version.
+ * Convex provides built-in real-time subscriptions that replace the need for
+ * manual WebSocket management. Use Convex's `useQuery` hook for real-time data.
+ *
+ * For specific use cases, use these Convex-based alternatives:
+ * - Crypto rates: `useCryptoRates` from `./useCryptoRatesConvex`
+ * - Transactions: `useTransactionSubscription` from `./useTransactionSubscription`
+ * - Wallets/DeFi: `useCrypto` from `../stores/cryptoConvex`
+ */
+
 import { useState, useEffect, useRef, useCallback } from 'react';
 
 export interface WebSocketOptions {

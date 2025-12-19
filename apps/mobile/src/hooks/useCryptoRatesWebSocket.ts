@@ -1,6 +1,21 @@
 /**
  * useCryptoRatesWebSocket Hook
  * React hook for managing WebSocket cryptocurrency rate updates
+ *
+ * @deprecated This hook is deprecated and will be removed in a future version.
+ * Use `useCryptoRates` from `./useCryptoRatesConvex` instead, which provides
+ * real-time updates via Convex subscriptions without manual WebSocket management.
+ *
+ * Migration example:
+ * ```typescript
+ * // Before (deprecated):
+ * import { useCryptoRatesWebSocket } from './useCryptoRatesWebSocket';
+ * const { rates, webSocketState } = useCryptoRatesWebSocket({ symbols: ['BTC', 'ETH'] });
+ *
+ * // After (recommended):
+ * import { useCryptoRates } from './useCryptoRatesConvex';
+ * const { rates, connectionState, isLoading } = useCryptoRates({ symbols: ['BTC', 'ETH'] });
+ * ```
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';

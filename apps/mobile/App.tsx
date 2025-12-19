@@ -5,13 +5,29 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
 import { View, Text, Platform, TouchableOpacity, Alert } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { ConnectionProvider, WalletProvider } from '@solana-mobile/wallet-adapter-mobile';
+import { ConvexProvider, ConvexReactClient } from 'convex/react';
+// import { ConnectionProvider, WalletProvider } from '@solana-mobile/wallet-adapter-mobile';
+
+// Convex client configuration
+const convexUrl = process.env.EXPO_PUBLIC_CONVEX_URL || 'https://your-deployment.convex.cloud';
+const convex = new ConvexReactClient(convexUrl);
 
 // Import our screens and providers
-import { AuthProvider, useAuth, useAuthOperations } from './src/stores/auth';
-import { CardsProvider, useCardsState, useCardOperations } from './src/stores/cards';
-import { FundingProvider } from './src/stores/funding';
-import LoginScreen from './src/screens/auth/LoginScreen';
+// Use Convex-based auth (passkeys) instead of legacy JWT auth
+import { AuthProvider, useAuth, useAuthOperations, useCurrentUserId } from './src/stores/authConvex';
+// Use Convex-based cards store instead of legacy REST API
+import { CardsProvider, useCardsState, useCardOperations } from './src/stores/cardsConvex';
+// Use Convex-based funding store instead of legacy REST API
+import { FundingProvider } from './src/stores/fundingConvex';
+// Use Convex-based wallets store for crypto wallet management
+import { WalletsProvider } from './src/stores/walletsConvex';
+// Use Convex-based crypto store for real-time rates and transactions
+import { CryptoProvider } from './src/stores/cryptoConvex';
+// CommandBar for intent-centric UX
+import { CommandBar } from './src/components/command';
+import PasskeyAuthScreen from './src/screens/auth/PasskeyAuthScreen';
+// Legacy login screen (for fallback)
+// import LoginScreen from './src/screens/auth/LoginScreen';
 import CardDashboardScreen from './src/screens/cards/CardDashboardScreen';
 import CardCreationScreen from './src/screens/cards/CardCreationScreen';
 import CardDetailsScreen from './src/screens/cards/CardDetailsScreen';
@@ -29,8 +45,8 @@ import WalletManagementScreen from './src/screens/funding/WalletManagementScreen
 import TransactionHistoryScreen from './src/screens/transactions/TransactionHistoryScreen';
 
 // Security & Privacy screens
-import SecurityDashboard from './src/screens/security/SecurityDashboard';
-import TransactionIsolationScreen from './src/screens/privacy/TransactionIsolationScreen';
+import { SecurityDashboard } from './src/screens/security/SecurityDashboard';
+import { TransactionIsolationScreen } from './src/screens/privacy/TransactionIsolationScreen';
 
 // Navigation types
 export type RootTabParamList = {
@@ -135,8 +151,8 @@ function CardsStackNavigator() {
       >
         {(props) => (
           <TransactionHistoryScreen
-            cardId={props.route.params.cardId}
-            onBack={() => props.navigation.goBack()}
+            navigation={props.navigation}
+            route={props.route}
           />
         )}
       </CardsStack.Screen>
@@ -147,8 +163,8 @@ function CardsStackNavigator() {
       >
         {(props) => (
           <TransactionIsolationScreen
-            cardId={props.route.params.cardId}
-            onBack={() => props.navigation.goBack()}
+            navigation={props.navigation}
+            route={props.route}
           />
         )}
       </CardsStack.Screen>
@@ -447,23 +463,27 @@ function AuthGuard() {
 
   if (auth.isLoading) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F9FAFB' }}>
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#111827' }}>
         <Text style={{ fontSize: 64, marginBottom: 16 }}>💳</Text>
-        <Text style={{ fontSize: 18, fontWeight: '600', color: '#1F2937' }}>Loading...</Text>
+        <Text style={{ fontSize: 18, fontWeight: '600', color: '#FFFFFF' }}>Loading...</Text>
       </View>
     );
   }
 
   if (!auth.isAuthenticated) {
-    return <LoginScreen />;
+    return <PasskeyAuthScreen />;
   }
 
   return (
     <CardsProvider>
       <FundingProvider>
-        <NavigationContainer>
-          <MainTabs />
-        </NavigationContainer>
+        <WalletsProvider>
+          <CryptoProvider>
+            <NavigationContainer>
+              <MainTabs />
+            </NavigationContainer>
+          </CryptoProvider>
+        </WalletsProvider>
       </FundingProvider>
     </CardsProvider>
   );
@@ -472,15 +492,17 @@ function AuthGuard() {
 // Main App component
 export default function App() {
   return (
-    <SafeAreaProvider>
-      <AuthProvider>
-        <ConnectionProvider endpoint="https://api.mainnet-beta.solana.com">
-          <WalletProvider>
-            <AuthGuard />
-          </WalletProvider>
-        </ConnectionProvider>
-        <StatusBar style="auto" />
-      </AuthProvider>
-    </SafeAreaProvider>
+    <ConvexProvider client={convex}>
+      <SafeAreaProvider>
+        <AuthProvider>
+          {/* <ConnectionProvider endpoint="https://api.mainnet-beta.solana.com"> */}
+            {/* <WalletProvider> */}
+              <AuthGuard />
+            {/* </WalletProvider> */}
+          {/* </ConnectionProvider> */}
+          <StatusBar style="auto" />
+        </AuthProvider>
+      </SafeAreaProvider>
+    </ConvexProvider>
   );
 } 

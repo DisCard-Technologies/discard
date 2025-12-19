@@ -1,0 +1,9 @@
+{
+  "functions": "convex/",
+  "authConfig": [],
+  "node": {
+    "externalPackages": [
+      "@anthropic-ai/sdk"
+    ]
+  }
+}

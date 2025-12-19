@@ -1,6 +1,16 @@
 /**
  * Authentication state store for React Native mobile app
  * Manages user authentication, tokens, and session state
+ *
+ * @deprecated This store uses the legacy Express/Supabase API.
+ * Use `authConvex.tsx` instead for the new Convex + Passkey authentication.
+ *
+ * Migration guide:
+ * - Replace `useAuth()` with `useConvexAuth()` from authConvex.tsx
+ * - Replace `login()` with passkey-based `authenticate()` or `register()`
+ * - Remove manual token management (Convex handles this automatically)
+ *
+ * This file will be removed after the Convex migration is complete.
  */
 
 import React, { createContext, useContext, useReducer, ReactNode, useEffect } from 'react';

@@ -1,6 +1,17 @@
 /**
  * Crypto Wallet State Management Store
  * Manages state for cryptocurrency wallets, balances, and connections
+ *
+ * @deprecated This store uses the legacy Express/Supabase API with Zustand.
+ * Use `cryptoConvex.tsx` instead for the new Convex-based crypto operations.
+ *
+ * Migration guide:
+ * - Replace `useCryptoStore()` with `useCrypto()` from cryptoConvex.tsx
+ * - Real-time rate updates are automatic with Convex subscriptions
+ * - Wallet connections use Convex mutations instead of REST API
+ * - No more manual polling - Convex handles real-time sync
+ *
+ * This file will be removed after the Convex migration is complete.
  */
 
 import { create } from 'zustand';

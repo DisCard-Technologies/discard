@@ -1,3 +1,26 @@
+/**
+ * useTransactionWebSocket Hook
+ * React hook for managing WebSocket transaction updates
+ *
+ * @deprecated This hook is deprecated and will be removed in a future version.
+ * Use `useTransactionSubscription` from `./useTransactionSubscription` instead, which provides
+ * real-time updates via Convex subscriptions without manual WebSocket management.
+ *
+ * Migration example:
+ * ```typescript
+ * // Before (deprecated):
+ * import { useTransactionWebSocket } from './useTransactionWebSocket';
+ * const { lastUpdate, subscribeToCard } = useTransactionWebSocket();
+ *
+ * // After (recommended):
+ * import { useTransactionSubscription } from './useTransactionSubscription';
+ * const { transactions, alerts, onNewTransaction } = useTransactionSubscription({
+ *   cardIds: ['card-id'],
+ *   onNewTransaction: (tx) => console.log('New transaction:', tx),
+ * });
+ * ```
+ */
+
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { AppState } from 'react-native';
 
