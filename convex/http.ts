@@ -245,6 +245,197 @@ http.route({
   }),
 });
 
+// ============ MOONPAY WEBHOOKS ============
+
+/**
+ * MoonPay transaction webhook
+ * Handles crypto on-ramp transaction status updates
+ */
+http.route({
+  path: "/webhooks/moonpay",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const signature = request.headers.get("moonpay-signature");
+      const body = await request.text();
+
+      // Verify MoonPay webhook signature
+      if (!await verifyMoonPaySignature(body, signature)) {
+        return new Response(JSON.stringify({ error: "Invalid signature" }), {
+          status: 401,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
+      const event = JSON.parse(body);
+
+      // Route based on event type
+      switch (event.type) {
+        case "transaction_created":
+          await ctx.runMutation(internal.funding.moonpay.handleTransactionCreated, {
+            externalTransactionId: event.data.externalTransactionId,
+            moonpayTransactionId: event.data.id,
+            fiatCurrency: event.data.baseCurrencyCode,
+            fiatAmount: Math.round(event.data.baseCurrencyAmount * 100),
+            cryptoCurrency: event.data.currencyCode,
+            walletAddress: event.data.walletAddress,
+          });
+          break;
+
+        case "transaction_updated":
+          await ctx.runMutation(internal.funding.moonpay.handleTransactionUpdated, {
+            moonpayTransactionId: event.data.id,
+            status: event.data.status,
+            cryptoAmount: event.data.quoteCurrencyAmount,
+            moonpayFee: event.data.feeAmount,
+            networkFee: event.data.networkFeeAmount,
+            failureReason: event.data.failureReason,
+          });
+          break;
+
+        case "transaction_completed":
+          // Calculate USD value from crypto amount and rate
+          const usdAmount = event.data.usdRate
+            ? Math.round(event.data.quoteCurrencyAmount * event.data.usdRate * 100)
+            : Math.round(event.data.baseCurrencyAmount * 100); // Fallback to fiat amount
+
+          await ctx.runMutation(internal.funding.moonpay.handleTransactionCompleted, {
+            moonpayTransactionId: event.data.id,
+            cryptoAmount: event.data.quoteCurrencyAmount,
+            usdAmount,
+          });
+          break;
+
+        case "transaction_failed":
+          await ctx.runMutation(internal.funding.moonpay.handleTransactionFailed, {
+            moonpayTransactionId: event.data.id,
+            failureReason: event.data.failureReason || "Transaction failed",
+          });
+          break;
+
+        default:
+          console.log(`Unhandled MoonPay event type: ${event.type}`);
+      }
+
+      return new Response(JSON.stringify({ received: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+
+    } catch (error) {
+      console.error("MoonPay webhook error:", error);
+      return new Response(
+        JSON.stringify({ error: "Internal error" }),
+        { status: 500, headers: { "Content-Type": "application/json" } }
+      );
+    }
+  }),
+});
+
+// ============ IBAN WEBHOOKS ============
+
+/**
+ * Virtual IBAN deposit webhook
+ * Handles incoming bank transfer notifications from banking provider
+ * Supports: Stripe Treasury, Railsr, Wise
+ */
+http.route({
+  path: "/webhooks/iban",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const signature = request.headers.get("stripe-signature") ||
+                       request.headers.get("x-railsr-signature") ||
+                       request.headers.get("x-wise-signature");
+      const body = await request.text();
+
+      // Determine provider from headers or body
+      const provider = request.headers.get("x-provider") ||
+                      (request.headers.get("stripe-signature") ? "stripe_treasury" : "unknown");
+
+      // Verify signature based on provider
+      if (provider === "stripe_treasury") {
+        if (!await verifyIbanStripeSignature(body, signature)) {
+          return new Response(JSON.stringify({ error: "Invalid signature" }), {
+            status: 401,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      }
+
+      const event = JSON.parse(body);
+
+      // Handle Stripe Treasury events
+      if (provider === "stripe_treasury") {
+        switch (event.type) {
+          case "treasury.received_credit.created":
+          case "treasury.received_credit.succeeded":
+            const credit = event.data.object;
+
+            // Get currency conversion rate if needed
+            const currency = credit.currency.toUpperCase();
+            let usdAmount = credit.amount; // Already in cents
+
+            if (currency !== "USD") {
+              // Convert to USD using current rate
+              // In production, fetch actual rate from forex API
+              const rates: Record<string, number> = {
+                EUR: 1.08,
+                GBP: 1.26,
+              };
+              const rate = rates[currency] || 1;
+              usdAmount = Math.round(credit.amount * rate);
+            }
+
+            await ctx.runMutation(internal.funding.iban.processDeposit, {
+              externalAccountId: credit.financial_account,
+              amount: credit.amount,
+              currency,
+              usdAmount,
+              senderName: credit.initiating_payment_method_details?.billing_details?.name,
+              senderIban: credit.initiating_payment_method_details?.iban,
+              reference: credit.description,
+              providerTransactionId: credit.id,
+            });
+            break;
+
+          case "treasury.financial_account.status_updated":
+            // Handle account status changes
+            console.log("IBAN account status updated:", event.data.object.id);
+            break;
+
+          default:
+            console.log(`Unhandled Stripe Treasury event: ${event.type}`);
+        }
+      }
+
+      // Handle Railsr events (placeholder)
+      if (provider === "railsr") {
+        // TODO: Implement Railsr webhook handling
+        console.log("Railsr webhook received:", event.type);
+      }
+
+      // Handle Wise events (placeholder)
+      if (provider === "wise") {
+        // TODO: Implement Wise webhook handling
+        console.log("Wise webhook received:", event.type);
+      }
+
+      return new Response(JSON.stringify({ received: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+
+    } catch (error) {
+      console.error("IBAN webhook error:", error);
+      return new Response(
+        JSON.stringify({ error: "Internal error" }),
+        { status: 500, headers: { "Content-Type": "application/json" } }
+      );
+    }
+  }),
+});
+
 // ============ HEALTH CHECK ============
 
 http.route({
@@ -303,6 +494,88 @@ function verifyStripeSignature(body: string, signature: string | null): boolean 
   // Use the stripe-js library or implement manually
 
   return true; // Placeholder - implement proper verification
+}
+
+/**
+ * Verify MoonPay webhook signature
+ */
+async function verifyMoonPaySignature(body: string, signature: string | null): Promise<boolean> {
+  if (!signature) return false;
+
+  const secret = process.env.MOONPAY_WEBHOOK_SECRET;
+  if (!secret) {
+    console.warn("MOONPAY_WEBHOOK_SECRET not configured - skipping verification");
+    return true; // Allow in development
+  }
+
+  try {
+    const encoder = new TextEncoder();
+    const key = await crypto.subtle.importKey(
+      "raw",
+      encoder.encode(secret),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign"]
+    );
+
+    const expectedSignature = await crypto.subtle.sign(
+      "HMAC",
+      key,
+      encoder.encode(body)
+    );
+
+    const expectedBase64 = btoa(String.fromCharCode(...new Uint8Array(expectedSignature)));
+    return signature === expectedBase64;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Verify IBAN Stripe Treasury webhook signature
+ */
+async function verifyIbanStripeSignature(body: string, signature: string | null): Promise<boolean> {
+  if (!signature) return false;
+
+  const secret = process.env.STRIPE_WEBHOOK_SECRET;
+  if (!secret) {
+    console.warn("STRIPE_WEBHOOK_SECRET not configured - skipping verification");
+    return true; // Allow in development
+  }
+
+  // Stripe signature format: t=timestamp,v1=signature
+  const parts = signature.split(",");
+  const timestamp = parts.find((p) => p.startsWith("t="))?.slice(2);
+  const sig = parts.find((p) => p.startsWith("v1="))?.slice(3);
+
+  if (!timestamp || !sig) return false;
+
+  const payload = `${timestamp}.${body}`;
+
+  try {
+    const encoder = new TextEncoder();
+    const key = await crypto.subtle.importKey(
+      "raw",
+      encoder.encode(secret),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign"]
+    );
+
+    const expectedSignature = await crypto.subtle.sign(
+      "HMAC",
+      key,
+      encoder.encode(payload)
+    );
+
+    const expectedHex = Array.from(new Uint8Array(expectedSignature))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+
+    return sig === expectedHex;
+  } catch {
+    return false;
+  }
 }
 
 export default http;

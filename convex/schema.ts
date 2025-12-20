@@ -573,7 +573,9 @@ export default defineSchema({
       v.literal("card"),
       v.literal("wallet"),
       v.literal("defi"),
-      v.literal("external")
+      v.literal("external"),
+      v.literal("moonpay"),
+      v.literal("iban")
     )),
     sourceId: v.optional(v.string()),
     sourceCardId: v.optional(v.id("cards")),
@@ -635,4 +637,85 @@ export default defineSchema({
   })
     .index("by_symbol", ["symbol"])
     .index("by_updated", ["updatedAt"]),
+
+  // ============ VIRTUAL IBANS ============
+  // User-dedicated IBANs for direct bank deposits
+  virtualIbans: defineTable({
+    userId: v.id("users"),
+
+    // IBAN details (provided by banking partner)
+    iban: v.string(),                    // DE89370400440532013000
+    bic: v.string(),                     // COBADEFFXXX
+    accountHolderName: v.string(),       // "DisCard for [User]"
+    bankName: v.string(),                // Partner bank name
+
+    // Provider reference
+    provider: v.union(
+      v.literal("stripe_treasury"),
+      v.literal("railsr"),
+      v.literal("wise")
+    ),
+    externalAccountId: v.string(),       // Provider's account reference
+
+    // Status
+    status: v.union(
+      v.literal("pending"),
+      v.literal("active"),
+      v.literal("suspended"),
+      v.literal("closed")
+    ),
+
+    // Limits
+    dailyLimit: v.number(),              // Cents
+    monthlyLimit: v.number(),
+
+    // Timestamps
+    createdAt: v.number(),
+    activatedAt: v.optional(v.number()),
+  })
+    .index("by_user", ["userId"])
+    .index("by_iban", ["iban"])
+    .index("by_external_id", ["externalAccountId"]),
+
+  // ============ MOONPAY TRANSACTIONS ============
+  // Crypto on-ramp transactions via MoonPay
+  moonpayTransactions: defineTable({
+    userId: v.id("users"),
+    fundingTransactionId: v.optional(v.id("fundingTransactions")),
+
+    // MoonPay references
+    moonpayTransactionId: v.string(),    // MoonPay's transaction ID
+    moonpayWidgetId: v.optional(v.string()),
+
+    // Transaction details
+    fiatCurrency: v.string(),            // EUR, GBP, USD
+    fiatAmount: v.number(),              // Amount in cents
+    cryptoCurrency: v.string(),          // ETH, USDC, etc.
+    cryptoAmount: v.optional(v.number()), // Crypto received
+    usdAmount: v.optional(v.number()),   // Final USD amount (cents)
+
+    // Destination wallet for crypto
+    walletAddress: v.optional(v.string()),
+
+    // Fees
+    moonpayFee: v.optional(v.number()),
+    networkFee: v.optional(v.number()),
+
+    // Status
+    status: v.union(
+      v.literal("pending"),
+      v.literal("waitingPayment"),
+      v.literal("processing"),
+      v.literal("completed"),
+      v.literal("failed")
+    ),
+    failureReason: v.optional(v.string()),
+
+    // Timestamps
+    createdAt: v.number(),
+    completedAt: v.optional(v.number()),
+  })
+    .index("by_user", ["userId"])
+    .index("by_moonpay_id", ["moonpayTransactionId"])
+    .index("by_funding_transaction", ["fundingTransactionId"]),
 });
