@@ -83,6 +83,18 @@ export const getUserByPhoneHash = query({
   },
 });
 
+/**
+ * Get user by ID (for auth context)
+ */
+export const getUser = query({
+  args: {
+    userId: v.id("users"),
+  },
+  handler: async (ctx, args): Promise<Doc<"users"> | null> => {
+    return await ctx.db.get(args.userId);
+  },
+});
+
 // ============ MUTATIONS ============
 
 /**

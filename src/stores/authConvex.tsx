@@ -118,9 +118,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         setState((prev) => ({ ...prev, isLoading: true, error: null }));
 
+        // Check biometric support
+        const hasHardware = await LocalAuthentication.hasHardwareAsync();
+        const isEnrolled = await LocalAuthentication.isEnrolledAsync();
+        const useMockAuth = !hasHardware || !isEnrolled;
+
         // Get stored credential
         const stored = await getStoredCredential();
 
+        // DEV MODE: If no biometrics available (emulator), use stored mock credentials
+        if (useMockAuth) {
+          console.log("[DEV] Biometrics not available, using mock login");
+          
+          if (stored.userId) {
+            setState((prev) => ({
+              ...prev,
+              userId: stored.userId as Id<"users">,
+              user: {
+                id: stored.userId,
+                displayName: "Dev User",
+                solanaAddress: "DevWa11et123456789abcdefghij",
+                kycStatus: "pending",
+                createdAt: Date.now(),
+              },
+              isAuthenticated: true,
+              error: null,
+            }));
+            console.log("[DEV] Mock login successful:", stored.userId);
+            return true;
+          } else {
+            throw new Error("No stored credentials found. Please register first.");
+          }
+        }
+
+        // PRODUCTION: Use real passkey authentication
         // Generate challenge
         const challenge = await generateChallenge();
 
@@ -183,10 +214,43 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const hasHardware = await LocalAuthentication.hasHardwareAsync();
         const isEnrolled = await LocalAuthentication.isEnrolledAsync();
 
-        if (!hasHardware || !isEnrolled) {
-          throw new Error("Biometric authentication not available");
+        // DEV MODE: If no biometrics available (emulator), use mock auth
+        const useMockAuth = !hasHardware || !isEnrolled;
+
+        if (useMockAuth) {
+          console.log("[DEV] Biometrics not available, using mock authentication");
+          
+          // Generate mock credentials for development (fully offline)
+          const mockUserId = `mock_user_${Date.now()}`;
+          const mockCredentialId = `mock_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+          // Store mock credentials locally (skip Convex for dev)
+          await SecureStore.setItemAsync(USER_ID_KEY, mockUserId);
+          await storeCredential({
+            credentialId: mockCredentialId,
+            userId: mockUserId,
+            publicKey: "mock_public_key_for_development",
+          });
+
+          setState((prev) => ({
+            ...prev,
+            userId: mockUserId as Id<"users">,
+            user: {
+              id: mockUserId,
+              displayName: displayName,
+              solanaAddress: "DevWa11et123456789abcdefghij",
+              kycStatus: "pending",
+              createdAt: Date.now(),
+            },
+            isAuthenticated: true,
+            error: null,
+          }));
+
+          console.log("[DEV] Mock user created:", mockUserId);
+          return true;
         }
 
+        // PRODUCTION: Use real passkey authentication
         // Generate challenge and user ID
         const challenge = await generateChallenge();
         const webauthnUserId = await generateUserId();
