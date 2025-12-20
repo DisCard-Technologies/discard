@@ -14,6 +14,13 @@ DisCard is a mobile application that enables users to create disposable virtual 
 - **Privacy-First**: Cards with cryptographic isolation, no cross-card correlation
 - **Self-Healing Cards**: Automatic reissue when breach detected
 
+### Funding Options
+- **Card Payments**: Fund via Stripe with credit/debit cards
+- **MoonPay On-Ramp**: Buy crypto with card/bank and auto-convert to USD
+- **Virtual IBAN**: Direct bank deposits via dedicated IBAN (EU/UK transfers)
+- **Crypto Wallets**: Fund from connected ETH/SOL wallets
+- **DeFi Yield**: Withdraw from Aave, Compound, and other yield positions
+
 ### Security & Fraud Prevention
 - **Real-time Fraud Detection**: Sub-800ms transaction analysis with 5 anomaly algorithms
 - **Passkey Authentication**: WebAuthn with P-256 keys, no passwords
@@ -31,7 +38,7 @@ DisCard is a mobile application that enables users to create disposable virtual 
 discard/
 ├── App.tsx                 # Main app entry
 ├── convex/                 # Convex backend
-│   ├── schema.ts           # Database schema (11 tables)
+│   ├── schema.ts           # Database schema (13 tables)
 │   ├── auth/               # Passkey authentication
 │   ├── cards/              # Card management + Marqeta
 │   ├── funding/            # Stripe + crypto funding
@@ -60,6 +67,8 @@ discard/
 - **AI**: Claude API for intent parsing
 - **Card Issuing**: Marqeta JIT Funding
 - **Payments**: Stripe for fiat funding
+- **Crypto On-Ramp**: MoonPay for crypto purchases
+- **Banking**: Stripe Treasury / Railsr for virtual IBANs
 - **Blockchain**: Solana (via @solana/web3.js)
 
 ## Getting Started
@@ -105,6 +114,14 @@ MARQETA_ACCESS_TOKEN=your_token
 STRIPE_SECRET_KEY=sk_test_...
 STRIPE_WEBHOOK_SECRET=whsec_...
 
+# MoonPay (Crypto On-Ramp)
+MOONPAY_API_KEY=pk_test_...
+MOONPAY_SECRET_KEY=sk_test_...
+MOONPAY_WEBHOOK_SECRET=your_secret
+
+# Virtual IBAN
+IBAN_PROVIDER=stripe_treasury
+
 # AI (Anthropic)
 ANTHROPIC_API_KEY=your_key
 
@@ -114,7 +131,7 @@ SOLANA_RPC_URL=https://api.mainnet-beta.solana.com
 
 ## Convex Backend
 
-### Schema (11 Tables)
+### Schema (13 Tables)
 
 | Table | Purpose |
 |-------|---------|
@@ -129,6 +146,8 @@ SOLANA_RPC_URL=https://api.mainnet-beta.solana.com
 | `compliance` | KYC documents |
 | `fundingTransactions` | Money movement records |
 | `cryptoRates` | Cached crypto prices |
+| `virtualIbans` | User-dedicated IBANs for bank deposits |
+| `moonpayTransactions` | Crypto on-ramp transaction tracking |
 
 ### Cron Jobs
 
@@ -143,8 +162,14 @@ SOLANA_RPC_URL=https://api.mainnet-beta.solana.com
 
 ### HTTP Endpoints
 
-- `POST /marqeta` - Marqeta authorization webhooks
-- `POST /stripe` - Stripe payment webhooks
+| Endpoint | Purpose |
+|----------|---------|
+| `POST /webhooks/marqeta/authorization` | Marqeta JIT authorization (sub-800ms) |
+| `POST /webhooks/marqeta/transactions` | Marqeta transaction events |
+| `POST /webhooks/stripe` | Stripe payment webhooks |
+| `POST /webhooks/moonpay` | MoonPay crypto purchase events |
+| `POST /webhooks/iban` | Virtual IBAN deposit notifications |
+| `GET /health` | Health check endpoint |
 
 ## Scripts
 
@@ -170,6 +195,9 @@ The command bar understands natural language:
 - "Transfer $25 from shopping to groceries card"
 - "Freeze my Amazon card"
 - "What's my total balance across all cards?"
+- "Top up $200 with MoonPay"
+- "Show me my IBAN for bank transfers"
+- "Buy $100 of ETH and add to my account"
 
 ## Security
 
@@ -188,3 +216,5 @@ MIT
 - [Convex Dashboard](https://dashboard.convex.dev)
 - [Expo Documentation](https://docs.expo.dev)
 - [Marqeta Docs](https://www.marqeta.com/docs)
+- [MoonPay Docs](https://docs.moonpay.com)
+- [Stripe Treasury](https://stripe.com/docs/treasury)
