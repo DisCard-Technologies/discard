@@ -82,7 +82,13 @@ export default function TransferScreen() {
             </View>
 
             {/* Mode Tabs */}
-            <View className="flex-row gap-2 p-1 rounded-xl bg-surface/30">
+            <View style={{ 
+              flexDirection: 'row', 
+              gap: 8,
+              padding: 4,
+              borderRadius: 12,
+              backgroundColor: 'rgba(31, 41, 55, 0.3)',
+            }}>
               {[
                 { id: 'send' as const, icon: 'arrow-up', label: 'Send' },
                 { id: 'receive' as const, icon: 'arrow-down', label: 'Receive' },
@@ -95,19 +101,29 @@ export default function TransferScreen() {
                     setSelectedContact(null);
                     setAmount('');
                   }}
-                  className={`flex-1 flex-row items-center justify-center gap-2 py-2.5 px-4 rounded-lg ${
-                    mode === tab.id ? 'bg-primary' : ''
-                  }`}
+                  style={{
+                    flex: 1,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 8,
+                    paddingVertical: 10,
+                    paddingHorizontal: 16,
+                    borderRadius: 8,
+                    backgroundColor: mode === tab.id ? '#10B981' : 'transparent',
+                  }}
                   activeOpacity={0.7}
                 >
                   <Ionicons 
                     name={tab.icon as any} 
                     size={16} 
-                    color={mode === tab.id ? '#FFFFFF' : colors.mutedForeground} 
+                    color={mode === tab.id ? '#FFFFFF' : '#9CA3AF'} 
                   />
-                  <Text className={`text-sm font-medium ${
-                    mode === tab.id ? 'text-white' : 'text-muted-foreground'
-                  }`}>
+                  <Text style={{
+                    fontSize: 14,
+                    fontWeight: '500',
+                    color: mode === tab.id ? '#FFFFFF' : '#9CA3AF',
+                  }}>
                     {tab.label}
                   </Text>
                 </TouchableOpacity>
@@ -178,69 +194,170 @@ function SendMode({
   if (!selectedContact) {
     return (
       <View>
-        {/* Search */}
-        <GlassCard className="flex-row items-center mb-4">
-          <Ionicons name="search" size={16} color={colors.muted} />
-          <TextInput
-            placeholder="Search name, ENS, or address..."
-            placeholderTextColor={colors.muted}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            className="flex-1 text-sm text-foreground px-3 py-2"
-          />
-          <Ionicons name="sparkles" size={16} color={colors.primary} />
-        </GlassCard>
-
-        {/* Recent Contacts */}
-        <View className="mb-4">
-          <Text className="text-[10px] uppercase tracking-widest text-muted-foreground mb-3">
-            Recent
-          </Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} className="gap-3">
-            {filteredContacts.filter((c) => c.recent).map((contact) => (
-              <ContactAvatar
-                key={contact.id}
-                initials={contact.initials}
-                name={contact.name}
-                handle={contact.handle}
-                verified={contact.verified}
-                size="md"
-                showName
-                onPress={() => setSelectedContact(contact)}
-              />
-            ))}
-          </ScrollView>
-        </View>
-
-        {/* All Contacts */}
-        <View>
-          <Text className="text-[10px] uppercase tracking-widest text-muted-foreground mb-3">
-            All Contacts
-          </Text>
-          <View className="gap-1">
-            {filteredContacts.map((contact) => (
-              <TouchableOpacity
-                key={contact.id}
-                onPress={() => setSelectedContact(contact)}
-                className="flex-row items-center p-3 rounded-xl bg-surface/20 active:bg-surface/40"
-                activeOpacity={0.7}
-              >
-                <ContactAvatar
-                  initials={contact.initials}
-                  name={contact.name}
-                  handle={contact.handle}
-                  verified={contact.verified}
-                  size="sm"
-                />
-                <View className="flex-1 ml-3">
-                  <Text className="text-sm font-medium text-foreground">{contact.name}</Text>
-                  <Text className="text-xs text-muted-foreground">{contact.handle}</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={16} color={colors.muted} />
-              </TouchableOpacity>
-            ))}
+        {/* Main Card - Search, Recent & Contacts */}
+        <GlassCard className="mb-4">
+          {/* Search */}
+          <View 
+            style={{ 
+              flexDirection: 'row',
+              alignItems: 'center',
+              paddingHorizontal: 12,
+              paddingVertical: 12,
+              borderRadius: 12,
+              backgroundColor: 'rgba(31, 41, 55, 0.3)',
+            }}
+          >
+            <Ionicons name="search" size={16} color="#6B7280" />
+            <TextInput
+              placeholder="Search name, ENS, or address..."
+              placeholderTextColor="#6B7280"
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              style={{
+                flex: 1,
+                fontSize: 14,
+                color: '#FFFFFF',
+                paddingHorizontal: 12,
+              }}
+            />
+            <Ionicons name="sparkles" size={16} color="#10B981" />
           </View>
-        </View>
+
+          {/* Recent Contacts */}
+          <View style={{ marginTop: 16 }}>
+            <Text style={{ 
+              fontSize: 10, 
+              textTransform: 'uppercase', 
+              letterSpacing: 1.5, 
+              color: '#9CA3AF',
+              marginBottom: 12,
+            }}>
+              Recent
+            </Text>
+            <ScrollView 
+              horizontal 
+              showsHorizontalScrollIndicator={false}
+              style={{ marginHorizontal: -4 }}
+              contentContainerStyle={{ paddingHorizontal: 4, gap: 12 }}
+            >
+              {filteredContacts.filter((c: Contact) => c.recent).map((contact: Contact) => (
+                <TouchableOpacity
+                  key={contact.id}
+                  onPress={() => setSelectedContact(contact)}
+                  style={{ alignItems: 'center', minWidth: 64 }}
+                  activeOpacity={0.7}
+                >
+                  <View style={{ position: 'relative' }}>
+                    <View style={{
+                      width: 48,
+                      height: 48,
+                      borderRadius: 24,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                    }}>
+                      <Text style={{ fontSize: 14, fontWeight: '500', color: '#FFFFFF' }}>
+                        {contact.initials}
+                      </Text>
+                    </View>
+                    {contact.verified && (
+                      <View style={{
+                        position: 'absolute',
+                        bottom: -2,
+                        right: -2,
+                        width: 16,
+                        height: 16,
+                        borderRadius: 8,
+                        backgroundColor: '#10B981',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}>
+                        <Ionicons name="checkmark" size={10} color="#FFFFFF" />
+                      </View>
+                    )}
+                  </View>
+                  <Text style={{ 
+                    fontSize: 12, 
+                    color: '#9CA3AF', 
+                    marginTop: 8,
+                    maxWidth: 64,
+                  }} numberOfLines={1}>
+                    {contact.name.split(' ')[0]}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+
+          {/* All Contacts */}
+          <View style={{ marginTop: 16 }}>
+            <Text style={{ 
+              fontSize: 10, 
+              textTransform: 'uppercase', 
+              letterSpacing: 1.5, 
+              color: '#9CA3AF',
+              marginBottom: 8,
+            }}>
+              All Contacts
+            </Text>
+            <View>
+              {filteredContacts.map((contact: Contact) => (
+                <TouchableOpacity
+                  key={contact.id}
+                  onPress={() => setSelectedContact(contact)}
+                  style={{ 
+                    flexDirection: 'row', 
+                    alignItems: 'center', 
+                    paddingVertical: 12,
+                    paddingHorizontal: 12,
+                    marginHorizontal: -12,
+                    borderRadius: 12,
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <View style={{ position: 'relative' }}>
+                    <View style={{
+                      width: 40,
+                      height: 40,
+                      borderRadius: 20,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                    }}>
+                      <Text style={{ fontSize: 14, fontWeight: '500', color: '#FFFFFF' }}>
+                        {contact.initials}
+                      </Text>
+                    </View>
+                    {contact.verified && (
+                      <View style={{
+                        position: 'absolute',
+                        bottom: -2,
+                        right: -2,
+                        width: 14,
+                        height: 14,
+                        borderRadius: 7,
+                        backgroundColor: '#10B981',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}>
+                        <Ionicons name="checkmark" size={8} color="#FFFFFF" />
+                      </View>
+                    )}
+                  </View>
+                  <View style={{ flex: 1, marginLeft: 12 }}>
+                    <Text style={{ fontSize: 14, fontWeight: '500', color: '#FFFFFF' }}>
+                      {contact.name}
+                    </Text>
+                    <Text style={{ fontSize: 12, color: '#9CA3AF', marginTop: 1 }}>
+                      {contact.handle}
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={16} color="#6B7280" />
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        </GlassCard>
       </View>
     );
   }

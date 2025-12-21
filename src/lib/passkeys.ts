@@ -7,11 +7,36 @@
 import * as Crypto from "expo-crypto";
 import * as SecureStore from "expo-secure-store";
 import * as LocalAuthentication from "expo-local-authentication";
+import { Platform } from "react-native";
 
 // Storage keys
 const CREDENTIAL_ID_KEY = "discard_credential_id";
 const USER_ID_KEY = "discard_user_id";
 const PUBLIC_KEY_KEY = "discard_public_key";
+
+// Web-compatible storage wrapper
+const storage = {
+  async setItem(key: string, value: string): Promise<void> {
+    if (Platform.OS === 'web') {
+      localStorage.setItem(key, value);
+    } else {
+      await SecureStore.setItemAsync(key, value);
+    }
+  },
+  async getItem(key: string): Promise<string | null> {
+    if (Platform.OS === 'web') {
+      return localStorage.getItem(key);
+    }
+    return await SecureStore.getItemAsync(key);
+  },
+  async deleteItem(key: string): Promise<void> {
+    if (Platform.OS === 'web') {
+      localStorage.removeItem(key);
+    } else {
+      await SecureStore.deleteItemAsync(key);
+    }
+  },
+};
 
 // Relying Party configuration
 export const RP_CONFIG = {
@@ -77,10 +102,10 @@ export async function storeCredential(data: {
   userId: string;
   publicKey?: string;
 }): Promise<void> {
-  await SecureStore.setItemAsync(CREDENTIAL_ID_KEY, data.credentialId);
-  await SecureStore.setItemAsync(USER_ID_KEY, data.userId);
+  await storage.setItem(CREDENTIAL_ID_KEY, data.credentialId);
+  await storage.setItem(USER_ID_KEY, data.userId);
   if (data.publicKey) {
-    await SecureStore.setItemAsync(PUBLIC_KEY_KEY, data.publicKey);
+    await storage.setItem(PUBLIC_KEY_KEY, data.publicKey);
   }
 }
 
@@ -92,9 +117,9 @@ export async function getStoredCredential(): Promise<{
   userId: string | null;
   publicKey: string | null;
 }> {
-  const credentialId = await SecureStore.getItemAsync(CREDENTIAL_ID_KEY);
-  const userId = await SecureStore.getItemAsync(USER_ID_KEY);
-  const publicKey = await SecureStore.getItemAsync(PUBLIC_KEY_KEY);
+  const credentialId = await storage.getItem(CREDENTIAL_ID_KEY);
+  const userId = await storage.getItem(USER_ID_KEY);
+  const publicKey = await storage.getItem(PUBLIC_KEY_KEY);
 
   return { credentialId, userId, publicKey };
 }
@@ -103,7 +128,7 @@ export async function getStoredCredential(): Promise<{
  * Check if user has stored credentials
  */
 export async function hasStoredCredential(): Promise<boolean> {
-  const credentialId = await SecureStore.getItemAsync(CREDENTIAL_ID_KEY);
+  const credentialId = await storage.getItem(CREDENTIAL_ID_KEY);
   return credentialId !== null;
 }
 
@@ -111,9 +136,9 @@ export async function hasStoredCredential(): Promise<boolean> {
  * Clear stored credentials (for logout)
  */
 export async function clearStoredCredentials(): Promise<void> {
-  await SecureStore.deleteItemAsync(CREDENTIAL_ID_KEY);
-  await SecureStore.deleteItemAsync(USER_ID_KEY);
-  await SecureStore.deleteItemAsync(PUBLIC_KEY_KEY);
+  await storage.deleteItem(CREDENTIAL_ID_KEY);
+  await storage.deleteItem(USER_ID_KEY);
+  await storage.deleteItem(PUBLIC_KEY_KEY);
 }
 
 /**

@@ -20,7 +20,7 @@ import { FundingProvider } from './src/stores/fundingConvex';
 import { WalletsProvider } from './src/stores/walletsConvex';
 import { CryptoProvider } from './src/stores/cryptoConvex';
 
-// New Vision Screens
+// Screens
 import OnboardingFlowScreen from './src/screens/auth/OnboardingFlowScreen';
 import AmbientHomeScreen from './src/screens/home/AmbientHomeScreen';
 import HoldingsScreen from './src/screens/portfolio/HoldingsScreen';
@@ -48,17 +48,15 @@ function MainTabs() {
         headerShown: false,
         tabBarActiveTintColor: '#10B981',
         tabBarInactiveTintColor: '#6B7280',
+        tabBarShowLabel: false,
         tabBarStyle: {
           backgroundColor: '#0A0A0A',
-          borderTopWidth: 1,
-          borderTopColor: '#1F2937',
-          paddingTop: 8,
-          paddingBottom: 8,
-          height: 60,
-        },
-        tabBarLabelStyle: {
-          fontSize: 10,
-          fontWeight: '600',
+          borderTopWidth: 0,
+          paddingTop: 12,
+          paddingBottom: 12,
+          height: 64,
+          elevation: 0,
+          shadowOpacity: 0,
         },
       }}
     >
@@ -66,8 +64,8 @@ function MainTabs() {
         name="Home"
         component={AmbientHomeScreen}
         options={{
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="home" size={size} color={color} />
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons name={focused ? "home" : "home-outline"} size={22} color={color} />
           ),
         }}
       />
@@ -76,8 +74,8 @@ function MainTabs() {
         name="Holdings"
         component={HoldingsScreen}
         options={{
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="layers" size={size} color={color} />
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons name={focused ? "layers" : "layers-outline"} size={22} color={color} />
           ),
         }}
       />
@@ -86,8 +84,8 @@ function MainTabs() {
         name="Transfer"
         component={TransferScreen}
         options={{
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="swap-horizontal" size={size} color={color} />
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons name="swap-horizontal-outline" size={22} color={color} />
           ),
         }}
       />
@@ -96,8 +94,19 @@ function MainTabs() {
         name="Card"
         component={VisaCardScreen}
         options={{
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="card" size={size} color={color} />
+          tabBarIcon: ({ color, focused }) => (
+            <View style={{ 
+              backgroundColor: focused ? '#10B981' : 'transparent',
+              paddingHorizontal: 16,
+              paddingVertical: 8,
+              borderRadius: 20,
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 6,
+            }}>
+              <Ionicons name={focused ? "card" : "card-outline"} size={18} color={focused ? '#FFFFFF' : color} />
+              {focused && <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '600' }}>Card</Text>}
+            </View>
           ),
         }}
       />
@@ -106,8 +115,19 @@ function MainTabs() {
         name="Identity"
         component={IdentityPanelScreen}
         options={{
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="finger-print" size={size} color={color} />
+          tabBarIcon: ({ color, focused }) => (
+            <View style={{ 
+              backgroundColor: focused ? '#10B981' : 'transparent',
+              paddingHorizontal: focused ? 16 : 0,
+              paddingVertical: focused ? 8 : 0,
+              borderRadius: 20,
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 6,
+            }}>
+              <Ionicons name={focused ? "finger-print" : "finger-print-outline"} size={18} color={focused ? '#FFFFFF' : color} />
+              {focused && <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '600' }}>Identity</Text>}
+            </View>
           ),
         }}
       />

@@ -12,6 +12,7 @@ import React, {
   ReactNode,
   useCallback,
 } from "react";
+import { Platform } from "react-native";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
@@ -29,6 +30,30 @@ import {
 
 // Storage keys
 const USER_ID_KEY = "discard_user_id";
+
+// Web-compatible storage wrapper
+const storage = {
+  async setItem(key: string, value: string): Promise<void> {
+    if (Platform.OS === 'web') {
+      localStorage.setItem(key, value);
+    } else {
+      await SecureStore.setItemAsync(key, value);
+    }
+  },
+  async getItem(key: string): Promise<string | null> {
+    if (Platform.OS === 'web') {
+      return localStorage.getItem(key);
+    }
+    return await SecureStore.getItemAsync(key);
+  },
+  async deleteItem(key: string): Promise<void> {
+    if (Platform.OS === 'web') {
+      localStorage.removeItem(key);
+    } else {
+      await SecureStore.deleteItemAsync(key);
+    }
+  },
+};
 
 // User interface (compatible with legacy)
 export interface User {
@@ -177,7 +202,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         if (result.verified && result.userId) {
           // Store user ID
-          await SecureStore.setItemAsync(USER_ID_KEY, result.userId);
+          await storage.setItem(USER_ID_KEY, result.userId);
           await storeCredential({
             credentialId: authResult.id,
             userId: result.userId,
@@ -225,7 +250,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const mockCredentialId = `mock_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
           // Store mock credentials locally (skip Convex for dev)
-          await SecureStore.setItemAsync(USER_ID_KEY, mockUserId);
+          await storage.setItem(USER_ID_KEY, mockUserId);
           await storeCredential({
             credentialId: mockCredentialId,
             userId: mockUserId,
@@ -292,7 +317,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         });
 
         // Store credentials
-        await SecureStore.setItemAsync(USER_ID_KEY, result.userId);
+        await storage.setItem(USER_ID_KEY, result.userId);
         await storeCredential({
           credentialId: registrationResult.id,
           userId: result.userId,
@@ -328,7 +353,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.error("Logout error:", error);
       } finally {
         // Clear local storage
-        await SecureStore.deleteItemAsync(USER_ID_KEY);
+        await storage.deleteItem(USER_ID_KEY);
         // Optionally keep credentials for faster re-login
         // await clearStoredCredentials();
 
@@ -349,7 +374,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         setState((prev) => ({ ...prev, isLoading: true }));
 
-        const storedUserId = await SecureStore.getItemAsync(USER_ID_KEY);
+        const storedUserId = await storage.getItem(USER_ID_KEY);
 
         if (storedUserId) {
           setState((prev) => ({

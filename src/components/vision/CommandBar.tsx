@@ -1,8 +1,6 @@
 import React, { useState } from 'react';
-import { View, TextInput, TouchableOpacity, Keyboard, Alert } from 'react-native';
+import { View, TextInput, TouchableOpacity, Keyboard, Alert, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { GlassCard } from './GlassCard';
-import { colors } from '../../lib/utils';
 
 interface CommandBarProps {
   onSubmit?: (command: string) => void;
@@ -20,40 +18,79 @@ export function CommandBar({
       onSubmit?.(command.trim());
       setCommand('');
       Keyboard.dismiss();
-      // For now, show an alert since we don't have the intent system fully wired
       Alert.alert('Command Received', `Processing: "${command.trim()}"`);
     }
   };
 
   return (
-    <View className="px-4 pb-4">
-      <GlassCard className="flex-row items-center">
-        <TouchableOpacity className="p-2">
-          <Ionicons name="camera-outline" size={24} color={colors.muted} />
+    <View style={styles.container}>
+      <View style={styles.inputContainer}>
+        <TouchableOpacity style={styles.iconButton}>
+          <Ionicons name="camera-outline" size={22} color="#6B7280" />
         </TouchableOpacity>
 
         <TextInput
           value={command}
           onChangeText={setCommand}
           placeholder={placeholder}
-          placeholderTextColor={colors.muted}
-          className="flex-1 text-foreground px-2 text-base"
+          placeholderTextColor="#6B7280"
+          style={styles.textInput}
           onSubmitEditing={handleSubmit}
           returnKeyType="send"
         />
 
-        <TouchableOpacity className="p-2">
-          <Ionicons name="mic-outline" size={24} color={colors.muted} />
+        <TouchableOpacity style={styles.iconButton}>
+          <Ionicons name="mic-outline" size={22} color="#6B7280" />
         </TouchableOpacity>
 
-        <TouchableOpacity 
-          onPress={handleSubmit}
-          className="w-10 h-10 rounded-full bg-primary items-center justify-center ml-2"
-        >
-          <Ionicons name="arrow-up" size={20} color="#FFFFFF" />
+        <TouchableOpacity onPress={handleSubmit} style={styles.sendButton}>
+          <Ionicons name="send" size={18} color="#FFFFFF" />
         </TouchableOpacity>
-      </GlassCard>
+      </View>
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+    paddingTop: 8,
+  },
+  inputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(31, 41, 55, 0.6)',
+    borderRadius: 28,
+    borderWidth: 1,
+    borderColor: 'rgba(55, 65, 81, 0.5)',
+    paddingHorizontal: 4,
+    paddingVertical: 4,
+    // Glassmorphism shadow
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+    elevation: 4,
+  },
+  iconButton: {
+    padding: 10,
+  },
+  textInput: {
+    flex: 1,
+    color: '#FFFFFF',
+    fontSize: 15,
+    paddingHorizontal: 8,
+    paddingVertical: 12,
+  },
+  sendButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#10B981',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 4,
+  },
+});
 

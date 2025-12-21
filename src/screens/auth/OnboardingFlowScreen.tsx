@@ -112,20 +112,22 @@ export default function OnboardingFlowScreen() {
             )}
           </View>
 
-          {/* Step indicators */}
-          <View className="pb-12 flex-row justify-center gap-2">
-            {['splash', 'biometric', 'generating', 'complete'].map((s, i) => {
-              const isActive = ['splash', 'biometric', 'generating', 'complete'].indexOf(step) >= i;
-              return (
-                <View
-                  key={s}
-                  className={`h-1 rounded-full transition-all ${
-                    isActive ? 'w-8 bg-primary' : 'w-2 bg-muted'
-                  }`}
-                />
-              );
-            })}
-          </View>
+          {/* Step indicators - hidden on splash screen */}
+          {step !== 'splash' && (
+            <View className="pb-12 flex-row justify-center gap-2">
+              {['splash', 'biometric', 'generating', 'complete'].map((s, i) => {
+                const isActive = ['splash', 'biometric', 'generating', 'complete'].indexOf(step) >= i;
+                return (
+                  <View
+                    key={s}
+                    className={`h-1 rounded-full transition-all ${
+                      isActive ? 'w-8 bg-primary' : 'w-2 bg-muted'
+                    }`}
+                  />
+                );
+              })}
+            </View>
+          )}
         </View>
       </SafeAreaView>
     </AmbientBackground>
@@ -137,81 +139,156 @@ function SplashScreen({ onContinue, deviceType }: {
   deviceType: 'face' | 'fingerprint' 
 }) {
   return (
-    <View className="items-center max-w-sm mx-auto">
+    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24 }}>
       {/* Logo */}
-      <View className="mb-8">
-        <View className="relative">
-          <GlassCard className="w-20 h-20 rounded-2xl items-center justify-center">
-            <Ionicons name="shield-checkmark" size={40} color={colors.primary} />
-          </GlassCard>
-          <View className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-primary items-center justify-center">
+      <View style={{ marginBottom: 32 }}>
+        <View style={{ position: 'relative' }}>
+          {/* Glass card with shield */}
+          <View style={{
+            width: 80,
+            height: 80,
+            borderRadius: 16,
+            backgroundColor: 'rgba(16, 185, 129, 0.1)',
+            borderWidth: 1,
+            borderColor: 'rgba(16, 185, 129, 0.3)',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}>
+            <Ionicons name="shield-checkmark" size={40} color="#10B981" />
+          </View>
+          {/* Sparkle badge */}
+          <View style={{
+            position: 'absolute',
+            bottom: -4,
+            right: -4,
+            width: 24,
+            height: 24,
+            borderRadius: 12,
+            backgroundColor: '#10B981',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}>
             <Ionicons name="sparkles" size={12} color="#FFFFFF" />
           </View>
         </View>
       </View>
 
       {/* Title */}
-      <Text className="text-3xl font-semibold tracking-tight text-foreground mb-3 text-center">
+      <Text style={{
+        fontSize: 28,
+        fontWeight: '600',
+        color: '#FFFFFF',
+        marginBottom: 12,
+        textAlign: 'center',
+      }}>
         Welcome to DisCard
       </Text>
 
       {/* Subtitle */}
-      <Text className="text-lg text-muted-foreground mb-8 text-center leading-relaxed">
-        Secure your DisCard with your <Text className="text-primary font-medium">device identity</Text>.
+      <Text style={{
+        fontSize: 16,
+        color: '#9CA3AF',
+        marginBottom: 32,
+        textAlign: 'center',
+        lineHeight: 24,
+      }}>
+        Secure your DisCard with your{' '}
+        <Text style={{ color: '#10B981', fontWeight: '500' }}>device identity</Text>.
       </Text>
 
-      {/* Info cards */}
-      <View className="w-full gap-3 mb-10">
-        <GlassCard>
-          <View className="flex-row items-start">
-            <View className="w-10 h-10 rounded-lg bg-primary/10 items-center justify-center mr-4">
-              <Ionicons 
-                name={deviceType === 'face' ? 'scan' : 'finger-print'} 
-                size={20} 
-                color={colors.primary} 
-              />
-            </View>
-            <View className="flex-1">
-              <Text className="text-sm font-medium text-foreground mb-1">
-                Hardware-Bound Security
-              </Text>
-              <Text className="text-xs text-muted-foreground">
-                Your private key is generated inside the Secure Enclave and never leaves your device.
-              </Text>
-            </View>
+      {/* Feature Cards */}
+      <View style={{ width: '100%', maxWidth: 360, marginBottom: 40 }}>
+        {/* Hardware-Bound Security Card */}
+        <View style={{
+          backgroundColor: 'rgba(31, 41, 55, 0.6)',
+          borderRadius: 16,
+          borderWidth: 1,
+          borderColor: 'rgba(55, 65, 81, 0.5)',
+          padding: 16,
+          flexDirection: 'row',
+          alignItems: 'flex-start',
+          marginBottom: 12,
+        }}>
+          <View style={{
+            width: 40,
+            height: 40,
+            borderRadius: 10,
+            backgroundColor: 'rgba(16, 185, 129, 0.15)',
+            alignItems: 'center',
+            justifyContent: 'center',
+            marginRight: 16,
+          }}>
+            <Ionicons 
+              name={deviceType === 'face' ? 'scan' : 'finger-print'} 
+              size={20} 
+              color="#10B981" 
+            />
           </View>
-        </GlassCard>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 14, fontWeight: '600', color: '#FFFFFF', marginBottom: 4 }}>
+              Hardware-Bound Security
+            </Text>
+            <Text style={{ fontSize: 13, color: '#9CA3AF', lineHeight: 18 }}>
+              Your private key is generated inside the Secure Enclave and never leaves your device.
+            </Text>
+          </View>
+        </View>
 
-        <GlassCard>
-          <View className="flex-row items-start">
-            <View className="w-10 h-10 rounded-lg bg-accent/10 items-center justify-center mr-4">
-              <Ionicons name="shield-checkmark" size={20} color={colors.accent} />
-            </View>
-            <View className="flex-1">
-              <Text className="text-sm font-medium text-foreground mb-1">
-                No Seed Phrases
-              </Text>
-              <Text className="text-xs text-muted-foreground">
-                Passkey technology eliminates the need to write down or store recovery words.
-              </Text>
-            </View>
+        {/* No Seed Phrases Card */}
+        <View style={{
+          backgroundColor: 'rgba(31, 41, 55, 0.6)',
+          borderRadius: 16,
+          borderWidth: 1,
+          borderColor: 'rgba(55, 65, 81, 0.5)',
+          padding: 16,
+          flexDirection: 'row',
+          alignItems: 'flex-start',
+        }}>
+          <View style={{
+            width: 40,
+            height: 40,
+            borderRadius: 10,
+            backgroundColor: 'rgba(139, 92, 246, 0.15)',
+            alignItems: 'center',
+            justifyContent: 'center',
+            marginRight: 16,
+          }}>
+            <Ionicons name="shield-checkmark" size={20} color="#8B5CF6" />
           </View>
-        </GlassCard>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 14, fontWeight: '600', color: '#FFFFFF', marginBottom: 4 }}>
+              No Seed Phrases
+            </Text>
+            <Text style={{ fontSize: 13, color: '#9CA3AF', lineHeight: 18 }}>
+              Passkey technology eliminates the need to write down or store recovery words.
+            </Text>
+          </View>
+        </View>
       </View>
 
-      {/* CTA */}
+      {/* CTA Button */}
       <TouchableOpacity
         onPress={onContinue}
-        className="w-full h-14 rounded-2xl bg-primary items-center justify-center flex-row"
         activeOpacity={0.8}
+        style={{
+          width: '100%',
+          maxWidth: 360,
+          height: 56,
+          borderRadius: 16,
+          backgroundColor: '#10B981',
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
       >
-        <Text className="text-base font-medium text-white mr-2">
+        <Text style={{ fontSize: 16, fontWeight: '600', color: '#000000', marginRight: 8 }}>
           Continue with {deviceType === 'face' ? 'Face ID' : 'Fingerprint'}
         </Text>
-        <Ionicons name="chevron-forward" size={20} color="#FFFFFF" />
+        <Ionicons name="chevron-forward" size={20} color="#000000" />
       </TouchableOpacity>
 
-      <Text className="text-xs text-muted-foreground mt-4 text-center">
+      {/* Footer text */}
+      <Text style={{ fontSize: 12, color: '#6B7280', marginTop: 16, textAlign: 'center' }}>
         Uses WebAuthn / Passkey standard
       </Text>
     </View>

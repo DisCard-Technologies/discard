@@ -1,5 +1,5 @@
 import React from 'react';
-import { View } from 'react-native';
+import { View, ViewStyle } from 'react-native';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -7,32 +7,29 @@ import Animated, {
   withTiming,
   Easing,
 } from 'react-native-reanimated';
-import { cn } from '../../lib/utils';
 
 interface StatusDotProps {
   color?: 'primary' | 'accent' | 'destructive';
   size?: 'sm' | 'md' | 'lg';
   animated?: boolean;
-  className?: string;
 }
 
-const sizeClasses = {
-  sm: 'w-1.5 h-1.5',
-  md: 'w-2 h-2',
-  lg: 'w-3 h-3',
+const sizeStyles: Record<string, number> = {
+  sm: 6,
+  md: 8,
+  lg: 12,
 };
 
-const colorClasses = {
-  primary: 'bg-primary',
-  accent: 'bg-accent',
-  destructive: 'bg-destructive',
+const colorStyles: Record<string, string> = {
+  primary: '#10B981',
+  accent: '#10B981',
+  destructive: '#EF4444',
 };
 
 export function StatusDot({ 
   color = 'primary', 
   size = 'md', 
   animated = true,
-  className 
 }: StatusDotProps) {
   const opacity = useSharedValue(1);
 
@@ -50,14 +47,19 @@ export function StatusDot({
     opacity: animated ? opacity.value : 1,
   }));
 
+  const dotSize = sizeStyles[size];
+  const dotColor = colorStyles[color];
+
+  const dotStyle: ViewStyle = {
+    width: dotSize,
+    height: dotSize,
+    borderRadius: dotSize / 2,
+    backgroundColor: dotColor,
+  };
+
   return (
     <Animated.View style={animatedStyle}>
-      <View className={cn(
-        'rounded-full',
-        sizeClasses[size],
-        colorClasses[color],
-        className
-      )} />
+      <View style={dotStyle} />
     </Animated.View>
   );
 }
