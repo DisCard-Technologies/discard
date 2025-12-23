@@ -3,12 +3,8 @@ import { View, Text, ScrollView, TouchableOpacity, Alert, StyleSheet } from 'rea
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import {
-  AmbientBackground,
-  GlassCard,
-  StatusDot,
-  CommandBar,
-} from '../../components/vision';
+import { AmbientBackground, GlassCard, StatusDot } from '../../components/ui';
+import { CommandBar } from '../../components/command';
 import { useAuth, useAuthOperations } from '../../stores/authConvex';
 
 // Mock data

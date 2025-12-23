@@ -21,6 +21,7 @@ import {
   Platform,
   ActivityIndicator,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useIntents } from "../../hooks/useIntents";
 import { IntentPreview } from "./IntentPreview";
@@ -28,7 +29,7 @@ import { ExecutionStatus } from "./ExecutionStatus";
 import type { Id } from "../../../convex/_generated/dataModel";
 
 interface CommandBarProps {
-  userId: Id<"users">;
+  userId?: Id<"users">;
   onIntentComplete?: () => void;
   onHighValueIntent?: () => void;
   placeholder?: string;
@@ -47,6 +48,7 @@ export function CommandBar({
   onHighValueIntent,
   placeholder = "What would you like to do?",
 }: CommandBarProps) {
+  const insets = useSafeAreaInsets();
   const [inputText, setInputText] = useState("");
   const [isExpanded, setIsExpanded] = useState(false);
   const [isListening, setIsListening] = useState(false);
@@ -67,7 +69,7 @@ export function CommandBar({
     clarifyIntent,
     approveIntent,
     cancelIntent,
-  } = useIntents(userId);
+  } = useIntents(userId ?? null);
 
   // Animate listening bars
   useEffect(() => {
@@ -265,7 +267,7 @@ export function CommandBar({
   // Animated styles
   const containerHeight = expandAnimation.interpolate({
     inputRange: [0, 1],
-    outputRange: [64, 320],
+    outputRange: [56, 320],
   });
 
   const previewOpacity = expandAnimation.interpolate({
@@ -273,8 +275,11 @@ export function CommandBar({
     outputRange: [0, 0, 1],
   });
 
+  // Calculate NavBar height: ~56px base + safe area bottom
+  const navBarHeight = 56 + Math.max(insets.bottom, 16);
+
   return (
-    <View style={styles.wrapper}>
+    <View style={[styles.wrapper, { marginBottom: navBarHeight }]}>
       {/* Listening Indicator */}
       {isListening && (
         <View style={styles.listeningIndicator}>
@@ -311,7 +316,7 @@ export function CommandBar({
             },
           ]}
         >
-          <Ionicons name="sparkles" size={16} color="#8B5CF6" />
+          <Ionicons name="sparkles" size={16} color="#10B981" />
           <Text style={styles.responseText}>{lastResponse}</Text>
         </Animated.View>
       )}
@@ -433,43 +438,43 @@ export function CommandBar({
 const styles = StyleSheet.create({
   wrapper: {
     paddingHorizontal: 16,
-    paddingBottom: 8,
+    paddingTop: 8,
   },
   container: {
-    backgroundColor: "rgba(31, 41, 55, 0.95)",
-    borderRadius: 20,
+    backgroundColor: "rgba(31, 41, 55, 0.6)",
+    borderRadius: 28,
     borderWidth: 1,
-    borderColor: "rgba(139, 92, 246, 0.2)",
+    borderColor: "rgba(55, 65, 81, 0.5)",
     overflow: "hidden",
     ...Platform.select({
       ios: {
-        shadowColor: "#8B5CF6",
-        shadowOffset: { width: 0, height: 0 },
-        shadowOpacity: 0.15,
-        shadowRadius: 16,
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.2,
+        shadowRadius: 12,
       },
       android: {
-        elevation: 8,
+        elevation: 4,
       },
     }),
   },
   inputRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 6,
-    paddingVertical: 6,
-    height: 64,
+    paddingHorizontal: 4,
+    paddingVertical: 4,
+    height: 56,
     gap: 4,
   },
   iconButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: "center",
     justifyContent: "center",
   },
   iconButtonActive: {
-    backgroundColor: "#8B5CF6",
+    backgroundColor: "#10B981",
   },
   inputContainer: {
     flex: 1,
@@ -488,12 +493,13 @@ const styles = StyleSheet.create({
     padding: 6,
   },
   sendButton: {
-    backgroundColor: "#8B5CF6",
-    borderRadius: 14,
-    width: 44,
-    height: 44,
+    backgroundColor: "#10B981",
+    borderRadius: 20,
+    width: 40,
+    height: 40,
     alignItems: "center",
     justifyContent: "center",
+    marginLeft: 4,
   },
   sendButtonDisabled: {
     opacity: 0.5,
@@ -538,7 +544,7 @@ const styles = StyleSheet.create({
     padding: 14,
     marginBottom: 8,
     borderWidth: 1,
-    borderColor: "rgba(139, 92, 246, 0.2)",
+    borderColor: "rgba(16, 185, 129, 0.2)",
     gap: 10,
   },
   responseText: {
@@ -562,11 +568,11 @@ const styles = StyleSheet.create({
   },
   listeningBar: {
     width: 4,
-    backgroundColor: "#8B5CF6",
+    backgroundColor: "#10B981",
     borderRadius: 2,
   },
   listeningText: {
-    color: "#8B5CF6",
+    color: "#10B981",
     fontSize: 12,
     fontWeight: "500",
   },

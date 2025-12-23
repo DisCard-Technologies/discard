@@ -51,3 +51,4 @@ export function AmbientBackground({ children }: AmbientBackgroundProps) {
     </View>
   );
 }
+

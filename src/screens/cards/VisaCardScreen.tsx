@@ -3,7 +3,7 @@ import { View, Text, ScrollView, TouchableOpacity, RefreshControl, StyleSheet } 
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { CommandBar } from '../../components/vision';
+import { CommandBar } from '../../components/command';
 import { useCards, useCardOperations } from '../../stores/cardsConvex';
 import { formatCurrency, colors } from '../../lib/utils';
 

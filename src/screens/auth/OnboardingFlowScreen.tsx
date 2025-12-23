@@ -13,7 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Circle } from 'react-native-svg';
 import { useAuthOperations, useAuth } from '../../stores/authConvex';
 import { isPasskeySupported, formatBiometricType } from '../../lib/passkeys';
-import { AmbientBackground, GlassCard, StatusDot } from '../../components/vision';
+import { AmbientBackground, GlassCard, StatusDot } from '../../components/ui';
 import { colors } from '../../lib/utils';
 import * as LocalAuthentication from 'expo-local-authentication';
 

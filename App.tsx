@@ -3,11 +3,11 @@ import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { View, Text } from 'react-native';
-import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ConvexProvider, ConvexReactClient } from 'convex/react';
-import { Ionicons } from '@expo/vector-icons';
 // Import NativeWind CSS
 import './global.css';
+import { NavBar } from './src/components/navigation/NavBar';
 
 // Convex client configuration
 const convexUrl = process.env.EXPO_PUBLIC_CONVEX_URL || 'https://your-deployment.convex.cloud';
@@ -42,81 +42,18 @@ const Tab = createBottomTabNavigator<RootTabParamList>();
 
 // Main tab navigator with 5 tabs
 function MainTabs() {
-  const insets = useSafeAreaInsets();
-  
   return (
     <Tab.Navigator
+      tabBar={(props) => <NavBar {...props} />}
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: '#10B981',
-        tabBarInactiveTintColor: '#6B7280',
-        tabBarShowLabel: true,
-        tabBarLabelStyle: {
-          fontSize: 10,
-          fontWeight: '500',
-          marginTop: 2,
-        },
-        tabBarStyle: {
-          backgroundColor: '#0A0F14',
-          borderTopWidth: 1,
-          borderTopColor: 'rgba(42, 53, 68, 0.5)',
-          paddingTop: 8,
-          paddingBottom: Math.max(insets.bottom, 8),
-          height: 60 + insets.bottom,
-          elevation: 0,
-          shadowOpacity: 0,
-        },
       }}
     >
-      <Tab.Screen
-        name="Home"
-        component={AmbientHomeScreen}
-        options={{
-          tabBarIcon: ({ color, focused }) => (
-            <Ionicons name={focused ? "home" : "home-outline"} size={22} color={color} />
-          ),
-        }}
-      />
-      
-      <Tab.Screen
-        name="Holdings"
-        component={HoldingsScreen}
-        options={{
-          tabBarIcon: ({ color, focused }) => (
-            <Ionicons name={focused ? "layers" : "layers-outline"} size={22} color={color} />
-          ),
-        }}
-      />
-      
-      <Tab.Screen
-        name="Transfer"
-        component={TransferScreen}
-        options={{
-          tabBarIcon: ({ color, focused }) => (
-            <Ionicons name="swap-horizontal-outline" size={22} color={color} />
-          ),
-        }}
-      />
-      
-      <Tab.Screen
-        name="Card"
-        component={VisaCardScreen}
-        options={{
-          tabBarIcon: ({ color, focused }) => (
-            <Ionicons name={focused ? "card" : "card-outline"} size={22} color={color} />
-          ),
-        }}
-      />
-      
-      <Tab.Screen
-        name="Identity"
-        component={IdentityPanelScreen}
-        options={{
-          tabBarIcon: ({ color, focused }) => (
-            <Ionicons name={focused ? "finger-print" : "finger-print-outline"} size={22} color={color} />
-          ),
-        }}
-      />
+      <Tab.Screen name="Home" component={AmbientHomeScreen} />
+      <Tab.Screen name="Holdings" component={HoldingsScreen} />
+      <Tab.Screen name="Transfer" component={TransferScreen} />
+      <Tab.Screen name="Card" component={VisaCardScreen} />
+      <Tab.Screen name="Identity" component={IdentityPanelScreen} />
     </Tab.Navigator>
   );
 }

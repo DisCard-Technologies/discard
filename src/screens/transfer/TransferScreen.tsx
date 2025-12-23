@@ -2,12 +2,8 @@ import React, { useState } from 'react';
 import { View, Text, ScrollView, TextInput, TouchableOpacity, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import {
-  AmbientBackground,
-  GlassCard,
-  ContactAvatar,
-  CommandBar,
-} from '../../components/vision';
+import { AmbientBackground, GlassCard, ContactAvatar } from '../../components/ui';
+import { CommandBar } from '../../components/command';
 import { colors, truncateAddress } from '../../lib/utils';
 import { useWallets } from '../../stores/walletsConvex';
 import { useCrypto} from '../../stores/cryptoConvex';
