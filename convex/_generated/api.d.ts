@@ -29,6 +29,11 @@ import type * as http_webhooks from "../http/webhooks.js";
 import type * as intents_executor from "../intents/executor.js";
 import type * as intents_intents from "../intents/intents.js";
 import type * as intents_solver from "../intents/solver.js";
+import type * as wallets_defi from "../wallets/defi.js";
+import type * as wallets_network from "../wallets/network.js";
+import type * as wallets_quotes from "../wallets/quotes.js";
+import type * as wallets_rates from "../wallets/rates.js";
+import type * as wallets_wallets from "../wallets/wallets.js";
 
 import type {
   ApiFromModules,
@@ -58,6 +63,11 @@ declare const fullApi: ApiFromModules<{
   "intents/executor": typeof intents_executor;
   "intents/intents": typeof intents_intents;
   "intents/solver": typeof intents_solver;
+  "wallets/defi": typeof wallets_defi;
+  "wallets/network": typeof wallets_network;
+  "wallets/quotes": typeof wallets_quotes;
+  "wallets/rates": typeof wallets_rates;
+  "wallets/wallets": typeof wallets_wallets;
 }>;
 
 /**

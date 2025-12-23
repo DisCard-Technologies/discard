@@ -8,6 +8,7 @@ import { useCallback } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
+import { isMockUserId } from "../stores/authConvex";
 
 type WalletType = "metamask" | "walletconnect" | "phantom" | "solflare" | "coinbase";
 type NetworkType = "ethereum" | "solana" | "polygon" | "arbitrum" | "base";
@@ -51,10 +52,13 @@ interface UseWalletsReturn {
 }
 
 export function useWallets(userId: Id<"users"> | null): UseWalletsReturn {
+  // Skip query for mock users (dev mode) or null userId
+  const validUserId = userId && !isMockUserId(userId) ? userId : null;
+  
   // Real-time subscription to user's wallets
   const wallets = useQuery(
     api.wallets.wallets.list,
-    userId ? { userId } : "skip"
+    validUserId ? { userId: validUserId } : "skip"
   );
 
   // Mutations
@@ -122,10 +126,13 @@ export function useWallets(userId: Id<"users"> | null): UseWalletsReturn {
  * Hook for DeFi position management
  */
 export function useDefiPositions(userId: Id<"users"> | null) {
+  // Skip query for mock users (dev mode) or null userId
+  const validUserId = userId && !isMockUserId(userId) ? userId : null;
+  
   // Real-time subscription to user's DeFi positions
   const positions = useQuery(
     api.wallets.defi.listPositions,
-    userId ? { userId } : "skip"
+    validUserId ? { userId: validUserId } : "skip"
   );
 
   // Calculate totals
@@ -161,14 +168,17 @@ export function useWallet(walletId: Id<"wallets"> | null) {
  * Hook for getting available funding sources (wallets + DeFi positions)
  */
 export function useFundingSources(userId: Id<"users"> | null) {
+  // Skip query for mock users (dev mode) or null userId
+  const validUserId = userId && !isMockUserId(userId) ? userId : null;
+  
   const wallets = useQuery(
     api.wallets.wallets.list,
-    userId ? { userId } : "skip"
+    validUserId ? { userId: validUserId } : "skip"
   );
 
   const defiPositions = useQuery(
     api.wallets.defi.listPositions,
-    userId ? { userId } : "skip"
+    validUserId ? { userId: validUserId } : "skip"
   );
 
   // Combine into funding sources

@@ -40,9 +40,9 @@ interface UseCardsReturn {
 
 export function useCards(userId: Id<"users"> | null): UseCardsReturn {
   // Real-time subscription to user's cards
-  const cards = useQuery(
+  const cardsData = useQuery(
     api.cards.cards.list,
-    userId ? { userId } : "skip"
+    userId ? {} : "skip"
   );
 
   // Mutations
@@ -52,7 +52,8 @@ export function useCards(userId: Id<"users"> | null): UseCardsReturn {
   const updateStatusMutation = useMutation(api.cards.cards.updateStatus);
   const deleteCardMutation = useMutation(api.cards.cards.deleteCard);
 
-  const isLoading = cards === undefined;
+  const cards = cardsData?.cards;
+  const isLoading = cardsData === undefined;
 
   /**
    * Get a specific card by ID

@@ -8,6 +8,7 @@ import { useCallback } from "react";
 import { useQuery, useMutation, useAction } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
+import { isMockUserId } from "../stores/authConvex";
 
 type FundingSourceType = "stripe" | "ach" | "crypto";
 type TransactionStatus = "pending" | "processing" | "completed" | "failed" | "refunded";
@@ -40,14 +41,14 @@ interface UseFundingReturn {
 export function useFunding(userId: Id<"users"> | null): UseFundingReturn {
   // Real-time subscription to account balance
   const balanceData = useQuery(
-    api.funding.funding.getAccountBalance,
-    userId ? { userId } : "skip"
+    api.funding.funding.accountBalance,
+    userId ? {} : "skip"
   );
 
   // Real-time subscription to funding transactions
   const transactions = useQuery(
-    api.funding.funding.listTransactions,
-    userId ? { userId } : "skip"
+    api.funding.funding.transactions,
+    userId ? {} : "skip"
   );
 
   // Mutations
@@ -104,7 +105,6 @@ export function useFunding(userId: Id<"users"> | null): UseFundingReturn {
       }
 
       await allocateToCardMutation({
-        userId,
         cardId,
         amount,
       });
@@ -126,7 +126,6 @@ export function useFunding(userId: Id<"users"> | null): UseFundingReturn {
       }
 
       await transferBetweenCardsMutation({
-        userId,
         sourceCardId,
         targetCardId,
         amount,
@@ -148,7 +147,7 @@ export function useFunding(userId: Id<"users"> | null): UseFundingReturn {
 
   return {
     accountBalance: balanceData?.availableBalance,
-    transactions: transactions as FundingTransaction[] | undefined,
+    transactions: transactions?.transactions as FundingTransaction[] | undefined,
     isLoading,
     fundAccount,
     allocateToCard,
@@ -180,9 +179,12 @@ export function useStripePayment() {
  * Hook for crypto funding (from connected wallets)
  */
 export function useCryptoFunding(userId: Id<"users"> | null) {
+  // Skip query for mock users (dev mode) or null userId
+  const validUserId = userId && !isMockUserId(userId) ? userId : null;
+  
   const wallets = useQuery(
     api.wallets.wallets.list,
-    userId ? { userId } : "skip"
+    validUserId ? { userId: validUserId } : "skip"
   );
 
   const fundFromWalletMutation = useMutation(api.funding.funding.fundFromWallet);

@@ -16,7 +16,7 @@ import React, {
 import { useQuery, useMutation } from 'convex/react';
 import { api } from '../../convex/_generated/api';
 import type { Id } from '../../convex/_generated/dataModel';
-import { useCurrentUserId } from './authConvex';
+import { useCurrentUserId, useConvexUserId, useIsMockAuth } from './authConvex';
 
 // Type definitions
 export type WalletType = 'metamask' | 'walletconnect' | 'phantom' | 'solflare' | 'coinbase';
@@ -165,21 +165,23 @@ const CryptoContext = createContext<{
 // Provider component
 export function CryptoProvider({ children }: { children: ReactNode }) {
   const userId = useCurrentUserId();
+  const convexUserId = useConvexUserId(); // Returns null for mock users
+  const isMockAuth = useIsMockAuth();
   const [error, setError] = useState<string | null>(null);
   const [walletErrors, setWalletErrors] = useState<Record<string, string>>({});
   const [isConnecting, setIsConnecting] = useState(false);
   const [activeQuote, setActiveQuote] = useState<ConversionQuote | null>(null);
 
-  // Real-time subscription to wallets
+  // Real-time subscription to wallets (skip for mock users)
   const walletsData = useQuery(
     api.wallets.wallets.list,
-    userId ? { userId } : 'skip'
+    convexUserId ? { userId: convexUserId } : 'skip'
   );
 
-  // Real-time subscription to DeFi positions
+  // Real-time subscription to DeFi positions (skip for mock users)
   const defiData = useQuery(
     api.wallets.defi.listPositions,
-    userId ? { userId } : 'skip'
+    convexUserId ? { userId: convexUserId } : 'skip'
   );
 
   // Real-time subscription to crypto rates
@@ -246,14 +248,18 @@ export function CryptoProvider({ children }: { children: ReactNode }) {
 
   // Transform network congestion data
   const networkCongestion: Record<NetworkType, NetworkCongestion> = useMemo(() => {
-    if (!congestionData) return {} as Record<NetworkType, NetworkCongestion>;
+    if (!congestionData?.networks) return {} as Record<NetworkType, NetworkCongestion>;
     const result: Record<NetworkType, NetworkCongestion> = {} as Record<NetworkType, NetworkCongestion>;
-    congestionData.forEach((c) => {
-      result[c.networkType as NetworkType] = {
-        networkType: c.networkType as NetworkType,
-        level: c.level as NetworkCongestion['level'],
-        feeEstimates: c.feeEstimates,
-        lastUpdated: c.updatedAt,
+    congestionData.networks.forEach((c) => {
+      result[c.network as NetworkType] = {
+        networkType: c.network as NetworkType,
+        level: c.congestionLevel as NetworkCongestion['level'],
+        feeEstimates: {
+          slow: c.baseFee,
+          normal: c.baseFee + c.priorityFee,
+          fast: c.baseFee + c.priorityFee * 2,
+        },
+        lastUpdated: c.lastBlockTime,
       };
     });
     return result;

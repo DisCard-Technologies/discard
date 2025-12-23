@@ -119,20 +119,20 @@ export function FundingProvider({ children }: { children: ReactNode }) {
 
   // Real-time subscription to account balance
   const balanceData = useQuery(
-    api.funding.funding.getAccountBalance,
-    userId ? { userId } : "skip"
+    api.funding.funding.accountBalance,
+    userId ? {} : "skip"
   );
 
   // Real-time subscription to transactions
   const transactionsData = useQuery(
-    api.funding.funding.listTransactions,
-    userId ? { userId } : "skip"
+    api.funding.funding.transactions,
+    userId ? {} : "skip"
   );
 
   // Real-time subscription to cards (for card balances)
   const cardsData = useQuery(
     api.cards.cards.list,
-    userId ? { userId } : "skip"
+    userId ? {} : "skip"
   );
 
   // Mutations
@@ -148,7 +148,7 @@ export function FundingProvider({ children }: { children: ReactNode }) {
     ? {
         userId: userId?.toString() || "",
         availableBalance: balanceData.availableBalance,
-        pendingBalance: balanceData.pendingBalance,
+        pendingBalance: 0, // Not tracked separately in current backend
         reservedBalance: balanceData.reservedBalance,
         currency: "USD",
         lastUpdated: Date.now(),
@@ -157,8 +157,8 @@ export function FundingProvider({ children }: { children: ReactNode }) {
 
   // Build card balances from cards data
   const cardBalances: { [cardId: string]: CardBalance } = {};
-  if (cardsData) {
-    for (const card of cardsData) {
+  if (cardsData?.cards) {
+    for (const card of cardsData.cards) {
       cardBalances[card._id] = {
         cardId: card._id,
         balance: card.currentBalance,
@@ -168,7 +168,7 @@ export function FundingProvider({ children }: { children: ReactNode }) {
   }
 
   // Build transactions list
-  const transactions: FundingTransaction[] = (transactionsData || []).map((tx) => ({
+  const transactions: FundingTransaction[] = (transactionsData?.transactions || []).map((tx) => ({
     ...tx,
     id: tx._id,
   }));

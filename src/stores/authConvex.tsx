@@ -451,3 +451,32 @@ export function useCurrentUserId(): Id<"users"> | null {
   }
   return context.state.userId;
 }
+
+// Helper to check if userId is a mock (development) ID
+export function isMockUserId(userId: string | null | undefined): boolean {
+  return typeof userId === 'string' && userId.startsWith('mock_user_');
+}
+
+// Hook to check if current auth is mock (development mode)
+export function useIsMockAuth(): boolean {
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error("useIsMockAuth must be used within an AuthProvider");
+  }
+  return isMockUserId(context.state.userId);
+}
+
+// Hook to get user ID for Convex queries (returns null for mock users)
+// Use this when you need to pass userId to Convex queries with v.id("users") validators
+export function useConvexUserId(): Id<"users"> | null {
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error("useConvexUserId must be used within an AuthProvider");
+  }
+  const userId = context.state.userId;
+  // Return null for mock users so queries are skipped
+  if (isMockUserId(userId)) {
+    return null;
+  }
+  return userId;
+}

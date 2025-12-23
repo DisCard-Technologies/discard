@@ -13,7 +13,7 @@ import React, {
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
-import { useCurrentUserId } from "./authConvex";
+import { useCurrentUserId, useConvexUserId, useIsMockAuth } from "./authConvex";
 
 // Type definitions
 export type WalletType = "metamask" | "walletconnect" | "phantom" | "solflare" | "coinbase";
@@ -99,19 +99,21 @@ const WalletsContext = createContext<{
 // Provider component
 export function WalletsProvider({ children }: { children: ReactNode }) {
   const userId = useCurrentUserId();
+  const convexUserId = useConvexUserId(); // Returns null for mock users
+  const isMockAuth = useIsMockAuth();
   const [error, setError] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
 
-  // Real-time subscription to wallets
+  // Real-time subscription to wallets (skip for mock users)
   const walletsData = useQuery(
     api.wallets.wallets.list,
-    userId ? { userId } : "skip"
+    convexUserId ? { userId: convexUserId } : "skip"
   );
 
-  // Real-time subscription to DeFi positions
+  // Real-time subscription to DeFi positions (skip for mock users)
   const defiData = useQuery(
     api.wallets.defi.listPositions,
-    userId ? { userId } : "skip"
+    convexUserId ? { userId: convexUserId } : "skip"
   );
 
   // Mutations

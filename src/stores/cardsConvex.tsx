@@ -105,7 +105,7 @@ export function CardsProvider({ children }: { children: ReactNode }) {
   // Real-time subscription to cards
   const cardsData = useQuery(
     api.cards.cards.list,
-    userId ? { userId } : "skip"
+    userId ? {} : "skip"
   );
 
   // Mutations
@@ -119,12 +119,14 @@ export function CardsProvider({ children }: { children: ReactNode }) {
   const provisionCardAction = useAction(api.cards.marqeta.provisionCard);
 
   // Transform Convex cards to legacy format
-  const cards: CardWithDetails[] = (cardsData || []).map((card) => ({
-    ...card,
-    cardId: card._id, // Legacy compatibility
-    cardNumber: sensitiveData[card._id]?.cardNumber,
-    cvv: sensitiveData[card._id]?.cvv,
-  }));
+  const cards: CardWithDetails[] = Array.isArray(cardsData?.cards) 
+    ? cardsData.cards.map((card) => ({
+        ...card,
+        cardId: card._id, // Legacy compatibility
+        cardNumber: sensitiveData[card._id]?.cardNumber,
+        cvv: sensitiveData[card._id]?.cvv,
+      }))
+    : [];
 
   const isLoading = cardsData === undefined;
 
