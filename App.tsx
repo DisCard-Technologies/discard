@@ -3,7 +3,7 @@ import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { View, Text } from 'react-native';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ConvexProvider, ConvexReactClient } from 'convex/react';
 import { Ionicons } from '@expo/vector-icons';
 // Import NativeWind CSS
@@ -42,6 +42,8 @@ const Tab = createBottomTabNavigator<RootTabParamList>();
 
 // Main tab navigator with 5 tabs
 function MainTabs() {
+  const insets = useSafeAreaInsets();
+  
   return (
     <Tab.Navigator
       screenOptions={{
@@ -59,8 +61,8 @@ function MainTabs() {
           borderTopWidth: 1,
           borderTopColor: 'rgba(42, 53, 68, 0.5)',
           paddingTop: 8,
-          paddingBottom: 8,
-          height: 60,
+          paddingBottom: Math.max(insets.bottom, 8),
+          height: 60 + insets.bottom,
           elevation: 0,
           shadowOpacity: 0,
         },
