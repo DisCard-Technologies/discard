@@ -477,12 +477,14 @@ async function provisionStripeTreasuryAccount(displayName: string): Promise<{
       "Content-Type": "application/x-www-form-urlencoded",
       "Stripe-Version": STRIPE_API_VERSION,
     },
-    body: new URLSearchParams({
-      "supported_currencies[]": "usd",
-      "supported_currencies[]": "eur",
-      "features[inbound_transfers][ach][requested]": "true",
-      "features[financial_addresses][aba][requested]": "true",
-    }),
+    body: (() => {
+      const params = new URLSearchParams();
+      params.append("supported_currencies[]", "usd");
+      params.append("supported_currencies[]", "eur");
+      params.append("features[inbound_transfers][ach][requested]", "true");
+      params.append("features[financial_addresses][aba][requested]", "true");
+      return params;
+    })(),
   });
 
   if (!accountResponse.ok) {

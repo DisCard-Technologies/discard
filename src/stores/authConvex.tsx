@@ -108,9 +108,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logoutMutation = useMutation(api.auth.sessions.logout);
 
   // Get user data from Convex (reactive)
+  // Skip query for mock auth (development mode)
+  const isMockUser = state.userId?.startsWith?.('mock_user_');
   const userData = useQuery(
     api.auth.passkeys.getUser,
-    state.userId ? { userId: state.userId } : "skip"
+    state.userId && !isMockUser ? { userId: state.userId } : "skip"
   );
 
   // Update user when data changes

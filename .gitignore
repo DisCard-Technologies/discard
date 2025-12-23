@@ -150,3 +150,13 @@ stripe-test-keys.json
 
 # Local blockchain data
 blockchain-data/
+# EAS Build credentials
+google-services-key.json
+*.keystore
+*.jks
+
+# EAS Build artifacts
+.expo/
+*.ipa
+*.apk
+*.aab

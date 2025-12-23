@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, RefreshControl, StyleSheet } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { 
@@ -82,22 +82,24 @@ export default function AmbientHomeScreen() {
 
   return (
     <AmbientBackground>
-      <SafeAreaView style={styles.container} edges={['top']}>
+      <SafeAreaView className="flex-1" edges={['top']}>
         <ScrollView 
-          style={styles.scrollView}
-          contentContainerStyle={styles.scrollContent}
+          className="flex-1"
+          contentContainerClassName="pb-5"
           showsVerticalScrollIndicator={false}
           refreshControl={
             <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor="#10B981" />
           }
         >
           {/* Status Header */}
-          <View style={styles.header}>
-            <View style={styles.statusRow}>
+          <View className="flex-row items-center justify-between px-6 pt-4 pb-2">
+            <View className="flex-row items-center">
               <StatusDot size="sm" />
-              <Text style={styles.statusText}>ALL SYSTEMS NOMINAL</Text>
+              <Text className="text-[10px] text-muted font-medium tracking-[2px] ml-2 uppercase">
+                ALL SYSTEMS NOMINAL
+              </Text>
             </View>
-            <TouchableOpacity onPress={() => setShowBalance(!showBalance)} style={styles.eyeButton}>
+            <TouchableOpacity onPress={() => setShowBalance(!showBalance)} className="p-2">
               <Ionicons 
                 name={showBalance ? 'eye-outline' : 'eye-off-outline'} 
                 size={20} 
@@ -107,69 +109,94 @@ export default function AmbientHomeScreen() {
           </View>
 
           {/* Net Worth Display - Large centered */}
-          <View style={styles.balanceSection}>
-            <Text style={styles.netWorthLabel}>NET WORTH</Text>
-            <Text style={styles.balanceAmount}>
+          <View className="items-center py-16 px-6">
+            <Text className="text-[11px] text-muted font-medium tracking-[3px] mb-2 uppercase">
+              NET WORTH
+            </Text>
+            <Text className="text-[52px] font-extralight text-white tracking-tighter">
               {showBalance ? formatNetWorth(netWorth) : '••••••'}
             </Text>
             {showBalance && (
-              <View style={styles.changeRow}>
+              <View className="flex-row items-center mt-2">
                 <Ionicons name="trending-up" size={16} color="#10B981" />
-                <Text style={styles.changeText}>+{todayChange}% today</Text>
+                <Text className="text-sm text-primary font-medium ml-1.5">
+                  +{todayChange}% today
+                </Text>
               </View>
             )}
 
             {/* Ambient Finance Pill */}
-            <View style={styles.ambientPill}>
+            <View className="flex-row items-center bg-surface/50 px-4 py-2.5 rounded-full border border-border/40 mt-8 gap-2">
               <Ionicons name="sparkles" size={14} color="#10B981" />
-              <Text style={styles.ambientText}>Ambient finance active</Text>
+              <Text className="text-xs text-muted-foreground">
+                Ambient finance active
+              </Text>
               <StatusDot size="sm" />
             </View>
           </View>
 
           {/* Background Activity */}
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
+          <View className="px-6 mb-6">
+            <View className="flex-row items-center mb-3">
               <Ionicons name="flash" size={12} color="#10B981" />
-              <Text style={styles.sectionTitle}>BACKGROUND ACTIVITY</Text>
+              <Text className="text-[10px] text-muted font-medium tracking-[2px] ml-2 uppercase">
+                BACKGROUND ACTIVITY
+              </Text>
             </View>
 
-            <View style={styles.activityList}>
+            <View className="gap-1">
               {ambientActions.slice(0, 3).map((action) => (
-                <View key={action.id} style={styles.activityItem}>
-                  <View style={styles.activityLeft}>
-                    <View style={[
-                      styles.activityDot,
-                      action.type === 'yield' && styles.dotYield,
-                      action.type === 'rebalance' && styles.dotRebalance,
-                      action.type === 'optimization' && styles.dotOptimization,
-                    ]} />
-                    <Text style={styles.activityText}>{action.action}</Text>
+                <View key={action.id} className="flex-row items-center justify-between py-2.5 px-3 bg-surface/30 rounded-lg">
+                  <View className="flex-row items-center flex-1">
+                    <View 
+                      className={`w-1.5 h-1.5 rounded-full mr-2.5 ${
+                        action.type === 'yield' 
+                          ? 'bg-primary' 
+                          : action.type === 'rebalance' 
+                          ? 'bg-accent' 
+                          : 'bg-amber-500'
+                      }`} 
+                    />
+                    <Text className="text-[13px] text-muted-foreground">
+                      {action.action}
+                    </Text>
                   </View>
-                  <Text style={styles.activityTime}>{action.time}</Text>
+                  <Text className="text-[11px] text-muted-foreground/60">
+                    {action.time}
+                  </Text>
                 </View>
               ))}
             </View>
           </View>
 
           {/* Active Goals Card */}
-          <View style={styles.section}>
-            <View style={styles.goalsCard}>
-              <View style={styles.goalsHeader}>
-                <View style={styles.goalsIconCircle}>
-                  <Ionicons name="ellipse-outline" size={16} color="#10B981" />
+          <View className="px-6 mb-6">
+            <View className="bg-surface/40 rounded-2xl p-4 border border-border/50">
+              <View className="flex-row items-center mb-3">
+                <View className="mr-2">
+                  <Ionicons name="shield-outline" size={16} color="#10B981" />
                 </View>
-                <Text style={styles.goalsTitle}>Active Goals</Text>
+                <Text className="text-[13px] text-white font-semibold">
+                  Active Goals
+                </Text>
               </View>
               
-              <View style={styles.goalItem}>
-                <Text style={styles.goalText}>"Keep card at $200"</Text>
-                <Text style={styles.goalStatus}>Active</Text>
+              <View className="flex-row items-center justify-between py-2">
+                <Text className="text-sm text-muted-foreground">
+                  "Keep card at $200"
+                </Text>
+                <Text className="text-[13px] text-primary font-medium">
+                  Active
+                </Text>
               </View>
               
-              <View style={styles.goalItem}>
-                <Text style={styles.goalText}>"Maximize yield on idle USDC"</Text>
-                <Text style={styles.goalValue}>+$847/mo</Text>
+              <View className="flex-row items-center justify-between py-2">
+                <Text className="text-sm text-muted-foreground">
+                  "Maximize yield on idle USDC"
+                </Text>
+                <Text className="text-[13px] text-primary font-medium">
+                  +$847/mo
+                </Text>
               </View>
             </View>
           </View>
@@ -181,185 +208,4 @@ export default function AmbientHomeScreen() {
     </AmbientBackground>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingBottom: 20,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 24,
-    paddingTop: 16,
-    paddingBottom: 8,
-  },
-  statusRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  statusText: {
-    fontSize: 10,
-    color: '#6B7280',
-    fontWeight: '500',
-    letterSpacing: 2,
-    marginLeft: 8,
-  },
-  eyeButton: {
-    padding: 8,
-  },
-  balanceSection: {
-    alignItems: 'center',
-    paddingVertical: 60,
-    paddingHorizontal: 24,
-  },
-  netWorthLabel: {
-    fontSize: 11,
-    color: '#6B7280',
-    fontWeight: '500',
-    letterSpacing: 3,
-    marginBottom: 8,
-  },
-  balanceAmount: {
-    fontSize: 52,
-    fontWeight: '200',
-    color: '#FFFFFF',
-    letterSpacing: -2,
-  },
-  changeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  changeText: {
-    fontSize: 14,
-    color: '#10B981',
-    fontWeight: '500',
-    marginLeft: 6,
-  },
-  ambientPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(31, 41, 55, 0.5)',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: 'rgba(55, 65, 81, 0.4)',
-    marginTop: 32,
-    gap: 8,
-  },
-  ambientText: {
-    fontSize: 12,
-    color: '#9CA3AF',
-  },
-  section: {
-    paddingHorizontal: 24,
-    marginBottom: 24,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  sectionTitle: {
-    fontSize: 10,
-    color: '#6B7280',
-    fontWeight: '500',
-    letterSpacing: 2,
-    marginLeft: 8,
-  },
-  activityList: {
-    gap: 4,
-  },
-  activityItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    backgroundColor: 'rgba(17, 24, 39, 0.3)',
-    borderRadius: 8,
-  },
-  activityLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  activityDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    marginRight: 10,
-  },
-  dotYield: {
-    backgroundColor: '#10B981',
-  },
-  dotRebalance: {
-    backgroundColor: '#3B82F6',
-  },
-  dotOptimization: {
-    backgroundColor: '#F59E0B',
-  },
-  activityText: {
-    fontSize: 13,
-    color: '#9CA3AF',
-  },
-  activityTime: {
-    fontSize: 11,
-    color: '#4B5563',
-  },
-  goalsCard: {
-    backgroundColor: 'rgba(31, 41, 55, 0.4)',
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(55, 65, 81, 0.5)',
-    // Glassmorphism glow effect
-    shadowColor: '#10B981',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.08,
-    shadowRadius: 20,
-    elevation: 4,
-  },
-  goalsHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  goalsIconCircle: {
-    marginRight: 8,
-  },
-  goalsTitle: {
-    fontSize: 13,
-    color: '#FFFFFF',
-    fontWeight: '600',
-  },
-  goalItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 8,
-  },
-  goalText: {
-    fontSize: 14,
-    color: '#9CA3AF',
-  },
-  goalStatus: {
-    fontSize: 13,
-    color: '#10B981',
-    fontWeight: '500',
-  },
-  goalValue: {
-    fontSize: 13,
-    color: '#10B981',
-    fontWeight: '500',
-  },
-});
 
