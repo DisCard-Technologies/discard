@@ -15,14 +15,11 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  StyleSheet,
   Animated,
   Keyboard,
-  Platform,
-  ActivityIndicator,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Ionicons } from "@expo/vector-icons";
+import { Mic, Send, Sparkles, Camera, X, Loader2 } from "lucide-react-native";
 import { useIntents } from "../../hooks/useIntents";
 import { IntentPreview } from "./IntentPreview";
 import { ExecutionStatus } from "./ExecutionStatus";
@@ -186,14 +183,11 @@ export function CommandBar({
   /**
    * Handle suggestion click
    */
-  const handleSuggestionClick = useCallback(
-    (text: string) => {
-      setInputText(text);
-      setShowSuggestions(false);
-      inputRef.current?.focus();
-    },
-    []
-  );
+  const handleSuggestionClick = useCallback((text: string) => {
+    setInputText(text);
+    setShowSuggestions(false);
+    inputRef.current?.focus();
+  }, []);
 
   /**
    * Handle intent approval
@@ -279,83 +273,86 @@ export function CommandBar({
   const navBarHeight = 56 + Math.max(insets.bottom, 16);
 
   return (
-    <View style={[styles.wrapper, { marginBottom: navBarHeight }]}>
+    <View className="px-4 pt-2" style={{ marginBottom: navBarHeight }}>
       {/* Listening Indicator */}
       {isListening && (
-        <View style={styles.listeningIndicator}>
-          <View style={styles.listeningBars}>
+        <View className="flex-row items-center justify-center mb-3 gap-2.5">
+          <View className="flex-row items-end gap-0.5">
             {listeningBars.map((barHeight, i) => (
               <Animated.View
                 key={i}
-                style={[
-                  styles.listeningBar,
-                  { height: barHeight },
-                ]}
+                className="w-1 bg-primary rounded-full"
+                style={{ height: barHeight }}
               />
             ))}
           </View>
-          <Text style={styles.listeningText}>Listening...</Text>
+          <Text className="text-primary text-xs font-medium">Listening...</Text>
         </View>
       )}
 
       {/* Response Bubble */}
       {lastResponse && (
         <Animated.View
-          style={[
-            styles.responseBubble,
-            {
-              opacity: responseFadeAnim,
-              transform: [
-                {
-                  translateY: responseFadeAnim.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [10, 0],
-                  }),
-                },
-              ],
-            },
-          ]}
+          className="bg-secondary/95 rounded-2xl p-3.5 mb-2 border border-primary/20 flex-row items-start gap-2.5"
+          style={{
+            opacity: responseFadeAnim,
+            transform: [
+              {
+                translateY: responseFadeAnim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [10, 0],
+                }),
+              },
+            ],
+          }}
         >
-          <Ionicons name="sparkles" size={16} color="#10B981" />
-          <Text style={styles.responseText}>{lastResponse}</Text>
+          <Sparkles size={16} color="#10B981" />
+          <Text className="flex-1 text-foreground text-sm leading-5">
+            {lastResponse}
+          </Text>
         </Animated.View>
       )}
 
       {/* Suggestions */}
       {showSuggestions && !isExpanded && (
         <Animated.View
-          style={[
-            styles.suggestionsContainer,
-            { opacity: suggestionsFadeAnim },
-          ]}
+          className="bg-secondary/95 rounded-2xl p-2 mb-2 border border-white/10"
+          style={{ opacity: suggestionsFadeAnim }}
         >
-          <Text style={styles.suggestionsLabel}>TRY SAYING</Text>
+          <Text className="text-[10px] text-muted-foreground uppercase tracking-widest px-2 mb-2">
+            Try saying
+          </Text>
           {suggestions.map((suggestion, i) => (
             <TouchableOpacity
               key={i}
               onPress={() => handleSuggestionClick(suggestion)}
-              style={styles.suggestionButton}
+              className="px-3 py-2.5 rounded-xl active:bg-secondary/50"
             >
-              <Text style={styles.suggestionText}>"{suggestion}"</Text>
+              <Text className="text-muted-foreground text-sm">
+                "{suggestion}"
+              </Text>
             </TouchableOpacity>
           ))}
         </Animated.View>
       )}
 
       {/* Main Command Bar */}
-      <Animated.View style={[styles.container, { height: containerHeight }]}>
+      <Animated.View
+        className="bg-secondary/60 rounded-2xl border border-white/10 overflow-hidden shadow-lg"
+        style={{ height: containerHeight }}
+      >
         {/* Input Row */}
-        <View style={styles.inputRow}>
+        <View className="flex-row items-center px-1.5 py-1.5 h-14 gap-1.5">
           {/* Camera Button */}
-          <TouchableOpacity style={styles.iconButton}>
-            <Ionicons name="camera-outline" size={22} color="#6B7280" />
+          <TouchableOpacity className="w-10 h-10 rounded-xl items-center justify-center active:bg-secondary/50">
+            <Camera size={20} color="#6B7280" />
           </TouchableOpacity>
 
           {/* Input Field */}
-          <View style={styles.inputContainer}>
+          <View className="flex-1 flex-row items-center px-2 h-11">
             <TextInput
               ref={inputRef}
-              style={styles.input}
+              className="flex-1 text-foreground text-sm"
               value={inputText}
               onChangeText={setInputText}
               placeholder={placeholder}
@@ -369,41 +366,35 @@ export function CommandBar({
             {inputText.length > 0 && (
               <TouchableOpacity
                 onPress={() => setInputText("")}
-                style={styles.clearButton}
+                className="p-1.5"
               >
-                <Ionicons name="close" size={16} color="#6B7280" />
+                <X size={16} color="#6B7280" />
               </TouchableOpacity>
             )}
           </View>
 
           {/* Mic Button */}
           <TouchableOpacity
-            style={[
-              styles.iconButton,
-              isListening && styles.iconButtonActive,
-            ]}
+            className={`w-10 h-10 rounded-xl items-center justify-center ${
+              isListening ? "bg-primary" : "active:bg-secondary/50"
+            }`}
             onPress={() => setIsListening(!isListening)}
           >
-            <Ionicons
-              name="mic"
-              size={22}
-              color={isListening ? "#FFFFFF" : "#6B7280"}
-            />
+            <Mic size={20} color={isListening ? "#FFFFFF" : "#6B7280"} />
           </TouchableOpacity>
 
           {/* Send Button */}
           <TouchableOpacity
-            style={[
-              styles.sendButton,
-              (!inputText.trim() || isProcessing) && styles.sendButtonDisabled,
-            ]}
+            className={`w-10 h-10 rounded-xl bg-primary items-center justify-center ml-1 ${
+              !inputText.trim() || isProcessing ? "opacity-50" : "active:opacity-90"
+            }`}
             onPress={handleSubmit}
             disabled={!inputText.trim() || isProcessing}
           >
             {isProcessing ? (
-              <ActivityIndicator size="small" color="#FFFFFF" />
+              <Loader2 size={18} color="#FFFFFF" />
             ) : (
-              <Ionicons name="send" size={18} color="#FFFFFF" />
+              <Send size={18} color="#FFFFFF" />
             )}
           </TouchableOpacity>
         </View>
@@ -411,7 +402,8 @@ export function CommandBar({
         {/* Expanded Preview/Status Area */}
         {isExpanded && (
           <Animated.View
-            style={[styles.expandedArea, { opacity: previewOpacity }]}
+            className="flex-1 px-3 pb-3"
+            style={{ opacity: previewOpacity }}
           >
             {activeIntent ? (
               activeIntent.status === "executing" ||
@@ -434,148 +426,5 @@ export function CommandBar({
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  wrapper: {
-    paddingHorizontal: 16,
-    paddingTop: 8,
-  },
-  container: {
-    backgroundColor: "rgba(31, 41, 55, 0.6)",
-    borderRadius: 28,
-    borderWidth: 1,
-    borderColor: "rgba(55, 65, 81, 0.5)",
-    overflow: "hidden",
-    ...Platform.select({
-      ios: {
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.2,
-        shadowRadius: 12,
-      },
-      android: {
-        elevation: 4,
-      },
-    }),
-  },
-  inputRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 4,
-    paddingVertical: 4,
-    height: 56,
-    gap: 4,
-  },
-  iconButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  iconButtonActive: {
-    backgroundColor: "#10B981",
-  },
-  inputContainer: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 8,
-    height: 44,
-  },
-  input: {
-    flex: 1,
-    color: "#FFFFFF",
-    fontSize: 15,
-    fontWeight: "400",
-  },
-  clearButton: {
-    padding: 6,
-  },
-  sendButton: {
-    backgroundColor: "#10B981",
-    borderRadius: 20,
-    width: 40,
-    height: 40,
-    alignItems: "center",
-    justifyContent: "center",
-    marginLeft: 4,
-  },
-  sendButtonDisabled: {
-    opacity: 0.5,
-  },
-  expandedArea: {
-    flex: 1,
-    paddingHorizontal: 12,
-    paddingBottom: 12,
-  },
-  // Suggestions
-  suggestionsContainer: {
-    backgroundColor: "rgba(31, 41, 55, 0.95)",
-    borderRadius: 20,
-    padding: 12,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.1)",
-  },
-  suggestionsLabel: {
-    fontSize: 10,
-    fontWeight: "600",
-    color: "#6B7280",
-    letterSpacing: 1.5,
-    marginBottom: 8,
-    marginLeft: 4,
-  },
-  suggestionButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 12,
-  },
-  suggestionText: {
-    color: "#9CA3AF",
-    fontSize: 14,
-  },
-  // Response Bubble
-  responseBubble: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    backgroundColor: "rgba(31, 41, 55, 0.95)",
-    borderRadius: 20,
-    padding: 14,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: "rgba(16, 185, 129, 0.2)",
-    gap: 10,
-  },
-  responseText: {
-    flex: 1,
-    color: "#FFFFFF",
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  // Listening Indicator
-  listeningIndicator: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 12,
-    gap: 10,
-  },
-  listeningBars: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    gap: 3,
-  },
-  listeningBar: {
-    width: 4,
-    backgroundColor: "#10B981",
-    borderRadius: 2,
-  },
-  listeningText: {
-    color: "#10B981",
-    fontSize: 12,
-    fontWeight: "500",
-  },
-});
 
 export default CommandBar;

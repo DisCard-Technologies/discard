@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "DisCard",
-    "slug": "discard-mobile",
+    "name": "Discard",
+    "slug": "discard",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -17,20 +17,22 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "app.discard.mobile",
+      "bundleIdentifier": "app.discard",
       "infoPlist": {
         "NSFaceIDUsageDescription": "DisCard uses Face ID to securely authenticate transactions and access your wallet."
       }
     },
     "android": {
-      "package": "app.discard.mobile",
+      "package": "app.discard",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0A0A0A"
       },
       "permissions": [
         "USE_BIOMETRIC",
-        "USE_FINGERPRINT"
+        "USE_FINGERPRINT",
+        "android.permission.USE_BIOMETRIC",
+        "android.permission.USE_FINGERPRINT"
       ]
     },
     "web": {
@@ -48,9 +50,9 @@
     ],
     "extra": {
       "eas": {
-        "projectId": ""
+        "projectId": "1a779d14-6448-4e8e-85cf-5d48461aeb01"
       }
     },
-    "owner": ""
+    "owner": "discardtech"
   }
 }

@@ -11,33 +11,27 @@ interface GlassCardProps {
 }
 
 export function GlassCard({ children, className, style, intensity = 20, noPadding = false }: GlassCardProps) {
-  const containerStyle: ViewStyle = {
-    borderRadius: 16,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-  };
-
-  const contentStyle: ViewStyle = {
-    padding: noPadding ? 0 : 16,
-  };
-
-  // On web, BlurView doesn't work well, use a simple background
+  // On web, BlurView doesn't work well, use NativeWind classes
   if (Platform.OS === 'web') {
     return (
-      <View style={[containerStyle, contentStyle, style]}>
+      <View
+        className={`bg-white/5 border border-white/10 rounded-2xl overflow-hidden ${noPadding ? '' : 'p-4'} ${className || ''}`}
+        style={style}
+      >
         {children}
       </View>
     );
   }
 
   return (
-    <View style={[containerStyle, style]}>
-      <BlurView 
-        intensity={intensity} 
+    <View
+      className={`rounded-2xl overflow-hidden border border-white/10 bg-white/5 ${className || ''}`}
+      style={style}
+    >
+      <BlurView
+        intensity={intensity}
         tint="dark"
-        style={contentStyle}
+        className={noPadding ? '' : 'p-4'}
       >
         {children}
       </BlurView>
