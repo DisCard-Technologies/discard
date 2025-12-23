@@ -2,17 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Glass card utility */
-.glass-card {
-  @apply bg-surface/80 backdrop-blur-md border border-border/30;
-}
-
-/* Glow effects */
-.glow-primary {
-  box-shadow: 0 0 20px rgba(16, 185, 129, 0.3);
-}
-
-.glow-accent {
-  box-shadow: 0 0 20px rgba(59, 130, 246, 0.3);
-}
-
+/* 
+ * NativeWind v4 - React Native Theme
+ * Translated from the Next.js 2035 Vision Ambient Finance Theme
+ */

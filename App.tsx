@@ -48,13 +48,19 @@ function MainTabs() {
         headerShown: false,
         tabBarActiveTintColor: '#10B981',
         tabBarInactiveTintColor: '#6B7280',
-        tabBarShowLabel: false,
+        tabBarShowLabel: true,
+        tabBarLabelStyle: {
+          fontSize: 10,
+          fontWeight: '500',
+          marginTop: 2,
+        },
         tabBarStyle: {
-          backgroundColor: '#0A0A0A',
-          borderTopWidth: 0,
-          paddingTop: 12,
-          paddingBottom: 12,
-          height: 64,
+          backgroundColor: '#0A0F14',
+          borderTopWidth: 1,
+          borderTopColor: 'rgba(42, 53, 68, 0.5)',
+          paddingTop: 8,
+          paddingBottom: 8,
+          height: 60,
           elevation: 0,
           shadowOpacity: 0,
         },
@@ -95,18 +101,7 @@ function MainTabs() {
         component={VisaCardScreen}
         options={{
           tabBarIcon: ({ color, focused }) => (
-            <View style={{ 
-              backgroundColor: focused ? '#10B981' : 'transparent',
-              paddingHorizontal: 16,
-              paddingVertical: 8,
-              borderRadius: 20,
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 6,
-            }}>
-              <Ionicons name={focused ? "card" : "card-outline"} size={18} color={focused ? '#FFFFFF' : color} />
-              {focused && <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '600' }}>Card</Text>}
-            </View>
+            <Ionicons name={focused ? "card" : "card-outline"} size={22} color={color} />
           ),
         }}
       />
@@ -116,18 +111,7 @@ function MainTabs() {
         component={IdentityPanelScreen}
         options={{
           tabBarIcon: ({ color, focused }) => (
-            <View style={{ 
-              backgroundColor: focused ? '#10B981' : 'transparent',
-              paddingHorizontal: focused ? 16 : 0,
-              paddingVertical: focused ? 8 : 0,
-              borderRadius: 20,
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 6,
-            }}>
-              <Ionicons name={focused ? "finger-print" : "finger-print-outline"} size={18} color={focused ? '#FFFFFF' : color} />
-              {focused && <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '600' }}>Identity</Text>}
-            </View>
+            <Ionicons name={focused ? "finger-print" : "finger-print-outline"} size={22} color={color} />
           ),
         }}
       />

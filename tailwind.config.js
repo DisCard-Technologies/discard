@@ -8,60 +8,84 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        // Primary emerald/teal from screenshots
+        // 2035 Vision - Ambient Finance Theme
+        // Primary emerald/teal - oklch(0.75 0.18 165) ≈ #10B981
         primary: {
           DEFAULT: '#10B981',
-          50: '#ECFDF5',
-          100: '#D1FAE5',
-          200: '#A7F3D0',
-          300: '#6EE7B7',
-          400: '#34D399',
-          500: '#10B981',
-          600: '#059669',
-          700: '#047857',
-          800: '#065F46',
-          900: '#064E3B',
+          foreground: '#0A0F14',
         },
-        // Dark backgrounds
-        background: '#0A0A0A',
-        surface: '#111827',
-        card: '#1F2937',
-        // Text colors
-        foreground: '#FFFFFF',
+        // Dark backgrounds - oklch(0.08 0.01 260)
+        background: '#0A0F14',
+        // Card - oklch(0.12 0.015 260)
+        card: {
+          DEFAULT: '#141A24',
+          foreground: '#F0F0F0',
+        },
+        // Surface for glass effects - oklch(0.1 0.01 260)
+        surface: '#0F1419',
+        // Foreground text - oklch(0.95 0 0)
+        foreground: '#F0F0F0',
+        // Muted - oklch(0.15 0.015 260) / oklch(0.6 0 0)
         muted: {
-          DEFAULT: '#6B7280',
-          foreground: '#9CA3AF',
+          DEFAULT: '#1C242E',
+          foreground: '#8B9299',
         },
-        // Accent colors
+        // Secondary - oklch(0.18 0.02 260)
+        secondary: {
+          DEFAULT: '#212B38',
+          foreground: '#C9CDD2',
+        },
+        // Accent purple - oklch(0.65 0.2 280)
         accent: {
-          DEFAULT: '#3B82F6',
-          foreground: '#FFFFFF',
+          DEFAULT: '#8B5CF6',
+          foreground: '#F0F0F0',
         },
-        // Border
-        border: '#374151',
-        // Status colors
+        // Border - oklch(0.22 0.02 260)
+        border: '#2A3544',
+        // Input - oklch(0.15 0.015 260)
+        input: '#1C242E',
+        // Ring/focus - same as primary
+        ring: '#10B981',
+        // Destructive - oklch(0.55 0.22 25)
         destructive: {
           DEFAULT: '#EF4444',
-          foreground: '#FFFFFF',
+          foreground: '#F0F0F0',
+        },
+        // Chart colors for data visualization
+        chart: {
+          1: '#10B981', // primary
+          2: '#8B5CF6', // accent purple
+          3: '#F59E0B', // amber
+          4: '#3B82F6', // blue
+          5: '#EF4444', // red
         },
       },
       fontFamily: {
-        // Map to system fonts
         sans: ['System'],
         mono: ['Courier'],
       },
       fontSize: {
         '6xl': ['60px', { lineHeight: '1', letterSpacing: '-0.02em' }],
       },
-      backdropBlur: {
-        xs: '2px',
+      borderRadius: {
+        'sm': '12px',
+        'md': '14px',
+        'lg': '16px',
+        'xl': '20px',
+        '2xl': '24px',
       },
-      boxShadow: {
-        'glow-primary': '0 0 20px rgba(16, 185, 129, 0.3)',
-        'glow-accent': '0 0 20px rgba(59, 130, 246, 0.3)',
+      opacity: {
+        '3': '0.03',
+        '5': '0.05',
+        '8': '0.08',
+        '10': '0.1',
+        '30': '0.3',
+        '40': '0.4',
+        '50': '0.5',
+        '60': '0.6',
+        '80': '0.8',
       },
     },
   },
   plugins: [],
-}
-
+};
