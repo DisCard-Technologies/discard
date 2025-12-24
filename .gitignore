@@ -20,6 +20,10 @@ lerna-debug.log*
 *.sublime-workspace
 *.sublime-project
 .cursor/
+.claude/
+.bmad/
+.bmad-core/
+.gemini/
 
 # OS
 .DS_Store
