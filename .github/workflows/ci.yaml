@@ -164,6 +164,7 @@ jobs:
   integration-summary:
     name: CI Summary
     runs-on: ubuntu-latest
+    permissions: {}
     needs: [lint-and-format, type-check, test, build, security-scan, validate-monorepo]
     if: always()
     steps:
