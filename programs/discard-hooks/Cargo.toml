@@ -1,0 +1,23 @@
+[package]
+name = "discard-hooks"
+version = "0.1.0"
+description = "DisCard 2035 - Token-2022 Transfer Hooks for Financial Armor"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "discard_hooks"
+
+[features]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+cpi = ["no-entrypoint"]
+default = []
+
+[dependencies]
+anchor-lang = { version = "0.30.1", features = ["init-if-needed"] }
+anchor-spl = { version = "0.30.1", features = ["token-2022"] }
+spl-transfer-hook-interface = "0.6.0"
+spl-tlv-account-resolution = "0.6.0"
+spl-type-length-value = "0.4.0"

@@ -2,7 +2,7 @@
  * Intent Executor Module
  *
  * Builds and submits Solana transactions based on parsed intents.
- * Integrates with the TextPay User Smart Wallet program.
+ * Integrates with Turnkey TEE for secure signing and optimistic settlement.
  *
  * TextPay Program: 5XQH3sSdahXTgkyhVnHFm48Rz7nDZj4HEjkSojx5QBJU
  * Features:
@@ -10,15 +10,26 @@
  * - PIN-protected transfers
  * - Micro-swaps under $1
  * - Session keys for DEX interactions
+ * - Turnkey TEE signing (AWS Nitro Enclaves)
+ * - Optimistic updates with 150ms Alpenglow target
  */
 import { internalAction } from "../_generated/server";
 import { v } from "convex/values";
 import { internal } from "../_generated/api";
 import { Id } from "../_generated/dataModel";
 
-// Solana configuration
+// Solana configuration - Firedancer-optimized endpoints preferred
 const SOLANA_RPC_URL = process.env.SOLANA_RPC_URL ?? "https://api.mainnet-beta.solana.com";
+const HELIUS_FIREDANCER_URL = process.env.HELIUS_RPC_URL; // Firedancer-optimized
 const TEXTPAY_PROGRAM_ID = "5XQH3sSdahXTgkyhVnHFm48Rz7nDZj4HEjkSojx5QBJU";
+
+// Alpenglow confirmation targets
+const ALPENGLOW_TARGET_MS = 150;
+const MAX_CONFIRMATION_WAIT_MS = 30000;
+
+// Turnkey configuration
+const TURNKEY_API_BASE = "https://api.turnkey.com";
+const TURNKEY_ORGANIZATION_ID = process.env.TURNKEY_ORGANIZATION_ID;
 
 // Transaction types
 interface TransactionInstruction {
@@ -38,16 +49,51 @@ interface UnsignedTransaction {
   requiresSignature: boolean;
 }
 
+// Optimistic settlement types
+interface OptimisticSettlement {
+  settlementId: string;
+  intentId: string;
+  status: "pending" | "submitted" | "confirmed" | "finalized" | "failed" | "rolled_back";
+  optimisticValue: number;
+  confirmedValue?: number;
+  confirmationTimeMs?: number;
+  isWithinTarget: boolean;
+}
+
+// Turnkey signing types
+interface TurnkeySignRequest {
+  subOrganizationId: string;
+  walletId: string;
+  transaction: string; // Base64 encoded
+  activityType: "ACTIVITY_TYPE_SIGN_RAW_PAYLOAD";
+}
+
+interface TurnkeySignResponse {
+  activityId: string;
+  signature: string;
+  status: "COMPLETED" | "PENDING" | "FAILED";
+}
+
 // ============ INTERNAL ACTIONS ============
 
 /**
- * Execute an approved intent
+ * Execute an approved intent with optimistic settlement
+ *
+ * Flow:
+ * 1. Apply optimistic update immediately (UI sees instant change)
+ * 2. Build Solana transaction
+ * 3. Request Turnkey TEE signing
+ * 4. Submit to Firedancer-optimized RPC
+ * 5. Track confirmation (target: 150ms Alpenglow)
+ * 6. Finalize or rollback based on result
  */
 export const execute = internalAction({
   args: {
     intentId: v.id("intents"),
   },
   handler: async (ctx, args): Promise<void> => {
+    const startTime = Date.now();
+
     try {
       // Update status to executing
       await ctx.runMutation(internal.intents.intents.updateStatus, {
@@ -72,7 +118,37 @@ export const execute = internalAction({
         throw new Error("Intent has no parsed action");
       }
 
-      // Build transaction based on action type
+      // ============ STEP 1: Apply Optimistic Update ============
+      // For balance-affecting operations, update UI immediately
+      let settlementId: string | null = null;
+
+      if (intent.parsedIntent.action === "fund_card" && intent.parsedIntent.amount) {
+        // Create optimistic settlement record
+        const settlement = await ctx.runMutation(
+          internal.realtime.optimistic.optimisticBalanceUpdate,
+          {
+            userId: intent.userId,
+            cardId: intent.parsedIntent.targetId as Id<"cards">,
+            amount: intent.parsedIntent.amount,
+            operation: "add",
+          }
+        );
+        settlementId = settlement.settlementId;
+      } else if (intent.parsedIntent.action === "transfer" && intent.parsedIntent.amount) {
+        // For transfers, deduct from source optimistically
+        const settlement = await ctx.runMutation(
+          internal.realtime.optimistic.optimisticBalanceUpdate,
+          {
+            userId: intent.userId,
+            cardId: intent.parsedIntent.sourceId as Id<"cards">,
+            amount: intent.parsedIntent.amount,
+            operation: "subtract",
+          }
+        );
+        settlementId = settlement.settlementId;
+      }
+
+      // ============ STEP 2: Build Transaction ============
       let transaction: UnsignedTransaction;
 
       switch (intent.parsedIntent.action) {
@@ -82,7 +158,6 @@ export const execute = internalAction({
 
         case "create_card":
           await executeCreateCard(ctx, intent);
-          // Card creation doesn't need blockchain transaction
           await ctx.runMutation(internal.intents.intents.updateStatus, {
             intentId: args.intentId,
             status: "completed",
@@ -117,25 +192,77 @@ export const execute = internalAction({
           throw new Error(`Unknown action: ${intent.parsedIntent.action}`);
       }
 
-      // Store transaction instructions for client to sign
-      await ctx.runMutation(internal.intents.intents.updateStatus, {
-        intentId: args.intentId,
-        status: "executing",
-        solanaInstructions: transaction.instructions,
-      });
+      // ============ STEP 3: Sign with Turnkey TEE ============
+      let signedTransaction: string;
 
-      // Note: In a real implementation, the client would:
-      // 1. Receive the unsigned transaction
-      // 2. Sign it with the user's passkey
-      // 3. Call submitSignedTransaction to broadcast
+      if (transaction.requiresSignature) {
+        // Get user's Turnkey sub-organization
+        const turnkeyOrg = await ctx.runQuery(
+          internal.tee.turnkey.getByUserId,
+          { userId: intent.userId }
+        );
 
-      // For now, we'll simulate success for non-blockchain actions
-      if (!transaction.requiresSignature) {
+        if (turnkeyOrg) {
+          // Request signature from Turnkey TEE
+          signedTransaction = await requestTurnkeySignature(
+            turnkeyOrg.subOrganizationId,
+            turnkeyOrg.walletAddress,
+            serializeTransaction(transaction)
+          );
+        } else {
+          // Fallback: store for client-side signing
+          await ctx.runMutation(internal.intents.intents.updateStatus, {
+            intentId: args.intentId,
+            status: "executing",
+            solanaInstructions: transaction.instructions,
+          });
+          return;
+        }
+      } else {
+        signedTransaction = serializeTransaction(transaction);
+      }
+
+      // ============ STEP 4: Submit to Firedancer RPC ============
+      const submitStartTime = Date.now();
+      const signature = await submitToFiredancerRPC(signedTransaction);
+
+      // ============ STEP 5: Track Confirmation ============
+      const confirmationResult = await waitForConfirmation(signature, submitStartTime);
+
+      const totalTimeMs = Date.now() - startTime;
+      const isWithinTarget = totalTimeMs <= ALPENGLOW_TARGET_MS;
+
+      // ============ STEP 6: Finalize or Rollback ============
+      if (confirmationResult.confirmed) {
+        // Finalize the optimistic update
+        if (settlementId) {
+          await ctx.runMutation(internal.realtime.optimistic.confirmSettlement, {
+            settlementId: settlementId as Id<"optimisticSettlements">,
+            signature,
+            confirmationTimeMs: confirmationResult.timeMs,
+          });
+        }
+
         await ctx.runMutation(internal.intents.intents.updateStatus, {
           intentId: args.intentId,
           status: "completed",
-          solanaTransactionSignature: "simulated_" + Date.now(),
+          solanaTransactionSignature: signature,
         });
+
+        console.log(
+          `[Executor] Intent ${args.intentId} completed in ${totalTimeMs}ms ` +
+          `(target: ${ALPENGLOW_TARGET_MS}ms, within: ${isWithinTarget})`
+        );
+      } else {
+        // Rollback the optimistic update
+        if (settlementId) {
+          await ctx.runMutation(internal.realtime.optimistic.rollbackSettlement, {
+            settlementId: settlementId as Id<"optimisticSettlements">,
+            reason: confirmationResult.error || "Confirmation failed",
+          });
+        }
+
+        throw new Error(confirmationResult.error || "Transaction confirmation failed");
       }
 
     } catch (error) {
@@ -553,4 +680,223 @@ function encodeSwapInstruction(amount: number, targetCurrency: string): string {
   new Uint8Array(buffer, 9, 4).set(currencyBytes);
 
   return Buffer.from(buffer).toString("base64");
+}
+
+// ============ TURNKEY TEE INTEGRATION ============
+
+/**
+ * Request signature from Turnkey TEE
+ */
+async function requestTurnkeySignature(
+  subOrganizationId: string,
+  walletAddress: string,
+  unsignedTransaction: string
+): Promise<string> {
+  if (!TURNKEY_ORGANIZATION_ID) {
+    throw new Error("Turnkey organization not configured");
+  }
+
+  try {
+    // In production, this uses the Turnkey SDK with proper authentication
+    // The server-side stamper signs the request
+    const response = await fetch(`${TURNKEY_API_BASE}/public/v1/submit/sign_raw_payload`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Stamp": await generateServerStamp(),
+      },
+      body: JSON.stringify({
+        type: "ACTIVITY_TYPE_SIGN_RAW_PAYLOAD",
+        organizationId: TURNKEY_ORGANIZATION_ID,
+        parameters: {
+          signWith: walletAddress,
+          payload: unsignedTransaction,
+          encoding: "PAYLOAD_ENCODING_BASE64",
+          hashFunction: "HASH_FUNCTION_NO_OP",
+        },
+        timestampMs: Date.now().toString(),
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Turnkey signing failed: ${error}`);
+    }
+
+    const result = await response.json();
+
+    if (result.activity?.status === "ACTIVITY_STATUS_COMPLETED") {
+      // Combine unsigned transaction with signature
+      return combineTransactionWithSignature(
+        unsignedTransaction,
+        result.activity.result.signRawPayloadResult.signature
+      );
+    }
+
+    throw new Error(`Turnkey activity status: ${result.activity?.status}`);
+  } catch (error) {
+    console.error("[Turnkey] Signature request failed:", error);
+    throw error;
+  }
+}
+
+/**
+ * Generate server-side stamp for Turnkey API
+ */
+async function generateServerStamp(): Promise<string> {
+  // In production, this uses the server's API key to create a stamp
+  // For DisCard, the server has propose-only permissions
+  const apiKey = process.env.TURNKEY_API_PRIVATE_KEY;
+
+  if (!apiKey) {
+    throw new Error("Turnkey API key not configured");
+  }
+
+  // This is a placeholder - actual implementation uses @turnkey/sdk-server
+  return Buffer.from(JSON.stringify({
+    publicKey: process.env.TURNKEY_API_PUBLIC_KEY,
+    timestamp: Date.now(),
+  })).toString("base64");
+}
+
+/**
+ * Combine unsigned transaction with signature
+ */
+function combineTransactionWithSignature(
+  unsignedTx: string,
+  signature: string
+): string {
+  // In production, properly construct the signed transaction
+  // using @solana/web3.js Transaction class
+  const txBytes = Buffer.from(unsignedTx, "base64");
+  const sigBytes = Buffer.from(signature, "hex");
+
+  // Simplified: prepend signature to transaction message
+  const signedTx = Buffer.concat([
+    Buffer.from([1]), // num signatures
+    sigBytes,
+    txBytes,
+  ]);
+
+  return signedTx.toString("base64");
+}
+
+// ============ FIREDANCER RPC INTEGRATION ============
+
+/**
+ * Submit transaction to Firedancer-optimized RPC
+ */
+async function submitToFiredancerRPC(signedTransaction: string): Promise<string> {
+  // Use Helius Firedancer endpoint if available, otherwise standard RPC
+  const rpcUrl = HELIUS_FIREDANCER_URL || SOLANA_RPC_URL;
+
+  try {
+    const response = await fetch(rpcUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "sendTransaction",
+        params: [
+          signedTransaction,
+          {
+            encoding: "base64",
+            skipPreflight: true, // Skip for speed
+            maxRetries: 0, // We handle retries
+            preflightCommitment: "confirmed",
+          },
+        ],
+      }),
+    });
+
+    const result = await response.json();
+
+    if (result.error) {
+      throw new Error(`RPC error: ${result.error.message}`);
+    }
+
+    return result.result;
+  } catch (error) {
+    console.error("[Firedancer] Transaction submission failed:", error);
+    throw error;
+  }
+}
+
+/**
+ * Wait for transaction confirmation with Alpenglow target tracking
+ */
+async function waitForConfirmation(
+  signature: string,
+  startTime: number
+): Promise<{ confirmed: boolean; timeMs: number; error?: string }> {
+  const rpcUrl = HELIUS_FIREDANCER_URL || SOLANA_RPC_URL;
+  const pollInterval = 50; // 50ms polling for speed
+  const maxAttempts = Math.ceil(MAX_CONFIRMATION_WAIT_MS / pollInterval);
+
+  let attempts = 0;
+
+  while (attempts < maxAttempts) {
+    try {
+      const response = await fetch(rpcUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 1,
+          method: "getSignatureStatuses",
+          params: [[signature], { searchTransactionHistory: false }],
+        }),
+      });
+
+      const result = await response.json();
+      const status = result.result?.value?.[0];
+
+      if (status?.confirmationStatus) {
+        const timeMs = Date.now() - startTime;
+
+        if (status.err) {
+          return {
+            confirmed: false,
+            timeMs,
+            error: JSON.stringify(status.err),
+          };
+        }
+
+        // Check if confirmed or finalized
+        if (
+          status.confirmationStatus === "confirmed" ||
+          status.confirmationStatus === "finalized"
+        ) {
+          return { confirmed: true, timeMs };
+        }
+      }
+    } catch (error) {
+      // Continue polling on error
+    }
+
+    await sleep(pollInterval);
+    attempts++;
+  }
+
+  return {
+    confirmed: false,
+    timeMs: Date.now() - startTime,
+    error: "Confirmation timeout",
+  };
+}
+
+/**
+ * Serialize transaction for transmission
+ */
+function serializeTransaction(transaction: UnsignedTransaction): string {
+  // In production, use @solana/web3.js Transaction.serialize()
+  return Buffer.from(JSON.stringify(transaction)).toString("base64");
+}
+
+/**
+ * Sleep helper
+ */
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }

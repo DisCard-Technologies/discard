@@ -436,6 +436,197 @@ http.route({
   }),
 });
 
+// ============ TURNKEY WEBHOOKS ============
+
+/**
+ * Turnkey activity webhook
+ * Handles signing activity completion from Turnkey TEE
+ * Called when user approves/rejects signing via passkey
+ */
+http.route({
+  path: "/webhooks/turnkey",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const startTime = Date.now();
+
+    try {
+      // Verify Turnkey webhook signature
+      const signature = request.headers.get("x-turnkey-signature");
+      const timestamp = request.headers.get("x-turnkey-timestamp");
+      const body = await request.text();
+
+      if (!await verifyTurnkeySignature(body, signature, timestamp)) {
+        console.error("[Turnkey Webhook] Invalid signature");
+        return new Response(JSON.stringify({ error: "Invalid signature" }), {
+          status: 401,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
+      const event = JSON.parse(body);
+
+      // Route based on activity type and status
+      const activityId = event.activityId;
+      const activityType = event.activityType;
+      const status = event.status;
+
+      console.log(`[Turnkey Webhook] Activity ${activityId}: ${activityType} -> ${status}`);
+
+      switch (activityType) {
+        case "ACTIVITY_TYPE_SIGN_RAW_PAYLOAD":
+        case "ACTIVITY_TYPE_SIGN_TRANSACTION":
+          // Handle signing activity completion
+          await ctx.runMutation(internal.bridge["turnkey-bridge"].handleActivityCompletion, {
+            activityId,
+            status,
+            result: event.result,
+            error: event.error?.message,
+          });
+          break;
+
+        case "ACTIVITY_TYPE_CREATE_SUB_ORGANIZATION":
+          // Handle sub-org creation completion
+          if (status === "ACTIVITY_STATUS_COMPLETED") {
+            await ctx.runMutation(internal.tee.turnkey.handleSubOrgCreated, {
+              activityId,
+              subOrganizationId: event.result?.createSubOrganizationResult?.subOrganizationId,
+              rootUserId: event.result?.createSubOrganizationResult?.rootUserId,
+            });
+          }
+          break;
+
+        case "ACTIVITY_TYPE_CREATE_WALLET":
+          // Handle wallet creation completion
+          if (status === "ACTIVITY_STATUS_COMPLETED") {
+            await ctx.runMutation(internal.tee.turnkey.handleWalletCreated, {
+              activityId,
+              walletId: event.result?.createWalletResult?.walletId,
+              addresses: event.result?.createWalletResult?.addresses,
+            });
+          }
+          break;
+
+        case "ACTIVITY_TYPE_DELETE_USERS":
+        case "ACTIVITY_TYPE_UPDATE_USER":
+          // Handle user management events
+          console.log(`[Turnkey Webhook] User management activity: ${activityType}`);
+          break;
+
+        case "ACTIVITY_TYPE_EXPORT_WALLET":
+        case "ACTIVITY_TYPE_EXPORT_WALLET_ACCOUNT":
+          // Log export attempts for audit (security event)
+          console.warn(`[Turnkey Webhook] Wallet export detected: ${activityId}`);
+          await ctx.runMutation(internal.tee.turnkey.logSecurityEvent, {
+            eventType: "wallet_export",
+            activityId,
+            status,
+          });
+          break;
+
+        default:
+          console.log(`[Turnkey Webhook] Unhandled activity type: ${activityType}`);
+      }
+
+      const responseTime = Date.now() - startTime;
+
+      return new Response(
+        JSON.stringify({
+          received: true,
+          activityId,
+          responseTimeMs: responseTime,
+        }),
+        {
+          status: 200,
+          headers: {
+            "Content-Type": "application/json",
+            "X-Response-Time": `${responseTime}ms`,
+          },
+        }
+      );
+
+    } catch (error) {
+      console.error("[Turnkey Webhook] Error:", error);
+      return new Response(
+        JSON.stringify({ error: "Internal error" }),
+        { status: 500, headers: { "Content-Type": "application/json" } }
+      );
+    }
+  }),
+});
+
+/**
+ * Turnkey policy engine webhook
+ * Handles policy evaluation results and notifications
+ */
+http.route({
+  path: "/webhooks/turnkey/policy",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const signature = request.headers.get("x-turnkey-signature");
+      const timestamp = request.headers.get("x-turnkey-timestamp");
+      const body = await request.text();
+
+      if (!await verifyTurnkeySignature(body, signature, timestamp)) {
+        return new Response(JSON.stringify({ error: "Invalid signature" }), {
+          status: 401,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
+      const event = JSON.parse(body);
+
+      switch (event.type) {
+        case "policy.evaluation.denied":
+          // Transaction blocked by policy
+          console.log(`[Turnkey Policy] Transaction denied: ${event.policyId}`);
+          await ctx.runMutation(internal.tee.turnkey.handlePolicyDenial, {
+            activityId: event.activityId,
+            policyId: event.policyId,
+            reason: event.reason,
+          });
+          break;
+
+        case "policy.consensus.required":
+          // Multi-sig approval required
+          console.log(`[Turnkey Policy] Consensus required: ${event.activityId}`);
+          await ctx.runMutation(internal.tee.turnkey.handleConsensusRequired, {
+            activityId: event.activityId,
+            requiredApprovers: event.requiredApprovers,
+            currentApprovers: event.currentApprovers,
+          });
+          break;
+
+        case "policy.limit.exceeded":
+          // Velocity limit exceeded
+          console.log(`[Turnkey Policy] Limit exceeded: ${event.limitType}`);
+          await ctx.runMutation(internal.tee.turnkey.handleLimitExceeded, {
+            activityId: event.activityId,
+            limitType: event.limitType,
+            currentValue: event.currentValue,
+            limitValue: event.limitValue,
+          });
+          break;
+
+        default:
+          console.log(`[Turnkey Policy] Unhandled event: ${event.type}`);
+      }
+
+      return new Response(JSON.stringify({ received: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+
+    } catch (error) {
+      console.error("[Turnkey Policy Webhook] Error:", error);
+      return new Response(
+        JSON.stringify({ error: "Internal error" }),
+        { status: 500, headers: { "Content-Type": "application/json" } }
+      );
+    }
+  }),
+});
+
 // ============ HEALTH CHECK ============
 
 http.route({
@@ -457,6 +648,62 @@ http.route({
 });
 
 // ============ SIGNATURE VERIFICATION ============
+
+/**
+ * Verify Turnkey webhook signature
+ * Uses ECDSA P-256 signature verification
+ */
+async function verifyTurnkeySignature(
+  body: string,
+  signature: string | null,
+  timestamp: string | null
+): Promise<boolean> {
+  if (!signature || !timestamp) return false;
+
+  const publicKey = process.env.TURNKEY_WEBHOOK_PUBLIC_KEY;
+  if (!publicKey) {
+    console.warn("TURNKEY_WEBHOOK_PUBLIC_KEY not configured - skipping verification");
+    return true; // Allow in development
+  }
+
+  // Check timestamp to prevent replay attacks (5 minute window)
+  const timestampMs = parseInt(timestamp, 10);
+  const now = Date.now();
+  if (Math.abs(now - timestampMs) > 5 * 60 * 1000) {
+    console.error("[Turnkey] Webhook timestamp too old");
+    return false;
+  }
+
+  try {
+    // Payload format: timestamp.body
+    const payload = `${timestamp}.${body}`;
+    const encoder = new TextEncoder();
+
+    // Import the public key (P-256/secp256r1)
+    const keyData = Uint8Array.from(atob(publicKey), (c) => c.charCodeAt(0));
+    const cryptoKey = await crypto.subtle.importKey(
+      "spki",
+      keyData,
+      { name: "ECDSA", namedCurve: "P-256" },
+      false,
+      ["verify"]
+    );
+
+    // Verify the signature
+    const signatureBytes = Uint8Array.from(atob(signature), (c) => c.charCodeAt(0));
+    const isValid = await crypto.subtle.verify(
+      { name: "ECDSA", hash: "SHA-256" },
+      cryptoKey,
+      signatureBytes,
+      encoder.encode(payload)
+    );
+
+    return isValid;
+  } catch (error) {
+    console.error("[Turnkey] Signature verification error:", error);
+    return false;
+  }
+}
 
 /**
  * Verify Marqeta webhook signature

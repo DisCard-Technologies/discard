@@ -718,4 +718,384 @@ export default defineSchema({
     .index("by_user", ["userId"])
     .index("by_moonpay_id", ["moonpayTransactionId"])
     .index("by_funding_transaction", ["fundingTransactionId"]),
+
+  // ============================================================================
+  // 2035 FINANCIAL OS - Solana Native Architecture
+  // ============================================================================
+
+  // ============ DID DOCUMENTS (alex.sovereign Standard) ============
+  // W3C DID v1.1 with ZK compression via Light Protocol (did:sol:zk method)
+  didDocuments: defineTable({
+    userId: v.id("users"),
+
+    // DID identifier (did:sol:zk:username or did:sol:zk:<base58-address>)
+    did: v.string(),
+
+    // On-chain anchoring (only these go on Solana via Light Protocol)
+    documentHash: v.string(),           // SHA-256 of full DID document
+    commitmentHash: v.string(),         // Poseidon hash for ZK validity proofs
+    merkleRoot: v.optional(v.string()), // Light Protocol state tree root
+
+    // Local storage reference (full document encrypted locally)
+    localDocumentEncrypted: v.optional(v.bytes()),
+
+    // ZK proof storage (validity proof stored on IPFS or similar)
+    zkProofCid: v.optional(v.string()), // IPFS CID of validity proof
+
+    // Verification methods (public keys)
+    verificationMethods: v.array(v.object({
+      id: v.string(),                   // "#key-1", "#passkey-recovery"
+      type: v.string(),                 // "JsonWebKey2020", "Multikey"
+      publicKeyJwk: v.optional(v.object({
+        kty: v.string(),                // "EC"
+        crv: v.string(),                // "P-256"
+        x: v.string(),                  // Base64url X coordinate
+        y: v.string(),                  // Base64url Y coordinate
+      })),
+      publicKeyMultibase: v.optional(v.string()), // Multibase-encoded key
+      controller: v.string(),           // DID that controls this key
+    })),
+
+    // Authentication methods (references to verificationMethods)
+    authentication: v.array(v.string()),
+
+    // Assertion methods (for signing credentials)
+    assertionMethod: v.optional(v.array(v.string())),
+
+    // Key agreement methods (for encryption)
+    keyAgreement: v.optional(v.array(v.string())),
+
+    // Social recovery configuration
+    recoveryThreshold: v.number(),      // 2-of-3, 3-of-5, etc.
+    recoveryGuardians: v.array(v.object({
+      guardianDid: v.string(),          // Guardian's DID
+      attestationHash: v.string(),      // SAS attestation hash
+      addedAt: v.number(),
+      status: v.union(
+        v.literal("active"),
+        v.literal("revoked")
+      ),
+    })),
+
+    // Service endpoints (optional)
+    services: v.optional(v.array(v.object({
+      id: v.string(),
+      type: v.string(),                 // "DisCardMessaging", "DisCardPayments"
+      serviceEndpoint: v.string(),      // URL or DID
+    }))),
+
+    // DID document status
+    status: v.union(
+      v.literal("creating"),            // Being provisioned
+      v.literal("active"),              // Ready for use
+      v.literal("suspended"),           // Temporarily disabled
+      v.literal("revoked")              // Permanently disabled
+    ),
+
+    // Key rotation tracking
+    lastKeyRotationAt: v.optional(v.number()),
+    keyRotationCount: v.number(),
+
+    // Timestamps
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_did", ["did"])
+    .index("by_commitment", ["commitmentHash"])
+    .index("by_status", ["status"]),
+
+  // ============ RECOVERY ATTESTATIONS ============
+  // Social recovery proofs for DID key rotation
+  recoveryAttestations: defineTable({
+    didDocumentId: v.id("didDocuments"),
+
+    // Guardian information
+    guardianDid: v.string(),            // Guardian's DID (did:sol:zk:...)
+    guardianUserId: v.optional(v.id("users")), // If guardian is a DisCard user
+
+    // Attestation type
+    attestationType: v.union(
+      v.literal("sas_recovery"),        // Solana Attestation Service
+      v.literal("manual_verification"), // Manual identity verification
+      v.literal("social_vouching")      // Trust network vouching
+    ),
+
+    // ZK proof (Groth16 proof that guardian verified identity)
+    zkProof: v.optional(v.bytes()),
+    zkProofPublicInputs: v.optional(v.array(v.string())),
+
+    // SAS reference
+    sasAttestationId: v.optional(v.string()),
+    sasAttestationAddress: v.optional(v.string()), // Solana account
+
+    // Recovery request details
+    newKeyCommitment: v.optional(v.string()), // Commitment to new key
+    recoveryReason: v.optional(v.string()),
+
+    // Status
+    status: v.union(
+      v.literal("pending"),             // Awaiting guardian action
+      v.literal("approved"),            // Guardian approved
+      v.literal("rejected"),            // Guardian rejected
+      v.literal("verified"),            // ZK proof verified
+      v.literal("expired"),             // Timed out
+      v.literal("used")                 // Used for recovery
+    ),
+
+    // Timestamps
+    requestedAt: v.number(),
+    respondedAt: v.optional(v.number()),
+    expiresAt: v.number(),
+  })
+    .index("by_document", ["didDocumentId"])
+    .index("by_guardian", ["guardianDid"])
+    .index("by_status", ["status"])
+    .index("by_expires", ["expiresAt"]),
+
+  // ============ TURNKEY SUB-ORGANIZATIONS ============
+  // TEE-protected wallet infrastructure (one sub-org per user)
+  turnkeyOrganizations: defineTable({
+    userId: v.id("users"),
+    didDocumentId: v.optional(v.id("didDocuments")), // Link to DID
+
+    // Turnkey identifiers
+    subOrganizationId: v.string(),      // Turnkey sub-org ID
+    rootUserId: v.string(),             // User's Turnkey user ID (passkey auth)
+    serviceUserId: v.string(),          // DisCard's propose-only service user
+
+    // TEE-generated wallet
+    walletId: v.string(),               // Turnkey wallet ID
+    walletAddress: v.string(),          // Solana address derived in TEE
+    walletPublicKey: v.string(),        // Ed25519 public key (base58)
+
+    // Policy configuration (enforced in AWS Nitro Enclave)
+    policies: v.object({
+      // Merchant controls
+      merchantLocking: v.boolean(),     // Enable merchant whitelist
+      allowedMerchants: v.optional(v.array(v.string())), // Visa merchant IDs
+      allowedMccCodes: v.optional(v.array(v.string())),  // Merchant category codes
+      blockedMerchants: v.optional(v.array(v.string())),
+      blockedMccCodes: v.optional(v.array(v.string())),
+
+      // Velocity limits (hardware-enforced in TEE)
+      velocityLimits: v.object({
+        perTransaction: v.number(),     // Max per transaction (cents)
+        daily: v.number(),              // Max per day (cents)
+        weekly: v.number(),             // Max per week (cents)
+        monthly: v.number(),            // Max per month (cents)
+      }),
+
+      // Current spending (tracked for velocity enforcement)
+      currentSpending: v.object({
+        daily: v.number(),
+        weekly: v.number(),
+        monthly: v.number(),
+        lastResetAt: v.number(),
+      }),
+
+      // Security requirements
+      requireBiometric: v.boolean(),    // Require FaceID/Fingerprint
+      requireStep2FA: v.boolean(),      // Require additional 2FA
+      allowedIpRanges: v.optional(v.array(v.string())), // IP allowlist
+
+      // Fraud integration
+      requireFraudClearance: v.boolean(), // Check fraud status before signing
+    }),
+
+    // Sub-org status
+    status: v.union(
+      v.literal("creating"),            // Provisioning in Turnkey
+      v.literal("active"),              // Ready for use
+      v.literal("suspended"),           // Temporarily disabled
+      v.literal("frozen")               // Security freeze
+    ),
+
+    // Activity tracking
+    lastActivityAt: v.optional(v.number()),
+    totalTransactionsCount: v.number(),
+    totalTransactionsVolume: v.number(), // Total USD volume (cents)
+
+    // Timestamps
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_did", ["didDocumentId"])
+    .index("by_sub_org", ["subOrganizationId"])
+    .index("by_wallet_address", ["walletAddress"])
+    .index("by_status", ["status"]),
+
+  // ============ ATTESTATIONS (SAS Integration) ============
+  // Solana Attestation Service stamps for identity verification
+  attestations: defineTable({
+    userId: v.id("users"),
+    didDocumentId: v.id("didDocuments"),
+
+    // Attestation type
+    attestationType: v.union(
+      v.literal("age_over_18"),
+      v.literal("age_over_21"),
+      v.literal("uk_resident"),
+      v.literal("us_resident"),
+      v.literal("eu_resident"),
+      v.literal("kyc_level_1"),         // Basic identity
+      v.literal("kyc_level_2"),         // Enhanced with address
+      v.literal("kyc_level_3"),         // Full with source of funds
+      v.literal("accredited_investor"),
+      v.literal("recovery_guardian"),   // Can act as guardian for others
+      v.literal("custom")               // Custom attestation
+    ),
+    customType: v.optional(v.string()), // If attestationType is "custom"
+
+    // Issuer information
+    issuer: v.union(
+      v.literal("civic"),               // Civic Pass
+      v.literal("solid"),               // Solid ID
+      v.literal("discard"),             // Self-issued by DisCard
+      v.literal("persona"),             // Persona KYC
+      v.literal("manual")               // Manual verification
+    ),
+    issuerDid: v.optional(v.string()),  // Issuer's DID if applicable
+
+    // On-chain reference (Solana Attestation Service)
+    sasAttestationId: v.optional(v.string()),
+    sasAttestationAddress: v.optional(v.string()), // Solana account address
+
+    // ZK proof (for privacy-preserving verification)
+    zkProof: v.optional(v.bytes()),     // Groth16/Plonk proof
+    zkProofType: v.optional(v.string()), // "groth16", "plonk"
+
+    // Encrypted attestation data (for full credential if needed)
+    encryptedData: v.optional(v.bytes()),
+    encryptionKeyId: v.optional(v.string()),
+
+    // Verification status
+    status: v.union(
+      v.literal("pending"),             // Awaiting verification
+      v.literal("processing"),          // Being verified
+      v.literal("active"),              // Valid and active
+      v.literal("revoked"),             // Issuer revoked
+      v.literal("expired"),             // Past expiry
+      v.literal("suspended")            // Temporarily invalid
+    ),
+
+    // Revocation info
+    revocationReason: v.optional(v.string()),
+    revokedAt: v.optional(v.number()),
+    revokedBy: v.optional(v.string()),  // DID of revoker
+
+    // Timestamps
+    issuedAt: v.number(),
+    expiresAt: v.optional(v.number()),
+    lastVerifiedAt: v.optional(v.number()),
+  })
+    .index("by_user", ["userId"])
+    .index("by_did", ["didDocumentId"])
+    .index("by_type", ["attestationType"])
+    .index("by_issuer", ["issuer"])
+    .index("by_status", ["status"])
+    .index("by_sas_id", ["sasAttestationId"]),
+
+  // ============ COMPRESSED ACCOUNTS (Light Protocol) ============
+  // ZK-compressed state on Solana for cost efficiency
+  compressedAccounts: defineTable({
+    userId: v.id("users"),
+
+    // Account type
+    accountType: v.union(
+      v.literal("card_state"),          // Virtual card PDA
+      v.literal("did_commitment"),      // DID anchor
+      v.literal("policy_state"),        // Transfer hook policy
+      v.literal("vault")                // User vault
+    ),
+
+    // Reference to related entity
+    cardId: v.optional(v.id("cards")),
+    didDocumentId: v.optional(v.id("didDocuments")),
+
+    // Light Protocol state
+    merkleTreeAddress: v.string(),      // Light Protocol tree address
+    leafIndex: v.number(),              // Position in Merkle tree
+    stateHash: v.string(),              // Current state commitment
+
+    // Account data (compressed)
+    compressedData: v.optional(v.bytes()),
+
+    // Proof info
+    lastProofSlot: v.optional(v.number()), // Solana slot of last proof
+    lastProofSignature: v.optional(v.string()),
+
+    // Sync status
+    syncStatus: v.union(
+      v.literal("synced"),
+      v.literal("pending_update"),
+      v.literal("error")
+    ),
+    syncError: v.optional(v.string()),
+
+    // Timestamps
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_card", ["cardId"])
+    .index("by_did", ["didDocumentId"])
+    .index("by_type", ["accountType"])
+    .index("by_merkle_tree", ["merkleTreeAddress"])
+    .index("by_sync_status", ["syncStatus"]),
+
+  // ============ OPTIMISTIC SETTLEMENTS ============
+  // Track optimistic UI updates pending blockchain confirmation
+  optimisticSettlements: defineTable({
+    userId: v.id("users"),
+    intentId: v.optional(v.id("intents")),
+
+    // Transaction reference
+    optimisticTxId: v.string(),         // Internal tracking ID
+    solanaSignature: v.optional(v.string()), // Once submitted
+
+    // What was optimistically updated
+    entityType: v.union(
+      v.literal("card_balance"),
+      v.literal("wallet_balance"),
+      v.literal("card_status"),
+      v.literal("policy_update")
+    ),
+    entityId: v.string(),               // Card ID, Wallet ID, etc.
+
+    // Optimistic state change
+    previousState: v.any(),             // State before optimistic update
+    optimisticState: v.any(),           // State after optimistic update
+    finalState: v.optional(v.any()),    // Confirmed state (may differ)
+
+    // Settlement status
+    status: v.union(
+      v.literal("pending"),             // Awaiting confirmation
+      v.literal("submitted"),           // TX submitted to Solana
+      v.literal("confirmed"),           // Confirmed on-chain
+      v.literal("finalized"),           // Finalized (Alpenglow)
+      v.literal("rolled_back"),         // Confirmation failed, reverted
+      v.literal("failed")               // TX failed
+    ),
+
+    // Confirmation tracking
+    confirmationSlot: v.optional(v.number()),
+    confirmationTimeMs: v.optional(v.number()), // Time to confirm
+
+    // Error handling
+    errorMessage: v.optional(v.string()),
+    retryCount: v.number(),
+
+    // Timestamps
+    createdAt: v.number(),
+    submittedAt: v.optional(v.number()),
+    confirmedAt: v.optional(v.number()),
+    finalizedAt: v.optional(v.number()),
+  })
+    .index("by_user", ["userId"])
+    .index("by_intent", ["intentId"])
+    .index("by_signature", ["solanaSignature"])
+    .index("by_status", ["status"])
+    .index("by_entity", ["entityType", "entityId"]),
 });
