@@ -1,0 +1,297 @@
+syntax = "proto3";
+
+package discard.financial_armor.v1;
+
+option go_package = "github.com/discard-technologies/financial-armor/proto";
+
+// ============================================================================
+// Financial Armor Service
+// ============================================================================
+
+// Service for intent verification between orchestrator (Brain) and elizaOS (Soul)
+service FinancialArmorService {
+  // Verify an intent before forwarding to Turnkey
+  rpc VerifyIntent(VerifyIntentRequest) returns (VerifyIntentResponse);
+
+  // Check merchant against on-chain registry
+  rpc ValidateMerchant(ValidateMerchantRequest) returns (ValidateMerchantResponse);
+
+  // Check velocity limits
+  rpc CheckVelocity(CheckVelocityRequest) returns (CheckVelocityResponse);
+
+  // Get current TEE attestation quote
+  rpc GetAttestation(GetAttestationRequest) returns (GetAttestationResponse);
+
+  // Stream intent verification results (for real-time monitoring)
+  rpc StreamVerifications(StreamVerificationsRequest) returns (stream VerificationEvent);
+
+  // Health check
+  rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
+}
+
+// ============================================================================
+// Intent Verification
+// ============================================================================
+
+// Intent verification request from orchestrator
+message VerifyIntentRequest {
+  string request_id = 1;
+  string user_id = 2;
+  string intent_id = 3;
+  IntentPayload intent = 4;
+  string orchestrator_signature = 5;
+  int64 timestamp_ms = 6;
+  VerificationContext context = 7;
+}
+
+// The intent payload to verify
+message IntentPayload {
+  string action = 1;
+  string source_type = 2;
+  string source_id = 3;
+  string target_type = 4;
+  string target_id = 5;
+  int64 amount_cents = 6;
+  string currency = 7;
+  MerchantInfo merchant = 8;
+  map<string, string> metadata = 9;
+}
+
+// Merchant information
+message MerchantInfo {
+  string merchant_id = 1;
+  string merchant_name = 2;
+  string mcc_code = 3;
+  string country_code = 4;
+  string visa_mid = 5;
+}
+
+// User context for verification
+message VerificationContext {
+  string wallet_address = 1;
+  string sub_organization_id = 2;
+  string card_id = 3;
+  UserPolicies policies = 4;
+}
+
+// User-defined policies
+message UserPolicies {
+  bool merchant_locking = 1;
+  repeated string allowed_merchants = 2;
+  repeated string blocked_merchants = 3;
+  repeated string allowed_mcc_codes = 4;
+  repeated string blocked_mcc_codes = 5;
+  VelocityLimits velocity_limits = 6;
+  bool require_biometric = 7;
+  bool require_fraud_clearance = 8;
+  bool require_2fa = 9;
+  int64 max_transaction_amount = 10;
+}
+
+// Velocity limits configuration
+message VelocityLimits {
+  int64 per_transaction = 1;
+  int64 daily = 2;
+  int64 weekly = 3;
+  int64 monthly = 4;
+  int32 daily_tx_count = 5;
+  int32 weekly_tx_count = 6;
+  int32 monthly_tx_count = 7;
+}
+
+// Intent verification response
+message VerifyIntentResponse {
+  string request_id = 1;
+  VerificationResult result = 2;
+  string denial_reason = 3;
+  string denial_details = 4;
+  bool requires_escalation = 5;
+  string escalation_reason = 6;
+  string attestation_quote = 7;
+  string signed_intent = 8;
+  int64 processed_at_ms = 9;
+  int32 verification_time_ms = 10;
+}
+
+// Verification result enum
+enum VerificationResult {
+  VERIFICATION_RESULT_UNSPECIFIED = 0;
+  APPROVED = 1;
+  DENIED_MERCHANT = 2;
+  DENIED_VELOCITY = 3;
+  DENIED_POLICY = 4;
+  DENIED_FRAUD = 5;
+  DENIED_ATTESTATION = 6;
+  REQUIRES_ESCALATION = 7;
+  INTERNAL_ERROR = 8;
+}
+
+// ============================================================================
+// Merchant Validation
+// ============================================================================
+
+// Request to validate a merchant
+message ValidateMerchantRequest {
+  string merchant_id = 1;
+  string mcc_code = 2;
+  string country_code = 3;
+  string visa_mid = 4;
+}
+
+// Merchant validation response
+message ValidateMerchantResponse {
+  bool is_valid = 1;
+  bool is_blocked = 2;
+  int32 risk_tier = 3;
+  string denial_reason = 4;
+  MerchantRecord record = 5;
+  int32 validation_time_ms = 6;
+}
+
+// On-chain merchant record
+message MerchantRecord {
+  bytes merchant_id = 1;
+  string merchant_name = 2;
+  string visa_mid = 3;
+  int32 mcc_code = 4;
+  int32 risk_tier = 5;
+  bool is_active = 6;
+  string country_code = 7;
+  int64 registered_at = 8;
+  int64 updated_at = 9;
+  string registered_by = 10;
+  string metadata_uri = 11;
+}
+
+// ============================================================================
+// Velocity Checking
+// ============================================================================
+
+// Request to check velocity limits
+message CheckVelocityRequest {
+  string user_id = 1;
+  string card_id = 2;
+  int64 amount_cents = 3;
+  VelocityLimits limits = 4;
+}
+
+// Velocity check response
+message CheckVelocityResponse {
+  bool within_limits = 1;
+  string denial_reason = 2;
+  string denial_details = 3;
+  VelocityStatus current_status = 4;
+  int32 check_time_ms = 5;
+}
+
+// Current velocity status
+message VelocityStatus {
+  int64 daily_spent = 1;
+  int64 daily_limit = 2;
+  int64 daily_remaining = 3;
+  int32 daily_percent_used = 4;
+
+  int64 weekly_spent = 5;
+  int64 weekly_limit = 6;
+  int64 weekly_remaining = 7;
+  int32 weekly_percent_used = 8;
+
+  int64 monthly_spent = 9;
+  int64 monthly_limit = 10;
+  int64 monthly_remaining = 11;
+  int32 monthly_percent_used = 12;
+
+  int32 daily_tx_count = 13;
+  int32 weekly_tx_count = 14;
+  int32 monthly_tx_count = 15;
+}
+
+// ============================================================================
+// Attestation
+// ============================================================================
+
+// Request for current attestation quote
+message GetAttestationRequest {
+  string nonce = 1;
+  map<string, string> report_data = 2;
+}
+
+// Attestation response
+message GetAttestationResponse {
+  bytes quote = 1;
+  string public_key = 2;
+  int64 timestamp = 3;
+  string mr_enclave = 4;
+  string mr_signer = 5;
+  int32 isv_prod_id = 6;
+  int32 isv_svn = 7;
+  int64 expires_at = 8;
+  bool is_valid = 9;
+}
+
+// ============================================================================
+// Streaming
+// ============================================================================
+
+// Request to stream verification events
+message StreamVerificationsRequest {
+  string user_id = 1;
+  bool include_approved = 2;
+  bool include_denied = 3;
+}
+
+// Verification event for streaming
+message VerificationEvent {
+  string intent_id = 1;
+  string request_id = 2;
+  VerificationResult result = 3;
+  string denial_reason = 4;
+  int64 timestamp_ms = 5;
+  int64 amount_cents = 6;
+  string action = 7;
+}
+
+// ============================================================================
+// Health Check
+// ============================================================================
+
+// Health check request
+message HealthCheckRequest {
+  bool include_details = 1;
+}
+
+// Health check response
+message HealthCheckResponse {
+  ServiceStatus status = 1;
+  string version = 2;
+  int64 uptime_seconds = 3;
+  ServiceDetails details = 4;
+}
+
+// Service status
+enum ServiceStatus {
+  SERVICE_STATUS_UNSPECIFIED = 0;
+  HEALTHY = 1;
+  DEGRADED = 2;
+  UNHEALTHY = 3;
+}
+
+// Detailed service status
+message ServiceDetails {
+  bool solana_connected = 1;
+  bool attestation_valid = 2;
+  bool turnkey_reachable = 3;
+  int64 attestation_expires_at = 4;
+  ServiceMetrics metrics = 5;
+}
+
+// Service metrics
+message ServiceMetrics {
+  int64 total_verifications = 1;
+  int64 approved_count = 2;
+  int64 denied_count = 3;
+  int32 avg_verification_time_ms = 4;
+  int64 merchant_validations = 5;
+  int64 velocity_checks = 6;
+  int64 error_count = 7;
+}

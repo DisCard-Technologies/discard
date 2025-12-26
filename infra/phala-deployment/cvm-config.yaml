@@ -1,0 +1,292 @@
+# DisCard Financial Armor - Phala CVM Configuration
+#
+# Configuration for deploying to Phala Cloud Confidential Virtual Machine
+# Reference: https://docs.phala.network/developers/phala-cloud
+
+apiVersion: phala.network/v1
+kind: ConfidentialVM
+metadata:
+  name: discard-financial-armor
+  namespace: discard-prod
+  labels:
+    app: financial-armor
+    version: "1.0.0"
+    tier: critical
+    component: verification-layer
+
+spec:
+  # Resource allocation
+  resources:
+    cpu: 2
+    memory: 4Gi
+    storage: 10Gi
+
+  # TEE Configuration
+  tee:
+    # SGX provider for Intel enclaves
+    provider: sgx
+
+    # Attestation settings
+    attestation:
+      enabled: true
+      # EPID for older hardware, DCAP for newer
+      mode: dcap
+      # Refresh interval for attestation quotes
+      interval: 60s
+      # Report data to embed in quotes
+      reportDataTemplate:
+        service: financial-armor
+        version: "1.0.0"
+
+    # Memory encryption
+    memoryEncryption: true
+
+    # Seal/unseal for persistent secrets
+    sealing:
+      enabled: true
+      keyPolicy: MRSIGNER
+
+  # Container configuration
+  container:
+    image: ghcr.io/discard-technologies/financial-armor:latest
+    imagePullPolicy: Always
+
+    # Port mappings
+    ports:
+      - name: grpc
+        containerPort: 50051
+        protocol: TCP
+      - name: attestation
+        containerPort: 8090
+        protocol: TCP
+      - name: metrics
+        containerPort: 9090
+        protocol: TCP
+
+    # Environment variables (non-sensitive)
+    env:
+      - name: NODE_ENV
+        value: production
+      - name: GRPC_PORT
+        value: "50051"
+      - name: LOG_LEVEL
+        value: info
+      - name: PHALA_ATTESTATION_ENABLED
+        value: "true"
+      - name: METRICS_ENABLED
+        value: "true"
+
+    # Resource limits
+    resources:
+      limits:
+        cpu: 2
+        memory: 4Gi
+      requests:
+        cpu: 1
+        memory: 2Gi
+
+    # Liveness and readiness probes
+    livenessProbe:
+      httpGet:
+        path: /health
+        port: 8090
+      initialDelaySeconds: 30
+      periodSeconds: 30
+      timeoutSeconds: 10
+      failureThreshold: 3
+
+    readinessProbe:
+      httpGet:
+        path: /health
+        port: 8090
+      initialDelaySeconds: 10
+      periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 3
+
+  # Secrets (encrypted at rest, decrypted only in TEE)
+  secrets:
+    - name: discard-secrets
+      # These are encrypted with the TEE's sealing key
+      encryptedData:
+        SOLANA_RPC_URL: <sealed>
+        HELIUS_RPC_URL: <sealed>
+        TURNKEY_ORGANIZATION_ID: <sealed>
+        TURNKEY_API_BASE_URL: <sealed>
+
+  # Persistent volumes
+  volumes:
+    - name: attestation-keys
+      persistentVolumeClaim:
+        claimName: financial-armor-keys
+      mountPath: /app/keys
+
+  # Network policy
+  networkPolicy:
+    # Egress rules (outbound traffic)
+    egress:
+      # Allow HTTPS to external services
+      - to:
+          - ipBlock:
+              cidr: 0.0.0.0/0
+        ports:
+          - port: 443
+            protocol: TCP
+      # Allow Solana RPC
+      - to:
+          - ipBlock:
+              cidr: 0.0.0.0/0
+        ports:
+          - port: 8899
+            protocol: TCP
+          - port: 8900
+            protocol: TCP
+      # Allow DNS
+      - to:
+          - ipBlock:
+              cidr: 0.0.0.0/0
+        ports:
+          - port: 53
+            protocol: UDP
+
+    # Ingress rules (inbound traffic)
+    ingress:
+      # Allow gRPC from orchestrator
+      - from:
+          - namespaceSelector:
+              matchLabels:
+                name: discard-prod
+          - podSelector:
+              matchLabels:
+                role: orchestrator
+        ports:
+          - port: 50051
+            protocol: TCP
+
+      # Allow attestation queries
+      - from:
+          - namespaceSelector:
+              matchLabels:
+                name: discard-prod
+        ports:
+          - port: 8090
+            protocol: TCP
+
+      # Allow metrics scraping
+      - from:
+          - namespaceSelector:
+              matchLabels:
+                name: monitoring
+        ports:
+          - port: 9090
+            protocol: TCP
+
+  # Auto-scaling configuration
+  scaling:
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilization: 70
+    targetMemoryUtilization: 80
+
+    # Scale based on gRPC request rate
+    customMetrics:
+      - type: External
+        external:
+          metric:
+            name: grpc_requests_per_second
+          target:
+            type: AverageValue
+            averageValue: "100"
+
+  # Anti-affinity for high availability
+  affinity:
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchLabels:
+              app: financial-armor
+          topologyKey: kubernetes.io/hostname
+
+  # Topology spread for zone distribution
+  topologySpreadConstraints:
+    - maxSkew: 1
+      topologyKey: topology.kubernetes.io/zone
+      whenUnsatisfiable: ScheduleAnyway
+      labelSelector:
+        matchLabels:
+          app: financial-armor
+
+  # Service mesh integration (optional)
+  serviceMesh:
+    enabled: false
+    sidecar: istio
+
+---
+# Persistent Volume Claim for attestation keys
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: financial-armor-keys
+  namespace: discard-prod
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: encrypted-ssd
+  resources:
+    requests:
+      storage: 1Gi
+
+---
+# Service for internal communication
+apiVersion: v1
+kind: Service
+metadata:
+  name: financial-armor
+  namespace: discard-prod
+  labels:
+    app: financial-armor
+spec:
+  type: ClusterIP
+  ports:
+    - name: grpc
+      port: 50051
+      targetPort: 50051
+      protocol: TCP
+    - name: attestation
+      port: 8090
+      targetPort: 8090
+      protocol: TCP
+    - name: metrics
+      port: 9090
+      targetPort: 9090
+      protocol: TCP
+  selector:
+    app: financial-armor
+
+---
+# Horizontal Pod Autoscaler
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: financial-armor-hpa
+  namespace: discard-prod
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: financial-armor
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80

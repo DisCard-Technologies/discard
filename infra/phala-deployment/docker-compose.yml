@@ -1,0 +1,128 @@
+version: '3.8'
+
+# DisCard Financial Armor - Local Development Composition
+# Use for local testing before deploying to Phala Cloud
+
+services:
+  # Financial Armor Service (elizaOS + gRPC)
+  financial-armor:
+    build:
+      context: ../..
+      dockerfile: infra/phala-deployment/Dockerfile
+    container_name: discard-financial-armor
+    ports:
+      - "50051:50051"  # gRPC service
+      - "8090:8090"    # Attestation endpoint
+      - "9090:9090"    # Metrics (optional)
+    environment:
+      # Solana Configuration
+      - SOLANA_RPC_URL=${SOLANA_RPC_URL:-https://api.devnet.solana.com}
+      - HELIUS_RPC_URL=${HELIUS_RPC_URL}
+      - COMPRESSION_RPC_URL=${COMPRESSION_RPC_URL}
+
+      # Turnkey Configuration
+      - TURNKEY_ORGANIZATION_ID=${TURNKEY_ORGANIZATION_ID}
+      - TURNKEY_API_BASE_URL=${TURNKEY_API_BASE_URL:-https://api.turnkey.com}
+
+      # Attestation Configuration
+      - PHALA_ATTESTATION_ENABLED=${PHALA_ATTESTATION_ENABLED:-true}
+      - ATTESTATION_ENDPOINT=http://localhost:8090/attestation
+
+      # Service Configuration
+      - GRPC_PORT=50051
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - NODE_ENV=${NODE_ENV:-development}
+
+      # Metrics
+      - METRICS_ENABLED=${METRICS_ENABLED:-true}
+    volumes:
+      # Persist attestation keys (in production, these are sealed by TEE)
+      - attestation-keys:/app/keys
+      # Character file (read-only)
+      - ../../characters/alex_sovereign.json:/app/characters/alex_sovereign.json:ro
+    networks:
+      - discard-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8090/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Local Solana Validator (for development only)
+  solana-validator:
+    image: solanalabs/solana:v1.18.0
+    container_name: solana-test-validator
+    command: >
+      solana-test-validator
+      --reset
+      --bpf-program MRCHxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx /programs/merchant_registry.so
+    ports:
+      - "8899:8899"   # JSON-RPC
+      - "8900:8900"   # WebSocket
+      - "9900:9900"   # Faucet
+    volumes:
+      - solana-ledger:/solana/ledger
+      - ../../target/deploy:/programs:ro
+    networks:
+      - discard-network
+    profiles:
+      - dev
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8899/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis for caching (optional, for high-traffic scenarios)
+  redis:
+    image: redis:7-alpine
+    container_name: discard-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - discard-network
+    profiles:
+      - cache
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # Prometheus for metrics collection (optional)
+  prometheus:
+    image: prom/prometheus:v2.47.0
+    container_name: discard-prometheus
+    ports:
+      - "9091:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    networks:
+      - discard-network
+    profiles:
+      - monitoring
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+
+volumes:
+  attestation-keys:
+    driver: local
+  solana-ledger:
+    driver: local
+  redis-data:
+    driver: local
+  prometheus-data:
+    driver: local
+
+networks:
+  discard-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
