@@ -1,0 +1,68 @@
+# DisCard Brain Orchestrator - Phala TEE Dockerfile
+#
+# Separate CVM for intent parsing and orchestration
+# Communicates with Soul CVM for verification
+#
+# Build: docker build -f Dockerfile.brain -t discard-brain-orchestrator .
+# Run: docker run -p 50052:50052 -p 8092:8092 discard-brain-orchestrator
+
+FROM node:20-slim AS base
+
+# Install dependencies
+RUN apt-get update && apt-get install -y \
+    curl \
+    ca-certificates \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set working directory
+WORKDIR /app
+
+# ============================================================================
+# Production stage (uses pre-built dist from local)
+# ============================================================================
+FROM base AS production
+
+# Copy package files
+COPY packages/plugin-brain-orchestrator/package.json ./packages/plugin-brain-orchestrator/
+
+# Install production dependencies only
+WORKDIR /app/packages/plugin-brain-orchestrator
+RUN npm install --omit=dev
+
+# Copy pre-built artifacts
+WORKDIR /app
+COPY packages/plugin-brain-orchestrator/dist ./packages/plugin-brain-orchestrator/dist
+COPY packages/plugin-brain-orchestrator/src/grpc/proto ./packages/plugin-brain-orchestrator/src/grpc/proto
+COPY characters/neutral_orchestrator.json ./characters/
+
+# Create non-root user for security
+RUN useradd -m -s /bin/bash discard && \
+    chown -R discard:discard /app
+
+USER discard
+
+# Create data directory for context storage
+RUN mkdir -p /app/data/context
+
+# Expose ports
+# gRPC service (different from Soul's 50051)
+EXPOSE 50052
+# Attestation endpoint
+EXPOSE 8092
+# Metrics
+EXPOSE 9092
+
+# Environment variables
+ENV NODE_ENV=production
+ENV GRPC_PORT=50052
+ENV LOG_LEVEL=info
+ENV CONTEXT_STORAGE_PATH=/app/data/context
+ENV SOUL_GRPC_URL=soul-cvm:50051
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
+    CMD curl -f http://localhost:8092/health || exit 1
+
+# Start the Brain Orchestrator standalone server
+CMD ["node", "packages/plugin-brain-orchestrator/dist/server.js"]

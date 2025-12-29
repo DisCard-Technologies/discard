@@ -65,7 +65,9 @@ export class FinancialArmorGrpcServer {
    * Setup the gRPC service
    */
   private setupService(): void {
-    const PROTO_PATH = join(__dirname, "proto", "financial_armor.proto");
+    // Proto file is at src/grpc/proto/ relative to package root
+    // __dirname is dist/, so we go up one level to package root, then into src/grpc/proto
+    const PROTO_PATH = join(__dirname, "..", "src", "grpc", "proto", "financial_armor.proto");
 
     const packageDefinition = protoLoader.loadSync(PROTO_PATH, {
       keepCase: true,

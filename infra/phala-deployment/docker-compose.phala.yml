@@ -1,0 +1,27 @@
+version: '3.8'
+
+# DisCard Financial Armor - Phala Cloud CVM Composition
+# Production deployment for Phala TEE environment
+
+services:
+  financial-armor:
+    image: xndroli/discard-financial-armor:latest
+    container_name: discard-financial-armor
+    ports:
+      - "50051:50051"  # gRPC service
+      - "8091:8091"    # Health endpoint (avoids conflict with Phala's 8090)
+      - "9090:9090"    # Metrics
+    environment:
+      - NODE_ENV=production
+      - SOLANA_RPC_URL=${SOLANA_RPC_URL}
+      - HELIUS_RPC_URL=${HELIUS_RPC_URL}
+      - COMPRESSION_RPC_URL=${COMPRESSION_RPC_URL}
+      - TURNKEY_ORGANIZATION_ID=${TURNKEY_ORGANIZATION_ID}
+      - TURNKEY_API_BASE_URL=${TURNKEY_API_BASE_URL}
+      - TURNKEY_API_PRIVATE_KEY=${TURNKEY_API_PRIVATE_KEY}
+      - TURNKEY_API_PUBLIC_KEY=${TURNKEY_API_PUBLIC_KEY}
+      - PHALA_ATTESTATION_ENABLED=true
+      - GRPC_PORT=50051
+      - LOG_LEVEL=info
+      - METRICS_ENABLED=true
+    restart: unless-stopped

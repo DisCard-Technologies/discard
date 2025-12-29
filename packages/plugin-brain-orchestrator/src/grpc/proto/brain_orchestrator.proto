@@ -1,0 +1,317 @@
+syntax = "proto3";
+
+package discard.brain_orchestrator.v1;
+
+option go_package = "github.com/discard-technologies/brain-orchestrator/proto";
+
+// ============================================================================
+// Brain Orchestrator Service
+// Entry point for all client requests - handles intent parsing, planning,
+// context management, and coordination with Soul CVM
+// ============================================================================
+
+service BrainOrchestratorService {
+  // Parse natural language into structured intent
+  rpc ParseIntent(ParseIntentRequest) returns (ParseIntentResponse);
+
+  // Execute a multi-step plan
+  rpc ExecutePlan(ExecutePlanRequest) returns (stream PlanExecutionEvent);
+
+  // Conversation with context management
+  rpc Converse(ConverseRequest) returns (ConverseResponse);
+
+  // Get current session context
+  rpc GetContext(GetContextRequest) returns (GetContextResponse);
+
+  // Reset/clear session
+  rpc ResetSession(ResetSessionRequest) returns (ResetSessionResponse);
+
+  // Get Brain attestation (includes Soul attestation verification)
+  rpc GetAttestation(GetAttestationRequest) returns (GetAttestationResponse);
+
+  // Health check
+  rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
+}
+
+// ============================================================================
+// Intent Parsing
+// ============================================================================
+
+// Request to parse natural language into structured intent
+message ParseIntentRequest {
+  string session_id = 1;
+  string user_id = 2;
+  string raw_text = 3;
+  map<string, string> metadata = 4;
+}
+
+// Parsed intent response
+message ParseIntentResponse {
+  bool success = 1;
+  ParsedIntent intent = 2;
+  bool needs_clarification = 3;
+  string clarification_question = 4;
+  repeated ClarificationOption clarification_options = 5;
+  float confidence = 6;
+  repeated PlanStep suggested_plan = 7;
+  int32 parse_time_ms = 8;
+}
+
+// Structured intent parsed from natural language
+message ParsedIntent {
+  string intent_id = 1;
+  string action = 2;
+  string source_type = 3;
+  string source_id = 4;
+  string target_type = 5;
+  string target_id = 6;
+  int64 amount_cents = 7;
+  string currency = 8;
+  ParsedMerchant merchant = 9;
+  string raw_text = 10;
+  repeated ExtractedEntity entities = 11;
+  int64 parsed_at_ms = 12;
+}
+
+// Merchant info parsed from text
+message ParsedMerchant {
+  string merchant_id = 1;
+  string merchant_name = 2;
+  string mcc_code = 3;
+  bool inferred_from_text = 4;
+}
+
+// Entity extracted from natural language
+message ExtractedEntity {
+  string type = 1;
+  string value = 2;
+  float confidence = 3;
+  int32 start_index = 4;
+  int32 end_index = 5;
+}
+
+// Option for clarification
+message ClarificationOption {
+  string label = 1;
+  string value = 2;
+  float confidence = 3;
+}
+
+// ============================================================================
+// Multi-step Planning
+// ============================================================================
+
+// Request to execute a multi-step plan
+message ExecutePlanRequest {
+  string session_id = 1;
+  string user_id = 2;
+  string plan_id = 3;
+  repeated PlanStep steps = 4;
+  bool require_approval_per_step = 5;
+  int32 timeout_ms = 6;
+}
+
+// Individual step in a plan
+message PlanStep {
+  string step_id = 1;
+  int32 sequence = 2;
+  string action = 3;
+  string description = 4;
+  map<string, string> parameters = 5;
+  repeated string depends_on = 6;
+  bool requires_soul_verification = 7;
+  StepStatus status = 8;
+}
+
+// Status of a plan step
+enum StepStatus {
+  STEP_STATUS_UNSPECIFIED = 0;
+  STEP_PENDING = 1;
+  STEP_BLOCKED = 2;
+  STEP_EXECUTING = 3;
+  STEP_AWAITING_APPROVAL = 4;
+  STEP_VERIFIED_BY_SOUL = 5;
+  STEP_COMPLETED = 6;
+  STEP_FAILED = 7;
+  STEP_SKIPPED = 8;
+  STEP_ROLLED_BACK = 9;
+}
+
+// Event emitted during plan execution (streamed)
+message PlanExecutionEvent {
+  string event_id = 1;
+  string plan_id = 2;
+  string step_id = 3;
+  PlanEventType event_type = 4;
+  string message = 5;
+  map<string, string> data = 6;
+  string soul_attestation = 7;
+  int64 timestamp_ms = 8;
+}
+
+// Types of plan execution events
+enum PlanEventType {
+  PLAN_EVENT_UNSPECIFIED = 0;
+  PLAN_STARTED = 1;
+  STEP_STARTED = 2;
+  STEP_AWAITING_APPROVAL = 3;
+  STEP_VERIFIED = 4;
+  STEP_COMPLETED = 5;
+  STEP_FAILED = 6;
+  STEP_RETRYING = 7;
+  PLAN_COMPLETED = 8;
+  PLAN_FAILED = 9;
+  PLAN_CANCELLED = 10;
+}
+
+// ============================================================================
+// Conversation Context
+// ============================================================================
+
+// Request for conversation with context
+message ConverseRequest {
+  string session_id = 1;
+  string user_id = 2;
+  string message = 3;
+  bool include_context = 4;
+}
+
+// Conversation response
+message ConverseResponse {
+  string response_text = 1;
+  ParsedIntent detected_intent = 2;
+  repeated SuggestedAction suggestions = 3;
+  ConversationContext context = 4;
+  int32 response_time_ms = 5;
+}
+
+// Suggested action for user
+message SuggestedAction {
+  string action = 1;
+  string display_text = 2;
+  float confidence = 3;
+}
+
+// Current conversation context
+message ConversationContext {
+  string session_id = 1;
+  string user_id = 2;
+  repeated ConversationTurn history = 3;
+  map<string, string> user_state = 4;
+  repeated string active_intents = 5;
+  int64 created_at_ms = 6;
+  int64 last_activity_ms = 7;
+  int64 expires_at_ms = 8;
+}
+
+// Single turn in conversation history
+message ConversationTurn {
+  string id = 1;
+  string role = 2;
+  string content = 3;
+  int64 timestamp_ms = 4;
+  ParsedIntent intent = 5;
+}
+
+// Get context request
+message GetContextRequest {
+  string session_id = 1;
+}
+
+// Get context response
+message GetContextResponse {
+  bool found = 1;
+  ConversationContext context = 2;
+}
+
+// Reset session request
+message ResetSessionRequest {
+  string session_id = 1;
+  bool preserve_user_state = 2;
+}
+
+// Reset session response
+message ResetSessionResponse {
+  bool success = 1;
+  string new_session_id = 2;
+}
+
+// ============================================================================
+// Attestation
+// ============================================================================
+
+// Get attestation request
+message GetAttestationRequest {
+  string nonce = 1;
+  bool include_soul_attestation = 2;
+}
+
+// Get attestation response (includes both Brain and Soul attestation)
+message GetAttestationResponse {
+  // Brain CVM attestation
+  bytes brain_quote = 1;
+  string brain_mr_enclave = 2;
+  string brain_mr_signer = 3;
+  int64 brain_timestamp = 4;
+  int64 brain_expires_at = 5;
+
+  // Soul CVM attestation (if requested)
+  bool soul_included = 6;
+  bytes soul_quote = 7;
+  string soul_mr_enclave = 8;
+  string soul_mr_signer = 9;
+  bool soul_verified = 10;
+  int64 soul_timestamp = 11;
+}
+
+// ============================================================================
+// Health Check
+// ============================================================================
+
+// Health check request
+message HealthCheckRequest {
+  bool include_details = 1;
+}
+
+// Health check response
+message HealthCheckResponse {
+  ServiceStatus status = 1;
+  string version = 2;
+  int64 uptime_seconds = 3;
+  bool soul_connected = 4;
+  bool soul_attestation_valid = 5;
+  BrainMetrics metrics = 6;
+  ServiceDetails details = 7;
+}
+
+// Service status
+enum ServiceStatus {
+  SERVICE_STATUS_UNSPECIFIED = 0;
+  HEALTHY = 1;
+  DEGRADED = 2;
+  UNHEALTHY = 3;
+}
+
+// Brain-specific metrics
+message BrainMetrics {
+  int64 total_requests = 1;
+  int64 intents_parsed = 2;
+  int64 plans_executed = 3;
+  int64 soul_verifications = 4;
+  int64 conversations = 5;
+  int32 avg_parse_time_ms = 6;
+  int32 avg_plan_execution_ms = 7;
+  int64 active_sessions = 8;
+  int64 error_count = 9;
+}
+
+// Detailed service status
+message ServiceDetails {
+  bool llm_available = 1;
+  bool context_storage_healthy = 2;
+  bool soul_reachable = 3;
+  int64 soul_attestation_expires_at = 4;
+  string llm_model = 5;
+  int32 context_ttl_seconds = 6;
+  int32 max_context_turns = 7;
+}

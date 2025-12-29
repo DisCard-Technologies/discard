@@ -381,20 +381,20 @@ export const financialArmorPlugin: Plugin = {
     {
       name: "financial-armor-grpc",
       description: "gRPC server for orchestrator communication",
-      serviceType: "GRPC_SERVER" as const,
+      
       initialize: async (runtime: IAgentRuntime) => {
         // Get config from runtime settings
         const config: FinancialArmorConfig = {
           solanaRpcUrl:
             runtime.getSetting("SOLANA_RPC_URL") ??
             "https://api.mainnet-beta.solana.com",
-          heliusRpcUrl: runtime.getSetting("HELIUS_RPC_URL"),
-          compressionRpcUrl: runtime.getSetting("COMPRESSION_RPC_URL"),
+          heliusRpcUrl: runtime.getSetting("HELIUS_RPC_URL") ?? undefined,
+          compressionRpcUrl: runtime.getSetting("COMPRESSION_RPC_URL") ?? undefined,
           turnkeyOrganizationId:
             runtime.getSetting("TURNKEY_ORGANIZATION_ID") ?? "",
-          turnkeyApiBaseUrl: runtime.getSetting("TURNKEY_API_BASE_URL"),
+          turnkeyApiBaseUrl: runtime.getSetting("TURNKEY_API_BASE_URL") ?? undefined,
           grpcPort: Number(runtime.getSetting("GRPC_PORT") ?? 50051),
-          attestationEndpoint: runtime.getSetting("ATTESTATION_ENDPOINT"),
+          attestationEndpoint: runtime.getSetting("ATTESTATION_ENDPOINT") ?? undefined,
           logLevel: (runtime.getSetting("LOG_LEVEL") ?? "info") as "info",
           metricsEnabled:
             runtime.getSetting("METRICS_ENABLED") !== "false",

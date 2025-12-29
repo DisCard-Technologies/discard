@@ -1,0 +1,102 @@
+# DisCard Brain Orchestrator - Docker Compose
+#
+# Production deployment for Brain CVM alongside Soul CVM
+#
+# Usage:
+#   docker-compose -f docker-compose.brain.yml up -d
+#
+# This compose file deploys both Brain and Soul CVMs together
+
+version: '3.8'
+
+services:
+  # ============================================================================
+  # Brain Orchestrator CVM
+  # ============================================================================
+  brain-orchestrator:
+    image: xndroli/discard-brain-orchestrator:latest
+    container_name: discard-brain-orchestrator
+    ports:
+      - "50052:50052"  # gRPC service
+      - "8092:8092"    # Attestation endpoint
+      - "9092:9092"    # Metrics
+    environment:
+      - NODE_ENV=production
+      # Soul CVM connection
+      - SOUL_GRPC_URL=financial-armor:50051
+      - SOUL_ATTESTATION_URL=http://financial-armor:8090
+      # LLM Configuration
+      - LLM_MODEL=llama-3.3-70b
+      - LLM_ENDPOINT=${LLM_ENDPOINT:-}
+      - LLM_API_KEY=${LLM_API_KEY:-}
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+      # Context Management
+      - CONTEXT_TTL_SECONDS=3600
+      - MAX_CONTEXT_TURNS=50
+      - CONTEXT_STORAGE=memory
+      # TEE Configuration
+      - PHALA_ATTESTATION_ENABLED=true
+      - GRPC_PORT=50052
+      - LOG_LEVEL=info
+      - METRICS_ENABLED=true
+    volumes:
+      - brain-context:/app/data/context
+    restart: unless-stopped
+    networks:
+      - discard-network
+    depends_on:
+      - financial-armor
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8092/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # ============================================================================
+  # Soul CVM (Financial Armor)
+  # ============================================================================
+  financial-armor:
+    image: xndroli/discard-financial-armor:latest
+    container_name: discard-financial-armor
+    ports:
+      - "50051:50051"  # gRPC service
+      - "8090:8090"    # Attestation endpoint
+      - "9090:9090"    # Metrics
+    environment:
+      - NODE_ENV=production
+      - SOLANA_RPC_URL=${SOLANA_RPC_URL:-https://api.devnet.solana.com}
+      - HELIUS_RPC_URL=${HELIUS_RPC_URL:-}
+      - COMPRESSION_RPC_URL=${COMPRESSION_RPC_URL:-}
+      - TURNKEY_ORGANIZATION_ID=${TURNKEY_ORGANIZATION_ID}
+      - TURNKEY_API_BASE_URL=${TURNKEY_API_BASE_URL:-https://api.turnkey.com}
+      - TURNKEY_API_PRIVATE_KEY=${TURNKEY_API_PRIVATE_KEY:-}
+      - TURNKEY_API_PUBLIC_KEY=${TURNKEY_API_PUBLIC_KEY:-}
+      - PHALA_ATTESTATION_ENABLED=true
+      - GRPC_PORT=50051
+      - LOG_LEVEL=info
+      - METRICS_ENABLED=true
+    volumes:
+      - soul-attestation:/app/attestation
+    restart: unless-stopped
+    networks:
+      - discard-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8090/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+networks:
+  discard-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+
+volumes:
+  brain-context:
+    driver: local
+  soul-attestation:
+    driver: local

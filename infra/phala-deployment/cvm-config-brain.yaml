@@ -1,0 +1,263 @@
+# DisCard Brain Orchestrator - Phala CVM Configuration
+#
+# Kubernetes-style CRD for Phala Cloud deployment
+# This configuration defines the Brain orchestrator TEE environment
+
+apiVersion: phala.network/v1
+kind: ConfidentialVM
+metadata:
+  name: discard-brain-orchestrator
+  namespace: discard-prod
+  labels:
+    app: brain-orchestrator
+    version: "1.0.0"
+    tier: orchestration
+    component: intent-layer
+
+spec:
+  # ============================================================================
+  # Resource Allocation
+  # Higher than Soul for NLP/LLM workloads
+  # ============================================================================
+  resources:
+    cpu: 4
+    memory: 8Gi
+    storage: 20Gi
+
+  # ============================================================================
+  # TEE Configuration
+  # ============================================================================
+  tee:
+    provider: sgx
+    attestation:
+      enabled: true
+      mode: dcap
+      interval: 60s
+      reportDataTemplate:
+        service: brain-orchestrator
+        version: "1.0.0"
+    memoryEncryption: true
+    sealing:
+      enabled: true
+      keyPolicy: MRSIGNER
+
+  # ============================================================================
+  # Container Configuration
+  # ============================================================================
+  container:
+    image: ghcr.io/discard-technologies/brain-orchestrator:latest
+    imagePullPolicy: Always
+    ports:
+      - name: grpc
+        containerPort: 50052
+        protocol: TCP
+      - name: attestation
+        containerPort: 8092
+        protocol: TCP
+      - name: metrics
+        containerPort: 9092
+        protocol: TCP
+    env:
+      - name: NODE_ENV
+        value: production
+      - name: GRPC_PORT
+        value: "50052"
+      - name: SOUL_GRPC_URL
+        value: "financial-armor.discard-prod.svc:50051"
+      - name: SOUL_ATTESTATION_URL
+        value: "http://financial-armor.discard-prod.svc:8090"
+      - name: LOG_LEVEL
+        value: info
+      - name: PHALA_ATTESTATION_ENABLED
+        value: "true"
+      - name: CONTEXT_TTL_SECONDS
+        value: "3600"
+      - name: MAX_CONTEXT_TURNS
+        value: "50"
+      - name: LLM_MODEL
+        value: "llama-3.3-70b"
+    envFrom:
+      - secretRef:
+          name: brain-orchestrator-secrets
+    resources:
+      limits:
+        cpu: 4
+        memory: 8Gi
+      requests:
+        cpu: 2
+        memory: 4Gi
+    livenessProbe:
+      httpGet:
+        path: /health
+        port: 8092
+      initialDelaySeconds: 30
+      periodSeconds: 30
+    readinessProbe:
+      httpGet:
+        path: /health
+        port: 8092
+      initialDelaySeconds: 15
+      periodSeconds: 10
+    volumeMounts:
+      - name: context-storage
+        mountPath: /app/data/context
+      - name: attestation-keys
+        mountPath: /app/attestation
+        readOnly: true
+
+  # ============================================================================
+  # Network Policy
+  # ============================================================================
+  networkPolicy:
+    egress:
+      # Allow connection to Soul CVM
+      - to:
+          - podSelector:
+              matchLabels:
+                app: financial-armor
+        ports:
+          - port: 50051
+            protocol: TCP
+          - port: 8090
+            protocol: TCP
+      # Allow HTTPS for external APIs (LLM endpoint, etc.)
+      - to:
+          - ipBlock:
+              cidr: 0.0.0.0/0
+        ports:
+          - port: 443
+            protocol: TCP
+      # DNS
+      - to:
+          - ipBlock:
+              cidr: 0.0.0.0/0
+        ports:
+          - port: 53
+            protocol: UDP
+          - port: 53
+            protocol: TCP
+    ingress:
+      # Allow gRPC from external clients
+      - from:
+          - namespaceSelector:
+              matchLabels:
+                name: discard-prod
+        ports:
+          - port: 50052
+            protocol: TCP
+      # Allow attestation queries
+      - ports:
+          - port: 8092
+            protocol: TCP
+      # Allow metrics scraping
+      - from:
+          - namespaceSelector:
+              matchLabels:
+                name: monitoring
+        ports:
+          - port: 9092
+            protocol: TCP
+
+  # ============================================================================
+  # Scaling Configuration
+  # ============================================================================
+  scaling:
+    minReplicas: 1
+    maxReplicas: 5
+    targetCPUUtilization: 60
+    targetMemoryUtilization: 70
+    scaleDownStabilizationSeconds: 300
+
+  # ============================================================================
+  # High Availability
+  # ============================================================================
+  affinity:
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchLabels:
+              app: brain-orchestrator
+          topologyKey: kubernetes.io/hostname
+
+  topologySpreadConstraints:
+    - maxSkew: 1
+      topologyKey: topology.kubernetes.io/zone
+      whenUnsatisfiable: ScheduleAnyway
+      labelSelector:
+        matchLabels:
+          app: brain-orchestrator
+
+---
+# ============================================================================
+# Persistent Volume Claim for Context Storage
+# ============================================================================
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: brain-context-storage
+  namespace: discard-prod
+  labels:
+    app: brain-orchestrator
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: encrypted-ssd
+  resources:
+    requests:
+      storage: 5Gi
+
+---
+# ============================================================================
+# Service Definition
+# ============================================================================
+apiVersion: v1
+kind: Service
+metadata:
+  name: brain-orchestrator
+  namespace: discard-prod
+  labels:
+    app: brain-orchestrator
+spec:
+  type: ClusterIP
+  ports:
+    - name: grpc
+      port: 50052
+      targetPort: 50052
+    - name: attestation
+      port: 8092
+      targetPort: 8092
+    - name: metrics
+      port: 9092
+      targetPort: 9092
+  selector:
+    app: brain-orchestrator
+
+---
+# ============================================================================
+# Horizontal Pod Autoscaler
+# ============================================================================
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: brain-orchestrator-hpa
+  namespace: discard-prod
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: brain-orchestrator
+  minReplicas: 1
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 60
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 70

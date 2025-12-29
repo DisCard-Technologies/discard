@@ -1,0 +1,26 @@
+# DisCard Brain Orchestrator - Standalone Docker Compose
+#
+# Deploys only the Brain CVM (Soul runs in separate CVM)
+
+version: '3.8'
+
+services:
+  brain-orchestrator:
+    image: xndroli/discard-brain-orchestrator:latest
+    container_name: discard-brain-orchestrator
+    ports:
+      - "50052:50052"
+      - "8092:8092"
+      - "9092:9092"
+    environment:
+      - NODE_ENV=production
+      - SOUL_GRPC_URL=${SOUL_GRPC_URL:-localhost:50051}
+      - SOUL_ATTESTATION_URL=${SOUL_ATTESTATION_URL:-http://localhost:8090}
+      - LLM_MODEL=llama-3.3-70b
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - CONTEXT_TTL_SECONDS=3600
+      - MAX_CONTEXT_TURNS=50
+      - PHALA_ATTESTATION_ENABLED=true
+      - GRPC_PORT=50052
+      - LOG_LEVEL=info
+    restart: unless-stopped

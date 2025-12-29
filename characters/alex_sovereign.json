@@ -136,7 +136,7 @@
   },
 
   "settings": {
-    "model": "gpt-4o-mini",
+    "model": "llama-3.1-8b",
     "voice": {
       "model": "en_US-male-medium"
     },

@@ -3,26 +3,24 @@
 # Optimized for Phala Cloud CVM (Confidential Virtual Machine)
 # Based on the official Phala offchain rollup image
 
-FROM ghcr.io/phatoffchain/phat-offchain-rollup:v0.2.0 AS base
+FROM node:20-slim AS base
 
-# Install Node.js 20.x LTS
-RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
-    apt-get install -y nodejs && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
+# Install dependencies
+RUN apt-get update && apt-get install -y curl && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Install pnpm
-RUN npm install -g pnpm@9
+
+# Install npm
+RUN # npm already installed
 
 # Set working directory
 WORKDIR /app
 
 # Copy package files first for better caching
-COPY package.json pnpm-lock.yaml ./
+COPY package.json package-lock.json ./
 COPY packages/plugin-financial-armor/package.json ./packages/plugin-financial-armor/
 
 # Install dependencies
-RUN pnpm install --frozen-lockfile --prod=false
+RUN npm install --frozen-lockfile --prod=false
 
 # Copy source code
 COPY packages/plugin-financial-armor ./packages/plugin-financial-armor
@@ -30,7 +28,7 @@ COPY characters/alex_sovereign.json ./characters/
 
 # Build the plugin
 WORKDIR /app/packages/plugin-financial-armor
-RUN pnpm build
+RUN npm install && npm run build
 
 # Return to app root
 WORKDIR /app
@@ -54,9 +52,9 @@ ENV NODE_ENV=production
 ENV GRPC_PORT=50051
 ENV LOG_LEVEL=info
 
-# Health check
+# Health check (using port 8091 to avoid conflict with Phala's attestation on 8090)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-    CMD curl -f http://localhost:8090/health || exit 1
+    CMD curl -f http://localhost:8091/health || exit 1
 
-# Start the Financial Armor service
-CMD ["node", "packages/plugin-financial-armor/dist/index.js"]
+# Start the Financial Armor standalone server
+CMD ["node", "packages/plugin-financial-armor/dist/standalone.js"]

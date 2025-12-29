@@ -164,3 +164,6 @@ google-services-key.json
 *.ipa
 *.apk
 *.aab
+
+# Phala deployment env files
+infra/phala-deployment/.env.*
