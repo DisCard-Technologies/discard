@@ -379,6 +379,40 @@ export const addPasskeyCredential = mutation({
   },
 });
 
+/**
+ * Update user's Solana address after Turnkey wallet creation
+ * Called after the client creates a Turnkey sub-organization
+ */
+export const updateSolanaAddress = mutation({
+  args: {
+    solanaAddress: v.string(),
+  },
+  handler: async (ctx, args): Promise<void> => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Not authenticated");
+    }
+
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_credential", (q) => q.eq("credentialId", identity.subject))
+      .first();
+
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    // Validate Solana address format (base58, 32-44 characters)
+    if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(args.solanaAddress)) {
+      throw new Error("Invalid Solana address format");
+    }
+
+    await ctx.db.patch(user._id, {
+      solanaAddress: args.solanaAddress,
+    });
+  },
+});
+
 // ============ INTERNAL MUTATIONS ============
 
 /**
