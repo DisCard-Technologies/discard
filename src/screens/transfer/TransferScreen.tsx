@@ -1,12 +1,25 @@
-import React, { useState } from 'react';
-import { View, Text, ScrollView, TextInput, TouchableOpacity, Alert } from 'react-native';
+import React, { useState, useCallback } from 'react';
+import { View, Text, ScrollView, TextInput, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import * as Clipboard from 'expo-clipboard';
+import QRCode from 'react-native-qrcode-svg';
 import { AmbientBackground, GlassCard, ContactAvatar } from '../../components/ui';
 import { CommandBar } from '../../components/command';
 import { colors, truncateAddress } from '../../lib/utils';
 import { useWallets } from '../../stores/walletsConvex';
-import { useCrypto} from '../../stores/cryptoConvex';
+import { useCrypto } from '../../stores/cryptoConvex';
+import { useAuth, useCurrentUserId } from '../../stores/authConvex';
+import { useTurnkey } from '../../hooks/useTurnkey';
+import { useMutation } from 'convex/react';
+import { api } from '../../../convex/_generated/api';
+
+// Turnkey configuration - these should come from environment variables
+const TURNKEY_CONFIG = {
+  organizationId: process.env.EXPO_PUBLIC_TURNKEY_ORGANIZATION_ID || '',
+  rpId: process.env.EXPO_PUBLIC_TURNKEY_RP_ID || 'discard.app',
+  apiBaseUrl: 'https://api.turnkey.com',
+};
 
 type TransferMode = 'send' | 'receive' | 'request';
 
@@ -43,7 +56,22 @@ export default function TransferScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [memo, setMemo] = useState('');
 
-  const walletAddress = '0x7F3a...8b2E';
+  // Get auth state and user's Solana address
+  const { user } = useAuth();
+  const userId = useCurrentUserId();
+
+  // Turnkey hook for wallet creation
+  const turnkey = useTurnkey(userId, TURNKEY_CONFIG);
+
+  // Mutation to update user's Solana address after wallet creation
+  const updateSolanaAddress = useMutation(api.auth.passkeys.updateSolanaAddress);
+
+  // Check if user has a real Solana address (not a placeholder)
+  const hasRealWallet = user?.solanaAddress &&
+    !user.solanaAddress.startsWith('derived_') &&
+    !user.solanaAddress.startsWith('DevWa11et');
+
+  const solanaAddress = hasRealWallet ? user.solanaAddress : turnkey.walletAddress;
 
   const filteredContacts = mockContacts.filter(
     (c) =>
@@ -59,9 +87,31 @@ export default function TransferScreen() {
     ]);
   };
 
-  const handleCopy = () => {
-    Alert.alert('Copied', 'Wallet address copied to clipboard');
-  };
+  const handleCopy = useCallback(async (address: string) => {
+    await Clipboard.setStringAsync(address);
+    Alert.alert('Copied', 'Solana address copied to clipboard');
+  }, []);
+
+  const handleCreateWallet = useCallback(async () => {
+    try {
+      // Initialize Turnkey if not already
+      if (!turnkey.isInitialized) {
+        await turnkey.initialize();
+      }
+
+      // Create sub-organization and wallet
+      const subOrg = await turnkey.createSubOrganization(user?.displayName || 'DisCard User');
+
+      // Update user's Solana address in Convex
+      if (subOrg.walletAddress) {
+        await updateSolanaAddress({ solanaAddress: subOrg.walletAddress });
+        Alert.alert('Success', 'Your Solana wallet has been created!');
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to create wallet';
+      Alert.alert('Error', message);
+    }
+  }, [turnkey, user, updateSolanaAddress]);
 
   return (
     <AmbientBackground>
@@ -147,7 +197,13 @@ export default function TransferScreen() {
               />
             )}
             {mode === 'receive' && (
-              <ReceiveMode walletAddress={walletAddress} onCopy={handleCopy} />
+              <ReceiveMode
+                solanaAddress={solanaAddress}
+                onCopy={handleCopy}
+                onCreateWallet={handleCreateWallet}
+                isCreatingWallet={turnkey.isLoading}
+                hasRealWallet={!!solanaAddress}
+              />
             )}
             {mode === 'request' && (
               <RequestMode
@@ -497,49 +553,175 @@ function SendMode({
   );
 }
 
-function ReceiveMode({ walletAddress, onCopy }: any) {
+interface ReceiveModeProps {
+  solanaAddress: string | null | undefined;
+  onCopy: (address: string) => void;
+  onCreateWallet: () => void;
+  isCreatingWallet: boolean;
+  hasRealWallet: boolean;
+}
+
+function ReceiveMode({
+  solanaAddress,
+  onCopy,
+  onCreateWallet,
+  isCreatingWallet,
+  hasRealWallet,
+}: ReceiveModeProps) {
+  // If no wallet, show setup screen
+  if (!hasRealWallet) {
+    return (
+      <View>
+        <GlassCard className="mb-4">
+          <View className="items-center py-8">
+            <View className="w-20 h-20 rounded-full bg-primary/10 items-center justify-center mb-4">
+              <Ionicons name="wallet-outline" size={40} color={colors.primary} />
+            </View>
+            <Text className="text-xl font-semibold text-foreground mb-2">
+              Set Up Your Wallet
+            </Text>
+            <Text className="text-sm text-muted-foreground text-center px-4 mb-6">
+              Create a secure Solana wallet to receive SOL, USDC, and other tokens on the Solana network.
+            </Text>
+            <TouchableOpacity
+              onPress={onCreateWallet}
+              disabled={isCreatingWallet}
+              style={{
+                backgroundColor: '#10B981',
+                paddingVertical: 14,
+                paddingHorizontal: 32,
+                borderRadius: 12,
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 8,
+                opacity: isCreatingWallet ? 0.7 : 1,
+              }}
+              activeOpacity={0.8}
+            >
+              {isCreatingWallet ? (
+                <>
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                  <Text style={{ color: '#FFFFFF', fontSize: 16, fontWeight: '600' }}>
+                    Creating Wallet...
+                  </Text>
+                </>
+              ) : (
+                <>
+                  <Ionicons name="add-circle-outline" size={20} color="#FFFFFF" />
+                  <Text style={{ color: '#FFFFFF', fontSize: 16, fontWeight: '600' }}>
+                    Create Wallet
+                  </Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
+
+          {/* Security Info */}
+          <View className="border-t border-border/30 pt-4 mt-4">
+            <View className="flex-row items-center gap-3 mb-3">
+              <Ionicons name="shield-checkmark" size={16} color={colors.primary} />
+              <Text className="text-xs text-muted-foreground">
+                Hardware-protected keys via Turnkey TEE
+              </Text>
+            </View>
+            <View className="flex-row items-center gap-3 mb-3">
+              <Ionicons name="finger-print" size={16} color={colors.primary} />
+              <Text className="text-xs text-muted-foreground">
+                Biometric authentication required for transactions
+              </Text>
+            </View>
+            <View className="flex-row items-center gap-3">
+              <Ionicons name="key" size={16} color={colors.primary} />
+              <Text className="text-xs text-muted-foreground">
+                No seed phrases to manage or lose
+              </Text>
+            </View>
+          </View>
+        </GlassCard>
+      </View>
+    );
+  }
+
+  // Show wallet address and QR code
   return (
     <View>
       <GlassCard className="mb-4">
         {/* QR Code */}
         <View className="items-center py-6">
-          <View className="w-48 h-48 rounded-2xl bg-white p-3">
-            <View className="w-full h-full rounded-xl bg-gradient-to-br from-foreground/90 to-foreground items-center justify-center">
-              <Ionicons name="qr-code" size={128} color="#FFFFFF" />
-              <View className="absolute w-12 h-12 rounded-xl bg-primary items-center justify-center">
-                <Text className="text-white font-bold text-lg">N</Text>
-              </View>
-            </View>
+          <View style={{
+            width: 200,
+            height: 200,
+            borderRadius: 16,
+            backgroundColor: '#FFFFFF',
+            padding: 12,
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}>
+            <QRCode
+              value={solanaAddress || ''}
+              size={176}
+              backgroundColor="#FFFFFF"
+              color="#000000"
+            />
           </View>
-          <Text className="text-sm text-muted-foreground mt-4">Scan to send funds to this wallet</Text>
+          <Text className="text-sm text-muted-foreground mt-4">
+            Scan to send SOL or tokens to this wallet
+          </Text>
         </View>
 
         {/* Address */}
         <View className="border-t border-border/30 pt-4">
           <Text className="text-[10px] uppercase tracking-widest text-muted-foreground text-center mb-2">
-            Your Address
+            Your Solana Address
           </Text>
           <TouchableOpacity
-            onPress={onCopy}
-            className="flex-row items-center justify-center gap-3 p-4 rounded-xl bg-surface/30"
+            onPress={() => solanaAddress && onCopy(solanaAddress)}
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 12,
+              padding: 16,
+              borderRadius: 12,
+              backgroundColor: 'rgba(31, 41, 55, 0.3)',
+            }}
             activeOpacity={0.7}
           >
-            <Text className="text-sm text-foreground font-mono">{walletAddress}</Text>
-            <Ionicons name="copy-outline" size={16} color={colors.muted} />
+            <Text
+              style={{
+                fontSize: 12,
+                color: '#FFFFFF',
+                fontFamily: 'monospace',
+                flex: 1,
+                textAlign: 'center',
+              }}
+              numberOfLines={1}
+              ellipsizeMode="middle"
+            >
+              {solanaAddress}
+            </Text>
+            <Ionicons name="copy-outline" size={18} color={colors.muted} />
           </TouchableOpacity>
         </View>
 
-        {/* Networks */}
+        {/* Network */}
         <View className="mt-4">
           <Text className="text-[10px] uppercase tracking-widest text-muted-foreground text-center mb-2">
-            Supported Networks
+            Network
           </Text>
           <View className="flex-row flex-wrap gap-2 justify-center">
-            {['Ethereum', 'Base', 'Arbitrum', 'Optimism', 'Polygon'].map((network) => (
-              <View key={network} className="px-3 py-1.5 rounded-full bg-surface/30">
-                <Text className="text-xs text-muted-foreground">{network}</Text>
-              </View>
-            ))}
+            <View style={{
+              paddingHorizontal: 16,
+              paddingVertical: 8,
+              borderRadius: 20,
+              backgroundColor: 'rgba(16, 185, 129, 0.1)',
+              borderWidth: 1,
+              borderColor: 'rgba(16, 185, 129, 0.3)',
+            }}>
+              <Text style={{ fontSize: 14, color: '#10B981', fontWeight: '500' }}>
+                Solana (Devnet)
+              </Text>
+            </View>
           </View>
         </View>
       </GlassCard>
@@ -548,12 +730,13 @@ function ReceiveMode({ walletAddress, onCopy }: any) {
       <GlassCard>
         <View className="flex-row gap-3">
           {[
-            { icon: 'people', label: 'Share' },
-            { icon: 'document-text', label: 'Invoice' },
-            { icon: 'repeat', label: 'Recurring' },
+            { icon: 'share-outline', label: 'Share', onPress: () => solanaAddress && onCopy(solanaAddress) },
+            { icon: 'document-text-outline', label: 'Invoice', onPress: () => Alert.alert('Coming Soon', 'Invoice generation will be available soon.') },
+            { icon: 'water-outline', label: 'Faucet', onPress: () => Alert.alert('Devnet Faucet', 'Visit sol-faucet.com to get free devnet SOL for testing.') },
           ].map((action) => (
             <TouchableOpacity
               key={action.label}
+              onPress={action.onPress}
               className="flex-1 flex-col items-center gap-2 py-4 rounded-xl bg-surface/20"
               activeOpacity={0.7}
             >
@@ -563,6 +746,24 @@ function ReceiveMode({ walletAddress, onCopy }: any) {
           ))}
         </View>
       </GlassCard>
+
+      {/* Devnet Notice */}
+      <View style={{
+        marginTop: 16,
+        padding: 12,
+        borderRadius: 12,
+        backgroundColor: 'rgba(251, 191, 36, 0.1)',
+        borderWidth: 1,
+        borderColor: 'rgba(251, 191, 36, 0.2)',
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+      }}>
+        <Ionicons name="information-circle" size={20} color="#FBBF24" />
+        <Text style={{ flex: 1, fontSize: 12, color: '#FBBF24' }}>
+          This is a Solana Devnet address. Only send test tokens - real funds will be lost.
+        </Text>
+      </View>
     </View>
   );
 }
