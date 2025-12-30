@@ -338,13 +338,19 @@ export function CommandBar({
 
       {/* Main Command Bar */}
       <Animated.View
-        className="bg-secondary/60 rounded-2xl border border-white/10 overflow-hidden shadow-lg"
-        style={{ height: containerHeight }}
+        className="rounded-3xl overflow-hidden bg-gray-800/80 border border-white/10 shadow-lg"
+        style={{
+          height: containerHeight,
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.3,
+          shadowRadius: 8,
+        }}
       >
         {/* Input Row */}
         <View className="flex-row items-center px-1.5 py-1.5 h-14 gap-1.5">
           {/* Camera Button */}
-          <TouchableOpacity className="w-10 h-10 rounded-xl items-center justify-center active:bg-secondary/50">
+          <TouchableOpacity className="w-10 h-10 rounded-full items-center justify-center active:bg-secondary/50">
             <Camera size={20} color="#6B7280" />
           </TouchableOpacity>
 
@@ -375,7 +381,7 @@ export function CommandBar({
 
           {/* Mic Button */}
           <TouchableOpacity
-            className={`w-10 h-10 rounded-xl items-center justify-center ${
+            className={`w-10 h-10 rounded-full items-center justify-center ${
               isListening ? "bg-primary" : "active:bg-secondary/50"
             }`}
             onPress={() => setIsListening(!isListening)}
@@ -385,7 +391,7 @@ export function CommandBar({
 
           {/* Send Button */}
           <TouchableOpacity
-            className={`w-10 h-10 rounded-xl bg-primary items-center justify-center ml-1 ${
+            className={`w-10 h-10 rounded-full items-center justify-center ml-1 bg-primary ${
               !inputText.trim() || isProcessing ? "opacity-50" : "active:opacity-90"
             }`}
             onPress={handleSubmit}

@@ -292,71 +292,72 @@ export const TransactionHistory: React.FC<TransactionHistoryProps> = ({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8f9fa',
+    backgroundColor: '#0a0a12',
   },
   header: {
     padding: 16,
-    backgroundColor: '#ffffff',
+    backgroundColor: 'rgba(255, 255, 255, 0.02)',
     borderBottomWidth: 1,
-    borderBottomColor: '#e9ecef',
+    borderBottomColor: 'rgba(255, 255, 255, 0.1)',
   },
   title: {
     fontSize: 24,
     fontWeight: '700',
-    color: '#1a1a1a',
+    color: '#ffffff',
   },
   searchContainer: {
     padding: 16,
-    backgroundColor: '#ffffff',
+    backgroundColor: 'rgba(255, 255, 255, 0.02)',
   },
   searchInput: {
-    backgroundColor: '#f8f9fa',
-    borderRadius: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 12,
     fontSize: 16,
     borderWidth: 1,
-    borderColor: '#e9ecef',
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+    color: '#ffffff',
   },
   filterContainer: {
     flexDirection: 'row',
     paddingHorizontal: 16,
     paddingBottom: 16,
-    backgroundColor: '#ffffff',
+    backgroundColor: 'rgba(255, 255, 255, 0.02)',
     borderBottomWidth: 1,
-    borderBottomColor: '#e9ecef',
+    borderBottomColor: 'rgba(255, 255, 255, 0.1)',
   },
   filterButton: {
     flex: 1,
     paddingVertical: 8,
     paddingHorizontal: 12,
     marginHorizontal: 4,
-    borderRadius: 6,
-    backgroundColor: '#f8f9fa',
+    borderRadius: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
   },
   filterButtonActive: {
-    backgroundColor: '#007AFF',
+    backgroundColor: '#10B981',
+    borderColor: '#10B981',
   },
   filterButtonText: {
     fontSize: 12,
     fontWeight: '500',
-    color: '#666666',
+    color: '#8B9299',
   },
   filterButtonTextActive: {
     color: '#ffffff',
   },
   transactionItem: {
-    backgroundColor: '#ffffff',
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
     marginHorizontal: 16,
     marginVertical: 8,
-    borderRadius: 12,
+    borderRadius: 16,
     padding: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
   },
   transactionHeader: {
     flexDirection: 'row',
@@ -379,7 +380,7 @@ const styles = StyleSheet.create({
   },
   networkType: {
     fontSize: 12,
-    color: '#666666',
+    color: '#8B9299',
     fontWeight: '500',
     marginTop: 2,
   },
@@ -389,11 +390,11 @@ const styles = StyleSheet.create({
   feeText: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#1a1a1a',
+    color: '#ffffff',
   },
   dateText: {
     fontSize: 12,
-    color: '#666666',
+    color: '#8B9299',
     marginTop: 2,
   },
   transactionDetails: {
@@ -406,14 +407,14 @@ const styles = StyleSheet.create({
   },
   confirmationText: {
     fontSize: 12,
-    color: '#666666',
+    color: '#8B9299',
     marginRight: 12,
     minWidth: 100,
   },
   progressBar: {
     flex: 1,
     height: 4,
-    backgroundColor: '#e9ecef',
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
     borderRadius: 2,
   },
   progressFill: {
@@ -422,18 +423,18 @@ const styles = StyleSheet.create({
   },
   transactionId: {
     fontSize: 12,
-    color: '#495057',
+    color: '#8B9299',
     fontFamily: 'monospace',
     marginBottom: 4,
   },
   completedText: {
     fontSize: 12,
-    color: '#28a745',
+    color: '#10B981',
     fontWeight: '500',
   },
   estimatedText: {
     fontSize: 12,
-    color: '#ffc107',
+    color: '#F59E0B',
     fontWeight: '500',
   },
   emptyContainer: {
@@ -447,12 +448,12 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#1a1a1a',
+    color: '#ffffff',
     marginBottom: 8,
   },
   emptyText: {
     fontSize: 14,
-    color: '#666666',
+    color: '#8B9299',
     textAlign: 'center',
     lineHeight: 20,
   },
@@ -462,6 +463,6 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     fontSize: 14,
-    color: '#666666',
+    color: '#8B9299',
   },
 });

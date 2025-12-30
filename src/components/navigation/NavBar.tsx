@@ -57,3 +57,15 @@ export function NavBar({ state, navigation }: BottomTabBarProps) {
 
 export default NavBar;
 
+
+
+
+
+
+
+
+
+
+
+
+

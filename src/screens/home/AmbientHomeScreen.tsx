@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
+import { View, Text, ScrollView, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
-import { AmbientBackground, StatusDot } from '../../components/ui';
+import { Zap, TrendingUp, TrendingDown, Shield } from "lucide-react-native"
+import { AmbientBackground, TopBar } from '../../components/ui';
 import { CommandBar } from '../../components/command';
 import { useFunding } from '../../stores/fundingConvex';
 import { useCrypto } from '../../stores/cryptoConvex';
 import { useCards } from '../../stores/cardsConvex';
+import { useCurrentUserId } from '../../stores/authConvex';
 
 interface AmbientAction {
   id: number;
@@ -25,12 +26,16 @@ function formatNetWorth(amount: number): string {
   }).format(amount);
 }
 
-export default function AmbientHomeScreen() {
+interface AmbientHomeScreenProps {
+  navigation: any;
+}
+
+export default function AmbientHomeScreen({ navigation }: AmbientHomeScreenProps) {
   const { state: fundingState } = useFunding();
   const { state: cryptoState } = useCrypto();
   const { state: cardsState } = useCards();
+  const userId = useCurrentUserId();
 
-  const [showBalance, setShowBalance] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [ambientActions, setAmbientActions] = useState<AmbientAction[]>([
     { id: 1, action: 'Yield compounded +$0.42', time: 'Just now', type: 'yield' },
@@ -77,65 +82,47 @@ export default function AmbientHomeScreen() {
     setTimeout(() => setIsRefreshing(false), 1000);
   };
 
+  const walletAddress = '0x8xFk4a9b2c1d3e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9pQr';
+
   return (
     <AmbientBackground>
-      <SafeAreaView className="flex-1" edges={['top']}>
+      <SafeAreaView className="h-full flex flex-col" edges={['top']}>
+        {/* Top Bar */}
+        <TopBar
+          walletAddress={walletAddress}
+          onIdentityTap={() => navigation.navigate('Identity')}
+          onHistoryTap={() => navigation.navigate('TransactionHistory')}
+          onSettingsTap={() => navigation.navigate('Settings')}
+        />
+
         <ScrollView 
-          className="flex-1"
+          className="flex-1 flex flex-col px-6 pb-4"
           contentContainerClassName="pb-24"
           showsVerticalScrollIndicator={false}
           refreshControl={
             <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor="#10B981" />
           }
         >
-          {/* Status Header */}
-          <View className="flex-row items-center justify-between px-6 pt-6 pb-2">
-            <View className="flex-row items-center">
-              <StatusDot size="sm" />
-              <Text className="text-[10px] text-muted-foreground font-medium tracking-widest ml-2 uppercase">
-                ALL SYSTEMS NOMINAL
-              </Text>
-            </View>
-            <TouchableOpacity onPress={() => setShowBalance(!showBalance)} className="p-2">
-              <Ionicons 
-                name={showBalance ? 'eye-outline' : 'eye-off-outline'} 
-                size={20} 
-                color="#8B9299" 
-              />
-            </TouchableOpacity>
-          </View>
-
           {/* Net Worth Display - Large centered */}
-          <View className="items-center py-12 px-6">
+          <View className="flex-1 flex flex-col items-center justify-center mt-10">
             <Text className="text-[11px] text-muted-foreground font-medium tracking-widest mb-3 uppercase">
               NET WORTH
             </Text>
             <Text className="text-[56px] font-extralight text-foreground tracking-tighter">
-              {showBalance ? formatNetWorth(netWorth) : '••••••'}
+              {formatNetWorth(netWorth)}
             </Text>
-            {showBalance && (
-              <View className="flex-row items-center mt-3">
-                <Ionicons name="trending-up" size={16} color="#10B981" />
-                <Text className="text-sm text-primary font-medium ml-1.5">
-                  +{todayChange}% today
-                </Text>
-              </View>
-            )}
-
-            {/* Ambient Finance Pill */}
-            <View className="flex-row items-center bg-card/60 px-4 py-3 rounded-full border border-border mt-8 gap-2">
-              <Ionicons name="sparkles" size={14} color="#10B981" />
-              <Text className="text-xs text-muted-foreground">
-                Ambient finance active
+            <View className="flex-row items-center mt-3">
+              <TrendingUp size={16} color="#10B981" />
+              <Text className="text-sm text-primary font-medium ml-1.5">
+                +{todayChange}% today
               </Text>
-              <StatusDot size="sm" />
             </View>
           </View>
 
           {/* Background Activity */}
-          <View className="px-6 mb-6">
-            <View className="flex-row items-center mb-4">
-              <Ionicons name="flash" size={12} color="#10B981" />
+          <View className="space-y-2">
+            <View className="flex-row items-center gap-2 mb-3">
+              <Zap size={12} color="#10B981" />
               <Text className="text-[10px] text-muted-foreground font-medium tracking-widest ml-2 uppercase">
                 BACKGROUND ACTIVITY
               </Text>
@@ -167,11 +154,11 @@ export default function AmbientHomeScreen() {
           </View>
 
           {/* Active Goals Card */}
-          <View className="px-6 mb-6">
-            <View className="bg-card/50 rounded-2xl p-5 border border-border">
+          <View className="mt-6 glass-card">
+            <View className="bg-card/50 rounded-2xl p-4 border border-border">
               <View className="flex-row items-center mb-4">
                 <View className="mr-2">
-                  <Ionicons name="shield-outline" size={18} color="#10B981" />
+                  <Shield size={18} color="#10B981" />
                 </View>
                 <Text className="text-[14px] text-foreground font-semibold">
                   Active Goals
@@ -200,7 +187,7 @@ export default function AmbientHomeScreen() {
         </ScrollView>
 
         {/* Command Bar */}
-        <CommandBar placeholder="What would you like to do?" />
+        <CommandBar userId={userId} placeholder="What would you like to do?" />
       </SafeAreaView>
     </AmbientBackground>
   );
