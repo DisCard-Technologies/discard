@@ -17,8 +17,32 @@ import { useMutation, useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import * as SecureStore from "expo-secure-store";
-import { Passkey } from "react-native-passkey";
 import * as LocalAuthentication from "expo-local-authentication";
+
+// Conditionally import Passkey - it may not be available in Expo Go
+let Passkey: any = null;
+try {
+  Passkey = require("react-native-passkey").Passkey;
+} catch (e) {
+  console.log("[Auth] react-native-passkey not available (Expo Go mode)");
+}
+
+// Check if native passkey module is available
+function isPasskeyAvailable(): boolean {
+  return Passkey !== null && typeof Passkey?.register === "function";
+}
+
+// Helper to check if userId is a local (non-Convex) ID
+// These are users authenticated via biometrics or dev mode, not stored in Convex
+export function isLocalUserId(userId: string | null | undefined): boolean {
+  if (typeof userId !== 'string') return false;
+  return (
+    userId.startsWith('bio_user_') ||   // Biometric auth (Expo Go)
+    userId.startsWith('dev_user_') ||   // Dev mode (no biometrics)
+    userId.startsWith('mock_user_')     // Legacy mock auth
+  );
+}
+
 import {
   generateChallenge,
   generateUserId,
@@ -108,11 +132,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logoutMutation = useMutation(api.auth.sessions.logout);
 
   // Get user data from Convex (reactive)
-  // Skip query for mock auth (development mode)
-  const isMockUser = state.userId?.startsWith?.('mock_user_');
+  // Skip query for local auth (biometric/dev mode - not stored in Convex)
+  const isLocalUser = isLocalUserId(state.userId);
   const userData = useQuery(
     api.auth.passkeys.getUser,
-    state.userId && !isMockUser ? { userId: state.userId } : "skip"
+    state.userId && !isLocalUser ? { userId: state.userId } : "skip"
   );
 
   // Update user when data changes
@@ -139,7 +163,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const actions: AuthActions = {
     /**
-     * Login with existing passkey
+     * Login with existing passkey (or biometric fallback)
      */
     loginWithPasskey: async (): Promise<boolean> => {
       try {
@@ -148,22 +172,69 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Check biometric support
         const hasHardware = await LocalAuthentication.hasHardwareAsync();
         const isEnrolled = await LocalAuthentication.isEnrolledAsync();
-        const useMockAuth = !hasHardware || !isEnrolled;
+        const passkeyAvailable = isPasskeyAvailable();
+
+        console.log("[Auth] Login - Environment check:", {
+          platform: Platform.OS,
+          hasHardware,
+          isEnrolled,
+          passkeyAvailable,
+        });
 
         // Get stored credential
         const stored = await getStoredCredential();
 
-        // DEV MODE: If no biometrics available (emulator), use stored mock credentials
-        if (useMockAuth) {
-          console.log("[DEV] Biometrics not available, using mock login");
-          
+        // Use biometric auth if passkeys unavailable (Expo Go) but biometrics available
+        const useBiometricAuth = !passkeyAvailable && hasHardware && isEnrolled;
+        // Fall back to stored credentials only if no biometrics
+        const useStoredAuthOnly = !passkeyAvailable && (!hasHardware || !isEnrolled);
+
+        if (useBiometricAuth) {
+          console.log("[Auth] Using biometric authentication (Expo Go mode)");
+
+          if (!stored.userId) {
+            throw new Error("No stored credentials found. Please register first.");
+          }
+
+          // Authenticate with biometrics
+          const biometricResult = await LocalAuthentication.authenticateAsync({
+            promptMessage: "Authenticate to access DisCard",
+            fallbackLabel: "Use passcode",
+            disableDeviceFallback: false,
+          });
+
+          if (!biometricResult.success) {
+            throw new Error(biometricResult.error || "Biometric authentication failed");
+          }
+
+          // Biometric success - restore session from secure storage
+          setState((prev) => ({
+            ...prev,
+            userId: stored.userId as Id<"users">,
+            user: {
+              id: stored.userId!,
+              displayName: "DisCard User",
+              solanaAddress: "DevWa11et123456789abcdefghij",
+              kycStatus: "pending",
+              createdAt: Date.now(),
+            },
+            isAuthenticated: true,
+            error: null,
+          }));
+          console.log("[Auth] Biometric login successful:", stored.userId);
+          return true;
+        }
+
+        if (useStoredAuthOnly) {
+          console.log("[Auth] No biometrics available, using stored credentials only");
+
           if (stored.userId) {
             setState((prev) => ({
               ...prev,
               userId: stored.userId as Id<"users">,
               user: {
-                id: stored.userId,
-                displayName: "Dev User",
+                id: stored.userId!,
+                displayName: "DisCard User",
                 solanaAddress: "DevWa11et123456789abcdefghij",
                 kycStatus: "pending",
                 createdAt: Date.now(),
@@ -171,7 +242,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               isAuthenticated: true,
               error: null,
             }));
-            console.log("[DEV] Mock login successful:", stored.userId);
+            console.log("[Auth] Stored credentials login successful:", stored.userId);
             return true;
           } else {
             throw new Error("No stored credentials found. Please register first.");
@@ -222,7 +293,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           throw new Error("Passkey verification failed");
         }
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Login failed";
+        // Enhanced error logging for passkey failures
+        console.error("[Auth] Login error:", {
+          error,
+          errorType: typeof error,
+          errorName: error instanceof Error ? error.name : "unknown",
+          errorMessage: error instanceof Error ? error.message : String(error),
+        });
+
+        let message = "Login failed";
+        if (error instanceof Error && error.message) {
+          message = error.message;
+        } else if (typeof error === "string") {
+          message = error;
+        }
+
+        // Provide helpful context for common errors
+        if (message.includes("not a function") || message.includes("undefined")) {
+          message = "Passkey not available. Please use a development build instead of Expo Go.";
+        }
+
         setState((prev) => ({ ...prev, error: message }));
         return false;
       } finally {
@@ -231,7 +321,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     },
 
     /**
-     * Register new passkey
+     * Register new passkey (or biometric fallback)
      */
     registerWithPasskey: async (displayName: string): Promise<boolean> => {
       try {
@@ -240,30 +330,50 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Check biometric support
         const hasHardware = await LocalAuthentication.hasHardwareAsync();
         const isEnrolled = await LocalAuthentication.isEnrolledAsync();
+        const passkeyAvailable = isPasskeyAvailable();
 
-        // DEV MODE: If no biometrics available (emulator), use mock auth
-        const useMockAuth = !hasHardware || !isEnrolled;
+        console.log("[Auth] Registration - Environment check:", {
+          platform: Platform.OS,
+          hasHardware,
+          isEnrolled,
+          passkeyAvailable,
+        });
 
-        if (useMockAuth) {
-          console.log("[DEV] Biometrics not available, using mock authentication");
-          
-          // Generate mock credentials for development (fully offline)
-          const mockUserId = `mock_user_${Date.now()}`;
-          const mockCredentialId = `mock_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        // Use biometric registration if passkeys unavailable (Expo Go) but biometrics available
+        const useBiometricAuth = !passkeyAvailable && hasHardware && isEnrolled;
+        // Fall back to simple stored credentials if no biometrics
+        const useStoredAuthOnly = !passkeyAvailable && (!hasHardware || !isEnrolled);
 
-          // Store mock credentials locally (skip Convex for dev)
-          await storage.setItem(USER_ID_KEY, mockUserId);
+        if (useBiometricAuth) {
+          console.log("[Auth] Using biometric registration (Expo Go mode)");
+
+          // Authenticate with biometrics to confirm device owner
+          const biometricResult = await LocalAuthentication.authenticateAsync({
+            promptMessage: "Authenticate to create your DisCard account",
+            fallbackLabel: "Use passcode",
+            disableDeviceFallback: false,
+          });
+
+          if (!biometricResult.success) {
+            throw new Error(biometricResult.error || "Biometric authentication failed");
+          }
+
+          // Biometric success - generate and store credentials
+          const userId = `bio_user_${Date.now()}`;
+          const credentialId = `bio_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+          await storage.setItem(USER_ID_KEY, userId);
           await storeCredential({
-            credentialId: mockCredentialId,
-            userId: mockUserId,
-            publicKey: "mock_public_key_for_development",
+            credentialId,
+            userId,
+            publicKey: "biometric_protected_key",
           });
 
           setState((prev) => ({
             ...prev,
-            userId: mockUserId as Id<"users">,
+            userId: userId as Id<"users">,
             user: {
-              id: mockUserId,
+              id: userId,
               displayName: displayName,
               solanaAddress: "DevWa11et123456789abcdefghij",
               kycStatus: "pending",
@@ -273,7 +383,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             error: null,
           }));
 
-          console.log("[DEV] Mock user created:", mockUserId);
+          console.log("[Auth] Biometric registration successful:", userId);
+          return true;
+        }
+
+        if (useStoredAuthOnly) {
+          console.log("[Auth] No biometrics available, using stored credentials only");
+
+          // Generate credentials without biometric check (dev/emulator only)
+          const userId = `dev_user_${Date.now()}`;
+          const credentialId = `dev_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+          await storage.setItem(USER_ID_KEY, userId);
+          await storeCredential({
+            credentialId,
+            userId,
+            publicKey: "dev_key_no_biometrics",
+          });
+
+          setState((prev) => ({
+            ...prev,
+            userId: userId as Id<"users">,
+            user: {
+              id: userId,
+              displayName: displayName,
+              solanaAddress: "DevWa11et123456789abcdefghij",
+              kycStatus: "pending",
+              createdAt: Date.now(),
+            },
+            isAuthenticated: true,
+            error: null,
+          }));
+
+          console.log("[Auth] Dev registration (no biometrics):", userId);
           return true;
         }
 
@@ -335,7 +477,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         return true;
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Registration failed";
+        // Enhanced error logging for passkey failures
+        console.error("[Auth] Registration error:", {
+          error,
+          errorType: typeof error,
+          errorName: error instanceof Error ? error.name : "unknown",
+          errorMessage: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
+        });
+
+        let message = "Registration failed";
+        if (error instanceof Error && error.message) {
+          message = error.message;
+        } else if (typeof error === "string") {
+          message = error;
+        } else if (error && typeof error === "object" && "message" in error) {
+          message = String((error as any).message) || "Registration failed";
+        }
+
+        // Provide helpful context for common errors
+        if (message.includes("not a function") || message.includes("undefined")) {
+          message = "Passkey not available. Please use a development build instead of Expo Go.";
+        }
+
         setState((prev) => ({ ...prev, error: message }));
         return false;
       } finally {
@@ -452,21 +616,22 @@ export function useCurrentUserId(): Id<"users"> | null {
   return context.state.userId;
 }
 
-// Helper to check if userId is a mock (development) ID
-export function isMockUserId(userId: string | null | undefined): boolean {
-  return typeof userId === 'string' && userId.startsWith('mock_user_');
-}
+// Backwards compatibility alias
+export const isMockUserId = isLocalUserId;
 
-// Hook to check if current auth is mock (development mode)
-export function useIsMockAuth(): boolean {
+// Hook to check if current auth is local (biometric/dev mode, not Convex)
+export function useIsLocalAuth(): boolean {
   const context = useContext(AuthContext);
   if (!context) {
-    throw new Error("useIsMockAuth must be used within an AuthProvider");
+    throw new Error("useIsLocalAuth must be used within an AuthProvider");
   }
-  return isMockUserId(context.state.userId);
+  return isLocalUserId(context.state.userId);
 }
 
-// Hook to get user ID for Convex queries (returns null for mock users)
+// Backwards compatibility alias
+export const useIsMockAuth = useIsLocalAuth;
+
+// Hook to get user ID for Convex queries (returns null for local/biometric users)
 // Use this when you need to pass userId to Convex queries with v.id("users") validators
 export function useConvexUserId(): Id<"users"> | null {
   const context = useContext(AuthContext);
@@ -474,8 +639,8 @@ export function useConvexUserId(): Id<"users"> | null {
     throw new Error("useConvexUserId must be used within an AuthProvider");
   }
   const userId = context.state.userId;
-  // Return null for mock users so queries are skipped
-  if (isMockUserId(userId)) {
+  // Return null for local users so Convex queries are skipped
+  if (isLocalUserId(userId)) {
     return null;
   }
   return userId;
