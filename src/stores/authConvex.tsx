@@ -188,10 +188,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logoutMutation = useMutation(api.auth.sessions.logout);
 
   // Get user data from Convex (reactive)
-  // Now all users (including biometric) are stored in Convex
+  // Skip query for legacy local IDs (bio_user_*, dev_user_*, etc.)
+  const shouldQueryConvex = state.userId && !isLocalUserId(state.userId);
   const userData = useQuery(
     api.auth.passkeys.getUser,
-    state.userId ? { userId: state.userId } : "skip"
+    shouldQueryConvex ? { userId: state.userId } : "skip"
   );
 
   // Update user when data changes
