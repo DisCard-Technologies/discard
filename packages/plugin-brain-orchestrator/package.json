@@ -33,6 +33,7 @@
     "@elizaos/core": "^0.1.7-alpha.2",
     "@grpc/grpc-js": "^1.12.5",
     "@grpc/proto-loader": "^0.7.13",
+    "openai": "^4.77.0",
     "uuid": "^11.1.0"
   },
   "devDependencies": {

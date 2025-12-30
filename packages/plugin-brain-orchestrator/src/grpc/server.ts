@@ -91,7 +91,15 @@ export class BrainGrpcServer {
    * Start the gRPC server
    */
   async start(): Promise<void> {
-    const protoPath = resolve(__dirname, "proto/brain_orchestrator.proto");
+    // Proto file path - handle both dev (src/) and prod (dist/) builds
+    // When built, __dirname is dist/, but proto files are in src/grpc/proto/
+    let protoPath = resolve(__dirname, "proto/brain_orchestrator.proto");
+
+    // If not found in current dir, try src/grpc/proto (for production builds)
+    const fs = await import("fs");
+    if (!fs.existsSync(protoPath)) {
+      protoPath = resolve(__dirname, "../src/grpc/proto/brain_orchestrator.proto");
+    }
 
     const packageDef = protoLoader.loadSync(protoPath, {
       keepCase: false,

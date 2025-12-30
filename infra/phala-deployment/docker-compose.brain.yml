@@ -25,11 +25,10 @@ services:
       # Soul CVM connection
       - SOUL_GRPC_URL=financial-armor:50051
       - SOUL_ATTESTATION_URL=http://financial-armor:8090
-      # LLM Configuration
-      - LLM_MODEL=llama-3.3-70b
-      - LLM_ENDPOINT=${LLM_ENDPOINT:-}
-      - LLM_API_KEY=${LLM_API_KEY:-}
-      - GROQ_API_KEY=${GROQ_API_KEY:-}
+      # Phala Confidential AI (LLM Configuration)
+      - PHALA_AI_API_KEY=${PHALA_AI_API_KEY:-}
+      - PHALA_AI_BASE_URL=${PHALA_AI_BASE_URL:-https://api.redpill.ai/v1}
+      - PHALA_AI_MODEL=${PHALA_AI_MODEL:-meta-llama/llama-3.3-70b-instruct}
       # Context Management
       - CONTEXT_TTL_SECONDS=3600
       - MAX_CONTEXT_TURNS=50

@@ -13,6 +13,7 @@ import { ToolOrchestrator } from "./services/toolOrchestrator.js";
 import { SoulClient } from "./services/soulClient.js";
 import { SoulVerifier } from "./attestation/soulVerifier.js";
 import { BrainGrpcServer } from "./grpc/server.js";
+import { LLMService } from "./services/llmService.js";
 
 /**
  * Configuration from environment
@@ -25,6 +26,10 @@ interface ServerConfig {
   contextTtlSeconds: number;
   maxContextTurns: number;
   logLevel: string;
+  // LLM configuration
+  llmApiKey: string;
+  llmBaseUrl: string;
+  llmModel: string;
 }
 
 /**
@@ -40,6 +45,10 @@ function loadConfig(): ServerConfig {
     contextTtlSeconds: Number(process.env.CONTEXT_TTL_SECONDS || 3600),
     maxContextTurns: Number(process.env.MAX_CONTEXT_TURNS || 50),
     logLevel: process.env.LOG_LEVEL || "info",
+    // LLM configuration (Phala Confidential AI)
+    llmApiKey: process.env.PHALA_AI_API_KEY || "",
+    llmBaseUrl: process.env.PHALA_AI_BASE_URL || "https://api.redpill.ai/v1",
+    llmModel: process.env.PHALA_AI_MODEL || "meta-llama/llama-3.3-70b-instruct",
   };
 }
 
@@ -61,6 +70,9 @@ async function main() {
   console.log(`  - Context TTL: ${config.contextTtlSeconds}s`);
   console.log(`  - Max Context Turns: ${config.maxContextTurns}`);
   console.log(`  - Log Level: ${config.logLevel}`);
+  console.log(`  - LLM Model: ${config.llmModel}`);
+  console.log(`  - LLM Base URL: ${config.llmBaseUrl}`);
+  console.log(`  - LLM API Key: ${config.llmApiKey ? "***configured***" : "NOT SET"}`);
   console.log("");
 
   // Initialize Soul client
@@ -105,6 +117,20 @@ async function main() {
     maxConcurrentCalls: 5,
   });
 
+  // Initialize LLM service (Phala Confidential AI)
+  let llmService: LLMService | null = null;
+  if (config.llmApiKey) {
+    console.log("[Brain] Initializing LLM service (Phala Confidential AI)...");
+    llmService = new LLMService({
+      apiKey: config.llmApiKey,
+      baseUrl: config.llmBaseUrl,
+      model: config.llmModel,
+    });
+    console.log(`[Brain] ✓ LLM service initialized with model: ${config.llmModel}`);
+  } else {
+    console.warn("[Brain] ⚠ PHALA_AI_API_KEY not set - LLM features disabled");
+  }
+
   // Initialize gRPC server
   console.log("[Brain] Initializing gRPC server...");
   const grpcServer = new BrainGrpcServer(
@@ -126,18 +152,105 @@ async function main() {
   const startTime = Date.now();
 
   const httpServer = createServer(
-    (req: IncomingMessage, res: ServerResponse) => {
+    async (req: IncomingMessage, res: ServerResponse) => {
       const url = req.url || "/";
       const method = req.method || "GET";
 
       // CORS headers
       res.setHeader("Access-Control-Allow-Origin", "*");
-      res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+      res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
       res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
       if (method === "OPTIONS") {
         res.writeHead(204);
         res.end();
+        return;
+      }
+
+      // REST endpoint for dev testing - parse intent / converse
+      if ((url === "/converse" || url === "/converse/") && method === "POST") {
+        let body = "";
+        req.on("data", (chunk) => {
+          body += chunk.toString();
+        });
+        req.on("end", async () => {
+          try {
+            const { message } = JSON.parse(body);
+            if (!message) {
+              res.writeHead(400, { "Content-Type": "application/json" });
+              res.end(JSON.stringify({ error: "message is required" }));
+              return;
+            }
+
+            const startTime = Date.now();
+
+            // Use the intent parser to parse the message (for structured intent)
+            const parseResult = await intentParser.parse(message);
+
+            // Use LLM for natural language response (if available)
+            let responseText = "";
+            let llmLatencyMs = 0;
+
+            if (llmService) {
+              console.log(`[Brain] Calling LLM for: "${message}"`);
+              const llmResponse = await llmService.chat(message);
+              llmLatencyMs = llmResponse.latencyMs;
+
+              if (llmResponse.success) {
+                responseText = llmResponse.text;
+                console.log(`[Brain] LLM responded in ${llmLatencyMs}ms`);
+              } else {
+                console.warn(`[Brain] LLM error: ${llmResponse.error}`);
+                // Fall back to intent-based response
+                responseText = parseResult.needsClarification
+                  ? parseResult.clarification?.question || "Could you clarify what you'd like to do?"
+                  : `I understood: ${parseResult.intent.action}`;
+              }
+            } else {
+              // No LLM - use intent-based response
+              responseText = parseResult.needsClarification
+                ? parseResult.clarification?.question || "Could you clarify what you'd like to do?"
+                : `I understood: ${parseResult.intent.action} (confidence: ${(parseResult.intent.confidence * 100).toFixed(0)}%)`;
+            }
+
+            const totalTimeMs = Date.now() - startTime;
+
+            // Build response
+            const response = {
+              success: true,
+              responseText,
+              intent: {
+                intentId: parseResult.intent.intentId,
+                action: parseResult.intent.action,
+                sourceType: parseResult.intent.sourceType,
+                targetType: parseResult.intent.targetType,
+                amount: parseResult.intent.amount,
+                currency: parseResult.intent.currency,
+                rawText: parseResult.intent.rawText,
+              },
+              needsClarification: parseResult.needsClarification,
+              clarificationQuestion: parseResult.clarification?.question,
+              clarificationOptions: parseResult.clarification?.options,
+              confidence: parseResult.intent.confidence,
+              parseTimeMs: totalTimeMs,
+              llmLatencyMs,
+              llmEnabled: !!llmService,
+            };
+
+            console.log(`[Brain] "${message}" -> ${parseResult.intent.action} (${(parseResult.intent.confidence * 100).toFixed(0)}%) [${totalTimeMs}ms]`);
+
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(JSON.stringify(response));
+          } catch (error) {
+            console.error("[Brain] REST converse error:", error);
+            res.writeHead(500, { "Content-Type": "application/json" });
+            res.end(
+              JSON.stringify({
+                error: error instanceof Error ? error.message : "Parse failed",
+              })
+            );
+          }
+        });
         return;
       }
 
@@ -150,6 +263,11 @@ async function main() {
           version: "1.0.0",
           uptime,
           grpcPort: config.grpcPort,
+          llm: {
+            enabled: !!llmService,
+            model: config.llmModel,
+            baseUrl: config.llmBaseUrl,
+          },
           metrics: {
             totalRequests: metrics.totalRequests,
             intentsParsed: metrics.intentsParsed,
@@ -210,7 +328,9 @@ async function main() {
   console.log("");
   console.log(`  gRPC:        0.0.0.0:${config.grpcPort}`);
   console.log(`  Health:      http://0.0.0.0:${config.httpPort}/health`);
+  console.log(`  Converse:    http://0.0.0.0:${config.httpPort}/converse`);
   console.log(`  Attestation: http://0.0.0.0:${config.httpPort}/attestation`);
+  console.log(`  LLM:         ${llmService ? `✓ ${config.llmModel}` : "✗ Disabled (no API key)"}`);
   console.log("");
 
   // Graceful shutdown handlers
