@@ -8,6 +8,8 @@ import { useState, useCallback } from "react";
 import { useQuery, useMutation, useAction } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
+import { isMockUserId } from "../stores/authConvex";
+import { converseWithBrain } from "../services/brainClient";
 
 type IntentStatus =
   | "pending"
@@ -60,20 +62,25 @@ interface UseIntentsReturn {
 export function useIntents(userId: Id<"users"> | null): UseIntentsReturn {
   const [activeIntentId, setActiveIntentId] = useState<Id<"intents"> | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [mockIntents, setMockIntents] = useState<Intent[]>([]);
+
+  // Check if using mock auth (development mode without biometrics)
+  const isMockAuth = isMockUserId(userId);
 
   // Real-time subscription to user's intents
+  // Skip for mock auth since Convex won't recognize the user
   const intents = useQuery(
     api.intents.intents.list,
-    userId ? { userId } : "skip"
+    userId && !isMockAuth ? {} : "skip"
   );
 
   // Get active intent
   const activeIntent = useQuery(
     api.intents.intents.get,
-    activeIntentId ? { intentId: activeIntentId } : "skip"
+    activeIntentId && !isMockAuth ? { intentId: activeIntentId } : "skip"
   );
 
-  // Mutations
+  // Mutations (will be skipped in mock mode)
   const createIntentMutation = useMutation(api.intents.intents.create);
   const clarifyIntentMutation = useMutation(api.intents.intents.clarify);
   const approveIntentMutation = useMutation(api.intents.intents.approve);
@@ -83,7 +90,8 @@ export function useIntents(userId: Id<"users"> | null): UseIntentsReturn {
   const parseIntentAction = useAction(api.intents.solver.parseIntent);
   const executeIntentAction = useAction(api.intents.executor.executeIntent);
 
-  const isLoading = intents === undefined;
+  // For mock mode, use local mock intents; otherwise use Convex data
+  const isLoading = isMockAuth ? false : intents === undefined;
 
   /**
    * Submit a new intent from natural language
@@ -97,9 +105,60 @@ export function useIntents(userId: Id<"users"> | null): UseIntentsReturn {
       setIsProcessing(true);
 
       try {
-        // Create the intent
+        // DEV MODE: Call Brain Orchestrator directly (bypasses Convex auth)
+        if (isMockAuth) {
+          const mockIntentId = `mock_intent_${Date.now()}` as Id<"intents">;
+
+          // Create initial pending intent
+          const mockIntent: Intent = {
+            _id: mockIntentId,
+            userId: userId,
+            rawText,
+            status: "parsing",
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+          };
+          setMockIntents((prev) => [mockIntent, ...prev]);
+          setActiveIntentId(mockIntentId);
+
+          // Call Brain Orchestrator for AI parsing
+          console.log("[DEV] Calling Brain Orchestrator...");
+          const brainResponse = await converseWithBrain({
+            sessionId: `session_${userId}`,
+            userId: userId as string,
+            message: rawText,
+          });
+
+          // Update intent with Brain response
+          const updatedIntent: Intent = {
+            ...mockIntent,
+            status: brainResponse.success
+              ? brainResponse.needsClarification
+                ? "clarifying"
+                : "completed"
+              : "failed",
+            parsedIntent: brainResponse.intent
+              ? {
+                  action: brainResponse.intent.action as ParsedIntent["action"],
+                  needsClarification: brainResponse.needsClarification,
+                  clarificationQuestion: brainResponse.clarificationQuestion,
+                  confidence: brainResponse.confidence,
+                }
+              : undefined,
+            error: brainResponse.error,
+            updatedAt: Date.now(),
+          };
+
+          setMockIntents((prev) =>
+            prev.map((i) => (i._id === mockIntentId ? updatedIntent : i))
+          );
+
+          console.log("[DEV] Brain response:", brainResponse.responseText);
+          return mockIntentId;
+        }
+
+        // PRODUCTION: Create the intent via Convex
         const intentId = await createIntentMutation({
-          userId,
           rawText,
         });
 
@@ -113,7 +172,7 @@ export function useIntents(userId: Id<"users"> | null): UseIntentsReturn {
         setIsProcessing(false);
       }
     },
-    [userId, createIntentMutation, parseIntentAction]
+    [userId, isMockAuth, createIntentMutation, parseIntentAction]
   );
 
   /**
@@ -127,7 +186,7 @@ export function useIntents(userId: Id<"users"> | null): UseIntentsReturn {
         // Update intent with clarification
         await clarifyIntentMutation({
           intentId,
-          clarification,
+          clarificationResponse: clarification,
         });
 
         // Re-parse with additional context
@@ -176,14 +235,23 @@ export function useIntents(userId: Id<"users"> | null): UseIntentsReturn {
    */
   const getIntentPreview = useCallback(
     (intentId: Id<"intents">): Intent | undefined => {
+      // Check mock intents first (for dev mode)
+      const mockIntent = mockIntents.find((intent) => intent._id === intentId);
+      if (mockIntent) return mockIntent;
+      // Then check Convex intents
       return intents?.find((intent) => intent._id === intentId) as Intent | undefined;
     },
-    [intents]
+    [intents, mockIntents]
   );
 
+  // Get the active intent from either mock or Convex data
+  const resolvedActiveIntent = isMockAuth
+    ? mockIntents.find((i) => i._id === activeIntentId) || null
+    : (activeIntent as Intent | null);
+
   return {
-    intents: intents as Intent[] | undefined,
-    activeIntent: activeIntent as Intent | null,
+    intents: isMockAuth ? mockIntents : (intents as Intent[] | undefined),
+    activeIntent: resolvedActiveIntent,
     isLoading,
     isProcessing,
     submitIntent,
@@ -198,14 +266,19 @@ export function useIntents(userId: Id<"users"> | null): UseIntentsReturn {
  * Hook for getting recent intents (for history display)
  */
 export function useRecentIntents(userId: Id<"users"> | null, limit: number = 10) {
+  // Skip Convex for mock auth
+  const isMockAuth = isMockUserId(userId);
+
+  // Uses the list query with limit (query uses auth identity, not userId param)
   const intents = useQuery(
-    api.intents.intents.listRecent,
-    userId ? { userId, limit } : "skip"
+    api.intents.intents.list,
+    userId && !isMockAuth ? { limit } : "skip"
   );
 
   return {
-    intents,
-    isLoading: intents === undefined,
+    // Return empty array for mock mode (intents are managed in useIntents hook)
+    intents: isMockAuth ? [] : intents,
+    isLoading: isMockAuth ? false : intents === undefined,
   };
 }
 
@@ -213,13 +286,17 @@ export function useRecentIntents(userId: Id<"users"> | null, limit: number = 10)
  * Hook for getting a single intent with real-time updates
  */
 export function useIntent(intentId: Id<"intents"> | null) {
+  // Check if this is a mock intent ID
+  const isMockIntent = intentId?.startsWith?.("mock_intent_");
+
   const intent = useQuery(
     api.intents.intents.get,
-    intentId ? { intentId } : "skip"
+    intentId && !isMockIntent ? { intentId } : "skip"
   );
 
   return {
-    intent,
-    isLoading: intent === undefined,
+    // For mock intents, return null (use getIntentPreview from useIntents instead)
+    intent: isMockIntent ? null : intent,
+    isLoading: isMockIntent ? false : intent === undefined,
   };
 }
