@@ -476,7 +476,7 @@ http.route({
         case "ACTIVITY_TYPE_SIGN_RAW_PAYLOAD":
         case "ACTIVITY_TYPE_SIGN_TRANSACTION":
           // Handle signing activity completion
-          await ctx.runMutation(internal.bridge["turnkey-bridge"].handleActivityCompletion, {
+          await ctx.runMutation(internal.bridge.turnkeyBridge.handleActivityCompletion, {
             activityId,
             status,
             result: event.result,

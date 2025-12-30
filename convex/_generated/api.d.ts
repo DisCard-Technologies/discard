@@ -8,10 +8,16 @@
  * @module
  */
 
+import type * as attestations_sas from "../attestations/sas.js";
 import type * as auth_passkeys from "../auth/passkeys.js";
 import type * as auth_sessions from "../auth/sessions.js";
+import type * as bridge_financialArmorClient from "../bridge/financialArmorClient.js";
+import type * as bridge_settlement from "../bridge/settlement.js";
+import type * as bridge_turnkeyBridge from "../bridge/turnkeyBridge.js";
 import type * as cards_cards from "../cards/cards.js";
 import type * as cards_marqeta from "../cards/marqeta.js";
+import type * as compression_light from "../compression/light.js";
+import type * as compression_proofs from "../compression/proofs.js";
 import type * as crons from "../crons.js";
 import type * as crons_cleanupMetrics from "../crons/cleanupMetrics.js";
 import type * as crons_cleanupSessions from "../crons/cleanupSessions.js";
@@ -24,11 +30,16 @@ import type * as funding_funding from "../funding/funding.js";
 import type * as funding_iban from "../funding/iban.js";
 import type * as funding_moonpay from "../funding/moonpay.js";
 import type * as funding_stripe from "../funding/stripe.js";
+import type * as hooks_merchants from "../hooks/merchants.js";
+import type * as hooks_policies from "../hooks/policies.js";
 import type * as http from "../http.js";
 import type * as http_webhooks from "../http/webhooks.js";
+import type * as identity_did from "../identity/did.js";
 import type * as intents_executor from "../intents/executor.js";
 import type * as intents_intents from "../intents/intents.js";
 import type * as intents_solver from "../intents/solver.js";
+import type * as realtime_optimistic from "../realtime/optimistic.js";
+import type * as tee_turnkey from "../tee/turnkey.js";
 import type * as wallets_defi from "../wallets/defi.js";
 import type * as wallets_network from "../wallets/network.js";
 import type * as wallets_quotes from "../wallets/quotes.js";
@@ -42,10 +53,16 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  "attestations/sas": typeof attestations_sas;
   "auth/passkeys": typeof auth_passkeys;
   "auth/sessions": typeof auth_sessions;
+  "bridge/financialArmorClient": typeof bridge_financialArmorClient;
+  "bridge/settlement": typeof bridge_settlement;
+  "bridge/turnkeyBridge": typeof bridge_turnkeyBridge;
   "cards/cards": typeof cards_cards;
   "cards/marqeta": typeof cards_marqeta;
+  "compression/light": typeof compression_light;
+  "compression/proofs": typeof compression_proofs;
   crons: typeof crons;
   "crons/cleanupMetrics": typeof crons_cleanupMetrics;
   "crons/cleanupSessions": typeof crons_cleanupSessions;
@@ -58,11 +75,16 @@ declare const fullApi: ApiFromModules<{
   "funding/iban": typeof funding_iban;
   "funding/moonpay": typeof funding_moonpay;
   "funding/stripe": typeof funding_stripe;
+  "hooks/merchants": typeof hooks_merchants;
+  "hooks/policies": typeof hooks_policies;
   http: typeof http;
   "http/webhooks": typeof http_webhooks;
+  "identity/did": typeof identity_did;
   "intents/executor": typeof intents_executor;
   "intents/intents": typeof intents_intents;
   "intents/solver": typeof intents_solver;
+  "realtime/optimistic": typeof realtime_optimistic;
+  "tee/turnkey": typeof tee_turnkey;
   "wallets/defi": typeof wallets_defi;
   "wallets/network": typeof wallets_network;
   "wallets/quotes": typeof wallets_quotes;

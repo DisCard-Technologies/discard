@@ -380,6 +380,116 @@ export const addPasskeyCredential = mutation({
 });
 
 /**
+ * Register a new user with biometric authentication (Expo Go compatible)
+ *
+ * This is used when passkey native module is unavailable (e.g., Expo Go).
+ * Creates a user with:
+ * - Device-generated credential ID (stored in SecureStore)
+ * - Solana address (from generated keypair or Turnkey later)
+ */
+export const registerBiometric = mutation({
+  args: {
+    credentialId: v.string(),        // Device-generated unique ID
+    displayName: v.optional(v.string()),
+    solanaAddress: v.optional(v.string()), // From local keypair or empty for Turnkey later
+    deviceInfo: v.optional(v.object({
+      platform: v.string(),
+      model: v.optional(v.string()),
+    })),
+  },
+  handler: async (ctx, args): Promise<{
+    userId: Id<"users">;
+    solanaAddress: string | null;
+  }> => {
+    // Check if credential is already registered
+    const existing = await ctx.db
+      .query("users")
+      .withIndex("by_credential", (q) => q.eq("credentialId", args.credentialId))
+      .first();
+
+    if (existing) {
+      // Return existing user (allows re-registration on same device)
+      return {
+        userId: existing._id,
+        solanaAddress: existing.solanaAddress ?? null,
+      };
+    }
+
+    // Validate Solana address format if provided
+    if (args.solanaAddress && !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(args.solanaAddress)) {
+      throw new Error("Invalid Solana address format");
+    }
+
+    // Create user record with empty public key (biometric-only auth)
+    const userId = await ctx.db.insert("users", {
+      credentialId: args.credentialId,
+      publicKey: new ArrayBuffer(0), // Empty - no WebAuthn public key for biometric auth
+      solanaAddress: args.solanaAddress,
+      displayName: args.displayName,
+      privacySettings: {
+        dataRetention: 365,
+        analyticsOptOut: false,
+        transactionIsolation: true,
+      },
+      kycStatus: "none",
+      riskScore: 0,
+      accountStatus: "active",
+      lastActive: Date.now(),
+      createdAt: Date.now(),
+    });
+
+    return { userId, solanaAddress: args.solanaAddress ?? null };
+  },
+});
+
+/**
+ * Login with biometric credential (Expo Go compatible)
+ *
+ * Verifies the credential ID exists and returns user data.
+ * The actual biometric check happens on the device.
+ */
+export const loginBiometric = mutation({
+  args: {
+    credentialId: v.string(),
+  },
+  handler: async (ctx, args): Promise<{
+    userId: Id<"users">;
+    solanaAddress: string | null;
+    displayName: string | null;
+    accountStatus: string;
+  }> => {
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_credential", (q) => q.eq("credentialId", args.credentialId))
+      .first();
+
+    if (!user) {
+      throw new Error("User not found. Please register first.");
+    }
+
+    if (user.accountStatus === "locked") {
+      throw new Error("Account is locked. Please contact support.");
+    }
+
+    if (user.accountStatus === "suspended") {
+      throw new Error("Account is suspended. Please contact support.");
+    }
+
+    // Update last active
+    await ctx.db.patch(user._id, {
+      lastActive: Date.now(),
+    });
+
+    return {
+      userId: user._id,
+      solanaAddress: user.solanaAddress ?? null,
+      displayName: user.displayName ?? null,
+      accountStatus: user.accountStatus,
+    };
+  },
+});
+
+/**
  * Update user's Solana address after Turnkey wallet creation
  * Called after the client creates a Turnkey sub-organization
  */

@@ -432,7 +432,7 @@ export const executeIntentViaBridge = internalAction({
 
       // Verify policies
       const policyCheck = await ctx.runQuery(
-        internal.bridge["turnkey-bridge"].verifyTransactionPolicy,
+        internal.bridge.turnkeyBridge.verifyTransactionPolicy,
         {
           userId: intent.userId,
           transactionType: intent.parsedIntent?.action || "unknown",

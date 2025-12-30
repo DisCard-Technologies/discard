@@ -18,6 +18,9 @@ import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import * as SecureStore from "expo-secure-store";
 import * as LocalAuthentication from "expo-local-authentication";
+import * as Crypto from "expo-crypto";
+import { Keypair } from "@solana/web3.js";
+import * as bs58 from "bs58";
 
 // Conditionally import Passkey - it may not be available in Expo Go
 let Passkey: any = null;
@@ -32,14 +35,15 @@ function isPasskeyAvailable(): boolean {
   return Passkey !== null && typeof Passkey?.register === "function";
 }
 
-// Helper to check if userId is a local (non-Convex) ID
-// These are users authenticated via biometrics or dev mode, not stored in Convex
+// Helper to check if userId is a local-only (not in Convex) ID
+// Now most users are in Convex, only offline/dev mode creates local IDs
 export function isLocalUserId(userId: string | null | undefined): boolean {
   if (typeof userId !== 'string') return false;
   return (
-    userId.startsWith('bio_user_') ||   // Biometric auth (Expo Go)
+    userId.startsWith('local_') ||      // Offline fallback (pending sync)
     userId.startsWith('dev_user_') ||   // Dev mode (no biometrics)
-    userId.startsWith('mock_user_')     // Legacy mock auth
+    userId.startsWith('mock_user_') ||  // Legacy mock auth
+    userId.startsWith('bio_user_')      // Legacy biometric (before Convex integration)
   );
 }
 
@@ -54,6 +58,56 @@ import {
 
 // Storage keys
 const USER_ID_KEY = "discard_user_id";
+const SOLANA_SECRET_KEY = "discard_solana_secret";
+const CREDENTIAL_ID_KEY = "discard_credential_id";
+
+// Generate a new Solana keypair and store securely
+async function generateAndStoreSolanaWallet(): Promise<{ publicKey: string; secretKey: Uint8Array }> {
+  // Generate 32 random bytes for the keypair seed
+  const randomBytes = await Crypto.getRandomBytesAsync(32);
+
+  // Create Solana keypair from random bytes
+  const keypair = Keypair.fromSeed(randomBytes);
+
+  // Store secret key in SecureStore (base58 encoded)
+  const secretKeyBase58 = bs58.encode(keypair.secretKey);
+  await SecureStore.setItemAsync(SOLANA_SECRET_KEY, secretKeyBase58);
+
+  console.log("[Auth] Generated new Solana wallet:", keypair.publicKey.toBase58());
+
+  return {
+    publicKey: keypair.publicKey.toBase58(),
+    secretKey: keypair.secretKey,
+  };
+}
+
+// Retrieve stored Solana wallet
+async function getStoredSolanaWallet(): Promise<{ publicKey: string; secretKey: Uint8Array } | null> {
+  try {
+    const secretKeyBase58 = await SecureStore.getItemAsync(SOLANA_SECRET_KEY);
+    if (!secretKeyBase58) return null;
+
+    const secretKey = bs58.decode(secretKeyBase58);
+    const keypair = Keypair.fromSecretKey(secretKey);
+
+    return {
+      publicKey: keypair.publicKey.toBase58(),
+      secretKey: keypair.secretKey,
+    };
+  } catch (e) {
+    console.error("[Auth] Failed to retrieve Solana wallet:", e);
+    return null;
+  }
+}
+
+// Generate a unique credential ID for this device
+async function generateCredentialId(): Promise<string> {
+  const randomBytes = await Crypto.getRandomBytesAsync(16);
+  const hex = Array.from(new Uint8Array(randomBytes))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
+  return `bio_${Platform.OS}_${hex}`;
+}
 
 // Web-compatible storage wrapper
 const storage = {
@@ -129,14 +183,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Convex mutations
   const registerPasskeyMutation = useMutation(api.auth.passkeys.registerPasskey);
   const verifyPasskeyMutation = useMutation(api.auth.passkeys.verifyPasskey);
+  const registerBiometricMutation = useMutation(api.auth.passkeys.registerBiometric);
+  const loginBiometricMutation = useMutation(api.auth.passkeys.loginBiometric);
   const logoutMutation = useMutation(api.auth.sessions.logout);
 
   // Get user data from Convex (reactive)
-  // Skip query for local auth (biometric/dev mode - not stored in Convex)
-  const isLocalUser = isLocalUserId(state.userId);
+  // Now all users (including biometric) are stored in Convex
   const userData = useQuery(
     api.auth.passkeys.getUser,
-    state.userId && !isLocalUser ? { userId: state.userId } : "skip"
+    state.userId ? { userId: state.userId } : "skip"
   );
 
   // Update user when data changes
@@ -192,7 +247,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (useBiometricAuth) {
           console.log("[Auth] Using biometric authentication (Expo Go mode)");
 
-          if (!stored.userId) {
+          // Get stored credential ID
+          const credentialId = await storage.getItem(CREDENTIAL_ID_KEY);
+          if (!credentialId && !stored.userId) {
             throw new Error("No stored credentials found. Please register first.");
           }
 
@@ -204,24 +261,62 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           });
 
           if (!biometricResult.success) {
-            throw new Error(biometricResult.error || "Biometric authentication failed");
+            const errorMsg = 'error' in biometricResult ? biometricResult.error : "Biometric authentication failed";
+            throw new Error(errorMsg || "Biometric authentication failed");
           }
 
-          // Biometric success - restore session from secure storage
+          // Try to login via Convex (verifies user exists in backend)
+          let userId: string;
+          let solanaAddress: string | null = null;
+          let displayName: string | null = null;
+
+          if (credentialId) {
+            try {
+              console.log("[Auth] Verifying with Convex...");
+              const result = await loginBiometricMutation({ credentialId });
+              userId = result.userId;
+              solanaAddress = result.solanaAddress;
+              displayName = result.displayName;
+              console.log("[Auth] Convex login successful:", userId);
+            } catch (convexError) {
+              // Convex unavailable or user not found - use stored credentials
+              console.warn("[Auth] Convex unavailable, using stored credentials:", convexError);
+              if (!stored.userId) {
+                throw new Error("User not found. Please register first.");
+              }
+              userId = stored.userId;
+              // Try to get wallet from local storage
+              const wallet = await getStoredSolanaWallet();
+              solanaAddress = wallet?.publicKey || null;
+            }
+          } else {
+            // Legacy: use stored userId
+            userId = stored.userId!;
+            const wallet = await getStoredSolanaWallet();
+            solanaAddress = wallet?.publicKey || null;
+          }
+
+          // Update last stored userId
+          await storage.setItem(USER_ID_KEY, userId);
+
           setState((prev) => ({
             ...prev,
-            userId: stored.userId as Id<"users">,
+            userId: userId as Id<"users">,
             user: {
-              id: stored.userId!,
-              displayName: "DisCard User",
-              solanaAddress: "DevWa11et123456789abcdefghij",
-              kycStatus: "pending",
+              id: userId,
+              displayName: displayName || "DisCard User",
+              solanaAddress: solanaAddress || undefined,
+              kycStatus: "none",
               createdAt: Date.now(),
             },
             isAuthenticated: true,
             error: null,
           }));
-          console.log("[Auth] Biometric login successful:", stored.userId);
+
+          console.log("[Auth] Biometric login successful:", {
+            userId,
+            solanaAddress,
+          });
           return true;
         }
 
@@ -355,18 +450,50 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           });
 
           if (!biometricResult.success) {
-            throw new Error(biometricResult.error || "Biometric authentication failed");
+            const errorMsg = 'error' in biometricResult ? biometricResult.error : "Biometric authentication failed";
+            throw new Error(errorMsg || "Biometric authentication failed");
           }
 
-          // Biometric success - generate and store credentials
-          const userId = `bio_user_${Date.now()}`;
-          const credentialId = `bio_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+          // Generate Solana wallet
+          console.log("[Auth] Generating Solana wallet...");
+          const wallet = await generateAndStoreSolanaWallet();
 
+          // Generate unique credential ID for this device
+          const credentialId = await generateCredentialId();
+          await storage.setItem(CREDENTIAL_ID_KEY, credentialId);
+
+          // Try to register with Convex (creates backend user record)
+          let userId: string;
+          let solanaAddress = wallet.publicKey;
+
+          try {
+            console.log("[Auth] Registering with Convex...");
+            const result = await registerBiometricMutation({
+              credentialId,
+              displayName,
+              solanaAddress: wallet.publicKey,
+              deviceInfo: {
+                platform: Platform.OS,
+              },
+            });
+
+            userId = result.userId;
+            solanaAddress = result.solanaAddress || wallet.publicKey;
+            console.log("[Auth] Convex registration successful:", userId);
+          } catch (convexError) {
+            // Offline or Convex unavailable - use local-only mode
+            console.warn("[Auth] Convex unavailable, using local-only mode:", convexError);
+            userId = `local_${Date.now()}`;
+            // Mark for sync later
+            await storage.setItem("pending_sync", "true");
+          }
+
+          // Store credentials locally
           await storage.setItem(USER_ID_KEY, userId);
           await storeCredential({
             credentialId,
             userId,
-            publicKey: "biometric_protected_key",
+            publicKey: wallet.publicKey,
           });
 
           setState((prev) => ({
@@ -375,15 +502,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             user: {
               id: userId,
               displayName: displayName,
-              solanaAddress: "DevWa11et123456789abcdefghij",
-              kycStatus: "pending",
+              solanaAddress: solanaAddress,
+              kycStatus: "none",
               createdAt: Date.now(),
             },
             isAuthenticated: true,
             error: null,
           }));
 
-          console.log("[Auth] Biometric registration successful:", userId);
+          console.log("[Auth] Biometric registration successful:", {
+            userId,
+            solanaAddress,
+            isConvexUser: !userId.startsWith("local_"),
+          });
           return true;
         }
 

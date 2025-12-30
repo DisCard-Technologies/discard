@@ -526,7 +526,7 @@ export const submitSignedTransaction = internalAction({
     try {
       // Get signing request
       const request = await ctx.runQuery(
-        internal.bridge["turnkey-bridge"].getSigningRequest,
+        internal.bridge.turnkeyBridge.getSigningRequest,
         { requestId: args.requestId }
       );
 
@@ -545,7 +545,7 @@ export const submitSignedTransaction = internalAction({
       );
 
       // Update status to submitted
-      await ctx.runMutation(internal.bridge["turnkey-bridge"].updateSigningStatus, {
+      await ctx.runMutation(internal.bridge.turnkeyBridge.updateSigningStatus, {
         requestId: args.requestId,
         status: "submitted",
       });
