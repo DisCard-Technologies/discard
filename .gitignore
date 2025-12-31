@@ -127,10 +127,8 @@ temp/
 .tmp/
 .temp/
 
-# Documentation build
-docs/_build/
-docs/.docusaurus/
-docs/node_modules/
+# Documentation (local only)
+docs/
 
 # Misc
 .eslintcache
