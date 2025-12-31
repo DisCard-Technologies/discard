@@ -1,0 +1,519 @@
+import { useState, useMemo } from 'react';
+import { StyleSheet, View, Pressable, ScrollView } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { router } from 'expo-router';
+import * as Clipboard from 'expo-clipboard';
+
+import { ThemedText } from '@/components/themed-text';
+import { ThemedView } from '@/components/themed-view';
+import { useThemeColor } from '@/hooks/use-theme-color';
+import { useAuth } from '@/stores/authConvex';
+
+const credentials = [
+  { name: 'Proof of Humanity', issuer: 'WorldID', verified: true, icon: 'finger-print' as const },
+  { name: 'KYC Verification', issuer: 'Verified Inc.', verified: true, icon: 'shield-checkmark' as const },
+  { name: 'Credit Score', issuer: 'On-Chain Credit', verified: true, icon: 'checkmark-circle' as const },
+  { name: 'ENS Domain', issuer: 'Ethereum', verified: true, icon: 'globe' as const },
+];
+
+const connectedApps = [
+  { name: 'Uniswap', permissions: ['Read balance', 'Execute swaps'], lastUsed: '2h ago' },
+  { name: 'Aave', permissions: ['Read balance', 'Lending'], lastUsed: '1d ago' },
+];
+
+export default function IdentityScreen() {
+  const insets = useSafeAreaInsets();
+  const [showQR, setShowQR] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const primaryColor = useThemeColor({}, 'tint');
+  const mutedColor = useThemeColor({ light: '#687076', dark: '#9BA1A6' }, 'icon');
+  const cardBg = useThemeColor({ light: 'rgba(0,0,0,0.03)', dark: 'rgba(255,255,255,0.06)' }, 'background');
+  const borderColor = useThemeColor({ light: 'rgba(0,0,0,0.06)', dark: 'rgba(255,255,255,0.08)' }, 'background');
+  const accentColor = '#a855f7'; // purple accent
+
+  // Real data from auth
+  const { user } = useAuth();
+  const fullAddress = user?.solanaAddress || '0x8f3A2B4C5D6E7F8901234567890ABCDEF7d4e';
+  const walletAddress = fullAddress.length > 10 ? `${fullAddress.slice(0, 6)}...${fullAddress.slice(-4)}` : fullAddress;
+  const displayName = user?.displayName || 'anonymous.user';
+
+  const handleCopyAddress = async () => {
+    await Clipboard.setStringAsync(fullAddress);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleBack = () => {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace('/');
+    }
+  };
+
+  return (
+    <ThemedView style={styles.container}>
+      <View style={{ height: insets.top }} />
+
+      {/* Header */}
+      <View style={styles.header}>
+        <Pressable
+          onPress={handleBack}
+          style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
+        >
+          <Ionicons name="chevron-back" size={24} color={mutedColor} />
+        </Pressable>
+        <ThemedText style={styles.headerTitle}>Identity</ThemedText>
+        <View style={styles.headerSpacer} />
+      </View>
+
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 24 }]}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Identity Card */}
+        <ThemedView
+          style={[styles.identityCard, { backgroundColor: cardBg, borderColor }]}
+          lightColor="rgba(0,0,0,0.03)"
+          darkColor="rgba(255,255,255,0.06)"
+        >
+          {/* Decorative glow */}
+          <View style={[styles.cardGlow, { backgroundColor: `${primaryColor}10` }]} />
+
+          <View style={styles.cardContent}>
+            <View style={styles.cardHeader}>
+              <View style={styles.cardAvatar}>
+                <View style={[styles.avatarGradient, { backgroundColor: `${primaryColor}30` }]}>
+                  <Ionicons name="finger-print" size={28} color={primaryColor} />
+                </View>
+              </View>
+              <View style={styles.cardInfo}>
+                <ThemedText style={styles.identityName}>{displayName}</ThemedText>
+                <ThemedText style={[styles.identitySubtitle, { color: mutedColor }]}>
+                  Self-Sovereign Identity
+                </ThemedText>
+              </View>
+              <Pressable
+                onPress={() => setShowQR(!showQR)}
+                style={({ pressed }) => [
+                  styles.qrButton,
+                  { backgroundColor: cardBg, borderColor },
+                  pressed && styles.pressed,
+                ]}
+              >
+                <Ionicons name="qr-code" size={20} color={mutedColor} />
+              </Pressable>
+            </View>
+
+            {showQR ? (
+              <View style={styles.qrContainer}>
+                <View style={styles.qrPlaceholder}>
+                  <View style={styles.qrInner}>
+                    <ThemedText style={[styles.qrText, { color: mutedColor }]}>QR Code</ThemedText>
+                  </View>
+                </View>
+                <ThemedText style={[styles.qrHint, { color: mutedColor }]}>
+                  Scan to verify identity
+                </ThemedText>
+              </View>
+            ) : (
+              <>
+                <View style={styles.badgeRow}>
+                  <View style={[styles.badge, { backgroundColor: `${primaryColor}20` }]}>
+                    <Ionicons name="shield-checkmark" size={12} color={primaryColor} />
+                    <ThemedText style={[styles.badgeText, { color: primaryColor }]}>
+                      Self-Custody
+                    </ThemedText>
+                  </View>
+                  <View style={[styles.badge, { backgroundColor: `${accentColor}20` }]}>
+                    <Ionicons name="key" size={12} color={accentColor} />
+                    <ThemedText style={[styles.badgeText, { color: accentColor }]}>
+                      ZK-Verified
+                    </ThemedText>
+                  </View>
+                </View>
+
+                <View style={styles.addressRow}>
+                  <ThemedText style={[styles.addressText, { color: mutedColor }]}>
+                    {walletAddress}
+                  </ThemedText>
+                  <Pressable onPress={handleCopyAddress} style={styles.addressAction}>
+                    <Ionicons
+                      name={copied ? 'checkmark' : 'copy-outline'}
+                      size={16}
+                      color={copied ? primaryColor : mutedColor}
+                    />
+                  </Pressable>
+                  <Pressable style={styles.addressAction}>
+                    <Ionicons name="open-outline" size={16} color={mutedColor} />
+                  </Pressable>
+                </View>
+              </>
+            )}
+          </View>
+        </ThemedView>
+
+        {/* Privacy by Default */}
+        <ThemedView
+          style={[styles.privacyCard, { backgroundColor: cardBg, borderColor: `${primaryColor}30` }]}
+          lightColor="rgba(0,0,0,0.03)"
+          darkColor="rgba(255,255,255,0.06)"
+        >
+          <View style={[styles.privacyIcon, { backgroundColor: `${primaryColor}10` }]}>
+            <Ionicons name="lock-closed" size={20} color={primaryColor} />
+          </View>
+          <View style={styles.privacyText}>
+            <ThemedText style={styles.privacyTitle}>Cryptographic Isolation</ThemedText>
+            <ThemedText style={[styles.privacySubtitle, { color: mutedColor }]}>
+              Card context isolated by default
+            </ThemedText>
+          </View>
+          <View style={[styles.pulseDot, { backgroundColor: primaryColor }]} />
+        </ThemedView>
+
+        {/* Verifiable Credentials */}
+        <View style={styles.section}>
+          <ThemedText style={[styles.sectionTitle, { color: mutedColor }]}>
+            VERIFIABLE CREDENTIALS
+          </ThemedText>
+          {credentials.map((cred, i) => (
+            <Pressable
+              key={i}
+              style={({ pressed }) => [
+                styles.credentialItem,
+                { backgroundColor: cardBg, borderColor },
+                pressed && styles.pressed,
+              ]}
+            >
+              <View style={styles.credentialLeft}>
+                <View style={[styles.credentialIcon, { backgroundColor: `${primaryColor}10` }]}>
+                  <Ionicons name={cred.icon} size={18} color={primaryColor} />
+                </View>
+                <View>
+                  <ThemedText style={styles.credentialName}>{cred.name}</ThemedText>
+                  <ThemedText style={[styles.credentialIssuer, { color: mutedColor }]}>
+                    by {cred.issuer}
+                  </ThemedText>
+                </View>
+              </View>
+              <View style={styles.credentialRight}>
+                {cred.verified && (
+                  <View style={[styles.verifiedBadge, { backgroundColor: `${primaryColor}20` }]}>
+                    <Ionicons name="checkmark" size={12} color={primaryColor} />
+                  </View>
+                )}
+                <Ionicons name="chevron-forward" size={16} color={mutedColor} />
+              </View>
+            </Pressable>
+          ))}
+        </View>
+
+        {/* Connected Apps */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <ThemedText style={[styles.sectionTitle, { color: mutedColor }]}>
+              CONNECTED APPS
+            </ThemedText>
+            <Pressable>
+              <ThemedText style={[styles.manageLink, { color: primaryColor }]}>Manage</ThemedText>
+            </Pressable>
+          </View>
+          {connectedApps.map((app, i) => (
+            <ThemedView
+              key={i}
+              style={[styles.appItem, { backgroundColor: cardBg, borderColor }]}
+              lightColor="rgba(0,0,0,0.03)"
+              darkColor="rgba(255,255,255,0.06)"
+            >
+              <View style={styles.appHeader}>
+                <ThemedText style={styles.appName}>{app.name}</ThemedText>
+                <ThemedText style={[styles.appTime, { color: mutedColor }]}>{app.lastUsed}</ThemedText>
+              </View>
+              <View style={styles.permissionRow}>
+                {app.permissions.map((perm, j) => (
+                  <View key={j} style={[styles.permissionBadge, { backgroundColor: borderColor }]}>
+                    <ThemedText style={[styles.permissionText, { color: mutedColor }]}>
+                      {perm}
+                    </ThemedText>
+                  </View>
+                ))}
+              </View>
+            </ThemedView>
+          ))}
+        </View>
+      </ScrollView>
+    </ThemedView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(128,128,128,0.1)',
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerTitle: {
+    fontSize: 17,
+    fontWeight: '600',
+  },
+  headerSpacer: {
+    width: 40,
+  },
+  scrollView: {
+    flex: 1,
+  },
+  content: {
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    gap: 16,
+  },
+  identityCard: {
+    borderRadius: 24,
+    padding: 20,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  cardGlow: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+  },
+  cardContent: {
+    position: 'relative',
+    zIndex: 1,
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 16,
+  },
+  cardAvatar: {
+    marginRight: 12,
+  },
+  avatarGradient: {
+    width: 56,
+    height: 56,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cardInfo: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingTop: 4,
+  },
+  identityName: {
+    fontSize: 18,
+    fontWeight: '500',
+    marginBottom: 2,
+  },
+  identitySubtitle: {
+    fontSize: 12,
+  },
+  qrButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+  },
+  qrContainer: {
+    alignItems: 'center',
+    paddingVertical: 16,
+  },
+  qrPlaceholder: {
+    width: 160,
+    height: 160,
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 12,
+    marginBottom: 12,
+  },
+  qrInner: {
+    flex: 1,
+    backgroundColor: '#f4f4f5',
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  qrText: {
+    fontSize: 12,
+  },
+  qrHint: {
+    fontSize: 12,
+  },
+  badgeRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 16,
+  },
+  badge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+  },
+  badgeText: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  addressRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  addressText: {
+    fontSize: 14,
+    fontFamily: 'monospace',
+  },
+  addressAction: {
+    padding: 4,
+  },
+  privacyCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    gap: 12,
+  },
+  privacyIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  privacyText: {
+    flex: 1,
+  },
+  privacyTitle: {
+    fontSize: 14,
+    fontWeight: '500',
+    marginBottom: 2,
+  },
+  privacySubtitle: {
+    fontSize: 12,
+  },
+  pulseDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  section: {
+    gap: 10,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  sectionTitle: {
+    fontSize: 10,
+    letterSpacing: 2,
+    fontWeight: '500',
+  },
+  manageLink: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  credentialItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderRadius: 14,
+    padding: 12,
+    borderWidth: 1,
+  },
+  credentialLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  credentialIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  credentialName: {
+    fontSize: 14,
+    fontWeight: '500',
+    marginBottom: 2,
+  },
+  credentialIssuer: {
+    fontSize: 10,
+  },
+  credentialRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  verifiedBadge: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  appItem: {
+    borderRadius: 14,
+    padding: 12,
+    borderWidth: 1,
+  },
+  appHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  appName: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  appTime: {
+    fontSize: 10,
+  },
+  permissionRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  permissionBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  permissionText: {
+    fontSize: 10,
+  },
+  pressed: {
+    opacity: 0.7,
+    transform: [{ scale: 0.98 }],
+  },
+});
+

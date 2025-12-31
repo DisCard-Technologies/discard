@@ -58,6 +58,7 @@ export default defineSchema({
 
     // Raw input from Command Bar
     rawText: v.string(),                // "Pay this bill with my ETH yield"
+    rawInput: v.optional(v.string()),   // Alias for rawText (for API compatibility)
 
     // AI processing results
     claudeSessionId: v.optional(v.string()),
@@ -116,6 +117,7 @@ export default defineSchema({
 
     // Audit trail
     createdAt: v.number(),
+    updatedAt: v.optional(v.number()),
     parsedAt: v.optional(v.number()),
     approvedAt: v.optional(v.number()),
     completedAt: v.optional(v.number()),
@@ -897,6 +899,7 @@ export default defineSchema({
       // Security requirements
       requireBiometric: v.boolean(),    // Require FaceID/Fingerprint
       requireStep2FA: v.boolean(),      // Require additional 2FA
+      require2faAbove: v.optional(v.number()), // Amount threshold for 2FA (cents)
       allowedIpRanges: v.optional(v.array(v.string())), // IP allowlist
 
       // Fraud integration
@@ -932,28 +935,55 @@ export default defineSchema({
     userId: v.id("users"),
     didDocumentId: v.id("didDocuments"),
 
-    // Attestation type
+    // Attestation type (expanded to support all verification types)
     attestationType: v.union(
+      // Age verification
       v.literal("age_over_18"),
       v.literal("age_over_21"),
+      // Residency
       v.literal("uk_resident"),
       v.literal("us_resident"),
       v.literal("eu_resident"),
+      // KYC levels (legacy naming)
       v.literal("kyc_level_1"),         // Basic identity
       v.literal("kyc_level_2"),         // Enhanced with address
       v.literal("kyc_level_3"),         // Full with source of funds
+      // KYC levels (new naming)
+      v.literal("kyc_basic"),           // Basic identity check
+      v.literal("kyc_enhanced"),        // Enhanced with address proof
+      v.literal("kyc_full"),            // Full KYC with source of funds
+      // AML/Sanctions
+      v.literal("aml_cleared"),         // Anti-money laundering cleared
+      v.literal("sanctions_cleared"),   // Not on sanctions lists
+      // Identity verification
+      v.literal("identity_verified"),   // Identity document verified
+      v.literal("biometric_verified"),  // Biometric (face) verified
+      v.literal("liveness_verified"),   // Liveness check passed
+      v.literal("document_verified"),   // Document authenticity verified
+      // Investor status
       v.literal("accredited_investor"),
+      v.literal("professional_investor"), // Professional investor status
+      // Social recovery
       v.literal("recovery_guardian"),   // Can act as guardian for others
+      // Email/Phone verification
+      v.literal("email_verified"),      // Email address verified
+      v.literal("phone_verified"),      // Phone number verified
+      // Custom
       v.literal("custom")               // Custom attestation
     ),
     customType: v.optional(v.string()), // If attestationType is "custom"
 
-    // Issuer information
+    // Issuer information (expanded to support all providers)
     issuer: v.union(
       v.literal("civic"),               // Civic Pass
       v.literal("solid"),               // Solid ID
       v.literal("discard"),             // Self-issued by DisCard
+      v.literal("discard_internal"),    // DisCard internal verification
       v.literal("persona"),             // Persona KYC
+      v.literal("jumio"),               // Jumio identity verification
+      v.literal("onfido"),              // Onfido KYC
+      v.literal("sumsub"),              // Sumsub verification
+      v.literal("veriff"),              // Veriff identity
       v.literal("manual")               // Manual verification
     ),
     issuerDid: v.optional(v.string()),  // Issuer's DID if applicable
@@ -979,23 +1009,31 @@ export default defineSchema({
       v.literal("expired"),             // Past expiry
       v.literal("suspended")            // Temporarily invalid
     ),
+    statusReason: v.optional(v.string()), // Reason for current status
 
     // Revocation info
     revocationReason: v.optional(v.string()),
     revokedAt: v.optional(v.number()),
     revokedBy: v.optional(v.string()),  // DID of revoker
 
+    // Additional metadata
+    metadata: v.optional(v.any()),      // Provider-specific metadata
+
     // Timestamps
     issuedAt: v.number(),
     expiresAt: v.optional(v.number()),
     lastVerifiedAt: v.optional(v.number()),
+    verifiedAt: v.optional(v.number()), // When verification completed
+    updatedAt: v.optional(v.number()),  // Last update timestamp
   })
     .index("by_user", ["userId"])
     .index("by_did", ["didDocumentId"])
     .index("by_type", ["attestationType"])
     .index("by_issuer", ["issuer"])
     .index("by_status", ["status"])
-    .index("by_sas_id", ["sasAttestationId"]),
+    .index("by_sas_id", ["sasAttestationId"])
+    .index("by_user_type", ["userId", "attestationType"])
+    .index("by_chain_address", ["sasAttestationAddress"]),
 
   // ============ COMPRESSED ACCOUNTS (Light Protocol) ============
   // ZK-compressed state on Solana for cost efficiency
@@ -1203,5 +1241,85 @@ export default defineSchema({
   })
     .index("by_market", ["marketId"])
     .index("by_category", ["category"])
+    .index("by_status", ["status"]),
+
+  // ============================================================================
+  // TURNKEY BRIDGE - TEE Signing Infrastructure
+  // ============================================================================
+
+  // ============ SIGNING REQUESTS ============
+  // Tracks Turnkey TEE signing request lifecycle
+  signingRequests: defineTable({
+    requestId: v.string(),
+    intentId: v.id("intents"),
+    userId: v.id("users"),
+    subOrganizationId: v.string(),
+    walletAddress: v.string(),
+    unsignedTransaction: v.string(),
+    transactionMessage: v.string(),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("awaiting_approval"),
+      v.literal("signing"),
+      v.literal("signed"),
+      v.literal("submitted"),
+      v.literal("confirmed"),
+      v.literal("failed"),
+      v.literal("rejected"),
+      v.literal("rolled_back")
+    ),
+    turnkeyActivityId: v.optional(v.string()),
+    signature: v.optional(v.string()),
+    solanaSignature: v.optional(v.string()),
+    error: v.optional(v.string()),
+    confirmationTimeMs: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_request_id", ["requestId"])
+    .index("by_user", ["userId"])
+    .index("by_intent", ["intentId"])
+    .index("by_activity_id", ["turnkeyActivityId"])
+    .index("by_status", ["status"]),
+
+  // ============ SETTLEMENT RECORDS ============
+  // Records Solana transaction confirmations and Alpenglow metrics
+  settlementRecords: defineTable({
+    signingRequestId: v.id("signingRequests"),
+    intentId: v.id("intents"),
+    userId: v.id("users"),
+    requestId: v.optional(v.string()),
+    solanaSignature: v.optional(v.string()),
+    confirmationTimeMs: v.optional(v.number()),
+    withinAlpenglowTarget: v.optional(v.boolean()),
+    slot: v.optional(v.number()),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("confirmed"),
+      v.literal("finalized"),
+      v.literal("failed")
+    ),
+    error: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_intent", ["intentId"])
+    .index("by_signing_request", ["signingRequestId"])
+    .index("by_signature", ["solanaSignature"]),
+
+  // ============ TURNKEY ACTIVITIES ============
+  // Logs Turnkey activity events for webhook handling
+  turnkeyActivities: defineTable({
+    signingRequestId: v.id("signingRequests"),
+    activityId: v.string(),
+    activityType: v.string(),
+    status: v.string(),
+    result: v.optional(v.any()),
+    error: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_signing_request", ["signingRequestId"])
+    .index("by_activity_id", ["activityId"])
     .index("by_status", ["status"]),
 });
