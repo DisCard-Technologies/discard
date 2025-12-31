@@ -101,7 +101,12 @@ export const getPortfolioValue = query({
 export const refreshHoldings = action({
   args: { walletAddress: v.string() },
   handler: async (ctx, args) => {
-    const JUPITER_ULTRA_URL = "https://ultra-api.jup.ag/v1";
+    const JUPITER_ULTRA_URL = "https://api.jup.ag/ultra/v1";
+    const JUPITER_API_KEY = process.env.JUPITER_API_KEY;
+
+    if (!JUPITER_API_KEY) {
+      throw new Error("JUPITER_API_KEY environment variable not set");
+    }
 
     // Fetch from Jupiter Ultra API
     const response = await fetch(
@@ -109,12 +114,14 @@ export const refreshHoldings = action({
       {
         headers: {
           "Content-Type": "application/json",
+          "x-api-key": JUPITER_API_KEY,
         },
       }
     );
 
     if (!response.ok) {
-      throw new Error(`Jupiter API error: ${response.status}`);
+      const errorText = await response.text().catch(() => "");
+      throw new Error(`Jupiter API error: ${response.status} - ${errorText}`);
     }
 
     const data = await response.json();

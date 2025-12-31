@@ -18,7 +18,7 @@ import type {
   JupiterShieldData,
 } from "../types/holdings.types";
 
-const JUPITER_ULTRA_BASE_URL = "https://ultra-api.jup.ag/v1";
+const JUPITER_ULTRA_BASE_URL = "https://api.jup.ag/ultra/v1";
 
 export interface JupiterUltraConfig {
   apiKey?: string;
