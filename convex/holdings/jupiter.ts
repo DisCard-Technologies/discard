@@ -126,48 +126,97 @@ export const refreshHoldings = action({
 
     const data = await response.json();
 
-    // Transform and classify holdings
-    const holdings = (data.tokens || []).map((token: {
-      address: string;
+    // Jupiter Ultra returns tokens as object keyed by mint address:
+    // { "amount": "sol_lamports", "uiAmount": 1.5, "tokens": { "mint1": [...], "mint2": [...] } }
+    const holdings: Array<{
+      mint: string;
       symbol: string;
       name: string;
       decimals: number;
-      amount: string;
-      uiAmount: number;
-      usdValue: number;
-      price: number;
-      priceChange24h?: number;
-      logoURI?: string;
-    }) => {
-      const isRwa = RWA_MINTS.has(token.address);
-      const rwaMetadata = isRwa ? RWA_METADATA[token.address] : undefined;
+      balance: string;
+      balanceFormatted: number;
+      valueUsd: number;
+      priceUsd: number;
+      change24h: number;
+      logoUri?: string;
+      isRwa?: boolean;
+      rwaMetadata?: { issuer: string; type: string; expectedYield?: number };
+    }> = [];
 
-      return {
-        mint: token.address,
-        symbol: token.symbol,
-        name: token.name,
-        decimals: token.decimals,
-        balance: token.amount,
-        balanceFormatted: token.uiAmount,
-        valueUsd: token.usdValue,
-        priceUsd: token.price,
-        change24h: token.priceChange24h ?? 0,
-        logoUri: token.logoURI,
+    let totalValueUsd = 0;
+
+    // Add native SOL balance if present
+    if (data.uiAmount && data.uiAmount > 0) {
+      const solPrice = 0; // Jupiter doesn't include SOL price in holdings response
+      holdings.push({
+        mint: "So11111111111111111111111111111111111111112",
+        symbol: "SOL",
+        name: "Solana",
+        decimals: 9,
+        balance: data.amount || "0",
+        balanceFormatted: data.uiAmount,
+        valueUsd: 0, // Would need price feed
+        priceUsd: solPrice,
+        change24h: 0,
+        logoUri: "https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png",
+        isRwa: false,
+      });
+    }
+
+    // Iterate over token holdings (object keyed by mint)
+    const tokensObj = data.tokens || {};
+    for (const [mint, accounts] of Object.entries(tokensObj)) {
+      // Each mint can have multiple token accounts (array)
+      const tokenAccounts = accounts as Array<{
+        account: string;
+        amount: string;
+        uiAmount: number;
+        uiAmountString: string;
+        decimals: number;
+        isFrozen?: boolean;
+      }>;
+
+      if (!tokenAccounts || tokenAccounts.length === 0) continue;
+
+      // Sum up balances across all accounts for this mint
+      let totalBalance = BigInt(0);
+      let totalUiAmount = 0;
+      let decimals = 0;
+
+      for (const acc of tokenAccounts) {
+        totalBalance += BigInt(acc.amount || "0");
+        totalUiAmount += acc.uiAmount || 0;
+        decimals = acc.decimals || 0;
+      }
+
+      const isRwa = RWA_MINTS.has(mint);
+      const rwaMetadata = isRwa ? RWA_METADATA[mint] : undefined;
+
+      holdings.push({
+        mint,
+        symbol: mint.slice(0, 4).toUpperCase(), // Placeholder - would need token list
+        name: mint.slice(0, 8), // Placeholder
+        decimals,
+        balance: totalBalance.toString(),
+        balanceFormatted: totalUiAmount,
+        valueUsd: 0, // Jupiter holdings doesn't include prices
+        priceUsd: 0,
+        change24h: 0,
         isRwa,
         rwaMetadata,
-      };
-    });
+      });
+    }
 
     // Update cache via mutation
     await ctx.runMutation(internal.holdings.jupiter.updateCache, {
       walletAddress: args.walletAddress,
       holdings,
-      totalValueUsd: data.totalUsdValue ?? 0,
+      totalValueUsd,
     });
 
     return {
       holdings,
-      totalValueUsd: data.totalUsdValue ?? 0,
+      totalValueUsd,
       lastUpdated: Date.now(),
     };
   },

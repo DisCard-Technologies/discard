@@ -180,16 +180,21 @@ export const refreshTrendingTokens = action({
         break;
     }
 
+    const JUPITER_API_KEY = process.env.JUPITER_API_KEY;
+    if (!JUPITER_API_KEY) {
+      throw new Error("JUPITER_API_KEY environment variable not set");
+    }
+
     const response = await fetch(`${JUPITER_TOKENS_URL}${endpoint}`, {
       headers: {
         "Content-Type": "application/json",
-        // Add API key if available
-        // "x-api-key": process.env.JUPITER_API_KEY || "",
+        "x-api-key": JUPITER_API_KEY,
       },
     });
 
     if (!response.ok) {
-      throw new Error(`Jupiter Tokens API error: ${response.status}`);
+      const errorText = await response.text().catch(() => "");
+      throw new Error(`Jupiter Tokens API error: ${response.status} - ${errorText}`);
     }
 
     const data = await response.json();
@@ -233,57 +238,72 @@ export const refreshTrendingTokens = action({
 
 /**
  * Refresh open markets from DFlow
+ * Note: DFlow API may be unreachable from Convex servers - returns empty on error
  */
 export const refreshOpenMarkets = action({
   handler: async (ctx) => {
-    const response = await fetch(`${DFLOW_API_URL}/markets?limit=100`, {
-      headers: { "Content-Type": "application/json" },
-    });
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
 
-    if (!response.ok) {
-      throw new Error(`DFlow API error: ${response.status}`);
+      const response = await fetch(`${DFLOW_API_URL}/markets?limit=100`, {
+        headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        console.error(`DFlow API error: ${response.status}`);
+        // Return empty instead of throwing - API may be temporarily unavailable
+        return { markets: [], count: 0, error: `API returned ${response.status}` };
+      }
+
+      const data = await response.json();
+      const rawMarkets = data.markets || [];
+
+      // Filter to open markets only
+      const openMarkets = rawMarkets
+        .filter((m: { status: string }) => m.status === "open")
+        .map(
+          (market: {
+            id: string;
+            ticker: string;
+            event_id: string;
+            title: string;
+            status: string;
+            yes_price: number;
+            no_price: number;
+            volume_24h: number;
+            end_date: string;
+            category: string;
+            resolution_source?: string;
+          }) => ({
+            marketId: market.id,
+            ticker: market.ticker,
+            eventId: market.event_id,
+            question: market.title,
+            status: market.status as "open" | "closed" | "resolved",
+            yesPrice: market.yes_price,
+            noPrice: market.no_price,
+            volume24h: market.volume_24h,
+            endDate: market.end_date,
+            category: market.category,
+            resolutionSource: market.resolution_source,
+          })
+        );
+
+      // Update cache
+      await ctx.runMutation(internal.explore.trending.updateMarketsCache, {
+        markets: openMarkets,
+      });
+
+      return { markets: openMarkets, count: openMarkets.length };
+    } catch (error) {
+      // Network errors, timeouts, etc - return empty gracefully
+      console.error("[DFlow] API unreachable:", error);
+      return { markets: [], count: 0, error: "DFlow API unreachable" };
     }
-
-    const data = await response.json();
-    const rawMarkets = data.markets || [];
-
-    // Filter to open markets only
-    const openMarkets = rawMarkets
-      .filter((m: { status: string }) => m.status === "open")
-      .map(
-        (market: {
-          id: string;
-          ticker: string;
-          event_id: string;
-          title: string;
-          status: string;
-          yes_price: number;
-          no_price: number;
-          volume_24h: number;
-          end_date: string;
-          category: string;
-          resolution_source?: string;
-        }) => ({
-          marketId: market.id,
-          ticker: market.ticker,
-          eventId: market.event_id,
-          question: market.title,
-          status: market.status as "open" | "closed" | "resolved",
-          yesPrice: market.yes_price,
-          noPrice: market.no_price,
-          volume24h: market.volume_24h,
-          endDate: market.end_date,
-          category: market.category,
-          resolutionSource: market.resolution_source,
-        })
-      );
-
-    // Update cache
-    await ctx.runMutation(internal.explore.trending.updateMarketsCache, {
-      markets: openMarkets,
-    });
-
-    return { markets: openMarkets, count: openMarkets.length };
   },
 });
 
