@@ -1,51 +1,70 @@
-import React, { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, RefreshControl, TextInput, StyleSheet } from 'react-native';
+import React, { useState, useMemo } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, RefreshControl, TextInput, StyleSheet, ActivityIndicator, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useTokenHoldings } from '../../hooks/useTokenHoldings';
+import { useRwaHoldings, useRwaYieldSummary } from '../../hooks/useRwaHoldings';
+import { usePredictionMarkets, usePnlSummary } from '../../hooks/usePredictionMarkets';
+import { useAuth } from '../../stores/authConvex';
+import type { JupiterHolding, RwaToken, PredictionPosition } from '../../types/holdings.types';
 
-type TabType = 'tokens' | 'assets' | 'markets';
-
-// Mock data for demo
-const mockTokens = [
-  { symbol: 'ETH', name: 'Ethereum', balance: '12.847 ETH', value: 48234.12, change: 5.23, hasAuto: true },
-  { symbol: 'USDC', name: 'USD Coin', balance: '45,892.00 USDC', value: 45892, change: 0.01, hasAuto: true },
-  { symbol: 'BTC', name: 'Bitcoin', balance: '0.8421 BTC', value: 71284.67, change: 3.89, hasAuto: false },
-  { symbol: 'SOL', name: 'Solana', balance: '234.5 SOL', value: 8421.45, change: -2.14, hasAuto: false },
-  { symbol: 'ARB', name: 'Arbitrum', balance: '12,450 ARB', value: 2847.23, change: 8.92, hasAuto: false },
-  { symbol: 'LINK', name: 'Chainlink', balance: '892.3 LINK', value: 1591.87, change: -1.23, hasAuto: false },
-];
-
-const mockAssets = [
-  { name: 'Bored Ape #7284', type: 'NFT', value: 42500, change: 5.2, image: '🦍' },
-  { name: 'Manhattan RE Token', type: 'RWA', value: 25000, change: 2.1, image: '🏢' },
-  { name: 'Helium Hotspot #12847', type: 'DePIN', value: 3200, change: 15.4, image: '📡' },
-  { name: 'CryptoPunk #4821', type: 'NFT', value: 89000, change: 1.8, image: '🎭' },
-];
-
-const mockMarkets = [
-  { question: 'ETH > $5k by March 2025?', side: 'YES', platform: 'Polymarket', shares: 500, avgPrice: 0.42, currentPrice: 0.68, value: 130, change: 61.9, voters: 47 },
-  { question: 'US Spot ETH ETF Approved Q1?', side: 'YES', platform: 'Polymarket', shares: 1200, avgPrice: 0.31, currentPrice: 0.74, value: 516, change: 138.7, voters: 23 },
-];
+type TabType = 'tokens' | 'rwa' | 'markets';
 
 export default function HoldingsScreen() {
   const [activeTab, setActiveTab] = useState<TabType>('tokens');
-  const [isRefreshing, setIsRefreshing] = useState(false);
   const [command, setCommand] = useState('');
 
-  // Calculate totals
-  const tokensValue = mockTokens.reduce((sum, t) => sum + t.value, 0);
-  const assetsValue = mockAssets.reduce((sum, a) => sum + a.value, 0);
-  const totalValue = tokensValue + assetsValue;
+  // Get user context
+  const authState = useAuth();
+  const userId = authState.userId;
+  const walletAddress = authState.user?.solanaAddress ?? null;
 
-  const tabs = [
+  // Holdings hooks
+  const {
+    holdings: tokens,
+    totalValue: tokensValue,
+    isLoading: tokensLoading,
+    isRefreshing: tokensRefreshing,
+    error: tokensError,
+    refresh: refreshTokens,
+  } = useTokenHoldings(walletAddress);
+
+  const {
+    rwaTokens,
+    totalValue: rwaValue,
+    isLoading: rwaLoading,
+  } = useRwaHoldings(walletAddress);
+
+  const rwaYieldSummary = useRwaYieldSummary(rwaTokens);
+
+  const {
+    positions: marketPositions,
+    totalValue: marketsValue,
+    totalPnl: marketsPnl,
+    isLoading: marketsLoading,
+    refresh: refreshMarkets,
+  } = usePredictionMarkets(userId, walletAddress);
+
+  const pnlSummary = usePnlSummary(marketPositions);
+
+  // Combined loading/refreshing state
+  const isLoading = tokensLoading || rwaLoading || marketsLoading;
+  const isRefreshing = tokensRefreshing;
+
+  // Calculate totals
+  const totalValue = tokensValue + rwaValue + marketsValue;
+
+  const tabs = useMemo(() => [
     { id: 'tokens' as const, label: 'Tokens', value: tokensValue, icon: 'layers' },
-    { id: 'assets' as const, label: 'Assets', value: assetsValue, icon: 'grid' },
-    { id: 'markets' as const, label: 'Markets', value: 1859, icon: 'bar-chart' },
-  ];
+    { id: 'rwa' as const, label: 'RWA', value: rwaValue, icon: 'business' },
+    { id: 'markets' as const, label: 'Markets', value: marketsValue, icon: 'stats-chart' },
+  ], [tokensValue, rwaValue, marketsValue]);
 
   const handleRefresh = async () => {
-    setIsRefreshing(true);
-    setTimeout(() => setIsRefreshing(false), 1000);
+    await Promise.all([
+      refreshTokens(),
+      refreshMarkets(),
+    ]);
   };
 
   const formatCurrency = (value: number) => {
@@ -57,13 +76,80 @@ export default function HoldingsScreen() {
     return `${prefix}${Math.abs(value).toFixed(2)}%`;
   };
 
+  // Render token icon based on symbol
+  const renderTokenIcon = (token: JupiterHolding) => {
+    if (token.logoUri) {
+      return (
+        <Image
+          source={{ uri: token.logoUri }}
+          style={styles.tokenLogo}
+          resizeMode="contain"
+        />
+      );
+    }
+
+    // Fallback icons for common tokens
+    const symbol = token.symbol.toUpperCase();
+    const symbolMap: Record<string, { char: string; color: string }> = {
+      'SOL': { char: '◎', color: '#9945FF' },
+      'USDC': { char: '◆', color: '#2775CA' },
+      'USDT': { char: '◆', color: '#26A17B' },
+      'ETH': { char: '◆', color: '#627EEA' },
+      'BTC': { char: '₿', color: '#F7931A' },
+      'JUP': { char: '♃', color: '#FF6B35' },
+    };
+
+    const iconInfo = symbolMap[symbol];
+    if (iconInfo) {
+      return <Text style={[styles.tokenIconChar, { color: iconInfo.color }]}>{iconInfo.char}</Text>;
+    }
+
+    // Default: first letter
+    return <Text style={styles.tokenIconChar}>{symbol.charAt(0)}</Text>;
+  };
+
+  // Render loading skeleton
+  const renderLoadingSkeleton = () => (
+    <View style={styles.loadingContainer}>
+      {[1, 2, 3, 4, 5].map((i) => (
+        <View key={i} style={styles.skeletonRow}>
+          <View style={styles.skeletonIcon} />
+          <View style={styles.skeletonContent}>
+            <View style={styles.skeletonText} />
+            <View style={styles.skeletonTextSmall} />
+          </View>
+          <View style={styles.skeletonValue} />
+        </View>
+      ))}
+    </View>
+  );
+
+  // Render empty state
+  const renderEmptyState = (message: string) => (
+    <View style={styles.emptyContainer}>
+      <Ionicons name="wallet-outline" size={48} color="#374151" />
+      <Text style={styles.emptyText}>{message}</Text>
+    </View>
+  );
+
+  // Render error state
+  const renderErrorState = (error: string, onRetry: () => void) => (
+    <View style={styles.errorContainer}>
+      <Ionicons name="alert-circle-outline" size={48} color="#EF4444" />
+      <Text style={styles.errorText}>{error}</Text>
+      <TouchableOpacity style={styles.retryButton} onPress={onRetry}>
+        <Text style={styles.retryText}>Retry</Text>
+      </TouchableOpacity>
+    </View>
+  );
+
   return (
     <View style={styles.container}>
       {/* Ambient glow background */}
       <View style={styles.ambientGlow} />
-      
+
       <SafeAreaView style={styles.safeArea} edges={['top']}>
-        <ScrollView 
+        <ScrollView
           style={styles.scrollView}
           showsVerticalScrollIndicator={false}
           refreshControl={
@@ -80,7 +166,11 @@ export default function HoldingsScreen() {
               </View>
             </View>
             <Text style={styles.totalValue}>
-              ${totalValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} total value
+              {isLoading ? (
+                <ActivityIndicator size="small" color="#6B7280" />
+              ) : (
+                `${formatCurrency(totalValue)} total value`
+              )}
             </Text>
           </View>
 
@@ -99,118 +189,171 @@ export default function HoldingsScreen() {
                   activeOpacity={0.7}
                 >
                   <View style={styles.tabContent}>
-                    {tab.id === 'tokens' && <Ionicons name="layers-outline" size={14} color={isActive ? '#10B981' : '#6B7280'} />}
-                    {tab.id === 'assets' && <Ionicons name="grid-outline" size={14} color={isActive ? '#6B7280' : '#6B7280'} />}
-                    {tab.id === 'markets' && <Ionicons name="stats-chart-outline" size={14} color={isActive ? '#6B7280' : '#6B7280'} />}
+                    <Ionicons
+                      name={`${tab.icon}-outline` as keyof typeof Ionicons.glyphMap}
+                      size={14}
+                      color={isActive ? '#10B981' : '#6B7280'}
+                    />
                     <Text style={[styles.tabLabel, isActive && styles.tabLabelActive]}>
                       {tab.label}
                     </Text>
                   </View>
                   <Text style={[styles.tabValue, isActive && styles.tabValueActive]}>
-                    ${tab.value.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                    {formatCurrency(tab.value)}
                   </Text>
                 </TouchableOpacity>
               );
             })}
           </View>
 
-          {/* Token List */}
+          {/* Content Area */}
           <View style={styles.tokenList}>
-            {activeTab === 'tokens' && mockTokens.map((token, index) => (
-              <View key={token.symbol} style={styles.tokenRow}>
-                {/* Divider line at top of each card */}
-                {index > 0 && <View style={styles.divider} />}
-                
-                <View style={styles.tokenContent}>
-                  {/* Left: Icon */}
-                  <View style={styles.tokenIconContainer}>
-                    {token.symbol === 'ETH' && <Text style={styles.ethSymbol}>◆</Text>}
-                    {token.symbol === 'USDC' && <Text style={styles.usdcSymbol}>◆</Text>}
-                    {token.symbol === 'BTC' && <Text style={styles.btcSymbol}>₿</Text>}
-                    {token.symbol === 'SOL' && <Text style={styles.solSymbol}>◎</Text>}
-                    {token.symbol === 'ARB' && (
-                      <View style={styles.arbDiamondIcon}>
-                        <View style={styles.arbDiamondShape} />
+            {/* Tokens Tab */}
+            {activeTab === 'tokens' && (
+              <>
+                {tokensLoading && renderLoadingSkeleton()}
+                {tokensError && renderErrorState(tokensError, refreshTokens)}
+                {!tokensLoading && !tokensError && tokens.length === 0 &&
+                  renderEmptyState('No tokens found in your wallet')}
+                {!tokensLoading && !tokensError && tokens.map((token, index) => (
+                  <View key={token.mint} style={styles.tokenRow}>
+                    {index > 0 && <View style={styles.divider} />}
+                    <View style={styles.tokenContent}>
+                      <View style={styles.tokenIconContainer}>
+                        {renderTokenIcon(token)}
                       </View>
-                    )}
-                    {token.symbol === 'LINK' && <Text style={styles.linkSymbol}>●</Text>}
-                  </View>
-
-                  {/* Center: Symbol, Auto badge, Balance */}
-                  <View style={styles.tokenInfo}>
-                    <View style={styles.tokenNameRow}>
-                      <Text style={styles.tokenSymbol}>{token.symbol}</Text>
-                      {token.hasAuto && (
-                        <View style={styles.autoBadge}>
-                          <Ionicons name="sparkles" size={8} color="#10B981" />
-                          <Text style={styles.autoBadgeText}>AUTO</Text>
+                      <View style={styles.tokenInfo}>
+                        <View style={styles.tokenNameRow}>
+                          <Text style={styles.tokenSymbol}>{token.symbol}</Text>
                         </View>
-                      )}
-                    </View>
-                    <Text style={styles.tokenBalance}>{token.balance}</Text>
-                  </View>
-
-                  {/* Right: Value and Change */}
-                  <View style={styles.tokenValueContainer}>
-                    <Text style={styles.tokenValue}>{formatCurrency(token.value)}</Text>
-                    <Text style={[
-                      styles.tokenChange,
-                      token.change >= 0 ? styles.positiveChange : styles.negativeChange
-                    ]}>
-                      {formatPercentage(token.change)}
-                    </Text>
-                  </View>
-                </View>
-              </View>
-            ))}
-
-            {activeTab === 'assets' && mockAssets.map((asset, index) => (
-              <View key={asset.name} style={styles.tokenRow}>
-                {index > 0 && <View style={styles.divider} />}
-                <View style={styles.tokenContent}>
-                  <View style={styles.assetIconContainer}>
-                    <Text style={styles.assetEmoji}>{asset.image}</Text>
-                  </View>
-                  <View style={styles.tokenInfo}>
-                    <Text style={styles.tokenSymbol}>{asset.name}</Text>
-                    <View style={styles.assetTypeBadge}>
-                      <Text style={styles.assetTypeText}>{asset.type}</Text>
+                        <Text style={styles.tokenBalance}>
+                          {token.balanceFormatted.toLocaleString()} {token.symbol}
+                        </Text>
+                      </View>
+                      <View style={styles.tokenValueContainer}>
+                        <Text style={styles.tokenValue}>{formatCurrency(token.valueUsd)}</Text>
+                        <Text style={[
+                          styles.tokenChange,
+                          token.change24h >= 0 ? styles.positiveChange : styles.negativeChange
+                        ]}>
+                          {formatPercentage(token.change24h)}
+                        </Text>
+                      </View>
                     </View>
                   </View>
-                  <View style={styles.tokenValueContainer}>
-                    <Text style={styles.tokenValue}>{formatCurrency(asset.value)}</Text>
-                    <Text style={[
-                      styles.tokenChange,
-                      asset.change >= 0 ? styles.positiveChange : styles.negativeChange
-                    ]}>
-                      {formatPercentage(asset.change)}
-                    </Text>
-                  </View>
-                </View>
-              </View>
-            ))}
+                ))}
+              </>
+            )}
 
-            {activeTab === 'markets' && mockMarkets.map((market, index) => (
-              <View key={market.question} style={styles.marketRow}>
-                {index > 0 && <View style={styles.divider} />}
-                <View style={styles.marketContent}>
-                  <Text style={styles.marketQuestion}>{market.question}</Text>
-                  <View style={styles.marketDetails}>
-                    <View style={[styles.sideBadge, market.side === 'YES' ? styles.yesBadge : styles.noBadge]}>
-                      <Text style={[styles.sideBadgeText, market.side === 'YES' ? styles.yesText : styles.noText]}>
-                        {market.side}
+            {/* RWA Tab */}
+            {activeTab === 'rwa' && (
+              <>
+                {rwaLoading && renderLoadingSkeleton()}
+                {!rwaLoading && rwaTokens.length === 0 &&
+                  renderEmptyState('No RWA tokens found')}
+                {!rwaLoading && rwaTokens.length > 0 && (
+                  <>
+                    {/* RWA Summary */}
+                    <View style={styles.rwaSummary}>
+                      <Text style={styles.rwaSummaryText}>
+                        Est. Annual Yield: {formatCurrency(rwaYieldSummary.estimatedAnnualYield)}
+                      </Text>
+                      <Text style={styles.rwaSummarySubtext}>
+                        Avg APY: {rwaYieldSummary.averageYield.toFixed(2)}%
                       </Text>
                     </View>
-                    <Text style={styles.platformText}>{market.platform}</Text>
-                    <View style={styles.marketValue}>
-                      <Text style={[styles.marketPnL, market.value >= 0 ? styles.positiveChange : styles.negativeChange]}>
-                        {market.value >= 0 ? '+' : ''}{formatCurrency(market.value)}
+                    {rwaTokens.map((token, index) => (
+                      <View key={token.mint} style={styles.tokenRow}>
+                        {index > 0 && <View style={styles.divider} />}
+                        <View style={styles.tokenContent}>
+                          <View style={styles.rwaIconContainer}>
+                            <Ionicons name="business" size={20} color="#3B82F6" />
+                          </View>
+                          <View style={styles.tokenInfo}>
+                            <Text style={styles.tokenSymbol}>{token.symbol}</Text>
+                            <View style={styles.rwaDetails}>
+                              <View style={styles.rwaBadge}>
+                                <Text style={styles.rwaBadgeText}>{token.issuer}</Text>
+                              </View>
+                              {token.yield && (
+                                <Text style={styles.rwaYield}>{token.yield}% APY</Text>
+                              )}
+                            </View>
+                          </View>
+                          <View style={styles.tokenValueContainer}>
+                            <Text style={styles.tokenValue}>{formatCurrency(token.valueUsd)}</Text>
+                            <Text style={[
+                              styles.tokenChange,
+                              token.change24h >= 0 ? styles.positiveChange : styles.negativeChange
+                            ]}>
+                              {formatPercentage(token.change24h)}
+                            </Text>
+                          </View>
+                        </View>
+                      </View>
+                    ))}
+                  </>
+                )}
+              </>
+            )}
+
+            {/* Markets Tab */}
+            {activeTab === 'markets' && (
+              <>
+                {marketsLoading && renderLoadingSkeleton()}
+                {!marketsLoading && marketPositions.length === 0 &&
+                  renderEmptyState('No prediction market positions')}
+                {!marketsLoading && marketPositions.length > 0 && (
+                  <>
+                    {/* PnL Summary */}
+                    <View style={styles.pnlSummary}>
+                      <Text style={[
+                        styles.pnlSummaryText,
+                        pnlSummary.totalPnl >= 0 ? styles.positiveChange : styles.negativeChange
+                      ]}>
+                        {pnlSummary.totalPnl >= 0 ? '+' : ''}{formatCurrency(pnlSummary.totalPnl)}
+                        ({pnlSummary.totalPnlPercent.toFixed(1)}%)
+                      </Text>
+                      <Text style={styles.pnlSummarySubtext}>
+                        {pnlSummary.winningPositions}W / {pnlSummary.losingPositions}L
                       </Text>
                     </View>
-                  </View>
-                </View>
-              </View>
-            ))}
+                    {marketPositions.map((position, index) => (
+                      <View key={position.marketId} style={styles.marketRow}>
+                        {index > 0 && <View style={styles.divider} />}
+                        <View style={styles.marketContent}>
+                          <Text style={styles.marketQuestion}>{position.market.question}</Text>
+                          <View style={styles.marketDetails}>
+                            <View style={[
+                              styles.sideBadge,
+                              position.side === 'yes' ? styles.yesBadge : styles.noBadge
+                            ]}>
+                              <Text style={[
+                                styles.sideBadgeText,
+                                position.side === 'yes' ? styles.yesText : styles.noText
+                              ]}>
+                                {position.side.toUpperCase()}
+                              </Text>
+                            </View>
+                            <Text style={styles.sharesText}>
+                              {position.shares} @ {(position.currentPrice * 100).toFixed(0)}¢
+                            </Text>
+                            <View style={styles.marketValue}>
+                              <Text style={[
+                                styles.marketPnL,
+                                position.pnl >= 0 ? styles.positiveChange : styles.negativeChange
+                              ]}>
+                                {position.pnl >= 0 ? '+' : ''}{formatCurrency(position.pnl)}
+                              </Text>
+                            </View>
+                          </View>
+                        </View>
+                      </View>
+                    ))}
+                  </>
+                )}
+              </>
+            )}
           </View>
         </ScrollView>
 
@@ -220,7 +363,7 @@ export default function HoldingsScreen() {
             <TouchableOpacity style={styles.commandIcon}>
               <Ionicons name="camera-outline" size={22} color="#6B7280" />
             </TouchableOpacity>
-            
+
             <TextInput
               value={command}
               onChangeText={setCommand}
@@ -228,11 +371,11 @@ export default function HoldingsScreen() {
               placeholderTextColor="#6B7280"
               style={styles.commandInput}
             />
-            
+
             <TouchableOpacity style={styles.commandIcon}>
               <Ionicons name="mic-outline" size={22} color="#6B7280" />
             </TouchableOpacity>
-            
+
             <TouchableOpacity style={styles.sendButton}>
               <Ionicons name="send" size={18} color="#FFFFFF" />
             </TouchableOpacity>
@@ -366,37 +509,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
+    overflow: 'hidden',
   },
-  ethSymbol: {
+  tokenLogo: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+  },
+  tokenIconChar: {
     fontSize: 18,
+    fontWeight: '600',
     color: '#9CA3AF',
-  },
-  usdcSymbol: {
-    fontSize: 18,
-    color: '#2775CA',
-  },
-  btcSymbol: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#F7931A',
-  },
-  solSymbol: {
-    fontSize: 20,
-    color: '#9945FF',
-  },
-  arbDiamondIcon: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  arbDiamondShape: {
-    width: 12,
-    height: 12,
-    backgroundColor: '#28A0F0',
-    transform: [{ rotate: '45deg' }],
-  },
-  linkSymbol: {
-    fontSize: 18,
-    color: '#375BD2',
   },
   tokenInfo: {
     flex: 1,
@@ -411,20 +534,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '500',
     color: '#FFFFFF',
-  },
-  autoBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
-    backgroundColor: 'rgba(16, 185, 129, 0.15)',
-    gap: 4,
-  },
-  autoBadgeText: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: '#10B981',
   },
   tokenBalance: {
     fontSize: 13,
@@ -448,32 +557,57 @@ const styles = StyleSheet.create({
   negativeChange: {
     color: '#EF4444',
   },
-  assetIconContainer: {
+  // RWA specific styles
+  rwaIconContainer: {
     width: 40,
     height: 40,
     borderRadius: 12,
-    backgroundColor: 'rgba(55, 65, 81, 0.5)',
+    backgroundColor: 'rgba(59, 130, 246, 0.2)',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
   },
-  assetEmoji: {
-    fontSize: 22,
+  rwaDetails: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 4,
   },
-  assetTypeBadge: {
+  rwaBadge: {
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 6,
     backgroundColor: 'rgba(59, 130, 246, 0.2)',
-    alignSelf: 'flex-start',
-    marginTop: 4,
   },
-  assetTypeText: {
+  rwaBadgeText: {
     fontSize: 10,
     fontWeight: '600',
     color: '#3B82F6',
-    textTransform: 'uppercase',
   },
+  rwaYield: {
+    fontSize: 12,
+    color: '#10B981',
+    fontWeight: '500',
+  },
+  rwaSummary: {
+    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(59, 130, 246, 0.2)',
+  },
+  rwaSummaryText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  rwaSummarySubtext: {
+    fontSize: 13,
+    color: '#6B7280',
+    marginTop: 4,
+  },
+  // Market specific styles
   marketRow: {
     marginBottom: 2,
   },
@@ -512,7 +646,7 @@ const styles = StyleSheet.create({
   noText: {
     color: '#EF4444',
   },
-  platformText: {
+  sharesText: {
     fontSize: 12,
     color: '#6B7280',
   },
@@ -524,6 +658,95 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
   },
+  pnlSummary: {
+    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.2)',
+  },
+  pnlSummaryText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  pnlSummarySubtext: {
+    fontSize: 13,
+    color: '#6B7280',
+    marginTop: 4,
+  },
+  // Loading, empty, error states
+  loadingContainer: {
+    paddingVertical: 20,
+  },
+  skeletonRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+  },
+  skeletonIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(55, 65, 81, 0.5)',
+    marginRight: 12,
+  },
+  skeletonContent: {
+    flex: 1,
+  },
+  skeletonText: {
+    width: 80,
+    height: 16,
+    borderRadius: 4,
+    backgroundColor: 'rgba(55, 65, 81, 0.5)',
+    marginBottom: 8,
+  },
+  skeletonTextSmall: {
+    width: 120,
+    height: 12,
+    borderRadius: 4,
+    backgroundColor: 'rgba(55, 65, 81, 0.3)',
+  },
+  skeletonValue: {
+    width: 60,
+    height: 16,
+    borderRadius: 4,
+    backgroundColor: 'rgba(55, 65, 81, 0.5)',
+  },
+  emptyContainer: {
+    alignItems: 'center',
+    paddingVertical: 40,
+  },
+  emptyText: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginTop: 12,
+  },
+  errorContainer: {
+    alignItems: 'center',
+    paddingVertical: 40,
+  },
+  errorText: {
+    fontSize: 14,
+    color: '#EF4444',
+    marginTop: 12,
+    textAlign: 'center',
+  },
+  retryButton: {
+    marginTop: 16,
+    paddingHorizontal: 24,
+    paddingVertical: 10,
+    backgroundColor: 'rgba(16, 185, 129, 0.2)',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.3)',
+  },
+  retryText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#10B981',
+  },
+  // Command bar
   commandBarContainer: {
     position: 'absolute',
     bottom: 0,
@@ -561,49 +784,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginLeft: 4,
-  },
-  // Token icon specific styles
-  ethIcon: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  ethIconText: {
-    fontSize: 18,
-    color: '#9CA3AF',
-  },
-  coinIcon: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  coinIconText: {
-    fontSize: 18,
-    color: '#2775CA',
-  },
-  btcIcon: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#F7931A',
-  },
-  solIcon: {
-    fontSize: 20,
-    color: '#9945FF',
-  },
-  arbIcon: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  arbDiamond: {
-    width: 12,
-    height: 12,
-    backgroundColor: '#28A0F0',
-    transform: [{ rotate: '45deg' }],
-  },
-  linkIcon: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  linkIconText: {
-    fontSize: 18,
-    color: '#375BD2',
   },
 });

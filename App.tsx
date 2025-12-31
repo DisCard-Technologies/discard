@@ -24,6 +24,7 @@ import { CryptoProvider } from './src/stores/cryptoConvex';
 import OnboardingFlowScreen from './src/screens/auth/OnboardingFlowScreen';
 import AmbientHomeScreen from './src/screens/home/AmbientHomeScreen';
 import HoldingsScreen from './src/screens/portfolio/HoldingsScreen';
+import ExploreScreen from './src/screens/explore/ExploreScreen';
 import TransferScreen from './src/screens/transfer/TransferScreen';
 import VisaCardScreen from './src/screens/cards/VisaCardScreen';
 import IdentityPanelScreen from './src/screens/identity/IdentityPanelScreen';
@@ -32,6 +33,7 @@ import IdentityPanelScreen from './src/screens/identity/IdentityPanelScreen';
 export type RootTabParamList = {
   Home: undefined;
   Holdings: undefined;
+  Explore: undefined;
   Transfer: undefined;
   Card: undefined;
   Identity: undefined;
@@ -51,6 +53,7 @@ function MainTabs() {
     >
       <Tab.Screen name="Home" component={AmbientHomeScreen} />
       <Tab.Screen name="Holdings" component={HoldingsScreen} />
+      <Tab.Screen name="Explore" component={ExploreScreen} />
       <Tab.Screen name="Transfer" component={TransferScreen} />
       <Tab.Screen name="Card" component={VisaCardScreen} />
       <Tab.Screen name="Identity" component={IdentityPanelScreen} />

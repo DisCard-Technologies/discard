@@ -1098,4 +1098,110 @@ export default defineSchema({
     .index("by_signature", ["solanaSignature"])
     .index("by_status", ["status"])
     .index("by_entity", ["entityType", "entityId"]),
+
+  // ============================================================================
+  // HOLDINGS & EXPLORE - Token Holdings, Prediction Markets, Trending
+  // ============================================================================
+
+  // ============ TOKEN HOLDINGS CACHE ============
+  // Cached token holdings from Jupiter Ultra API (per user wallet)
+  tokenHoldings: defineTable({
+    walletAddress: v.string(),
+    mint: v.string(),
+    symbol: v.string(),
+    name: v.string(),
+    decimals: v.number(),
+    balance: v.string(), // Raw balance in smallest units
+    balanceFormatted: v.number(), // Human-readable balance
+    valueUsd: v.number(),
+    priceUsd: v.number(),
+    change24h: v.number(),
+    logoUri: v.optional(v.string()),
+    isRwa: v.optional(v.boolean()),
+    rwaMetadata: v.optional(
+      v.object({
+        issuer: v.string(),
+        type: v.string(),
+        expectedYield: v.optional(v.number()),
+      })
+    ),
+    updatedAt: v.number(),
+  })
+    .index("by_wallet", ["walletAddress"])
+    .index("by_wallet_mint", ["walletAddress", "mint"])
+    .index("by_wallet_rwa", ["walletAddress", "isRwa"]),
+
+  // ============ PREDICTION POSITIONS ============
+  // User's tokenized Kalshi prediction market positions via DFlow
+  predictionPositions: defineTable({
+    userId: v.id("users"),
+    walletAddress: v.string(),
+    marketId: v.string(),
+    ticker: v.string(),
+    question: v.string(),
+    side: v.union(v.literal("yes"), v.literal("no")),
+    mintAddress: v.string(),
+    shares: v.number(),
+    avgPrice: v.number(),
+    currentPrice: v.number(),
+    valueUsd: v.number(),
+    pnl: v.number(),
+    pnlPercent: v.number(),
+    marketStatus: v.optional(v.string()),
+    endDate: v.optional(v.string()),
+    category: v.optional(v.string()),
+    updatedAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_wallet", ["walletAddress"])
+    .index("by_market", ["marketId"]),
+
+  // ============ TRENDING TOKENS CACHE ============
+  // Shared cache for Jupiter Tokens API V2 trending/discovery data
+  trendingTokens: defineTable({
+    category: v.union(
+      v.literal("trending"),
+      v.literal("top_traded"),
+      v.literal("recent")
+    ),
+    interval: v.string(), // "5m", "1h", "6h", "24h"
+    tokens: v.array(
+      v.object({
+        mint: v.string(),
+        symbol: v.string(),
+        name: v.string(),
+        priceUsd: v.number(),
+        change24h: v.number(),
+        volume24h: v.number(),
+        logoUri: v.optional(v.string()),
+        verified: v.boolean(),
+        organicScore: v.optional(v.number()),
+      })
+    ),
+    updatedAt: v.number(),
+  }).index("by_category_interval", ["category", "interval"]),
+
+  // ============ OPEN PREDICTION MARKETS CACHE ============
+  // Shared cache for available Kalshi markets via DFlow
+  openPredictionMarkets: defineTable({
+    marketId: v.string(),
+    ticker: v.string(),
+    eventId: v.string(),
+    question: v.string(),
+    status: v.union(
+      v.literal("open"),
+      v.literal("closed"),
+      v.literal("resolved")
+    ),
+    yesPrice: v.number(),
+    noPrice: v.number(),
+    volume24h: v.number(),
+    endDate: v.string(),
+    category: v.string(),
+    resolutionSource: v.optional(v.string()),
+    updatedAt: v.number(),
+  })
+    .index("by_market", ["marketId"])
+    .index("by_category", ["category"])
+    .index("by_status", ["status"]),
 });

@@ -1,12 +1,13 @@
 import React from 'react';
 import { View, TouchableOpacity, Text } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Home, Layers, ArrowLeftRight, CreditCard, Fingerprint } from 'lucide-react-native';
+import { Home, Layers, Compass, ArrowLeftRight, CreditCard, Fingerprint } from 'lucide-react-native';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 
 const navItems = [
   { name: 'Home', icon: Home, label: 'Home' },
   { name: 'Holdings', icon: Layers, label: 'Holdings' },
+  { name: 'Explore', icon: Compass, label: 'Explore' },
   { name: 'Transfer', icon: ArrowLeftRight, label: 'Transfer' },
   { name: 'Card', icon: CreditCard, label: 'Card' },
   { name: 'Identity', icon: Fingerprint, label: 'Identity' },
