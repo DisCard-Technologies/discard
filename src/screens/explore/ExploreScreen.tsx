@@ -418,25 +418,21 @@ function TokenCategoryFilter({
   ];
 
   return (
-    <View className="px-4 mb-4">
+    <View className="px-4 mb-3">
       {/* Category Pills */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        className="mb-3"
-      >
+      <View className="flex-row mb-2">
         {categories.map((cat) => (
           <TouchableOpacity
             key={cat.value}
             onPress={() => onCategoryChange(cat.value)}
-            className={`px-4 py-2 rounded-full mr-2 ${
+            className={`px-3 py-1.5 rounded-full mr-2 ${
               category === cat.value
                 ? "bg-primary"
                 : "bg-card/50 border border-border/30"
             }`}
           >
             <Text
-              className={`text-sm font-medium ${
+              className={`text-xs font-medium ${
                 category === cat.value ? "text-primary-foreground" : "text-muted-foreground"
               }`}
             >
@@ -444,7 +440,7 @@ function TokenCategoryFilter({
             </Text>
           </TouchableOpacity>
         ))}
-      </ScrollView>
+      </View>
 
       {/* Interval Pills */}
       <View className="flex-row">
@@ -452,14 +448,14 @@ function TokenCategoryFilter({
           <TouchableOpacity
             key={int.value}
             onPress={() => onIntervalChange(int.value)}
-            className={`px-3 py-1 rounded-full mr-2 ${
+            className={`px-2.5 py-1 rounded-full mr-1.5 ${
               interval === int.value
                 ? "bg-accent/20"
                 : "bg-card/30"
             }`}
           >
             <Text
-              className={`text-xs ${
+              className={`text-[10px] ${
                 interval === int.value ? "text-accent font-medium" : "text-muted-foreground"
               }`}
             >
@@ -486,16 +482,18 @@ function RwaTypeFilter({
     <ScrollView
       horizontal
       showsHorizontalScrollIndicator={false}
-      className="px-4 mb-4"
+      className="px-4 mb-3"
+      style={{ maxHeight: 36 }}
+      contentContainerStyle={{ alignItems: 'center' }}
     >
       <TouchableOpacity
         onPress={() => onTypeChange(undefined)}
-        className={`px-4 py-2 rounded-full mr-2 ${
+        className={`px-3 py-1.5 rounded-full mr-2 ${
           !selectedType ? "bg-primary" : "bg-card/50 border border-border/30"
         }`}
       >
         <Text
-          className={`text-sm font-medium ${
+          className={`text-xs font-medium ${
             !selectedType ? "text-primary-foreground" : "text-muted-foreground"
           }`}
         >
@@ -506,14 +504,14 @@ function RwaTypeFilter({
         <TouchableOpacity
           key={type}
           onPress={() => onTypeChange(type)}
-          className={`px-4 py-2 rounded-full mr-2 ${
+          className={`px-3 py-1.5 rounded-full mr-2 ${
             selectedType === type
               ? "bg-primary"
               : "bg-card/50 border border-border/30"
           }`}
         >
           <Text
-            className={`text-sm font-medium ${
+            className={`text-xs font-medium ${
               selectedType === type ? "text-primary-foreground" : "text-muted-foreground"
             }`}
           >
@@ -539,16 +537,18 @@ function MarketCategoryFilter({
     <ScrollView
       horizontal
       showsHorizontalScrollIndicator={false}
-      className="px-4 mb-4"
+      className="px-4 mb-3"
+      style={{ maxHeight: 36 }}
+      contentContainerStyle={{ alignItems: 'center' }}
     >
       <TouchableOpacity
         onPress={() => onCategoryChange(null)}
-        className={`px-4 py-2 rounded-full mr-2 ${
+        className={`px-3 py-1.5 rounded-full mr-2 ${
           !selectedCategory ? "bg-primary" : "bg-card/50 border border-border/30"
         }`}
       >
         <Text
-          className={`text-sm font-medium ${
+          className={`text-xs font-medium ${
             !selectedCategory ? "text-primary-foreground" : "text-muted-foreground"
           }`}
         >
@@ -559,14 +559,14 @@ function MarketCategoryFilter({
         <TouchableOpacity
           key={cat}
           onPress={() => onCategoryChange(cat)}
-          className={`px-4 py-2 rounded-full mr-2 ${
+          className={`px-3 py-1.5 rounded-full mr-2 ${
             selectedCategory === cat
               ? "bg-primary"
               : "bg-card/50 border border-border/30"
           }`}
         >
           <Text
-            className={`text-sm font-medium ${
+            className={`text-xs font-medium ${
               selectedCategory === cat ? "text-primary-foreground" : "text-muted-foreground"
             }`}
           >

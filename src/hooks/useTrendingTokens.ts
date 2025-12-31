@@ -4,7 +4,7 @@
  * Fetches trending/top traded tokens from Jupiter Tokens API V2.
  * Uses shared Convex cache for efficiency.
  */
-import { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useQuery, useAction } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import type {
@@ -69,19 +69,24 @@ export function useTrendingTokens(
     }
   }, [category, interval, refreshAction]);
 
-  // Auto-refresh when cache is stale
-  useEffect(() => {
-    if (autoRefresh && cachedData?.isStale) {
-      refresh();
-    }
-  }, [autoRefresh, cachedData?.isStale, refresh]);
+  // Track if we've attempted initial fetch
+  const hasAttemptedFetch = React.useRef(false);
 
-  // Initial fetch if no cache
+  // Initial fetch if no cache, or auto-refresh when cache is stale
   useEffect(() => {
-    if (cachedData === null) {
+    // Only attempt initial fetch once per category/interval combination
+    if (cachedData === null && !hasAttemptedFetch.current) {
+      hasAttemptedFetch.current = true;
+      refresh();
+    } else if (autoRefresh && cachedData?.isStale) {
       refresh();
     }
-  }, [category, interval]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [cachedData, autoRefresh, refresh]);
+
+  // Reset fetch attempt tracking when category/interval changes
+  useEffect(() => {
+    hasAttemptedFetch.current = false;
+  }, [category, interval]);
 
   // Transform cached data
   const tokens: TrendingToken[] = useMemo(() => {

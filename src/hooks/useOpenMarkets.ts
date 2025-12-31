@@ -4,7 +4,7 @@
  * Fetches open prediction markets from DFlow/Kalshi.
  * Uses shared Convex cache for efficiency.
  */
-import { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useQuery, useAction } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import type {
@@ -67,12 +67,17 @@ export function useOpenMarkets(
     }
   }, [refreshAction]);
 
-  // Auto-refresh on mount if no cache
+  // Track if we've attempted initial fetch
+  const hasAttemptedFetch = React.useRef(false);
+
+  // Auto-refresh when cache is empty (no markets)
   useEffect(() => {
-    if (autoRefresh && cachedMarkets?.length === 0) {
+    // cachedMarkets is undefined while loading, empty array when no data
+    if (autoRefresh && cachedMarkets !== undefined && cachedMarkets.length === 0 && !hasAttemptedFetch.current) {
+      hasAttemptedFetch.current = true;
       refresh();
     }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [autoRefresh, cachedMarkets, refresh]);
 
   // Transform cached data to PredictionMarket[]
   const markets: PredictionMarket[] = useMemo(() => {

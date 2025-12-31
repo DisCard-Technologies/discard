@@ -12,7 +12,8 @@ import { query, mutation, action, internalMutation } from "../_generated/server"
 import { internal } from "../_generated/api";
 
 const JUPITER_TOKENS_URL = "https://api.jup.ag/tokens";
-const DFLOW_API_URL = "https://api.pond.dflow.net/api/v1";
+// Kalshi public API (no auth required for market data)
+const KALSHI_API_URL = "https://api.elections.kalshi.com/trade-api/v2";
 
 // Cache TTL in milliseconds
 const TRENDING_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
@@ -197,30 +198,39 @@ export const refreshTrendingTokens = action({
       throw new Error(`Jupiter Tokens API error: ${response.status} - ${errorText}`);
     }
 
-    const data = await response.json();
-    const rawTokens = data.tokens || data.mints || data.data || [];
+    // Jupiter Tokens API V2 returns an array directly, not wrapped in an object
+    const rawTokens = await response.json();
+
+    // Validate it's an array
+    if (!Array.isArray(rawTokens)) {
+      console.error("[Jupiter Tokens V2] Unexpected response format:", typeof rawTokens);
+      throw new Error("Jupiter Tokens API returned unexpected format");
+    }
 
     const tokens = rawTokens.map(
       (token: {
-        address: string;
+        id: string; // mint address
         symbol: string;
         name: string;
-        price?: number;
-        dailyChange?: number;
-        volume24h?: number;
-        logoURI?: string;
-        verified?: boolean;
+        icon?: string;
+        usdPrice?: number;
+        isVerified?: boolean;
         organicScore?: number;
         tags?: string[];
+        stats24h?: {
+          priceChange?: number;
+          buyVolume?: number;
+          sellVolume?: number;
+        };
       }) => ({
-        mint: token.address,
+        mint: token.id,
         symbol: token.symbol,
         name: token.name,
-        priceUsd: token.price ?? 0,
-        change24h: token.dailyChange ?? 0,
-        volume24h: token.volume24h ?? 0,
-        logoUri: token.logoURI,
-        verified: token.verified ?? token.tags?.includes("verified") ?? false,
+        priceUsd: token.usdPrice ?? 0,
+        change24h: token.stats24h?.priceChange ?? 0,
+        volume24h: (token.stats24h?.buyVolume ?? 0) + (token.stats24h?.sellVolume ?? 0),
+        logoUri: token.icon,
+        verified: token.isVerified ?? token.tags?.includes("verified") ?? false,
         organicScore: token.organicScore,
       })
     );
@@ -237,72 +247,106 @@ export const refreshTrendingTokens = action({
 });
 
 /**
- * Refresh open markets from DFlow
- * Note: DFlow API may be unreachable from Convex servers - returns empty on error
+ * Refresh open markets from Kalshi
+ * Kalshi public API - no auth required for market data
+ * Use DFlow/Jupiter for actual trading (Solana tokenized positions)
  */
 export const refreshOpenMarkets = action({
   handler: async (ctx) => {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
+      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
 
-      const response = await fetch(`${DFLOW_API_URL}/markets?limit=100`, {
-        headers: { "Content-Type": "application/json" },
-        signal: controller.signal,
-      });
+      // Fetch open markets from Kalshi public API
+      const response = await fetch(
+        `${KALSHI_API_URL}/markets?status=open&limit=100`,
+        {
+          headers: {
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+          },
+          signal: controller.signal,
+        }
+      );
 
       clearTimeout(timeoutId);
 
       if (!response.ok) {
-        console.error(`DFlow API error: ${response.status}`);
-        // Return empty instead of throwing - API may be temporarily unavailable
-        return { markets: [], count: 0, error: `API returned ${response.status}` };
+        const errorText = await response.text().catch(() => "");
+        console.error(`[Kalshi] API error: ${response.status} - ${errorText}`);
+        return { markets: [], count: 0, error: `Kalshi API returned ${response.status}` };
       }
 
       const data = await response.json();
       const rawMarkets = data.markets || [];
 
-      // Filter to open markets only
-      const openMarkets = rawMarkets
-        .filter((m: { status: string }) => m.status === "open")
-        .map(
-          (market: {
-            id: string;
-            ticker: string;
-            event_id: string;
-            title: string;
-            status: string;
-            yes_price: number;
-            no_price: number;
-            volume_24h: number;
-            end_date: string;
-            category: string;
-            resolution_source?: string;
-          }) => ({
-            marketId: market.id,
+      // Transform Kalshi response to our format
+      const openMarkets = rawMarkets.map(
+        (market: {
+          ticker: string;
+          event_ticker: string;
+          title: string;
+          subtitle?: string;
+          status: string;
+          yes_bid: number;
+          yes_ask: number;
+          no_bid: number;
+          no_ask: number;
+          last_price: number;
+          volume: number;
+          open_interest: number;
+          close_time: string;
+          expiration_time?: string;
+          category?: string;
+          series_ticker?: string;
+        }) => {
+          // Calculate mid prices (convert from cents to decimal 0-1)
+          const yesPrice = market.yes_bid && market.yes_ask
+            ? ((market.yes_bid + market.yes_ask) / 2) / 100
+            : (market.last_price || 50) / 100;
+          const noPrice = 1 - yesPrice;
+
+          // Extract category from series_ticker or event_ticker
+          const category = market.category ||
+            market.series_ticker?.split("-")[0] ||
+            market.event_ticker?.split("-")[0] ||
+            "General";
+
+          // Map Kalshi status to our status (Kalshi uses "active" for open markets)
+          let status: "open" | "closed" | "resolved" = "open";
+          if (market.status === "settled" || market.status === "finalized") {
+            status = "resolved";
+          } else if (market.status === "closed" || market.status === "halted") {
+            status = "closed";
+          }
+          // "active", "open", "trading" all map to "open"
+
+          return {
+            marketId: market.ticker,
             ticker: market.ticker,
-            eventId: market.event_id,
-            question: market.title,
-            status: market.status as "open" | "closed" | "resolved",
-            yesPrice: market.yes_price,
-            noPrice: market.no_price,
-            volume24h: market.volume_24h,
-            endDate: market.end_date,
-            category: market.category,
-            resolutionSource: market.resolution_source,
-          })
-        );
+            eventId: market.event_ticker,
+            question: market.title + (market.subtitle ? `: ${market.subtitle}` : ""),
+            status,
+            yesPrice,
+            noPrice,
+            volume24h: market.volume || 0,
+            endDate: market.close_time || market.expiration_time || "",
+            category: category.charAt(0).toUpperCase() + category.slice(1).toLowerCase(),
+            resolutionSource: "Kalshi",
+          };
+        }
+      );
 
       // Update cache
       await ctx.runMutation(internal.explore.trending.updateMarketsCache, {
         markets: openMarkets,
       });
 
+      console.log(`[Kalshi] Fetched ${openMarkets.length} open markets`);
       return { markets: openMarkets, count: openMarkets.length };
     } catch (error) {
-      // Network errors, timeouts, etc - return empty gracefully
-      console.error("[DFlow] API unreachable:", error);
-      return { markets: [], count: 0, error: "DFlow API unreachable" };
+      console.error("[Kalshi] API error:", error);
+      return { markets: [], count: 0, error: "Kalshi API unreachable" };
     }
   },
 });
