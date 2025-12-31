@@ -1,8 +1,8 @@
 /**
- * Token Holdings Convex Functions
+ * Jupiter Holdings Convex Functions
  *
  * Provides caching and real-time subscriptions for token holdings
- * fetched from Helius DAS API.
+ * fetched from Jupiter Ultra API.
  */
 import { v } from "convex/values";
 import { query, mutation, action, internalMutation } from "../_generated/server";
@@ -96,142 +96,71 @@ export const getPortfolioValue = query({
 // ============================================================================
 
 /**
- * Refresh holdings from Helius DAS API
+ * Refresh holdings from Jupiter Ultra API
  */
 export const refreshHoldings = action({
   args: { walletAddress: v.string() },
   handler: async (ctx, args) => {
-    // Helius API key from environment or fallback
-    const HELIUS_API_KEY = process.env.HELIUS_API_KEY || "b7ee72d9-a0e7-4723-b386-48b23d0b3a41";
-    const HELIUS_RPC_URL = `https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`;
+    const JUPITER_ULTRA_URL = "https://ultra-api.jup.ag/v1";
 
-    // Fetch from Helius DAS API using getAssetsByOwner
-    const response = await fetch(HELIUS_RPC_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        id: "holdings",
-        method: "getAssetsByOwner",
-        params: {
-          ownerAddress: args.walletAddress,
-          page: 1,
-          limit: 1000,
-          displayOptions: {
-            showFungible: true,
-            showNativeBalance: true,
-          },
+    // Fetch from Jupiter Ultra API
+    const response = await fetch(
+      `${JUPITER_ULTRA_URL}/holdings/${args.walletAddress}`,
+      {
+        headers: {
+          "Content-Type": "application/json",
         },
-      }),
-    });
+      }
+    );
 
     if (!response.ok) {
-      throw new Error(`Helius API error: ${response.status}`);
+      throw new Error(`Jupiter API error: ${response.status}`);
     }
 
     const data = await response.json();
 
-    if (data.error) {
-      throw new Error(`Helius RPC error: ${data.error.message || JSON.stringify(data.error)}`);
-    }
-
-    const result = data.result;
-    const items = result?.items || [];
-    const nativeBalance = result?.nativeBalance;
-
-    // Transform Helius response to our holdings format
-    const holdings: Array<{
-      mint: string;
+    // Transform and classify holdings
+    const holdings = (data.tokens || []).map((token: {
+      address: string;
       symbol: string;
       name: string;
       decimals: number;
-      balance: string;
-      balanceFormatted: number;
-      valueUsd: number;
-      priceUsd: number;
-      change24h: number;
-      logoUri?: string;
-      isRwa?: boolean;
-      rwaMetadata?: { issuer: string; type: string; expectedYield?: number };
-    }> = [];
+      amount: string;
+      uiAmount: number;
+      usdValue: number;
+      price: number;
+      priceChange24h?: number;
+      logoURI?: string;
+    }) => {
+      const isRwa = RWA_MINTS.has(token.address);
+      const rwaMetadata = isRwa ? RWA_METADATA[token.address] : undefined;
 
-    let totalValueUsd = 0;
-
-    // Add native SOL balance
-    if (nativeBalance && nativeBalance.lamports > 0) {
-      const solBalance = nativeBalance.lamports / 1e9;
-      const solPrice = nativeBalance.price_per_sol || 0;
-      const solValue = nativeBalance.total_price || (solBalance * solPrice);
-
-      holdings.push({
-        mint: "So11111111111111111111111111111111111111112", // Native SOL mint
-        symbol: "SOL",
-        name: "Solana",
-        decimals: 9,
-        balance: nativeBalance.lamports.toString(),
-        balanceFormatted: solBalance,
-        valueUsd: solValue,
-        priceUsd: solPrice,
-        change24h: 0,
-        logoUri: "https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png",
-        isRwa: false,
-      });
-      totalValueUsd += solValue;
-    }
-
-    // Process fungible tokens
-    for (const item of items) {
-      // Skip non-fungible assets (NFTs)
-      if (item.interface !== "FungibleToken" && item.interface !== "FungibleAsset") {
-        continue;
-      }
-
-      const tokenInfo = item.token_info;
-      if (!tokenInfo || !tokenInfo.balance) continue;
-
-      const mint = item.id;
-      const metadata = item.content?.metadata || {};
-      const priceInfo = tokenInfo.price_info || {};
-
-      const decimals = tokenInfo.decimals || 0;
-      const rawBalance = tokenInfo.balance || 0;
-      const balanceFormatted = rawBalance / Math.pow(10, decimals);
-      const priceUsd = priceInfo.price_per_token || 0;
-      const valueUsd = priceInfo.total_price || (balanceFormatted * priceUsd);
-
-      const isRwa = RWA_MINTS.has(mint);
-      const rwaMetadata = isRwa ? RWA_METADATA[mint] : undefined;
-
-      holdings.push({
-        mint,
-        symbol: tokenInfo.symbol || metadata.symbol || "???",
-        name: metadata.name || tokenInfo.symbol || "Unknown",
-        decimals,
-        balance: rawBalance.toString(),
-        balanceFormatted,
-        valueUsd,
-        priceUsd,
-        change24h: 0, // Helius doesn't provide 24h change
-        logoUri: item.content?.links?.image || item.content?.files?.[0]?.uri,
+      return {
+        mint: token.address,
+        symbol: token.symbol,
+        name: token.name,
+        decimals: token.decimals,
+        balance: token.amount,
+        balanceFormatted: token.uiAmount,
+        valueUsd: token.usdValue,
+        priceUsd: token.price,
+        change24h: token.priceChange24h ?? 0,
+        logoUri: token.logoURI,
         isRwa,
         rwaMetadata,
-      });
-
-      totalValueUsd += valueUsd;
-    }
+      };
+    });
 
     // Update cache via mutation
     await ctx.runMutation(internal.holdings.jupiter.updateCache, {
       walletAddress: args.walletAddress,
       holdings,
-      totalValueUsd,
+      totalValueUsd: data.totalUsdValue ?? 0,
     });
 
     return {
       holdings,
-      totalValueUsd,
+      totalValueUsd: data.totalUsdValue ?? 0,
       lastUpdated: Date.now(),
     };
   },
