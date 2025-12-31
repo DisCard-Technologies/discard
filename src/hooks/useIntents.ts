@@ -5,7 +5,7 @@
  * Handles natural language processing, intent parsing, and Solana transaction execution.
  */
 import { useState, useCallback } from "react";
-import { useQuery, useMutation, useAction } from "convex/react";
+import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { isMockUserId } from "../stores/authConvex";
@@ -81,14 +81,11 @@ export function useIntents(userId: Id<"users"> | null): UseIntentsReturn {
   );
 
   // Mutations (will be skipped in mock mode)
+  // Note: parseIntent and executeIntent are scheduled internally by these mutations
   const createIntentMutation = useMutation(api.intents.intents.create);
   const clarifyIntentMutation = useMutation(api.intents.intents.clarify);
   const approveIntentMutation = useMutation(api.intents.intents.approve);
   const cancelIntentMutation = useMutation(api.intents.intents.cancel);
-
-  // Actions
-  const parseIntentAction = useAction(api.intents.solver.parseIntent);
-  const executeIntentAction = useAction(api.intents.executor.executeIntent);
 
   // For mock mode, use local mock intents; otherwise use Convex data
   const isLoading = isMockAuth ? false : intents === undefined;
@@ -158,21 +155,19 @@ export function useIntents(userId: Id<"users"> | null): UseIntentsReturn {
         }
 
         // PRODUCTION: Create the intent via Convex
+        // The mutation automatically schedules AI parsing internally
         const intentId = await createIntentMutation({
           rawText,
+          userId,
         });
 
         setActiveIntentId(intentId);
-
-        // Parse the intent with Claude AI
-        await parseIntentAction({ intentId });
-
         return intentId;
       } finally {
         setIsProcessing(false);
       }
     },
-    [userId, isMockAuth, createIntentMutation, parseIntentAction]
+    [userId, isMockAuth, createIntentMutation]
   );
 
   /**
@@ -180,22 +175,25 @@ export function useIntents(userId: Id<"users"> | null): UseIntentsReturn {
    */
   const clarifyIntent = useCallback(
     async (intentId: Id<"intents">, clarification: string): Promise<void> => {
+      if (!userId) {
+        throw new Error("User not authenticated");
+      }
+
       setIsProcessing(true);
 
       try {
         // Update intent with clarification
+        // The mutation automatically schedules re-parsing internally
         await clarifyIntentMutation({
           intentId,
           clarificationResponse: clarification,
+          userId,
         });
-
-        // Re-parse with additional context
-        await parseIntentAction({ intentId });
       } finally {
         setIsProcessing(false);
       }
     },
-    [clarifyIntentMutation, parseIntentAction]
+    [userId, clarifyIntentMutation]
   );
 
   /**
@@ -203,20 +201,22 @@ export function useIntents(userId: Id<"users"> | null): UseIntentsReturn {
    */
   const approveIntent = useCallback(
     async (intentId: Id<"intents">): Promise<void> => {
+      if (!userId) {
+        throw new Error("User not authenticated");
+      }
+
       setIsProcessing(true);
 
       try {
         // Mark as approved
-        await approveIntentMutation({ intentId });
-
-        // Execute the intent
-        await executeIntentAction({ intentId });
+        // The mutation automatically schedules execution internally
+        await approveIntentMutation({ intentId, userId });
       } finally {
         setIsProcessing(false);
         setActiveIntentId(null);
       }
     },
-    [approveIntentMutation, executeIntentAction]
+    [userId, approveIntentMutation]
   );
 
   /**
@@ -224,10 +224,14 @@ export function useIntents(userId: Id<"users"> | null): UseIntentsReturn {
    */
   const cancelIntent = useCallback(
     async (intentId: Id<"intents">): Promise<void> => {
-      await cancelIntentMutation({ intentId });
+      if (!userId) {
+        throw new Error("User not authenticated");
+      }
+
+      await cancelIntentMutation({ intentId, userId });
       setActiveIntentId(null);
     },
-    [cancelIntentMutation]
+    [userId, cancelIntentMutation]
   );
 
   /**

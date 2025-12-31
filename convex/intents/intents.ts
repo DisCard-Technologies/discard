@@ -159,17 +159,11 @@ export const getById = internalQuery({
 export const create = mutation({
   args: {
     rawText: v.string(),
+    userId: v.id("users"),
   },
   handler: async (ctx, args): Promise<Id<"intents">> => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) {
-      throw new Error("Not authenticated");
-    }
-
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_credential", (q) => q.eq("credentialId", identity.subject))
-      .first();
+    // Look up user directly by ID
+    const user = await ctx.db.get(args.userId);
 
     if (!user) {
       throw new Error("User not found");
@@ -209,18 +203,10 @@ export const clarify = mutation({
   args: {
     intentId: v.id("intents"),
     clarificationResponse: v.string(),
+    userId: v.id("users"),
   },
   handler: async (ctx, args): Promise<void> => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) {
-      throw new Error("Not authenticated");
-    }
-
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_credential", (q) => q.eq("credentialId", identity.subject))
-      .first();
-
+    const user = await ctx.db.get(args.userId);
     if (!user) {
       throw new Error("User not found");
     }
@@ -254,18 +240,10 @@ export const clarify = mutation({
 export const approve = mutation({
   args: {
     intentId: v.id("intents"),
+    userId: v.id("users"),
   },
   handler: async (ctx, args): Promise<void> => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) {
-      throw new Error("Not authenticated");
-    }
-
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_credential", (q) => q.eq("credentialId", identity.subject))
-      .first();
-
+    const user = await ctx.db.get(args.userId);
     if (!user) {
       throw new Error("User not found");
     }
@@ -299,18 +277,10 @@ export const approve = mutation({
 export const cancel = mutation({
   args: {
     intentId: v.id("intents"),
+    userId: v.id("users"),
   },
   handler: async (ctx, args): Promise<void> => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) {
-      throw new Error("Not authenticated");
-    }
-
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_credential", (q) => q.eq("credentialId", identity.subject))
-      .first();
-
+    const user = await ctx.db.get(args.userId);
     if (!user) {
       throw new Error("User not found");
     }
