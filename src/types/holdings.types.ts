@@ -25,6 +25,7 @@ export interface JupiterHolding {
   priceUsd: number;
   change24h: number;
   logoUri?: string;
+  isRwa?: boolean;
 }
 
 export interface JupiterHoldingsResponse {

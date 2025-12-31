@@ -1,127 +1,131 @@
 /**
- * Jupiter Ultra API Client
+ * Helius DAS API Client
  *
- * Wraps the Jupiter Ultra API for fetching user token holdings.
+ * Wraps the Helius DAS API for fetching user token holdings.
+ * Note: Primary API calls go through Convex actions, this client
+ * is for potential direct usage.
  *
- * Endpoints:
- * - GET /holdings/{address} - Token balances (~70ms latency)
- * - GET /shield - Token security data (~150ms latency)
- *
- * Base URL: https://ultra-api.jup.ag/v1
- *
- * @see https://dev.jup.ag/docs/ultra
+ * @see https://www.helius.dev/docs/das/get-tokens
  */
 
 import type {
   JupiterHolding,
   JupiterHoldingsResponse,
-  JupiterShieldData,
 } from "../types/holdings.types";
 
-const JUPITER_ULTRA_BASE_URL = "https://ultra-api.jup.ag/v1";
+// Known RWA token mints for classification
+const RWA_MINTS = new Set([
+  "A1KLoBrKBde8Ty9qtNQUtq3C2ortoC3u7twggz7sEto6", // USDY
+  "CXLBjMMcwkc17GfJtBos6rQCo1ypeH6eDbB82Kby4MRm", // OUSG
+  "43m2ewFV5nDepieFjT9EmAQnc1HRtAF247RBpLGFem5F", // BUIDL
+  "Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr", // BENJI
+  "3NZ9JMVBmGAqocybic2c7LQCJScmgsAZ6vQqTDzcqmJh", // VBILL
+  "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU", // TBILL
+  "Mapuuts5DjNrLM7mhCRiEbDyNtPwfQWKr3xmyLMM8fVp", // syrupUSDC
+  "ApoL1k7GWhhmE8AvCXeFHVGrw3aKNc5SpJbT3V9UpGNu", // ACRED
+]);
 
-export interface JupiterUltraConfig {
-  apiKey?: string;
+export interface HeliusClientConfig {
+  apiKey: string;
   timeout?: number;
 }
 
-interface RawJupiterHolding {
-  address: string;
-  symbol: string;
-  name: string;
-  decimals: number;
-  amount: string;
-  uiAmount: number;
-  usdValue: number;
-  price: number;
-  priceChange24h?: number;
-  logoURI?: string;
-}
-
-interface RawHoldingsResponse {
-  wallet: string;
-  tokens: RawJupiterHolding[];
-  totalUsdValue: number;
-  timestamp: number;
-}
-
-export class JupiterUltraClient {
-  private baseUrl: string;
-  private timeout: number;
-  private headers: Record<string, string>;
-
-  constructor(config: JupiterUltraConfig = {}) {
-    this.baseUrl = JUPITER_ULTRA_BASE_URL;
-    this.timeout = config.timeout ?? 10000;
-    this.headers = {
-      "Content-Type": "application/json",
-      ...(config.apiKey && { "x-api-key": config.apiKey }),
+interface HeliusAsset {
+  id: string;
+  interface: string;
+  content?: {
+    metadata?: {
+      name?: string;
+      symbol?: string;
     };
+    links?: {
+      image?: string;
+    };
+    files?: Array<{ uri?: string }>;
+  };
+  token_info?: {
+    symbol?: string;
+    balance?: number;
+    decimals?: number;
+    price_info?: {
+      price_per_token?: number;
+      total_price?: number;
+    };
+  };
+}
+
+interface HeliusNativeBalance {
+  lamports: number;
+  price_per_sol?: number;
+  total_price?: number;
+}
+
+interface HeliusAssetsByOwnerResponse {
+  result: {
+    items: HeliusAsset[];
+    nativeBalance?: HeliusNativeBalance;
+  };
+  error?: {
+    message?: string;
+    code?: number;
+  };
+}
+
+export class HeliusClient {
+  private rpcUrl: string;
+  private timeout: number;
+
+  constructor(config: HeliusClientConfig) {
+    this.rpcUrl = `https://mainnet.helius-rpc.com/?api-key=${config.apiKey}`;
+    this.timeout = config.timeout ?? 15000;
   }
 
   /**
-   * Fetch user's token holdings
-   * Latency: ~70ms
+   * Fetch user's token holdings using DAS getAssetsByOwner
    */
   async getHoldings(walletAddress: string): Promise<JupiterHoldingsResponse> {
-    const response = await this.fetch<RawHoldingsResponse>(
-      `/holdings/${walletAddress}`
-    );
-    return this.transformHoldingsResponse(response);
-  }
-
-  /**
-   * Get token security/shield data
-   * Latency: ~150ms
-   */
-  async getShieldData(mintAddresses: string[]): Promise<JupiterShieldData[]> {
-    const params = new URLSearchParams();
-    mintAddresses.forEach((mint) => params.append("mints", mint));
-    return this.fetch<JupiterShieldData[]>(`/shield?${params.toString()}`);
-  }
-
-  /**
-   * Get quote for token pair (for price discovery)
-   * Latency: ~300ms
-   */
-  async getQuote(
-    inputMint: string,
-    outputMint: string,
-    amount: string
-  ): Promise<{
-    inputMint: string;
-    outputMint: string;
-    inAmount: string;
-    outAmount: string;
-    priceImpactPct: number;
-  }> {
-    return this.fetch(
-      `/order?inputMint=${inputMint}&outputMint=${outputMint}&amount=${amount}`
-    );
-  }
-
-  private async fetch<T>(endpoint: string, options?: RequestInit): Promise<T> {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.timeout);
 
     try {
-      const response = await fetch(`${this.baseUrl}${endpoint}`, {
-        ...options,
-        headers: { ...this.headers, ...options?.headers },
+      const response = await fetch(this.rpcUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: "holdings",
+          method: "getAssetsByOwner",
+          params: {
+            ownerAddress: walletAddress,
+            page: 1,
+            limit: 1000,
+            displayOptions: {
+              showFungible: true,
+              showNativeBalance: true,
+            },
+          },
+        }),
         signal: controller.signal,
       });
 
       if (!response.ok) {
-        const errorText = await response.text().catch(() => "Unknown error");
+        throw new Error(`Helius API error: ${response.status}`);
+      }
+
+      const data: HeliusAssetsByOwnerResponse = await response.json();
+
+      if (data.error) {
         throw new Error(
-          `Jupiter Ultra API error: ${response.status} ${response.statusText} - ${errorText}`
+          `Helius RPC error: ${data.error.message || JSON.stringify(data.error)}`
         );
       }
 
-      return response.json();
+      return this.transformResponse(data.result);
     } catch (error) {
       if (error instanceof Error && error.name === "AbortError") {
-        throw new Error("Jupiter Ultra API request timed out");
+        throw new Error("Helius API request timed out");
       }
       throw error;
     } finally {
@@ -129,45 +133,105 @@ export class JupiterUltraClient {
     }
   }
 
-  private transformHoldingsResponse(
-    raw: RawHoldingsResponse
-  ): JupiterHoldingsResponse {
-    const holdings: JupiterHolding[] = raw.tokens.map((token) => ({
-      mint: token.address,
-      symbol: token.symbol,
-      name: token.name,
-      decimals: token.decimals,
-      balance: token.amount,
-      balanceFormatted: token.uiAmount,
-      valueUsd: token.usdValue,
-      priceUsd: token.price,
-      change24h: token.priceChange24h ?? 0,
-      logoUri: token.logoURI,
-    }));
+  private transformResponse(result: {
+    items: HeliusAsset[];
+    nativeBalance?: HeliusNativeBalance;
+  }): JupiterHoldingsResponse {
+    const holdings: JupiterHolding[] = [];
+    let totalValueUsd = 0;
+
+    // Add native SOL balance
+    if (result.nativeBalance && result.nativeBalance.lamports > 0) {
+      const solBalance = result.nativeBalance.lamports / 1e9;
+      const solPrice = result.nativeBalance.price_per_sol || 0;
+      const solValue =
+        result.nativeBalance.total_price || solBalance * solPrice;
+
+      holdings.push({
+        mint: "So11111111111111111111111111111111111111112",
+        symbol: "SOL",
+        name: "Solana",
+        decimals: 9,
+        balance: result.nativeBalance.lamports.toString(),
+        balanceFormatted: solBalance,
+        valueUsd: solValue,
+        priceUsd: solPrice,
+        change24h: 0,
+        logoUri:
+          "https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png",
+        isRwa: false,
+      });
+      totalValueUsd += solValue;
+    }
+
+    // Process fungible tokens
+    for (const item of result.items) {
+      if (
+        item.interface !== "FungibleToken" &&
+        item.interface !== "FungibleAsset"
+      ) {
+        continue;
+      }
+
+      const tokenInfo = item.token_info;
+      if (!tokenInfo || !tokenInfo.balance) continue;
+
+      const mint = item.id;
+      const metadata = item.content?.metadata || {};
+      const priceInfo = tokenInfo.price_info || {};
+
+      const decimals = tokenInfo.decimals || 0;
+      const rawBalance = tokenInfo.balance || 0;
+      const balanceFormatted = rawBalance / Math.pow(10, decimals);
+      const priceUsd = priceInfo.price_per_token || 0;
+      const valueUsd = priceInfo.total_price || balanceFormatted * priceUsd;
+
+      holdings.push({
+        mint,
+        symbol: tokenInfo.symbol || metadata.symbol || "???",
+        name: metadata.name || tokenInfo.symbol || "Unknown",
+        decimals,
+        balance: rawBalance.toString(),
+        balanceFormatted,
+        valueUsd,
+        priceUsd,
+        change24h: 0,
+        logoUri: item.content?.links?.image || item.content?.files?.[0]?.uri,
+        isRwa: RWA_MINTS.has(mint),
+      });
+
+      totalValueUsd += valueUsd;
+    }
 
     return {
       holdings,
-      totalValueUsd: raw.totalUsdValue,
-      lastUpdated: raw.timestamp,
+      totalValueUsd,
+      lastUpdated: Date.now(),
     };
   }
 }
 
 // Singleton instance
-let jupiterClientInstance: JupiterUltraClient | null = null;
+let heliusClientInstance: HeliusClient | null = null;
 
-export function getJupiterUltraClient(
-  config?: JupiterUltraConfig
-): JupiterUltraClient {
-  if (!jupiterClientInstance) {
-    jupiterClientInstance = new JupiterUltraClient(config);
+export function getHeliusClient(config?: HeliusClientConfig): HeliusClient {
+  if (!heliusClientInstance && config) {
+    heliusClientInstance = new HeliusClient(config);
   }
-  return jupiterClientInstance;
+  if (!heliusClientInstance) {
+    throw new Error("HeliusClient not initialized. Provide config on first call.");
+  }
+  return heliusClientInstance;
 }
 
 /**
  * Reset the singleton (useful for testing or config changes)
  */
-export function resetJupiterUltraClient(): void {
-  jupiterClientInstance = null;
+export function resetHeliusClient(): void {
+  heliusClientInstance = null;
 }
+
+// Re-export with old names for backwards compatibility
+export { HeliusClient as JupiterUltraClient };
+export { getHeliusClient as getJupiterUltraClient };
+export type { HeliusClientConfig as JupiterUltraConfig };
