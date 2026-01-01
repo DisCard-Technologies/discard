@@ -130,6 +130,9 @@ temp/
 # Documentation (local only)
 docs/
 
+# Convex one-time scripts (local only)
+convex/scripts/
+
 # Misc
 .eslintcache
 .npm

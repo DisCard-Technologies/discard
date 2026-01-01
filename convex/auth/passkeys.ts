@@ -10,7 +10,7 @@
  * - Biometric authentication for transaction signing
  * - Derived Solana address from P-256 public key
  */
-import { mutation, query, internalMutation } from "../_generated/server";
+import { mutation, query, internalMutation, internalQuery } from "../_generated/server";
 import { v } from "convex/values";
 import { Doc, Id } from "../_generated/dataModel";
 
@@ -87,6 +87,20 @@ export const getUserByPhoneHash = query({
  * Get user by ID (for auth context)
  */
 export const getUser = query({
+  args: {
+    userId: v.id("users"),
+  },
+  handler: async (ctx, args): Promise<Doc<"users"> | null> => {
+    return await ctx.db.get(args.userId);
+  },
+});
+
+// ============ INTERNAL QUERIES ============
+
+/**
+ * Get user by ID (internal - for use in internal actions without auth context)
+ */
+export const getUserById = internalQuery({
   args: {
     userId: v.id("users"),
   },

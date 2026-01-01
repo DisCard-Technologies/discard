@@ -38,8 +38,10 @@ export const provisionCard = internalAction({
   },
   handler: async (ctx, args): Promise<void> => {
     try {
-      // Get user details
-      const user = await ctx.runQuery(internal.auth.passkeys.me);
+      // Get user details (use internal query since we don't have auth context)
+      const user = await ctx.runQuery(internal.auth.passkeys.getUserById, {
+        userId: args.userId,
+      });
       if (!user) {
         throw new Error("User not found");
       }
@@ -180,7 +182,8 @@ async function marqetaRequest(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<Response> {
-  const auth = Buffer.from(`${MARQETA_APP_TOKEN}:${MARQETA_ADMIN_TOKEN}`).toString("base64");
+  // Use btoa instead of Buffer for Convex runtime compatibility
+  const auth = btoa(`${MARQETA_APP_TOKEN}:${MARQETA_ADMIN_TOKEN}`);
 
   const response = await fetch(`${MARQETA_BASE_URL}${endpoint}`, {
     ...options,
@@ -207,14 +210,37 @@ async function createOrGetMarqetaUser(
   userId: Id<"users">,
   user: any
 ): Promise<string> {
-  // First, try to find existing Marqeta user
-  // (In production, you'd store this mapping in the database)
+  // Generate a short token (max 36 chars) from the userId
+  // Take the last 32 chars of the userId to stay under limit
+  const shortId = userId.toString().slice(-32);
+  const userToken = `u_${shortId}`;
 
-  // Create new Marqeta user
-  const response = await marqetaRequest("/users", {
+  // First, try to find existing Marqeta user
+  const getResponse = await fetch(`${MARQETA_BASE_URL}/users/${userToken}`, {
+    method: "GET",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Basic ${btoa(`${MARQETA_APP_TOKEN}:${MARQETA_ADMIN_TOKEN}`)}`,
+    },
+  });
+
+  if (getResponse.ok) {
+    const existingUser = await getResponse.json();
+    console.log(`Found existing Marqeta user: ${existingUser.token}`);
+    return existingUser.token;
+  }
+
+  // User doesn't exist (404), create new one
+  console.log(`Creating new Marqeta user with token: ${userToken}`);
+
+  const createResponse = await fetch(`${MARQETA_BASE_URL}/users`, {
     method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Basic ${btoa(`${MARQETA_APP_TOKEN}:${MARQETA_ADMIN_TOKEN}`)}`,
+    },
     body: JSON.stringify({
-      token: `user_${userId}`,
+      token: userToken,
       first_name: user.displayName || "DisCard",
       last_name: "User",
       email: user.email || undefined,
@@ -225,7 +251,13 @@ async function createOrGetMarqetaUser(
     }),
   });
 
-  const data = await response.json();
+  if (!createResponse.ok) {
+    const error = await createResponse.text();
+    throw new Error(`Failed to create Marqeta user: ${createResponse.status} - ${error}`);
+  }
+
+  const data = await createResponse.json();
+  console.log(`Created Marqeta user: ${data.token}`);
   return data.token;
 }
 
@@ -236,6 +268,8 @@ async function createMarqetaCard(userToken: string): Promise<{
   token: string;
   state: string;
 }> {
+  console.log(`Creating Marqeta card for user ${userToken} with product ${MARQETA_CARD_PRODUCT_TOKEN}`);
+
   const response = await marqetaRequest("/cards", {
     method: "POST",
     body: JSON.stringify({
@@ -247,7 +281,9 @@ async function createMarqetaCard(userToken: string): Promise<{
     }),
   });
 
-  return await response.json();
+  const data = await response.json();
+  console.log(`Created Marqeta card: ${data.token}`);
+  return data;
 }
 
 /**
@@ -262,14 +298,25 @@ async function getMarqetaCardDetails(
   expiration_month: number;
   expiration_year: number;
 }> {
+  console.log(`Getting card details for ${cardToken} (attempt ${retryCount + 1})`);
   try {
     // Virtual cards may take a moment to be ready for PAN retrieval
     const response = await marqetaRequest(`/cards/${cardToken}/showpan`);
-    return await response.json();
+    const data = await response.json();
+    console.log(`Got card details: PAN ending ${data.pan?.slice(-4)}, expiration: ${JSON.stringify(data)}`);
+    // Marqeta returns expiration as "expiration" in format "MMYY" or separate month/year fields
+    return {
+      pan: data.pan,
+      cvv_number: data.cvv_number,
+      expiration_month: data.exp_month ?? parseInt(data.expiration?.slice(0, 2) ?? "0"),
+      expiration_year: data.exp_year ?? (2000 + parseInt(data.expiration?.slice(2, 4) ?? "0")),
+    };
   } catch (error) {
+    console.log(`Failed to get card details: ${error}`);
     if (retryCount < MAX_RETRIES) {
       // Exponential backoff
       const delay = RETRY_DELAY_MS * Math.pow(2, retryCount);
+      console.log(`Retrying in ${delay}ms...`);
       await new Promise((resolve) => setTimeout(resolve, delay));
       return getMarqetaCardDetails(cardToken, retryCount + 1);
     }
@@ -281,14 +328,17 @@ async function getMarqetaCardDetails(
  * Activate card in Marqeta
  */
 async function activateMarqetaCard(cardToken: string): Promise<void> {
-  await marqetaRequest(`/cards/${cardToken}/transitions`, {
+  console.log(`Activating Marqeta card: ${cardToken}`);
+  await marqetaRequest("/cardtransitions", {
     method: "POST",
     body: JSON.stringify({
+      card_token: cardToken,
       state: "ACTIVE",
       channel: "API",
       reason_code: "00",
     }),
   });
+  console.log(`Activated Marqeta card: ${cardToken}`);
 }
 
 // ============ AUTHORIZATION HANDLING ============

@@ -579,6 +579,57 @@ export const updateLimits = mutation({
 // ============ INTERNAL MUTATIONS ============
 
 /**
+ * Create a card without auth context (for bulk provisioning scripts)
+ */
+export const createCardInternal = internalMutation({
+  args: {
+    userId: v.id("users"),
+    spendingLimit: v.optional(v.number()),
+    dailyLimit: v.optional(v.number()),
+    monthlyLimit: v.optional(v.number()),
+    nickname: v.optional(v.string()),
+  },
+  handler: async (ctx, args): Promise<Id<"cards">> => {
+    // Get user to check privacy settings
+    const user = await ctx.db.get(args.userId);
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    // Generate unique card context for privacy isolation
+    const cardContext = await generateCardContext(args.userId);
+
+    // Set default limits
+    const spendingLimit = args.spendingLimit ?? 100000;  // $1000 default
+    const dailyLimit = args.dailyLimit ?? 500000;       // $5000 default
+    const monthlyLimit = args.monthlyLimit ?? 2000000;  // $20000 default
+
+    // Create card record in pending state
+    const cardId = await ctx.db.insert("cards", {
+      userId: args.userId,
+      cardContext,
+      last4: "0000",
+      expirationMonth: 0,
+      expirationYear: 0,
+      cardType: "virtual",
+      spendingLimit,
+      dailyLimit,
+      monthlyLimit,
+      currentBalance: 0,
+      reservedBalance: 0,
+      overdraftLimit: 0,
+      status: "pending",
+      privacyIsolated: user.privacySettings?.transactionIsolation ?? true,
+      nickname: args.nickname ?? "Default Card",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+
+    return cardId;
+  },
+});
+
+/**
  * Update card after Marqeta provisioning
  */
 export const updateFromMarqeta = internalMutation({
