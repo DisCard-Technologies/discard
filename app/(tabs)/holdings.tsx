@@ -243,11 +243,11 @@ export default function HoldingsScreen() {
                 <Ionicons name="arrow-down" size={14} color="#ef4444" />
               </Pressable>
               <Pressable
-                onPress={() => router.push('/buy-crypto?currency=usdc')}
-                style={[styles.depositButton, { backgroundColor: primaryColor }]}
+                onPress={() => router.push('/buy-crypto?currency=usdc&mode=deposit')}
+                style={[styles.depositButton, { backgroundColor: '#22c55e' }]}
               >
                 <Ionicons name="add" size={16} color="#fff" />
-                <ThemedText style={styles.depositButtonText}>Deposit</ThemedText>
+                <ThemedText style={[styles.depositButtonText, { color: '#fff' }]}>Deposit</ThemedText>
               </Pressable>
             </View>
           )}

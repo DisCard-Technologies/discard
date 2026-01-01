@@ -87,6 +87,11 @@ export default function RootLayout() {
                       <Stack.Screen name="identity" options={{ presentation: 'modal', headerShown: false }} />
                       <Stack.Screen name="settings" options={{ presentation: 'modal', headerShown: false }} />
                       <Stack.Screen name="history" options={{ presentation: 'modal', headerShown: false }} />
+                      <Stack.Screen name="buy-crypto" options={{ headerShown: false }} />
+                      <Stack.Screen name="sell-crypto" options={{ headerShown: false }} />
+                      <Stack.Screen name="token-detail" options={{ headerShown: false }} />
+                      <Stack.Screen name="asset-detail" options={{ headerShown: false }} />
+                      <Stack.Screen name="market-detail" options={{ headerShown: false }} />
                       <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
                     </Stack>
                   </AuthGuard>

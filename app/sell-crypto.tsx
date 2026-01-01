@@ -4,7 +4,7 @@
  * Allows users to sell crypto via MoonPay and receive fiat to their bank account.
  * Supports pre-selecting a token from token-detail or defaults to USDC.
  */
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import { StyleSheet, View, Pressable, TextInput, ActivityIndicator } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -15,9 +15,10 @@ import { ThemedView } from '@/components/themed-view';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { useAuth } from '@/stores/authConvex';
 import { useMoonPay } from '@/hooks/useMoonPay';
+import { useTokenHoldings } from '@/hooks/useTokenHoldings';
 
-// Supported currencies for selling
-const CURRENCIES = [
+// Supported currencies for selling (mapped to token symbols)
+const CURRENCY_CONFIG = [
   { code: 'usdc', name: 'USD Coin', symbol: 'USDC', icon: '$' },
   { code: 'sol', name: 'Solana', symbol: 'SOL', icon: '◎' },
   { code: 'eth', name: 'Ethereum', symbol: 'ETH', icon: '◇' },
@@ -29,9 +30,8 @@ const QUICK_PERCENTAGES = [25, 50, 75, 100];
 
 export default function SellCryptoScreen() {
   const insets = useSafeAreaInsets();
-  const params = useLocalSearchParams<{ currency?: string; balance?: string }>();
+  const params = useLocalSearchParams<{ currency?: string }>();
 
-  const primaryColor = useThemeColor({}, 'tint');
   const mutedColor = useThemeColor({ light: '#687076', dark: '#9BA1A6' }, 'icon');
   const textColor = useThemeColor({}, 'text');
   const cardBg = useThemeColor({ light: '#f4f4f5', dark: '#1c1c1e' }, 'background');
@@ -44,28 +44,53 @@ export default function SellCryptoScreen() {
   const { user } = useAuth();
   const walletAddress = user?.solanaAddress || null;
 
-  // Selected currency (default to USDC or from params)
+  // Get real token holdings
+  const { holdings, isLoading: holdingsLoading } = useTokenHoldings(walletAddress);
+
+  // Build available currencies with real balances
+  const availableCurrencies = useMemo(() => {
+    if (!holdings || holdings.length === 0) return [];
+
+    return CURRENCY_CONFIG.map((currency) => {
+      const holding = holdings.find(
+        (h) => h.symbol.toUpperCase() === currency.symbol.toUpperCase()
+      );
+      return {
+        ...currency,
+        balance: holding ? parseFloat(holding.balance) : 0,
+        value: holding?.value || 0,
+      };
+    }).filter((c) => c.balance > 0);
+  }, [holdings]);
+
+  // Selected currency (default to first available or from params)
   const initialCurrency = params.currency?.toLowerCase() || 'usdc';
-  const [selectedCurrency, setSelectedCurrency] = useState(
-    CURRENCIES.find((c) => c.code === initialCurrency) || CURRENCIES[0]
-  );
+  const [selectedCurrency, setSelectedCurrency] = useState<typeof availableCurrencies[0] | null>(null);
+
+  // Set initial currency when holdings load
+  useEffect(() => {
+    if (availableCurrencies.length > 0 && !selectedCurrency) {
+      const fromParams = availableCurrencies.find((c) => c.code === initialCurrency);
+      setSelectedCurrency(fromParams || availableCurrencies[0]);
+    }
+  }, [availableCurrencies, initialCurrency, selectedCurrency]);
 
   // Amount input (in crypto units)
   const [amount, setAmount] = useState('');
   const numericAmount = parseFloat(amount) || 0;
 
-  // Mock balance - in real app this would come from wallet holdings
-  const mockBalance = parseFloat(params.balance || '0') || 100;
+  // Current balance for selected currency
+  const currentBalance = selectedCurrency?.balance || 0;
 
   // MoonPay hook
   const { openSell, isReady, isLoading, error } = useMoonPay({
     walletAddress,
-    defaultCurrency: selectedCurrency.code,
+    defaultCurrency: selectedCurrency?.code || 'usdc',
   });
 
   // Handle sell action
   const handleSell = useCallback(async () => {
-    if (numericAmount <= 0) {
+    if (numericAmount <= 0 || !selectedCurrency) {
       return;
     }
 
@@ -81,11 +106,12 @@ export default function SellCryptoScreen() {
 
   // Set quick percentage of balance
   const handleQuickPercentage = (percentage: number) => {
-    const value = (mockBalance * percentage) / 100;
+    const value = (currentBalance * percentage) / 100;
     setAmount(value.toFixed(6).replace(/\.?0+$/, ''));
   };
 
-  const isValidAmount = numericAmount > 0 && numericAmount <= mockBalance;
+  const isValidAmount = numericAmount > 0 && numericAmount <= currentBalance;
+  const hasHoldings = availableCurrencies.length > 0;
 
   return (
     <ThemedView style={styles.container}>
@@ -99,142 +125,182 @@ export default function SellCryptoScreen() {
       </View>
 
       <View style={styles.content}>
-        {/* Currency Selector */}
-        <View style={styles.section}>
-          <ThemedText style={[styles.sectionLabel, { color: mutedColor }]}>SELECT CURRENCY</ThemedText>
-          <View style={styles.currencyGrid}>
-            {CURRENCIES.map((currency) => {
-              const isSelected = selectedCurrency.code === currency.code;
-              return (
-                <Pressable
-                  key={currency.code}
-                  onPress={() => setSelectedCurrency(currency)}
-                  style={[
-                    styles.currencyButton,
-                    { backgroundColor: isSelected ? 'rgba(239,68,68,0.15)' : cardBg },
-                    isSelected && { borderColor: '#ef4444', borderWidth: 1 },
-                  ]}
-                >
-                  <View style={[styles.currencyIcon, { backgroundColor: isSelected ? 'rgba(239,68,68,0.2)' : borderColor }]}>
-                    <ThemedText style={styles.currencyIconText}>{currency.icon}</ThemedText>
-                  </View>
-                  <ThemedText style={[styles.currencySymbol, isSelected && { color: '#ef4444' }]}>
-                    {currency.symbol}
-                  </ThemedText>
-                </Pressable>
-              );
-            })}
-          </View>
-        </View>
-
-        {/* Balance Display */}
-        <View style={[styles.balanceCard, { backgroundColor: cardBg }]}>
-          <View style={styles.balanceRow}>
-            <ThemedText style={[styles.balanceLabel, { color: mutedColor }]}>Available Balance</ThemedText>
-            <ThemedText style={styles.balanceValue}>
-              {mockBalance.toLocaleString()} {selectedCurrency.symbol}
+        {/* Loading State */}
+        {holdingsLoading && (
+          <View style={styles.emptyState}>
+            <ActivityIndicator size="large" color={mutedColor} />
+            <ThemedText style={[styles.emptyStateText, { color: mutedColor }]}>
+              Loading your holdings...
             </ThemedText>
           </View>
-        </View>
+        )}
 
-        {/* Amount Input */}
-        <View style={styles.section}>
-          <ThemedText style={[styles.sectionLabel, { color: mutedColor }]}>AMOUNT TO SELL</ThemedText>
-          <View style={[styles.amountInputContainer, { backgroundColor: cardBg }]}>
-            <TextInput
-              style={[styles.amountInput, { color: textColor }]}
-              value={amount}
-              onChangeText={setAmount}
-              placeholder="0.00"
-              placeholderTextColor={mutedColor}
-              keyboardType="decimal-pad"
-              autoFocus
-            />
-            <ThemedText style={[styles.currencyLabel, { color: mutedColor }]}>{selectedCurrency.symbol}</ThemedText>
+        {/* Empty State */}
+        {!holdingsLoading && !hasHoldings && (
+          <View style={styles.emptyState}>
+            <View style={[styles.emptyStateIcon, { backgroundColor: cardBg }]}>
+              <Ionicons name="wallet-outline" size={48} color={mutedColor} />
+            </View>
+            <ThemedText style={styles.emptyStateTitle}>No Holdings to Sell</ThemedText>
+            <ThemedText style={[styles.emptyStateText, { color: mutedColor }]}>
+              You don't have any supported tokens in your wallet. Deposit some crypto first to sell.
+            </ThemedText>
+            <Pressable
+              onPress={() => router.replace('/buy-crypto?currency=usdc&mode=deposit')}
+              style={[styles.emptyStateButton, { backgroundColor: '#22c55e' }]}
+            >
+              <Ionicons name="add" size={20} color="#fff" />
+              <ThemedText style={[styles.emptyStateButtonText, { color: '#fff' }]}>Deposit USDC</ThemedText>
+            </Pressable>
           </View>
-          {numericAmount > mockBalance && (
-            <ThemedText style={[styles.errorText, { color: '#ef4444' }]}>Insufficient balance</ThemedText>
-          )}
-        </View>
+        )}
 
-        {/* Quick Percentage Buttons */}
-        <View style={styles.quickAmounts}>
-          {QUICK_PERCENTAGES.map((percentage) => {
-            const isMax = percentage === 100;
-            return (
-              <Pressable
-                key={percentage}
-                onPress={() => handleQuickPercentage(percentage)}
-                style={[
-                  styles.quickAmountButton,
-                  { backgroundColor: cardBg },
-                  isMax && { backgroundColor: 'rgba(239,68,68,0.1)', borderColor: 'rgba(239,68,68,0.3)', borderWidth: 1 },
-                ]}
-              >
-                <ThemedText style={[styles.quickAmountText, isMax && { color: '#ef4444' }]}>
-                  {isMax ? 'MAX' : `${percentage}%`}
-                </ThemedText>
-              </Pressable>
-            );
-          })}
-        </View>
+        {/* Main Content - only show if has holdings */}
+        {!holdingsLoading && hasHoldings && selectedCurrency && (
+          <>
+            {/* Currency Selector */}
+            <View style={styles.section}>
+              <ThemedText style={[styles.sectionLabel, { color: mutedColor }]}>SELECT CURRENCY</ThemedText>
+              <View style={styles.currencyGrid}>
+                {availableCurrencies.map((currency) => {
+                  const isSelected = selectedCurrency.code === currency.code;
+                  return (
+                    <Pressable
+                      key={currency.code}
+                      onPress={() => setSelectedCurrency(currency)}
+                      style={[
+                        styles.currencyButton,
+                        { backgroundColor: isSelected ? 'rgba(239,68,68,0.15)' : cardBg },
+                        isSelected && { borderColor: '#ef4444', borderWidth: 1 },
+                      ]}
+                    >
+                      <View style={[styles.currencyIcon, { backgroundColor: isSelected ? 'rgba(239,68,68,0.2)' : borderColor }]}>
+                        <ThemedText style={styles.currencyIconText}>{currency.icon}</ThemedText>
+                      </View>
+                      <ThemedText style={[styles.currencySymbol, isSelected && { color: '#ef4444' }]}>
+                        {currency.symbol}
+                      </ThemedText>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
 
-        {/* Payout Info */}
-        <View style={[styles.payoutInfo, { backgroundColor: cardBg }]}>
-          <ThemedText style={[styles.payoutInfoTitle, { color: mutedColor }]}>PAYOUT</ThemedText>
-          <View style={styles.payoutMethods}>
-            <View style={styles.payoutMethod}>
-              <Ionicons name="business" size={20} color={textColor} />
-              <View style={styles.payoutMethodText}>
-                <ThemedText style={styles.payoutMethodTitle}>Bank Account</ThemedText>
-                <ThemedText style={[styles.payoutMethodDesc, { color: mutedColor }]}>
-                  Receive USD directly to your bank
+            {/* Balance Display */}
+            <View style={[styles.balanceCard, { backgroundColor: cardBg }]}>
+              <View style={styles.balanceRow}>
+                <ThemedText style={[styles.balanceLabel, { color: mutedColor }]}>Available Balance</ThemedText>
+                <ThemedText style={styles.balanceValue}>
+                  {currentBalance.toLocaleString(undefined, { maximumFractionDigits: 6 })} {selectedCurrency.symbol}
                 </ThemedText>
               </View>
             </View>
-          </View>
-          <View style={[styles.estimateRow, { borderTopColor: borderColor }]}>
-            <ThemedText style={[styles.estimateLabel, { color: mutedColor }]}>Estimated payout</ThemedText>
-            <ThemedText style={styles.estimateValue}>
-              ~${(numericAmount * 1.0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD
-            </ThemedText>
-          </View>
-        </View>
 
-        {/* Error Display */}
-        {error && (
-          <View style={[styles.errorBanner, { backgroundColor: 'rgba(239,68,68,0.1)' }]}>
-            <Ionicons name="alert-circle" size={16} color="#ef4444" />
-            <ThemedText style={[styles.errorBannerText, { color: '#ef4444' }]}>{error}</ThemedText>
-          </View>
+            {/* Amount Input */}
+            <View style={styles.section}>
+              <ThemedText style={[styles.sectionLabel, { color: mutedColor }]}>AMOUNT TO SELL</ThemedText>
+              <View style={[styles.amountInputContainer, { backgroundColor: cardBg }]}>
+                <TextInput
+                  style={[styles.amountInput, { color: textColor }]}
+                  value={amount}
+                  onChangeText={setAmount}
+                  placeholder="0.00"
+                  placeholderTextColor={mutedColor}
+                  keyboardType="decimal-pad"
+                />
+                <ThemedText style={[styles.currencyLabel, { color: mutedColor }]}>{selectedCurrency.symbol}</ThemedText>
+              </View>
+              {numericAmount > currentBalance && (
+                <ThemedText style={[styles.errorText, { color: '#ef4444' }]}>Insufficient balance</ThemedText>
+              )}
+            </View>
+          </>
+        )}
+
+        {/* Quick Percentage Buttons - only show if has holdings */}
+        {!holdingsLoading && hasHoldings && selectedCurrency && (
+          <>
+            <View style={styles.quickAmounts}>
+              {QUICK_PERCENTAGES.map((percentage) => {
+                const isMax = percentage === 100;
+                return (
+                  <Pressable
+                    key={percentage}
+                    onPress={() => handleQuickPercentage(percentage)}
+                    style={[
+                      styles.quickAmountButton,
+                      { backgroundColor: cardBg },
+                      isMax && { backgroundColor: 'rgba(239,68,68,0.1)', borderColor: 'rgba(239,68,68,0.3)', borderWidth: 1 },
+                    ]}
+                  >
+                    <ThemedText style={[styles.quickAmountText, isMax && { color: '#ef4444' }]}>
+                      {isMax ? 'MAX' : `${percentage}%`}
+                    </ThemedText>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            {/* Payout Info */}
+            <View style={[styles.payoutInfo, { backgroundColor: cardBg }]}>
+              <ThemedText style={[styles.payoutInfoTitle, { color: mutedColor }]}>PAYOUT</ThemedText>
+              <View style={styles.payoutMethods}>
+                <View style={styles.payoutMethod}>
+                  <Ionicons name="business" size={20} color={textColor} />
+                  <View style={styles.payoutMethodText}>
+                    <ThemedText style={styles.payoutMethodTitle}>Bank Account</ThemedText>
+                    <ThemedText style={[styles.payoutMethodDesc, { color: mutedColor }]}>
+                      Receive USD directly to your bank
+                    </ThemedText>
+                  </View>
+                </View>
+              </View>
+              <View style={[styles.estimateRow, { borderTopColor: borderColor }]}>
+                <ThemedText style={[styles.estimateLabel, { color: mutedColor }]}>Estimated payout</ThemedText>
+                <ThemedText style={styles.estimateValue}>
+                  ~${(numericAmount * 1.0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD
+                </ThemedText>
+              </View>
+            </View>
+
+            {/* Error Display */}
+            {error && (
+              <View style={[styles.errorBanner, { backgroundColor: 'rgba(239,68,68,0.1)' }]}>
+                <Ionicons name="alert-circle" size={16} color="#ef4444" />
+                <ThemedText style={[styles.errorBannerText, { color: '#ef4444' }]}>{error}</ThemedText>
+              </View>
+            )}
+          </>
         )}
       </View>
 
-      {/* Sell Button */}
-      <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
-        <Pressable
-          onPress={handleSell}
-          disabled={!isValidAmount || isLoading || !isReady}
-          style={[
-            styles.sellButton,
-            { backgroundColor: isValidAmount && isReady ? '#ef4444' : `${mutedColor}50` },
-          ]}
-        >
-          {isLoading ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <>
-              <Ionicons name="arrow-down" size={20} color="#fff" />
-              <ThemedText style={styles.sellButtonText}>
-                {isValidAmount ? `Sell ${numericAmount} ${selectedCurrency.symbol}` : 'Enter amount'}
-              </ThemedText>
-            </>
-          )}
-        </Pressable>
-        <ThemedText style={[styles.footerNote, { color: mutedColor }]}>
-          Powered by MoonPay. Funds sent to your linked bank account.
-        </ThemedText>
-      </View>
+      {/* Sell Button - only show if has holdings */}
+      {!holdingsLoading && hasHoldings && selectedCurrency && (
+        <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
+          <Pressable
+            onPress={handleSell}
+            disabled={!isValidAmount || isLoading || !isReady}
+            style={[
+              styles.sellButton,
+              { backgroundColor: isValidAmount && isReady ? '#ef4444' : `${mutedColor}50` },
+            ]}
+          >
+            {isLoading ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <>
+                <Ionicons name="arrow-down" size={20} color="#fff" />
+                <ThemedText style={styles.sellButtonText}>
+                  {isValidAmount ? `Sell ${numericAmount} ${selectedCurrency.symbol}` : 'Enter amount'}
+                </ThemedText>
+              </>
+            )}
+          </Pressable>
+          <ThemedText style={[styles.footerNote, { color: mutedColor }]}>
+            Powered by MoonPay. Funds sent to your linked bank account.
+          </ThemedText>
+        </View>
+      )}
     </ThemedView>
   );
 }
@@ -249,6 +315,44 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingBottom: 12,
+  },
+  emptyState: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 32,
+  },
+  emptyStateIcon: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 24,
+  },
+  emptyStateTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  emptyStateText: {
+    fontSize: 14,
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 24,
+  },
+  emptyStateButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+  },
+  emptyStateButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
   },
   backButton: {
     width: 40,

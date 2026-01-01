@@ -29,7 +29,7 @@ const QUICK_AMOUNTS = [25, 50, 100, 250, 500];
 
 export default function BuyCryptoScreen() {
   const insets = useSafeAreaInsets();
-  const params = useLocalSearchParams<{ currency?: string; amount?: string }>();
+  const params = useLocalSearchParams<{ currency?: string; amount?: string; mode?: string }>();
 
   const primaryColor = useThemeColor({}, 'tint');
   const mutedColor = useThemeColor({ light: '#687076', dark: '#9BA1A6' }, 'icon');
@@ -39,6 +39,9 @@ export default function BuyCryptoScreen() {
     { light: 'rgba(0,0,0,0.08)', dark: 'rgba(255,255,255,0.1)' },
     'background'
   );
+
+  // Deposit mode locks to USDC only
+  const isDepositMode = params.mode === 'deposit';
 
   // User wallet address
   const { user } = useAuth();
@@ -90,38 +93,42 @@ export default function BuyCryptoScreen() {
         <Pressable onPress={() => router.back()} style={styles.backButton}>
           <Ionicons name="arrow-back" size={20} color={textColor} />
         </Pressable>
-        <ThemedText style={styles.headerTitle}>Buy Crypto</ThemedText>
+        <ThemedText style={styles.headerTitle}>
+          {isDepositMode ? 'Deposit USDC' : 'Buy Crypto'}
+        </ThemedText>
         <View style={styles.headerRight} />
       </View>
 
       <View style={styles.content}>
-        {/* Currency Selector */}
-        <View style={styles.section}>
-          <ThemedText style={[styles.sectionLabel, { color: mutedColor }]}>SELECT CURRENCY</ThemedText>
-          <View style={styles.currencyGrid}>
-            {CURRENCIES.map((currency) => {
-              const isSelected = selectedCurrency.code === currency.code;
-              return (
-                <Pressable
-                  key={currency.code}
-                  onPress={() => setSelectedCurrency(currency)}
-                  style={[
-                    styles.currencyButton,
-                    { backgroundColor: isSelected ? `${primaryColor}15` : cardBg },
-                    isSelected && { borderColor: primaryColor, borderWidth: 1 },
-                  ]}
-                >
-                  <View style={[styles.currencyIcon, { backgroundColor: isSelected ? `${primaryColor}20` : borderColor }]}>
-                    <ThemedText style={styles.currencyIconText}>{currency.icon}</ThemedText>
-                  </View>
-                  <ThemedText style={[styles.currencySymbol, isSelected && { color: primaryColor }]}>
-                    {currency.symbol}
-                  </ThemedText>
-                </Pressable>
-              );
-            })}
+        {/* Currency Selector - hidden in deposit mode */}
+        {!isDepositMode && (
+          <View style={styles.section}>
+            <ThemedText style={[styles.sectionLabel, { color: mutedColor }]}>SELECT CURRENCY</ThemedText>
+            <View style={styles.currencyGrid}>
+              {CURRENCIES.map((currency) => {
+                const isSelected = selectedCurrency.code === currency.code;
+                return (
+                  <Pressable
+                    key={currency.code}
+                    onPress={() => setSelectedCurrency(currency)}
+                    style={[
+                      styles.currencyButton,
+                      { backgroundColor: isSelected ? `${primaryColor}15` : cardBg },
+                      isSelected && { borderColor: primaryColor, borderWidth: 1 },
+                    ]}
+                  >
+                    <View style={[styles.currencyIcon, { backgroundColor: isSelected ? `${primaryColor}20` : borderColor }]}>
+                      <ThemedText style={styles.currencyIconText}>{currency.icon}</ThemedText>
+                    </View>
+                    <ThemedText style={[styles.currencySymbol, isSelected && { color: primaryColor }]}>
+                      {currency.symbol}
+                    </ThemedText>
+                  </Pressable>
+                );
+              })}
+            </View>
           </View>
-        </View>
+        )}
 
         {/* Amount Input */}
         <View style={styles.section}>
@@ -135,7 +142,6 @@ export default function BuyCryptoScreen() {
               placeholder="0.00"
               placeholderTextColor={mutedColor}
               keyboardType="decimal-pad"
-              autoFocus
             />
           </View>
           {numericAmount > 0 && numericAmount < 10 && (
@@ -210,7 +216,9 @@ export default function BuyCryptoScreen() {
             <>
               <Ionicons name="flash" size={20} color="#fff" />
               <ThemedText style={styles.buyButtonText}>
-                {isValidAmount ? `Buy $${numericAmount} of ${selectedCurrency.symbol}` : 'Enter amount'}
+                {isValidAmount
+                    ? (isDepositMode ? `Deposit $${numericAmount} USDC` : `Buy $${numericAmount} of ${selectedCurrency.symbol}`)
+                    : 'Enter amount'}
               </ThemedText>
             </>
           )}
