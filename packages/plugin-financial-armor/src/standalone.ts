@@ -19,7 +19,7 @@ import type { FinancialArmorConfig } from "./types/index.js";
  */
 function loadConfig(): FinancialArmorConfig {
   return {
-    solanaRpcUrl: process.env.SOLANA_RPC_URL ?? "https://api.devnet.solana.com",
+    solanaRpcUrl: process.env.SOLANA_RPC_URL ?? "https://api.mainnet-beta.solana.com",
     heliusRpcUrl: process.env.HELIUS_RPC_URL,
     compressionRpcUrl: process.env.COMPRESSION_RPC_URL,
     turnkeyOrganizationId: process.env.TURNKEY_ORGANIZATION_ID ?? "",
