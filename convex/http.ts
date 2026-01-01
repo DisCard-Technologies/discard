@@ -25,12 +25,12 @@ http.route({
     const startTime = Date.now();
 
     try {
-      // Verify Marqeta webhook signature
-      const signature = request.headers.get("x-marqeta-signature");
+      // Verify Marqeta webhook Basic Auth
+      const authHeader = request.headers.get("authorization");
       const body = await request.text();
 
-      if (!verifyMarqetaSignature(body, signature)) {
-        return new Response(JSON.stringify({ error: "Invalid signature" }), {
+      if (!verifyMarqetaAuth(authHeader)) {
+        return new Response(JSON.stringify({ error: "Unauthorized" }), {
           status: 401,
           headers: { "Content-Type": "application/json" },
         });
@@ -108,11 +108,12 @@ http.route({
   method: "POST",
   handler: httpAction(async (ctx, request) => {
     try {
-      const signature = request.headers.get("x-marqeta-signature");
+      // Verify Marqeta webhook Basic Auth
+      const authHeader = request.headers.get("authorization");
       const body = await request.text();
 
-      if (!verifyMarqetaSignature(body, signature)) {
-        return new Response(JSON.stringify({ error: "Invalid signature" }), {
+      if (!verifyMarqetaAuth(authHeader)) {
+        return new Response(JSON.stringify({ error: "Unauthorized" }), {
           status: 401,
           headers: { "Content-Type": "application/json" },
         });
@@ -706,10 +707,14 @@ async function verifyTurnkeySignature(
 }
 
 /**
- * Verify Marqeta webhook signature
+ * Verify Marqeta webhook Basic Auth
+ * Marqeta sends Authorization header with Basic Auth (base64 encoded username:password)
  */
-function verifyMarqetaSignature(body: string, signature: string | null): boolean {
-  if (!signature) return false;
+function verifyMarqetaAuth(authHeader: string | null): boolean {
+  if (!authHeader) {
+    console.warn("No Authorization header in Marqeta webhook");
+    return false;
+  }
 
   const secret = process.env.MARQETA_WEBHOOK_SECRET;
   if (!secret) {
@@ -717,11 +722,22 @@ function verifyMarqetaSignature(body: string, signature: string | null): boolean
     return true; // Allow in development
   }
 
-  // In production, implement HMAC SHA-256 verification
-  // const expectedSignature = crypto.createHmac('sha256', secret).update(body).digest('hex');
-  // return signature === expectedSignature;
+  // Check if it's Basic Auth
+  if (!authHeader.startsWith("Basic ")) {
+    console.warn("Marqeta webhook: Expected Basic Auth");
+    return false;
+  }
 
-  return true; // Placeholder - implement proper verification
+  // Decode the base64 credentials
+  const base64Credentials = authHeader.slice(6); // Remove "Basic "
+  const expectedBase64 = btoa(secret); // secret should be "username:password"
+
+  const isValid = base64Credentials === expectedBase64;
+  if (!isValid) {
+    console.warn("Marqeta webhook: Invalid credentials");
+  }
+
+  return isValid;
 }
 
 /**
