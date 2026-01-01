@@ -11,4 +11,8 @@ config.resolver.extraNodeModules = {
   buffer: require.resolve('buffer'),
 };
 
+// Disable package exports for problematic packages (rpc-websockets, @noble/hashes)
+// This falls back to file-based resolution and suppresses the warnings
+config.resolver.unstable_enablePackageExports = false;
+
 module.exports = config;
