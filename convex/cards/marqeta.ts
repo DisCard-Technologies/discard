@@ -20,6 +20,11 @@ const MARQETA_APP_TOKEN = process.env.MARQETA_APP_TOKEN;
 const MARQETA_ADMIN_TOKEN = process.env.MARQETA_ADMIN_TOKEN;
 const MARQETA_CARD_PRODUCT_TOKEN = process.env.MARQETA_CARD_PRODUCT_TOKEN;
 
+// Solana RPC configuration for JIT funding
+const HELIUS_RPC_URL = process.env.HELIUS_RPC_URL ?? "https://api.mainnet-beta.solana.com";
+const USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"; // USDC on Solana mainnet
+const USDC_DECIMALS = 6;
+
 // Rate limiting and retry configuration
 const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 1000;
@@ -200,6 +205,58 @@ async function marqetaRequest(
   }
 
   return response;
+}
+
+/**
+ * Get USDC balance for a Solana wallet address
+ * Uses Helius RPC for fast response (required for 800ms auth deadline)
+ */
+async function getWalletUsdcBalance(walletAddress: string): Promise<number> {
+  try {
+    // Use getTokenAccountsByOwner to find USDC token accounts
+    const response = await fetch(HELIUS_RPC_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "getTokenAccountsByOwner",
+        params: [
+          walletAddress,
+          { mint: USDC_MINT },
+          { encoding: "jsonParsed" }
+        ],
+      }),
+    });
+
+    if (!response.ok) {
+      console.error(`Helius RPC error: ${response.status}`);
+      return 0;
+    }
+
+    const data = await response.json();
+
+    if (data.error) {
+      console.error(`Helius RPC error: ${data.error.message}`);
+      return 0;
+    }
+
+    // Sum up all USDC token accounts (usually just one)
+    let totalBalance = 0;
+    const accounts = data.result?.value || [];
+
+    for (const account of accounts) {
+      const tokenAmount = account.account?.data?.parsed?.info?.tokenAmount;
+      if (tokenAmount) {
+        totalBalance += parseFloat(tokenAmount.uiAmountString || "0");
+      }
+    }
+
+    return totalBalance;
+  } catch (error) {
+    console.error(`Failed to fetch USDC balance: ${error}`);
+    return 0;
+  }
 }
 
 /**
@@ -391,9 +448,26 @@ export const processAuthorization = internalAction({
         };
       }
 
-      // Step 3: Check balance
-      const availableBalance = card.currentBalance + card.overdraftLimit - card.reservedBalance;
-      if (availableBalance < args.amount) {
+      // Step 3: JIT Funding - Check user's Solana wallet USDC balance
+      const user = await ctx.runQuery(internal.auth.passkeys.getUserById, {
+        userId: card.userId,
+      });
+
+      if (!user || !user.solanaAddress) {
+        return {
+          approved: false,
+          declineReason: "WALLET_NOT_FOUND",
+          responseTimeMs: Date.now() - startTime,
+        };
+      }
+
+      // Fetch USDC balance from wallet (amount is in cents, USDC has 6 decimals)
+      const amountInUsdc = args.amount / 100; // Convert cents to dollars
+      const usdcBalance = await getWalletUsdcBalance(user.solanaAddress);
+
+      console.log(`JIT Funding check: wallet ${user.solanaAddress}, USDC balance: $${usdcBalance}, requested: $${amountInUsdc}`);
+
+      if (usdcBalance < amountInUsdc) {
         return {
           approved: false,
           declineReason: "INSUFFICIENT_FUNDS",
