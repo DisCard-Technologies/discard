@@ -5,6 +5,7 @@ import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { KeyboardStickyView } from 'react-native-keyboard-controller';
 import Animated, { useSharedValue, useAnimatedStyle, withTiming } from 'react-native-reanimated';
+import { router } from 'expo-router';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -234,9 +235,20 @@ export default function HoldingsScreen() {
             </ThemedText>
           </View>
           {mode === 'holdings' && (
-            <View style={[styles.aiBadge, { backgroundColor: `${primaryColor}15`, borderColor: `${primaryColor}30` }]}>
-              <Ionicons name="flash" size={12} color={primaryColor} />
-              <ThemedText style={[styles.aiBadgeText, { color: mutedColor }]}>AI Optimizing</ThemedText>
+            <View style={styles.headerActions}>
+              <Pressable
+                onPress={() => router.push('/sell-crypto?currency=usdc')}
+                style={[styles.withdrawButton, { backgroundColor: cardBg }]}
+              >
+                <Ionicons name="arrow-down" size={14} color="#ef4444" />
+              </Pressable>
+              <Pressable
+                onPress={() => router.push('/buy-crypto?currency=usdc')}
+                style={[styles.depositButton, { backgroundColor: primaryColor }]}
+              >
+                <Ionicons name="add" size={16} color="#fff" />
+                <ThemedText style={styles.depositButtonText}>Deposit</ThemedText>
+              </Pressable>
             </View>
           )}
         </View>
@@ -632,17 +644,30 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 4,
   },
-  aiBadge: {
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  withdrawButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  depositButton: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
   },
-  aiBadgeText: {
-    fontSize: 10,
+  depositButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#fff',
   },
   // Mode Toggle
   modeToggle: {

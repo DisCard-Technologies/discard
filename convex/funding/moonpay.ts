@@ -25,6 +25,38 @@ const MOONPAY_API_URL = process.env.MOONPAY_ENVIRONMENT === "production"
 const SUPPORTED_CRYPTO = ["eth", "usdc", "usdt", "sol"];
 const SUPPORTED_FIAT = ["usd", "eur", "gbp"];
 
+// ============ PUBLIC ACTIONS (for SDK) ============
+
+/**
+ * Sign a MoonPay URL for the React Native SDK
+ * This is called by the frontend to get a signature for the widget URL
+ */
+export const signUrl = action({
+  args: {
+    urlToSign: v.string(),
+  },
+  handler: async (ctx, args): Promise<{ signature: string }> => {
+    if (!MOONPAY_SECRET_KEY) {
+      throw new Error("MoonPay secret key not configured");
+    }
+
+    // The SDK sends the full URL, we need to sign just the query string portion
+    // Format: ?apiKey=...&currencyCode=...
+    let queryString = args.urlToSign;
+
+    // If it's a full URL, extract the query string
+    if (queryString.includes('?')) {
+      queryString = queryString.substring(queryString.indexOf('?'));
+    } else if (!queryString.startsWith('?')) {
+      queryString = '?' + queryString;
+    }
+
+    const signature = await generateSignature(queryString.substring(1)); // Remove leading ?
+
+    return { signature };
+  },
+});
+
 // ============ QUERIES ============
 
 /**
