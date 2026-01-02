@@ -102,5 +102,8 @@
     "jest-expo": "~54.0.16",
     "react-test-renderer": "19.1.0",
     "typescript": "~5.9.2"
+  },
+  "overrides": {
+    "bigint-buffer": "npm:bigint-buffer-fixed@1.1.6"
   }
 }
