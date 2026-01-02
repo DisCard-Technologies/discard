@@ -40,28 +40,20 @@ export const signUrl = action({
       throw new Error("MoonPay secret key not configured");
     }
 
-    // The SDK sends the full URL, we need to sign just the query string portion
-    // Format: ?apiKey=...&currencyCode=...
-    let queryString = args.urlToSign;
-
-    // If it's a full URL, extract the query string
-    if (queryString.includes('?')) {
-      queryString = queryString.substring(queryString.indexOf('?'));
-    } else if (!queryString.startsWith('?')) {
-      queryString = '?' + queryString;
-    }
-
-    // Use URL parsing to get query string - sign WITHOUT the leading ?
-    const url = new URL(args.urlToSign);
-    const queryStringWithoutQuestion = url.search.startsWith('?') ? url.search.slice(1) : url.search;
+    // Extract query string directly - don't use URL() as it re-encodes and breaks signature
+    // MoonPay expects the signature to include the leading `?`
+    const questionIndex = args.urlToSign.indexOf('?');
+    const queryStringWithQuestion = questionIndex !== -1
+      ? args.urlToSign.substring(questionIndex)  // Include the ? in the signature
+      : '';
 
     // Debug logging
     console.log("[MoonPay] URL to sign:", args.urlToSign);
-    console.log("[MoonPay] Query string (without ?):", queryStringWithoutQuestion);
+    console.log("[MoonPay] Query string (with ?):", queryStringWithQuestion);
     console.log("[MoonPay] Secret key (first 20 chars):", MOONPAY_SECRET_KEY?.substring(0, 20) + "...");
     console.log("[MoonPay] Secret key length:", MOONPAY_SECRET_KEY?.length);
 
-    const signature = await generateSignature(queryStringWithoutQuestion);
+    const signature = await generateSignature(queryStringWithQuestion);
 
     console.log("[MoonPay] Generated signature:", signature);
 
@@ -244,8 +236,8 @@ export const createWidgetUrl = action({
       params.append("redirectURL", args.redirectUrl);
     }
 
-    // Generate signature
-    const queryString = params.toString();
+    // Generate signature - MoonPay requires the leading ? to be included
+    const queryString = '?' + params.toString();
     const signature = await generateSignature(queryString);
     params.append("signature", signature);
 
@@ -520,7 +512,7 @@ export const handleTransactionFailed = internalMutation({
 
 /**
  * Generate HMAC-SHA256 signature for MoonPay URL
- * Signs the query string WITHOUT the leading ?
+ * Signs the query string WITH the leading ? (MoonPay requirement)
  */
 async function generateSignature(queryString: string): Promise<string> {
   if (!MOONPAY_SECRET_KEY) {
@@ -537,7 +529,7 @@ async function generateSignature(queryString: string): Promise<string> {
     ["sign"]
   );
 
-  // Sign the query string (without the leading ?)
+  // Sign the query string (including the leading ?)
   console.log("[MoonPay] Actually signing:", queryString);
 
   const signature = await crypto.subtle.sign(
