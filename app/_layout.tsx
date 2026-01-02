@@ -93,6 +93,7 @@ export default function RootLayout() {
                       <Stack.Screen name="asset-detail" options={{ headerShown: false }} />
                       <Stack.Screen name="market-detail" options={{ headerShown: false }} />
                       <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
+                      <Stack.Screen name="transfer" options={{ headerShown: false, presentation: 'modal' }} />
                     </Stack>
                   </AuthGuard>
                   <StatusBar style="auto" />

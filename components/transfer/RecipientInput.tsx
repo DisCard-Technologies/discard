@@ -1,0 +1,536 @@
+/**
+ * DisCard 2035 - RecipientInput Component
+ *
+ * Universal search input for transfer recipients with:
+ * - Auto-detection of input type (address / .sol domain)
+ * - Real-time SNS resolution
+ * - Contact suggestions
+ * - QR scan button
+ * - Validation states
+ */
+
+import { useState, useCallback, useRef, useEffect } from "react";
+import {
+  StyleSheet,
+  View,
+  TextInput,
+  Pressable,
+  ActivityIndicator,
+  FlatList,
+  Keyboard,
+} from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import Animated, {
+  useAnimatedStyle,
+  withTiming,
+  FadeIn,
+  FadeOut,
+} from "react-native-reanimated";
+
+import { ThemedText } from "@/components/themed-text";
+import { useThemeColor } from "@/hooks/use-theme-color";
+import { useAddressResolver, type ResolvedAddress } from "@/hooks/useAddressResolver";
+import { useContacts, type Contact } from "@/hooks/useContacts";
+import { formatAddress } from "@/lib/transfer/address-resolver";
+
+// ============================================================================
+// Types
+// ============================================================================
+
+export interface RecipientInputProps {
+  /** Current input value */
+  value?: string;
+  /** Callback when recipient is selected/resolved */
+  onSelect: (resolved: ResolvedAddress, contact?: Contact) => void;
+  /** Callback to open QR scanner */
+  onScanQR?: () => void;
+  /** Placeholder text */
+  placeholder?: string;
+  /** Auto focus on mount */
+  autoFocus?: boolean;
+  /** Disable input */
+  disabled?: boolean;
+}
+
+interface RecentContactItemProps {
+  contact: Contact;
+  onPress: () => void;
+}
+
+// ============================================================================
+// Components
+// ============================================================================
+
+function RecentContactItem({ contact, onPress }: RecentContactItemProps) {
+  const mutedColor = useThemeColor({ light: "#687076", dark: "#9BA1A6" }, "icon");
+
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.contactItem,
+        pressed && styles.contactPressed,
+      ]}
+    >
+      <View
+        style={[styles.contactAvatar, { backgroundColor: contact.avatarColor }]}
+      >
+        <ThemedText style={styles.avatarText}>
+          {contact.avatarInitials}
+        </ThemedText>
+      </View>
+      <View style={styles.contactInfo}>
+        <ThemedText style={styles.contactName} numberOfLines={1}>
+          {contact.name}
+        </ThemedText>
+        <ThemedText
+          style={[styles.contactAddress, { color: mutedColor }]}
+          numberOfLines={1}
+        >
+          {contact.identifierType === "sol_name"
+            ? contact.identifier
+            : formatAddress(contact.resolvedAddress, 6)}
+        </ThemedText>
+      </View>
+      {contact.verified && (
+        <Ionicons name="checkmark-circle" size={16} color="#4CAF50" />
+      )}
+    </Pressable>
+  );
+}
+
+function TypeBadge({
+  type,
+  isValid,
+}: {
+  type: "address" | "sol_name" | "unknown";
+  isValid: boolean;
+}) {
+  const successColor = useThemeColor({ light: "#4CAF50", dark: "#66BB6A" }, "text");
+  const warningColor = useThemeColor({ light: "#FF9800", dark: "#FFB74D" }, "text");
+
+  if (type === "unknown") return null;
+
+  const label = type === "sol_name" ? ".sol detected" : "Address valid";
+  const color = isValid ? successColor : warningColor;
+
+  return (
+    <Animated.View
+      entering={FadeIn.duration(150)}
+      exiting={FadeOut.duration(150)}
+      style={[styles.badge, { backgroundColor: `${color}20` }]}
+    >
+      <Ionicons
+        name={isValid ? "checkmark-circle" : "alert-circle"}
+        size={12}
+        color={color}
+      />
+      <ThemedText style={[styles.badgeText, { color }]}>{label}</ThemedText>
+    </Animated.View>
+  );
+}
+
+// ============================================================================
+// Main Component
+// ============================================================================
+
+export function RecipientInput({
+  value,
+  onSelect,
+  onScanQR,
+  placeholder = "Address, .sol name, or contact",
+  autoFocus = false,
+  disabled = false,
+}: RecipientInputProps) {
+  const inputRef = useRef<TextInput>(null);
+  const [isFocused, setIsFocused] = useState(false);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+
+  // Theme colors
+  const primaryColor = useThemeColor({}, "tint");
+  const mutedColor = useThemeColor({ light: "#687076", dark: "#9BA1A6" }, "icon");
+  const borderColor = useThemeColor(
+    { light: "rgba(0,0,0,0.1)", dark: "rgba(255,255,255,0.15)" },
+    "background"
+  );
+  const inputBg = useThemeColor({ light: "#ffffff", dark: "#1c1c1e" }, "background");
+  const textColor = useThemeColor({}, "text");
+  const errorColor = useThemeColor({ light: "#F44336", dark: "#EF5350" }, "text");
+
+  // Address resolver
+  const {
+    input,
+    setInput,
+    type,
+    isResolving,
+    resolved,
+    isValidFormat,
+    error,
+    clear,
+  } = useAddressResolver({
+    onResolved: (result) => {
+      if (result.isValid) {
+        // Check if it matches a contact
+        const contact = getContactByAddress(result.address);
+        onSelect(result, contact || undefined);
+      }
+    },
+  });
+
+  // Contacts
+  const {
+    recentContacts,
+    searchContacts,
+    getContactByAddress,
+  } = useContacts();
+
+  // Sync external value
+  useEffect(() => {
+    if (value !== undefined && value !== input) {
+      setInput(value);
+    }
+  }, [value]);
+
+  // Search contacts based on input
+  const matchedContacts = input.trim()
+    ? searchContacts(input).slice(0, 5)
+    : [];
+
+  // Show suggestions when focused and no valid resolution yet
+  useEffect(() => {
+    if (isFocused && !resolved?.isValid) {
+      setShowSuggestions(true);
+    } else if (resolved?.isValid) {
+      setShowSuggestions(false);
+    }
+  }, [isFocused, resolved?.isValid]);
+
+  // Handle contact selection
+  const handleContactSelect = useCallback(
+    (contact: Contact) => {
+      setInput(contact.identifier);
+      Keyboard.dismiss();
+
+      // Create resolved address from contact
+      const resolved: ResolvedAddress = {
+        input: contact.identifier,
+        type: contact.identifierType,
+        address: contact.resolvedAddress,
+        displayName: contact.name,
+        isValid: true,
+      };
+
+      onSelect(resolved, contact);
+      setShowSuggestions(false);
+    },
+    [setInput, onSelect]
+  );
+
+  // Handle focus
+  const handleFocus = () => {
+    setIsFocused(true);
+    setShowSuggestions(true);
+  };
+
+  const handleBlur = () => {
+    setIsFocused(false);
+    // Delay hiding suggestions to allow tap
+    setTimeout(() => setShowSuggestions(false), 200);
+  };
+
+  // Clear input
+  const handleClear = () => {
+    clear();
+    inputRef.current?.focus();
+  };
+
+  // Animated border style
+  const animatedBorderStyle = useAnimatedStyle(() => ({
+    borderColor: withTiming(isFocused ? primaryColor : borderColor, {
+      duration: 150,
+    }),
+  }));
+
+  // Determine what to show in suggestions
+  const showRecentContacts =
+    showSuggestions && !input.trim() && recentContacts.length > 0;
+  const showMatchedContacts =
+    showSuggestions && input.trim() && matchedContacts.length > 0;
+
+  return (
+    <View style={styles.container}>
+      {/* Input Container */}
+      <Animated.View
+        style={[
+          styles.inputContainer,
+          { backgroundColor: inputBg },
+          animatedBorderStyle,
+        ]}
+      >
+        <Ionicons name="search" size={20} color={mutedColor} />
+
+        <TextInput
+          ref={inputRef}
+          value={input}
+          onChangeText={setInput}
+          onFocus={handleFocus}
+          onBlur={handleBlur}
+          placeholder={placeholder}
+          placeholderTextColor={mutedColor}
+          style={[styles.input, { color: textColor }]}
+          autoCapitalize="none"
+          autoCorrect={false}
+          autoFocus={autoFocus}
+          editable={!disabled}
+        />
+
+        {/* Loading indicator */}
+        {isResolving && (
+          <ActivityIndicator size="small" color={primaryColor} />
+        )}
+
+        {/* Clear button */}
+        {input.length > 0 && !isResolving && (
+          <Pressable
+            onPress={handleClear}
+            style={({ pressed }) => [
+              styles.clearButton,
+              pressed && styles.pressed,
+            ]}
+          >
+            <Ionicons name="close-circle" size={20} color={mutedColor} />
+          </Pressable>
+        )}
+
+        {/* QR Scan button */}
+        {onScanQR && (
+          <Pressable
+            onPress={onScanQR}
+            style={({ pressed }) => [
+              styles.scanButton,
+              pressed && styles.pressed,
+            ]}
+          >
+            <Ionicons name="qr-code-outline" size={22} color={primaryColor} />
+          </Pressable>
+        )}
+      </Animated.View>
+
+      {/* Type Badge */}
+      {input.trim() && type !== "unknown" && (
+        <View style={styles.badgeContainer}>
+          <TypeBadge type={type} isValid={isValidFormat} />
+        </View>
+      )}
+
+      {/* Error Message */}
+      {error && (
+        <Animated.View
+          entering={FadeIn.duration(150)}
+          style={styles.errorContainer}
+        >
+          <Ionicons name="alert-circle" size={14} color={errorColor} />
+          <ThemedText style={[styles.errorText, { color: errorColor }]}>
+            {error}
+          </ThemedText>
+        </Animated.View>
+      )}
+
+      {/* Resolved Address Display */}
+      {resolved?.isValid && resolved.type === "sol_name" && (
+        <Animated.View
+          entering={FadeIn.duration(200)}
+          style={[styles.resolvedCard, { backgroundColor: inputBg, borderColor }]}
+        >
+          <View style={styles.resolvedHeader}>
+            <Ionicons name="checkmark-circle" size={16} color="#4CAF50" />
+            <ThemedText style={styles.resolvedLabel}>Resolved to</ThemedText>
+          </View>
+          <ThemedText style={[styles.resolvedAddress, { color: mutedColor }]}>
+            {resolved.address}
+          </ThemedText>
+        </Animated.View>
+      )}
+
+      {/* Suggestions Dropdown */}
+      {(showRecentContacts || showMatchedContacts) && (
+        <Animated.View
+          entering={FadeIn.duration(150)}
+          exiting={FadeOut.duration(100)}
+          style={[
+            styles.suggestionsCard,
+            { backgroundColor: inputBg, borderColor },
+          ]}
+        >
+          {showRecentContacts && (
+            <>
+              <ThemedText style={[styles.sectionLabel, { color: mutedColor }]}>
+                RECENT
+              </ThemedText>
+              <FlatList
+                data={recentContacts}
+                keyExtractor={(item) => item._id}
+                renderItem={({ item }) => (
+                  <RecentContactItem
+                    contact={item}
+                    onPress={() => handleContactSelect(item)}
+                  />
+                )}
+                scrollEnabled={false}
+              />
+            </>
+          )}
+
+          {showMatchedContacts && (
+            <>
+              <ThemedText style={[styles.sectionLabel, { color: mutedColor }]}>
+                CONTACTS
+              </ThemedText>
+              <FlatList
+                data={matchedContacts}
+                keyExtractor={(item) => item._id}
+                renderItem={({ item }) => (
+                  <RecentContactItem
+                    contact={item}
+                    onPress={() => handleContactSelect(item)}
+                  />
+                )}
+                scrollEnabled={false}
+              />
+            </>
+          )}
+        </Animated.View>
+      )}
+    </View>
+  );
+}
+
+// ============================================================================
+// Styles
+// ============================================================================
+
+const styles = StyleSheet.create({
+  container: {
+    width: "100%",
+  },
+  inputContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    gap: 12,
+  },
+  input: {
+    flex: 1,
+    fontSize: 16,
+    paddingVertical: 4,
+  },
+  clearButton: {
+    padding: 4,
+  },
+  scanButton: {
+    padding: 8,
+    borderRadius: 8,
+  },
+  pressed: {
+    opacity: 0.6,
+  },
+  badgeContainer: {
+    marginTop: 8,
+    flexDirection: "row",
+  },
+  badge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  badgeText: {
+    fontSize: 12,
+    fontWeight: "500",
+  },
+  errorContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 8,
+    paddingHorizontal: 4,
+  },
+  errorText: {
+    fontSize: 13,
+  },
+  resolvedCard: {
+    marginTop: 12,
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  resolvedHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 4,
+  },
+  resolvedLabel: {
+    fontSize: 13,
+    fontWeight: "500",
+  },
+  resolvedAddress: {
+    fontSize: 12,
+    fontFamily: "monospace",
+  },
+  suggestionsCard: {
+    marginTop: 8,
+    padding: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    maxHeight: 300,
+  },
+  sectionLabel: {
+    fontSize: 10,
+    letterSpacing: 1.5,
+    marginBottom: 8,
+    paddingHorizontal: 4,
+  },
+  contactItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    borderRadius: 12,
+  },
+  contactPressed: {
+    opacity: 0.6,
+    backgroundColor: "rgba(0,0,0,0.05)",
+  },
+  contactAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  avatarText: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  contactInfo: {
+    flex: 1,
+  },
+  contactName: {
+    fontSize: 15,
+    fontWeight: "500",
+  },
+  contactAddress: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+});
+
+export default RecipientInput;

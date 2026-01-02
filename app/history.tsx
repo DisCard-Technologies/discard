@@ -1,21 +1,27 @@
-import { useState } from 'react';
-import { StyleSheet, View, Pressable, ScrollView } from 'react-native';
+import { useState, useMemo } from 'react';
+import { StyleSheet, View, Pressable, ScrollView, Linking, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
+import { useQuery } from 'convex/react';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { useThemeColor } from '@/hooks/use-theme-color';
+import { api } from '@/convex/_generated/api';
+import { formatAddress } from '@/lib/transfer/address-resolver';
+import { Doc } from '@/convex/_generated/dataModel';
 
 interface Transaction {
-  id: number;
-  type: 'send' | 'receive' | 'swap' | 'auto';
+  id: string;
+  type: 'send' | 'receive' | 'swap' | 'auto' | 'transfer';
   label: string;
   amount: string;
   value: string;
   time: string;
-  status: 'completed' | 'ambient';
+  status: 'completed' | 'ambient' | 'pending' | 'failed';
+  signature?: string;
+  isRealTransfer?: boolean;
 }
 
 interface ChatMessage {
@@ -25,36 +31,18 @@ interface ChatMessage {
   timestamp: Date;
 }
 
-const transactions: Transaction[] = [
+const mockTransactions: Transaction[] = [
   {
-    id: 1,
-    type: 'send',
-    label: 'Sent to alex.eth',
-    amount: '-0.5 ETH',
-    value: '-$1,847.50',
-    time: '2 hours ago',
-    status: 'completed',
-  },
-  {
-    id: 2,
-    type: 'receive',
-    label: 'Received from vitalik.eth',
-    amount: '+1.2 ETH',
-    value: '+$4,434.00',
-    time: '5 hours ago',
-    status: 'completed',
-  },
-  {
-    id: 3,
+    id: 'mock-1',
     type: 'swap',
-    label: 'Swapped ETH → USDC',
-    amount: '0.3 ETH → 1,108 USDC',
-    value: '$1,108.50',
+    label: 'Swapped USDC → SOL',
+    amount: '100 USDC → 0.82 SOL',
+    value: '$100.00',
     time: 'Yesterday',
     status: 'completed',
   },
   {
-    id: 4,
+    id: 'mock-2',
     type: 'auto',
     label: 'Auto-Rebalance',
     amount: 'Card topped up',
@@ -63,7 +51,7 @@ const transactions: Transaction[] = [
     status: 'ambient',
   },
   {
-    id: 5,
+    id: 'mock-3',
     type: 'receive',
     label: 'Yield Earned',
     amount: '+12.45 USDC',
@@ -71,25 +59,50 @@ const transactions: Transaction[] = [
     time: '2 days ago',
     status: 'ambient',
   },
-  {
-    id: 6,
-    type: 'send',
-    label: 'Sent to 0x8f2...3a1',
-    amount: '-500 USDC',
-    value: '-$500.00',
-    time: '3 days ago',
-    status: 'completed',
-  },
-  {
-    id: 7,
-    type: 'swap',
-    label: 'Swapped USDC → SOL',
-    amount: '1,000 USDC → 8.2 SOL',
-    value: '$1,000.00',
-    time: '1 week ago',
-    status: 'completed',
-  },
 ];
+
+// Helper to format relative time
+const formatRelativeTime = (timestamp: number): string => {
+  const now = Date.now();
+  const diff = now - timestamp;
+  const minutes = Math.floor(diff / 60000);
+  const hours = Math.floor(diff / 3600000);
+  const days = Math.floor(diff / 86400000);
+
+  if (minutes < 1) return 'Just now';
+  if (minutes < 60) return `${minutes}m ago`;
+  if (hours < 24) return `${hours}h ago`;
+  if (days < 7) return `${days}d ago`;
+  return new Date(timestamp).toLocaleDateString();
+};
+
+// Transform Convex transfer to Transaction format
+const transferToTransaction = (transfer: Doc<'transfers'>): Transaction => {
+  const isConfirmed = transfer.status === 'confirmed';
+  const isFailed = transfer.status === 'failed';
+  const isPending = transfer.status === 'pending' || transfer.status === 'signing' || transfer.status === 'submitted';
+
+  let label = '';
+  if (transfer.recipientType === 'sol_name') {
+    label = `Sent to ${transfer.recipientIdentifier}`;
+  } else if (transfer.recipientType === 'contact') {
+    label = `Sent to ${transfer.recipientIdentifier}`;
+  } else {
+    label = `Sent to ${formatAddress(transfer.recipientAddress)}`;
+  }
+
+  return {
+    id: transfer._id,
+    type: 'transfer',
+    label,
+    amount: `-${transfer.amount} ${transfer.token}`,
+    value: `-$${transfer.amountUsd.toFixed(2)}`,
+    time: formatRelativeTime(transfer.createdAt),
+    status: isFailed ? 'failed' : isPending ? 'pending' : 'completed',
+    signature: transfer.solanaSignature,
+    isRealTransfer: true,
+  };
+};
 
 // Mock chat history - in real app this would come from props or context
 const chatHistory: ChatMessage[] = [
@@ -102,6 +115,7 @@ const chatHistory: ChatMessage[] = [
 const getIcon = (type: string): keyof typeof Ionicons.glyphMap => {
   switch (type) {
     case 'send':
+    case 'transfer':
       return 'arrow-up-circle';
     case 'receive':
       return 'arrow-down-circle';
@@ -126,11 +140,15 @@ const formatTime = (date: Date) => {
   return date.toLocaleDateString();
 };
 
-type FilterType = 'all' | 'send' | 'receive' | 'swap' | 'auto';
+type FilterType = 'all' | 'transfer' | 'send' | 'receive' | 'swap' | 'auto';
 type TabType = 'transactions' | 'conversations';
+
+// Solscan base URL for viewing transactions
+const SOLSCAN_BASE_URL = 'https://solscan.io/tx';
 
 export default function HistoryScreen() {
   const insets = useSafeAreaInsets();
+  const params = useLocalSearchParams<{ contact?: string }>();
   const [activeTab, setActiveTab] = useState<TabType>('transactions');
   const [filter, setFilter] = useState<FilterType>('all');
 
@@ -144,10 +162,33 @@ export default function HistoryScreen() {
   const receiveColor = '#10b981';
   const swapColor = '#3b82f6';
   const blueAccent = '#60a5fa';
+  const pendingColor = '#f59e0b';
 
-  const filteredTransactions = filter === 'all' 
-    ? transactions 
-    : transactions.filter((t) => t.type === filter);
+  // Fetch real transfers from Convex
+  const transfersQuery = useQuery(api.transfers.transfers.getByUser, { limit: 50 });
+  const isLoadingTransfers = transfersQuery === undefined;
+
+  // Combine real transfers with mock data
+  const allTransactions = useMemo(() => {
+    const realTransfers: Transaction[] = (transfersQuery ?? []).map(transferToTransaction);
+
+    // Filter by contact if specified in params
+    const filteredTransfers = params.contact
+      ? realTransfers.filter(t => t.label.toLowerCase().includes(params.contact!.toLowerCase()))
+      : realTransfers;
+
+    // Combine real transfers (first) with mock transactions
+    return [...filteredTransfers, ...mockTransactions];
+  }, [transfersQuery, params.contact]);
+
+  const filteredTransactions = useMemo(() => {
+    if (filter === 'all') return allTransactions;
+    // For 'transfer' filter, show only real P2P transfers
+    if (filter === 'transfer') return allTransactions.filter(t => t.isRealTransfer);
+    // For 'send' filter, also include transfers
+    if (filter === 'send') return allTransactions.filter(t => t.type === 'send' || t.type === 'transfer');
+    return allTransactions.filter(t => t.type === filter);
+  }, [allTransactions, filter]);
 
   const handleBack = () => {
     if (router.canGoBack()) {
@@ -157,9 +198,14 @@ export default function HistoryScreen() {
     }
   };
 
-  const getIconColor = (type: string) => {
+  const getIconColor = (type: string, status?: string) => {
+    // Handle pending/failed status
+    if (status === 'pending') return { bg: `${pendingColor}20`, icon: pendingColor };
+    if (status === 'failed') return { bg: `${sendColor}20`, icon: sendColor };
+
     switch (type) {
       case 'send':
+      case 'transfer':
         return { bg: `${sendColor}20`, icon: sendColor };
       case 'receive':
         return { bg: `${receiveColor}20`, icon: receiveColor };
@@ -173,12 +219,21 @@ export default function HistoryScreen() {
   };
 
   const getAmountColor = (tx: Transaction) => {
+    if (tx.status === 'pending') return pendingColor;
+    if (tx.status === 'failed') return sendColor;
     if (tx.type === 'receive' || tx.status === 'ambient') return receiveColor;
-    if (tx.type === 'send') return sendColor;
+    if (tx.type === 'send' || tx.type === 'transfer') return sendColor;
     return foregroundColor;
   };
 
-  const filters: FilterType[] = ['all', 'send', 'receive', 'swap', 'auto'];
+  const handleTransactionPress = (tx: Transaction) => {
+    // Open Solscan if there's a signature
+    if (tx.signature) {
+      Linking.openURL(`${SOLSCAN_BASE_URL}/${tx.signature}`);
+    }
+  };
+
+  const filters: FilterType[] = ['all', 'transfer', 'send', 'receive', 'swap', 'auto'];
 
   return (
     <ThemedView style={styles.container}>
@@ -329,27 +384,32 @@ export default function HistoryScreen() {
             style={styles.filterScroll}
             contentContainerStyle={styles.filterContainer}
           >
-            {filters.map((f) => (
-              <Pressable
-                key={f}
-                onPress={() => setFilter(f)}
-                style={[
-                  styles.filterPill,
-                  filter === f
-                    ? { backgroundColor: primaryColor }
-                    : { backgroundColor: cardBg, borderWidth: 1, borderColor },
-                ]}
-              >
-                <ThemedText
+            {filters.map((f) => {
+              const label = f === 'all' ? 'All'
+                : f === 'transfer' ? 'Transfers'
+                : f.charAt(0).toUpperCase() + f.slice(1);
+              return (
+                <Pressable
+                  key={f}
+                  onPress={() => setFilter(f)}
                   style={[
-                    styles.filterText,
-                    { color: filter === f ? '#000' : mutedColor },
+                    styles.filterPill,
+                    filter === f
+                      ? { backgroundColor: primaryColor }
+                      : { backgroundColor: cardBg, borderWidth: 1, borderColor },
                   ]}
                 >
-                  {f === 'all' ? 'All' : f.charAt(0).toUpperCase() + f.slice(1)}
-                </ThemedText>
-              </Pressable>
-            ))}
+                  <ThemedText
+                    style={[
+                      styles.filterText,
+                      { color: filter === f ? '#000' : mutedColor },
+                    ]}
+                  >
+                    {label}
+                  </ThemedText>
+                </Pressable>
+              );
+            })}
           </ScrollView>
 
           {/* Transaction List */}
@@ -358,17 +418,34 @@ export default function HistoryScreen() {
             contentContainerStyle={[styles.transactionsList, { paddingBottom: insets.bottom + 24 }]}
             showsVerticalScrollIndicator={false}
           >
+            {isLoadingTransfers && (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="small" color={primaryColor} />
+                <ThemedText style={[styles.loadingText, { color: mutedColor }]}>
+                  Loading transfers...
+                </ThemedText>
+              </View>
+            )}
             {filteredTransactions.map((tx) => {
-              const iconColors = getIconColor(tx.type);
+              const iconColors = getIconColor(tx.type, tx.status);
+              const hasSolscanLink = !!tx.signature;
               return (
-                <ThemedView
+                <Pressable
                   key={tx.id}
-                  style={[styles.transactionItem, { backgroundColor: cardBg, borderColor }]}
-                  lightColor="rgba(0,0,0,0.03)"
-                  darkColor="rgba(255,255,255,0.06)"
+                  onPress={() => handleTransactionPress(tx)}
+                  disabled={!hasSolscanLink}
+                  style={({ pressed }) => [
+                    styles.transactionItem,
+                    { backgroundColor: cardBg, borderColor },
+                    pressed && hasSolscanLink && styles.pressed,
+                  ]}
                 >
                   <View style={[styles.txIcon, { backgroundColor: iconColors.bg }]}>
-                    <Ionicons name={getIcon(tx.type)} size={18} color={iconColors.icon} />
+                    <Ionicons
+                      name={tx.status === 'pending' ? 'time' : tx.status === 'failed' ? 'close-circle' : getIcon(tx.type)}
+                      size={18}
+                      color={iconColors.icon}
+                    />
                   </View>
 
                   <View style={styles.txInfo}>
@@ -377,14 +454,33 @@ export default function HistoryScreen() {
                         {tx.label}
                       </ThemedText>
                       {tx.status === 'ambient' && (
-                        <View style={[styles.autoBadge, { backgroundColor: `${primaryColor}20` }]}>
-                          <ThemedText style={[styles.autoBadgeText, { color: primaryColor }]}>
+                        <View style={[styles.statusBadge, { backgroundColor: `${primaryColor}20` }]}>
+                          <ThemedText style={[styles.statusBadgeText, { color: primaryColor }]}>
                             AUTO
                           </ThemedText>
                         </View>
                       )}
+                      {tx.status === 'pending' && (
+                        <View style={[styles.statusBadge, { backgroundColor: `${pendingColor}20` }]}>
+                          <ThemedText style={[styles.statusBadgeText, { color: pendingColor }]}>
+                            PENDING
+                          </ThemedText>
+                        </View>
+                      )}
+                      {tx.status === 'failed' && (
+                        <View style={[styles.statusBadge, { backgroundColor: `${sendColor}20` }]}>
+                          <ThemedText style={[styles.statusBadgeText, { color: sendColor }]}>
+                            FAILED
+                          </ThemedText>
+                        </View>
+                      )}
                     </View>
-                    <ThemedText style={[styles.txTime, { color: mutedColor }]}>{tx.time}</ThemedText>
+                    <View style={styles.txTimeRow}>
+                      <ThemedText style={[styles.txTime, { color: mutedColor }]}>{tx.time}</ThemedText>
+                      {hasSolscanLink && (
+                        <Ionicons name="open-outline" size={12} color={mutedColor} style={{ marginLeft: 4 }} />
+                      )}
+                    </View>
                   </View>
 
                   <View style={styles.txAmounts}>
@@ -393,9 +489,22 @@ export default function HistoryScreen() {
                     </ThemedText>
                     <ThemedText style={[styles.txValue, { color: mutedColor }]}>{tx.value}</ThemedText>
                   </View>
-                </ThemedView>
+                </Pressable>
               );
             })}
+            {!isLoadingTransfers && filteredTransactions.length === 0 && (
+              <View style={styles.emptyState}>
+                <View style={[styles.emptyIcon, { backgroundColor: cardBg }]}>
+                  <Ionicons name="receipt-outline" size={32} color={mutedColor} />
+                </View>
+                <ThemedText style={[styles.emptyTitle, { color: mutedColor }]}>
+                  No transactions yet
+                </ThemedText>
+                <ThemedText style={[styles.emptySubtitle, { color: mutedColor, opacity: 0.6 }]}>
+                  Send or receive to see history
+                </ThemedText>
+              </View>
+            )}
           </ScrollView>
         </>
       )}
@@ -525,18 +634,32 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     flexShrink: 1,
   },
-  autoBadge: {
+  statusBadge: {
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 4,
   },
-  autoBadgeText: {
+  statusBadgeText: {
     fontSize: 9,
     fontWeight: '600',
   },
+  txTimeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 2,
+  },
   txTime: {
     fontSize: 12,
-    marginTop: 2,
+  },
+  loadingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    gap: 8,
+  },
+  loadingText: {
+    fontSize: 13,
   },
   txAmounts: {
     alignItems: 'flex-end',

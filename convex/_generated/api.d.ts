@@ -45,6 +45,8 @@ import type * as realtime_optimistic from "../realtime/optimistic.js";
 import type * as scripts_bulkCreateCards from "../scripts/bulkCreateCards.js";
 import type * as scripts_migrateEthereumWallets from "../scripts/migrateEthereumWallets.js";
 import type * as tee_turnkey from "../tee/turnkey.js";
+import type * as transfers_contacts from "../transfers/contacts.js";
+import type * as transfers_transfers from "../transfers/transfers.js";
 import type * as wallets_defi from "../wallets/defi.js";
 import type * as wallets_network from "../wallets/network.js";
 import type * as wallets_quotes from "../wallets/quotes.js";
@@ -95,6 +97,8 @@ declare const fullApi: ApiFromModules<{
   "scripts/bulkCreateCards": typeof scripts_bulkCreateCards;
   "scripts/migrateEthereumWallets": typeof scripts_migrateEthereumWallets;
   "tee/turnkey": typeof tee_turnkey;
+  "transfers/contacts": typeof transfers_contacts;
+  "transfers/transfers": typeof transfers_transfers;
   "wallets/defi": typeof wallets_defi;
   "wallets/network": typeof wallets_network;
   "wallets/quotes": typeof wallets_quotes;

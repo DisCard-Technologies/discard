@@ -69,6 +69,12 @@
         }
       ],
       [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow DisCard to scan QR codes for payments"
+        }
+      ],
+      [
         "expo-build-properties",
         {
           "android": {

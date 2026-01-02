@@ -1,23 +1,32 @@
-import { useState } from 'react';
-import { StyleSheet, View, Pressable, ScrollView, TextInput, Keyboard, Alert, Text } from 'react-native';
+import { useState, useMemo, useCallback } from 'react';
+import { StyleSheet, View, Pressable, ScrollView, TextInput, Keyboard, Alert, Text, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { KeyboardStickyView } from 'react-native-keyboard-controller';
 import Animated, { useSharedValue, useAnimatedStyle, withTiming } from 'react-native-reanimated';
 import * as Clipboard from 'expo-clipboard';
+import { router } from 'expo-router';
+import QRCode from 'react-native-qrcode-svg';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { CommandBar } from '@/components/command-bar';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useAuth } from '@/stores/authConvex';
+import { useTokenHoldings } from '@/hooks/useTokenHoldings';
+import { RecipientInput } from '@/components/transfer';
+import { useContacts } from '@/hooks/useContacts';
+import { useAddressResolver, type ResolvedAddress } from '@/hooks/useAddressResolver';
+import { useTransfer, type TransferToken } from '@/hooks/useTransfer';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 type TransferMode = 'send' | 'receive' | 'request';
 
-interface Contact {
+// Local contact type for display (adapts from Convex Contact)
+interface LocalContact {
   id: string;
   name: string;
   handle: string;
@@ -29,58 +38,18 @@ interface Contact {
 interface RecentTransfer {
   id: string;
   type: 'sent' | 'received' | 'requested';
-  contact: Contact;
+  contact: LocalContact;
   amount: number;
   token: string;
   timestamp: string;
   status: 'completed' | 'pending' | 'expired';
 }
 
-const initialContacts: Contact[] = [
-  { id: '1', name: 'Alex Chen', handle: 'alex.eth', avatar: 'AC', recent: true, verified: true },
-  { id: '2', name: 'Sarah Miller', handle: '0x7a3...f29', avatar: 'SM', recent: true },
-  { id: '3', name: 'MetaMask Vault', handle: 'vault.metamask.eth', avatar: 'MM', verified: true },
-  { id: '4', name: 'Jordan Lee', handle: 'jordan.base', avatar: 'JL', recent: true, verified: true },
-  { id: '5', name: 'Dev Wallet', handle: '0x9b2...c18', avatar: 'DW' },
-  { id: '6', name: 'Emma Wilson', handle: 'emma.ens', avatar: 'EW', verified: true },
-];
+// Initial empty contacts - users add their own
+const initialContacts: LocalContact[] = [];
 
-const recentTransfers: RecentTransfer[] = [
-  {
-    id: '1',
-    type: 'sent',
-    contact: { id: '1', name: 'Alex Chen', handle: 'alex.eth', avatar: 'AC', verified: true },
-    amount: 150,
-    token: 'USDC',
-    timestamp: '2 hours ago',
-    status: 'completed',
-  },
-  {
-    id: '2',
-    type: 'received',
-    contact: { id: '4', name: 'Jordan Lee', handle: 'jordan.base', avatar: 'JL', verified: true },
-    amount: 0.25,
-    token: 'ETH',
-    timestamp: 'Yesterday',
-    status: 'completed',
-  },
-  {
-    id: '3',
-    type: 'requested',
-    contact: { id: '2', name: 'Sarah Miller', handle: '0x7a3...f29', avatar: 'SM' },
-    amount: 75,
-    token: 'USDC',
-    timestamp: '2 days ago',
-    status: 'pending',
-  },
-];
-
-const tokens = [
-  { symbol: 'USDC', balance: 2847.5 },
-  { symbol: 'ETH', balance: 1.834 },
-  { symbol: 'SOL', balance: 24.5 },
-  { symbol: 'USDT', balance: 500 },
-];
+// Recent transfers will be populated from real transaction history when available
+const recentTransfers: RecentTransfer[] = [];
 
 export default function TransferScreen() {
   const insets = useSafeAreaInsets();
@@ -91,8 +60,28 @@ export default function TransferScreen() {
   const mutedColor = useThemeColor({ light: '#687076', dark: '#9BA1A6' }, 'icon');
   const textColor = useThemeColor({}, 'text');
 
+  // Real data from hooks
+  const { user } = useAuth();
+  const walletAddress = user?.solanaAddress || null;
+
+  const {
+    holdings: tokenHoldings,
+    isLoading: tokensLoading,
+  } = useTokenHoldings(walletAddress);
+
+  // Transform real token holdings for the UI
+  const tokens = useMemo(() => {
+    if (!tokenHoldings || tokenHoldings.length === 0) {
+      return [];
+    }
+    return tokenHoldings.map(h => ({
+      symbol: h.symbol,
+      balance: h.balanceFormatted,
+    }));
+  }, [tokenHoldings]);
+
   const [mode, setMode] = useState<TransferMode>('send');
-  const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
+  const [selectedContact, setSelectedContact] = useState<LocalContact | null>(null);
   const [amount, setAmount] = useState('');
   const [selectedToken, setSelectedToken] = useState('USDC');
   const [searchQuery, setSearchQuery] = useState('');
@@ -102,10 +91,13 @@ export default function TransferScreen() {
   const [showAddContact, setShowAddContact] = useState(false);
   const [newContactName, setNewContactName] = useState('');
   const [newContactHandle, setNewContactHandle] = useState('');
-  const [contactsList, setContactsList] = useState<Contact[]>(initialContacts);
+  const [contactsList, setContactsList] = useState<LocalContact[]>(initialContacts);
 
-  const walletAddress = '0x7F3a...8b2E';
-  const fullAddress = '0x7F3a92Bc4D1e8A6f5C0B9E7D2F4A8b2E';
+  // Format wallet address for display
+  const displayAddress = walletAddress
+    ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`
+    : 'No wallet';
+  const fullAddress = walletAddress || '';
 
   // Command bar state
   const backdropOpacity = useSharedValue(0);
@@ -129,7 +121,7 @@ export default function TransferScreen() {
   };
 
   const handleCamera = () => {
-    Alert.alert('Camera', 'Camera/scan coming soon');
+    router.push('/transfer/scan' as any);
   };
 
   const handleMic = () => {};
@@ -147,11 +139,47 @@ export default function TransferScreen() {
   };
 
   const handleSend = () => {
-    Alert.alert('Sending', `Sending $${amount} ${selectedToken} to ${selectedContact?.handle}`);
+    if (!selectedContact || !amount) return;
+
+    // Navigate to confirmation screen with transfer data
+    (router.push as any)({
+      pathname: '/transfer/confirmation',
+      params: {
+        recipient: JSON.stringify({
+          input: selectedContact.handle,
+          address: selectedContact.handle, // Would be resolved address in real implementation
+          displayName: selectedContact.name,
+          type: 'contact',
+          contactId: selectedContact.id,
+        }),
+        token: JSON.stringify({
+          symbol: selectedToken,
+          mint: selectedToken === 'SOL' ? 'So11111111111111111111111111111111111111112' : 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+          decimals: selectedToken === 'SOL' ? 9 : 6,
+          balance: 0,
+          balanceUsd: 0,
+        }),
+        amount: JSON.stringify({
+          amount: parseFloat(amount),
+          amountUsd: parseFloat(amount), // Simplified - assume stablecoin
+          amountBaseUnits: (parseFloat(amount) * (selectedToken === 'SOL' ? 1e9 : 1e6)).toString(),
+        }),
+        fees: JSON.stringify({
+          networkFee: 0.00001,
+          networkFeeUsd: 0.001,
+          platformFee: parseFloat(amount) * 0.003,
+          priorityFee: 0.00001,
+          ataRent: 0,
+          totalFeesUsd: 0.001 + parseFloat(amount) * 0.003,
+          totalCostUsd: parseFloat(amount) + 0.001 + parseFloat(amount) * 0.003,
+        }),
+        memo,
+      },
+    });
   };
 
   const handleRequest = () => {
-    Alert.alert('Request', `Requesting $${amount} from ${selectedContact?.name}`);
+    router.push('/transfer/request-link' as any);
   };
 
   const handleModeChange = (newMode: TransferMode) => {
@@ -202,38 +230,46 @@ export default function TransferScreen() {
     );
   };
 
-  const renderRecentContacts = () => (
-    <View style={styles.section}>
-      <ThemedText style={[styles.sectionLabel, { color: mutedColor }]}>RECENT</ThemedText>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.recentContactsScroll}
-      >
-        {contactsList.filter((c) => c.recent).map((contact) => (
-          <Pressable
-            key={contact.id}
-            onPress={() => setSelectedContact(contact)}
-            style={styles.recentContact}
-          >
-            <View style={styles.avatarContainer}>
-              <View style={[styles.avatar, { backgroundColor: `${primaryColor}20` }]}>
-                <ThemedText style={styles.avatarText}>{contact.avatar}</ThemedText>
-              </View>
-              {contact.verified && (
-                <View style={[styles.verifiedBadge, { backgroundColor: primaryColor }]}>
-                  <Ionicons name="checkmark" size={10} color="#fff" />
+  const renderRecentContacts = () => {
+    const recentContacts = contactsList.filter((c) => c.recent);
+
+    if (recentContacts.length === 0) {
+      return null; // Don't show section if no recent contacts
+    }
+
+    return (
+      <View style={styles.section}>
+        <ThemedText style={[styles.sectionLabel, { color: mutedColor }]}>RECENT</ThemedText>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.recentContactsScroll}
+        >
+          {recentContacts.map((contact) => (
+            <Pressable
+              key={contact.id}
+              onPress={() => setSelectedContact(contact)}
+              style={styles.recentContact}
+            >
+              <View style={styles.avatarContainer}>
+                <View style={[styles.avatar, { backgroundColor: `${primaryColor}20` }]}>
+                  <ThemedText style={styles.avatarText}>{contact.avatar}</ThemedText>
                 </View>
-              )}
-            </View>
-            <ThemedText style={[styles.recentContactName, { color: mutedColor }]} numberOfLines={1}>
-              {contact.name.split(' ')[0]}
-            </ThemedText>
-          </Pressable>
-        ))}
-      </ScrollView>
-    </View>
-  );
+                {contact.verified && (
+                  <View style={[styles.verifiedBadge, { backgroundColor: primaryColor }]}>
+                    <Ionicons name="checkmark" size={10} color="#fff" />
+                  </View>
+                )}
+              </View>
+              <ThemedText style={[styles.recentContactName, { color: mutedColor }]} numberOfLines={1}>
+                {contact.name.split(' ')[0]}
+              </ThemedText>
+            </Pressable>
+          ))}
+        </ScrollView>
+      </View>
+    );
+  };
 
   const handleAddContact = () => {
     if (!newContactName.trim() || !newContactHandle.trim()) return;
@@ -245,7 +281,7 @@ export default function TransferScreen() {
       .toUpperCase()
       .slice(0, 2);
 
-    const newContact: Contact = {
+    const newContact: LocalContact = {
       id: Date.now().toString(),
       name: newContactName.trim(),
       handle: newContactHandle.trim(),
@@ -351,32 +387,46 @@ export default function TransferScreen() {
       )}
       {showAllContacts && (
         <View style={styles.contactsList}>
-          {filteredContacts.map((contact) => (
-            <Pressable
-              key={contact.id}
-              onPress={() => setSelectedContact(contact)}
-              style={({ pressed }) => [
-                styles.contactItem,
-                pressed && { opacity: 0.7 },
-              ]}
-            >
-              <View style={styles.avatarContainer}>
-                <View style={[styles.avatarSmall, { backgroundColor: `${primaryColor}20` }]}>
-                  <ThemedText style={styles.avatarTextSmall}>{contact.avatar}</ThemedText>
-                </View>
-                {contact.verified && (
-                  <View style={[styles.verifiedBadgeSmall, { backgroundColor: primaryColor }]}>
-                    <Ionicons name="checkmark" size={8} color="#fff" />
+          {filteredContacts.length === 0 ? (
+            <View style={styles.emptyContactsContainer}>
+              <View style={[styles.emptyContactsIcon, { backgroundColor: `${primaryColor}10` }]}>
+                <Ionicons name="people-outline" size={24} color={primaryColor} />
+              </View>
+              <ThemedText style={[styles.emptyContactsText, { color: mutedColor }]}>
+                No contacts yet
+              </ThemedText>
+              <ThemedText style={[styles.emptyContactsSubtext, { color: mutedColor }]}>
+                Add contacts to send money quickly
+              </ThemedText>
+            </View>
+          ) : (
+            filteredContacts.map((contact) => (
+              <Pressable
+                key={contact.id}
+                onPress={() => setSelectedContact(contact)}
+                style={({ pressed }) => [
+                  styles.contactItem,
+                  pressed && { opacity: 0.7 },
+                ]}
+              >
+                <View style={styles.avatarContainer}>
+                  <View style={[styles.avatarSmall, { backgroundColor: `${primaryColor}20` }]}>
+                    <ThemedText style={styles.avatarTextSmall}>{contact.avatar}</ThemedText>
                   </View>
-                )}
-              </View>
-              <View style={styles.contactInfo}>
-                <ThemedText style={styles.contactName}>{contact.name}</ThemedText>
-                <ThemedText style={[styles.contactHandle, { color: mutedColor }]}>{contact.handle}</ThemedText>
-              </View>
-              <Ionicons name="chevron-forward" size={16} color={mutedColor} />
-            </Pressable>
-          ))}
+                  {contact.verified && (
+                    <View style={[styles.verifiedBadgeSmall, { backgroundColor: primaryColor }]}>
+                      <Ionicons name="checkmark" size={8} color="#fff" />
+                    </View>
+                  )}
+                </View>
+                <View style={styles.contactInfo}>
+                  <ThemedText style={styles.contactName}>{contact.name}</ThemedText>
+                  <ThemedText style={[styles.contactHandle, { color: mutedColor }]}>{contact.handle}</ThemedText>
+                </View>
+                <Ionicons name="chevron-forward" size={16} color={mutedColor} />
+              </Pressable>
+            ))
+          )}
         </View>
       )}
     </View>
@@ -385,68 +435,82 @@ export default function TransferScreen() {
   const renderRecentActivity = () => (
     <ThemedView style={styles.card} lightColor="#f4f4f5" darkColor="#1c1c1e">
       <ThemedText style={[styles.sectionLabel, { color: mutedColor }]}>RECENT ACTIVITY</ThemedText>
-      {recentTransfers.slice(0, 3).map((transfer) => (
-        <View key={transfer.id} style={styles.activityItem}>
-          <View
-            style={[
-              styles.activityIcon,
-              {
-                backgroundColor:
-                  transfer.type === 'sent'
-                    ? 'rgba(249, 115, 22, 0.1)'
-                    : transfer.type === 'received'
-                    ? 'rgba(34, 197, 94, 0.1)'
-                    : `${primaryColor}15`,
-              },
-            ]}
-          >
-            <Ionicons
-              name={
-                transfer.type === 'sent'
-                  ? 'arrow-up'
-                  : transfer.type === 'received'
-                  ? 'arrow-down'
-                  : 'document-text'
-              }
-              size={16}
-              color={
-                transfer.type === 'sent'
-                  ? '#f97316'
-                  : transfer.type === 'received'
-                  ? '#22c55e'
-                  : primaryColor
-              }
-            />
+      {recentTransfers.length === 0 ? (
+        <View style={styles.emptyActivityContainer}>
+          <View style={[styles.emptyActivityIcon, { backgroundColor: `${primaryColor}10` }]}>
+            <Ionicons name="swap-horizontal-outline" size={24} color={primaryColor} />
           </View>
-          <View style={styles.activityInfo}>
-            <ThemedText style={styles.activityLabel}>
-              {transfer.type === 'sent'
-                ? 'Sent to'
-                : transfer.type === 'received'
-                ? 'From'
-                : 'Requested from'}{' '}
-              {transfer.contact.name.split(' ')[0]}
-            </ThemedText>
-            <ThemedText style={[styles.activityTime, { color: mutedColor }]}>
-              {transfer.timestamp}
-            </ThemedText>
-          </View>
-          <View style={styles.activityAmountContainer}>
-            <ThemedText
+          <ThemedText style={[styles.emptyActivityText, { color: mutedColor }]}>
+            No transfers yet
+          </ThemedText>
+          <ThemedText style={[styles.emptyActivitySubtext, { color: mutedColor }]}>
+            Your transfer history will appear here
+          </ThemedText>
+        </View>
+      ) : (
+        recentTransfers.slice(0, 3).map((transfer) => (
+          <View key={transfer.id} style={styles.activityItem}>
+            <View
               style={[
-                styles.activityAmount,
-                transfer.type === 'received' && { color: '#22c55e' },
+                styles.activityIcon,
+                {
+                  backgroundColor:
+                    transfer.type === 'sent'
+                      ? 'rgba(249, 115, 22, 0.1)'
+                      : transfer.type === 'received'
+                      ? 'rgba(34, 197, 94, 0.1)'
+                      : `${primaryColor}15`,
+                },
               ]}
             >
-              {transfer.type === 'received' ? '+' : transfer.type === 'sent' ? '-' : ''}
-              {transfer.amount} {transfer.token}
-            </ThemedText>
-            {transfer.status === 'pending' && (
-              <ThemedText style={styles.pendingLabel}>Pending</ThemedText>
-            )}
+              <Ionicons
+                name={
+                  transfer.type === 'sent'
+                    ? 'arrow-up'
+                    : transfer.type === 'received'
+                    ? 'arrow-down'
+                    : 'document-text'
+                }
+                size={16}
+                color={
+                  transfer.type === 'sent'
+                    ? '#f97316'
+                    : transfer.type === 'received'
+                    ? '#22c55e'
+                    : primaryColor
+                }
+              />
+            </View>
+            <View style={styles.activityInfo}>
+              <ThemedText style={styles.activityLabel}>
+                {transfer.type === 'sent'
+                  ? 'Sent to'
+                  : transfer.type === 'received'
+                  ? 'From'
+                  : 'Requested from'}{' '}
+                {transfer.contact.name.split(' ')[0]}
+              </ThemedText>
+              <ThemedText style={[styles.activityTime, { color: mutedColor }]}>
+                {transfer.timestamp}
+              </ThemedText>
+            </View>
+            <View style={styles.activityAmountContainer}>
+              <ThemedText
+                style={[
+                  styles.activityAmount,
+                  transfer.type === 'received' && { color: '#22c55e' },
+                ]}
+              >
+                {transfer.type === 'received' ? '+' : transfer.type === 'sent' ? '-' : ''}
+                {transfer.amount} {transfer.token}
+              </ThemedText>
+              {transfer.status === 'pending' && (
+                <ThemedText style={styles.pendingLabel}>Pending</ThemedText>
+              )}
+            </View>
           </View>
-        </View>
-      ))}
+        ))
+      )}
     </ThemedView>
   );
 
@@ -505,34 +569,45 @@ export default function TransferScreen() {
       {mode === 'send' && (
         <View style={styles.tokenSection}>
           <ThemedText style={[styles.tokenLabel, { color: mutedColor }]}>PAY WITH</ThemedText>
-          <View style={styles.tokenList}>
-            {tokens.map((token) => (
-              <Pressable
-                key={token.symbol}
-                onPress={() => setSelectedToken(token.symbol)}
-                style={[
-                  styles.tokenButton,
-                  {
-                    backgroundColor:
-                      selectedToken === token.symbol
-                        ? `${primaryColor}15`
-                        : isDark
-                        ? '#27272a'
-                        : '#e4e4e7',
-                    borderColor: selectedToken === token.symbol ? `${primaryColor}40` : 'transparent',
-                    borderWidth: selectedToken === token.symbol ? 1 : 0,
-                  },
-                ]}
-              >
-                <ThemedText style={styles.tokenSymbol}>{token.symbol}</ThemedText>
-                <ThemedText style={[styles.tokenBalance, { color: mutedColor }]}>
-                  {token.symbol === 'USDC' || token.symbol === 'USDT'
-                    ? `$${token.balance.toLocaleString()}`
-                    : token.balance.toFixed(3)}
-                </ThemedText>
-              </Pressable>
-            ))}
-          </View>
+          {tokensLoading ? (
+            <View style={styles.tokenLoadingContainer}>
+              <ActivityIndicator size="small" color={primaryColor} />
+              <ThemedText style={[styles.tokenLoadingText, { color: mutedColor }]}>Loading tokens...</ThemedText>
+            </View>
+          ) : tokens.length === 0 ? (
+            <View style={styles.tokenEmptyContainer}>
+              <ThemedText style={[styles.tokenEmptyText, { color: mutedColor }]}>
+                {walletAddress ? 'No tokens found' : 'Connect wallet to see tokens'}
+              </ThemedText>
+            </View>
+          ) : (
+            <View style={styles.tokenList}>
+              {tokens.map((token) => (
+                <Pressable
+                  key={token.symbol}
+                  onPress={() => setSelectedToken(token.symbol)}
+                  style={[
+                    styles.tokenButton,
+                    {
+                      backgroundColor:
+                        selectedToken === token.symbol
+                          ? `${primaryColor}15`
+                          : isDark
+                          ? '#27272a'
+                          : '#e4e4e7',
+                      borderColor: selectedToken === token.symbol ? `${primaryColor}40` : 'transparent',
+                      borderWidth: selectedToken === token.symbol ? 1 : 0,
+                    },
+                  ]}
+                >
+                  <ThemedText style={styles.tokenSymbol}>{token.symbol}</ThemedText>
+                  <ThemedText style={[styles.tokenBalance, { color: mutedColor }]}>
+                    {typeof token.balance === 'number' ? token.balance.toLocaleString() : token.balance}
+                  </ThemedText>
+                </Pressable>
+              ))}
+            </View>
+          )}
         </View>
       )}
 
@@ -610,15 +685,21 @@ export default function TransferScreen() {
   const renderReceiveMode = () => (
     <View style={styles.receiveContainer}>
       <ThemedView style={styles.card} lightColor="#f4f4f5" darkColor="#1c1c1e">
-        {/* QR Code Placeholder */}
+        {/* QR Code */}
         <View style={styles.qrContainer}>
           <View style={styles.qrCode}>
-            <View style={styles.qrInner}>
-              <Ionicons name="qr-code" size={96} color="#18181b" />
-            </View>
-            <View style={[styles.qrLogo, { backgroundColor: primaryColor }]}>
-              <Text style={styles.qrLogoText}>N</Text>
-            </View>
+            {fullAddress ? (
+              <QRCode
+                value={`solana:${fullAddress}`}
+                size={160}
+                backgroundColor="#fff"
+                color="#18181b"
+              />
+            ) : (
+              <View style={styles.qrInner}>
+                <Ionicons name="qr-code" size={96} color="#18181b" />
+              </View>
+            )}
           </View>
           <ThemedText style={[styles.qrHint, { color: mutedColor }]}>
             Scan to send funds to this wallet
@@ -634,7 +715,7 @@ export default function TransferScreen() {
             onPress={handleCopy}
             style={[styles.addressButton, { backgroundColor: isDark ? '#27272a' : '#e4e4e7' }]}
           >
-            <ThemedText style={styles.addressText}>{walletAddress}</ThemedText>
+            <ThemedText style={styles.addressText}>{displayAddress}</ThemedText>
             <Ionicons
               name={copied ? 'checkmark' : 'copy-outline'}
               size={16}
@@ -733,7 +814,10 @@ export default function TransferScreen() {
         {/* Header */}
         <View style={styles.header}>
           <ThemedText style={styles.title}>Move Money</ThemedText>
-          <Pressable style={styles.historyButton}>
+          <Pressable
+            style={styles.historyButton}
+            onPress={() => router.push('/history')}
+          >
             <Ionicons name="time-outline" size={14} color={primaryColor} />
             <ThemedText style={[styles.historyText, { color: primaryColor }]}>History</ThemedText>
           </Pressable>
@@ -1363,5 +1447,70 @@ const styles = StyleSheet.create({
   },
   remindText: {
     fontSize: 10,
+  },
+  // Token loading/empty states
+  tokenLoadingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 16,
+  },
+  tokenLoadingText: {
+    fontSize: 12,
+  },
+  tokenEmptyContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+  },
+  tokenEmptyText: {
+    fontSize: 12,
+  },
+  // Empty contacts state
+  emptyContactsContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 24,
+    gap: 8,
+  },
+  emptyContactsIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  emptyContactsText: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  emptyContactsSubtext: {
+    fontSize: 12,
+    textAlign: 'center',
+  },
+  // Empty activity state
+  emptyActivityContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 24,
+    gap: 8,
+  },
+  emptyActivityIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  emptyActivityText: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  emptyActivitySubtext: {
+    fontSize: 12,
+    textAlign: 'center',
   },
 });

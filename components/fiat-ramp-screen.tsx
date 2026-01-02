@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import {
   StyleSheet,
   View,
@@ -19,6 +19,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useCryptoRates } from '@/hooks/useCryptoRatesConvex';
 
 interface FiatRampScreenProps {
   mode: 'buy' | 'sell';
@@ -35,18 +36,27 @@ interface PaymentMethod {
   isDefault?: boolean;
 }
 
-const paymentMethods: PaymentMethod[] = [
-  { id: '1', type: 'card', label: 'Visa •••• 4829', detail: 'Expires 08/27', iconName: 'card', isDefault: true },
-  { id: '2', type: 'bank', label: 'Chase Checking', detail: '•••• 7291', iconName: 'business' },
-  { id: '3', type: 'apple', label: 'Apple Pay', detail: 'Available', iconName: 'logo-apple' },
-];
+// Payment methods are managed by MoonPay during checkout
+// This is a placeholder to show where to add payment method
+const defaultPaymentMethods: PaymentMethod[] = [];
 
 const presetAmounts = [50, 100, 250, 500, 1000];
 
-const defaultTokens = [
-  { symbol: 'ETH', name: 'Ethereum', icon: '◇', price: 3752.41 },
-  { symbol: 'BTC', name: 'Bitcoin', icon: '₿', price: 84692.15 },
-  { symbol: 'SOL', name: 'Solana', icon: '◎', price: 178.23 },
+// Token icons for supported tokens
+const TOKEN_ICONS: Record<string, string> = {
+  ETH: '◇',
+  BTC: '₿',
+  SOL: '◎',
+  USDC: '◈',
+  USDT: '₮',
+  XRP: '✕',
+};
+
+// Fallback token data when rates aren't loaded
+const fallbackTokens = [
+  { symbol: 'ETH', name: 'Ethereum', icon: '◇', price: 0 },
+  { symbol: 'BTC', name: 'Bitcoin', icon: '₿', price: 0 },
+  { symbol: 'SOL', name: 'Solana', icon: '◎', price: 0 },
   { symbol: 'USDC', name: 'USD Coin', icon: '◈', price: 1.0 },
 ];
 
@@ -64,11 +74,27 @@ export function FiatRampScreen({ mode, token: initialToken, onBack }: FiatRampSc
     'background'
   );
 
+  // Fetch real crypto rates
+  const { rates: cryptoRates, isLoading: ratesLoading } = useCryptoRates({
+    symbols: ['ETH', 'BTC', 'SOL', 'USDC'],
+  });
+
+  // Build tokens list from real rates or fallback
+  const defaultTokens = useMemo(() => {
+    if (cryptoRates && cryptoRates.length > 0) {
+      return cryptoRates.map(rate => ({
+        symbol: rate.symbol,
+        name: rate.name,
+        icon: TOKEN_ICONS[rate.symbol] || rate.symbol.charAt(0),
+        price: parseFloat(rate.usdPrice) || 0,
+      }));
+    }
+    return fallbackTokens;
+  }, [cryptoRates]);
+
   const [amount, setAmount] = useState('');
   const [selectedToken, setSelectedToken] = useState(initialToken || defaultTokens[0]);
-  const [selectedMethod, setSelectedMethod] = useState(
-    paymentMethods.find((m) => m.isDefault) || paymentMethods[0]
-  );
+  const [selectedMethod, setSelectedMethod] = useState<PaymentMethod | null>(null);
   const [showTokenSelect, setShowTokenSelect] = useState(false);
   const [showMethodSelect, setShowMethodSelect] = useState(false);
   const [processing, setProcessing] = useState(false);
@@ -318,12 +344,12 @@ export function FiatRampScreen({ mode, token: initialToken, onBack }: FiatRampSc
           >
             <View style={styles.selectorLeft}>
               <View style={[styles.methodIcon, { backgroundColor: `${primaryColor}10` }]}>
-                <Ionicons name={selectedMethod.iconName} size={20} color={primaryColor} />
+                <Ionicons name="shield-checkmark" size={20} color={primaryColor} />
               </View>
               <View>
-                <ThemedText style={styles.methodLabel}>{selectedMethod.label}</ThemedText>
+                <ThemedText style={styles.methodLabel}>MoonPay Checkout</ThemedText>
                 <ThemedText style={[styles.methodDetail, { color: mutedColor }]}>
-                  {selectedMethod.detail}
+                  Cards, bank, Apple Pay
                 </ThemedText>
               </View>
             </View>
@@ -334,46 +360,17 @@ export function FiatRampScreen({ mode, token: initialToken, onBack }: FiatRampSc
 
           {showMethodSelect && (
             <ThemedView style={styles.dropdown} lightColor="#f4f4f5" darkColor="#1c1c1e">
-              {paymentMethods.map((method) => (
-                <Pressable
-                  key={method.id}
-                  onPress={() => {
-                    setSelectedMethod(method);
-                    toggleMethodSelect();
-                  }}
-                  style={[
-                    styles.dropdownItem,
-                    method.id === selectedMethod.id && { backgroundColor: `${primaryColor}10` },
-                  ]}
-                >
-                  <View style={styles.dropdownItemLeft}>
-                    <View style={[styles.methodIconSmall, { backgroundColor: `${primaryColor}10` }]}>
-                      <Ionicons name={method.iconName} size={16} color={primaryColor} />
-                    </View>
-                    <View>
-                      <ThemedText style={styles.dropdownMethodLabel}>{method.label}</ThemedText>
-                      <ThemedText style={[styles.dropdownMethodDetail, { color: mutedColor }]}>
-                        {method.detail}
-                      </ThemedText>
-                    </View>
-                  </View>
-                  {method.isDefault && (
-                    <View style={[styles.defaultBadge, { backgroundColor: `${primaryColor}20` }]}>
-                      <ThemedText style={[styles.defaultBadgeText, { color: primaryColor }]}>
-                        Default
-                      </ThemedText>
-                    </View>
-                  )}
-                </Pressable>
-              ))}
-              <Pressable style={styles.addMethodButton}>
-                <View style={[styles.addMethodIcon, { borderColor: `${primaryColor}30` }]}>
-                  <ThemedText style={[styles.addMethodPlus, { color: primaryColor }]}>+</ThemedText>
+              <View style={styles.moonpayNotice}>
+                <View style={[styles.moonpayNoticeIcon, { backgroundColor: `${primaryColor}10` }]}>
+                  <Ionicons name="shield-checkmark" size={20} color={primaryColor} />
                 </View>
-                <ThemedText style={[styles.addMethodText, { color: primaryColor }]}>
-                  Add Payment Method
-                </ThemedText>
-              </Pressable>
+                <View style={styles.moonpayNoticeText}>
+                  <ThemedText style={styles.moonpayNoticeTitle}>Secure Checkout</ThemedText>
+                  <ThemedText style={[styles.moonpayNoticeDetail, { color: mutedColor }]}>
+                    Payment methods are securely managed by MoonPay during checkout
+                  </ThemedText>
+                </View>
+              </View>
             </ThemedView>
           )}
         </View>
@@ -812,6 +809,31 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  // MoonPay notice styles
+  moonpayNotice: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 16,
+  },
+  moonpayNoticeIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  moonpayNoticeText: {
+    flex: 1,
+  },
+  moonpayNoticeTitle: {
+    fontSize: 14,
+    fontWeight: '500',
+    marginBottom: 2,
+  },
+  moonpayNoticeDetail: {
+    fontSize: 12,
   },
 });
 

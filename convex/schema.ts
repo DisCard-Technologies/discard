@@ -1325,4 +1325,161 @@ export default defineSchema({
     .index("by_signing_request", ["signingRequestId"])
     .index("by_activity_id", ["activityId"])
     .index("by_status", ["status"]),
+
+  // ============================================================================
+  // P2P TRANSFERS - Peer-to-peer transfer functionality
+  // ============================================================================
+
+  // ============ TRANSFERS ============
+  // P2P transfer records for wallet-to-wallet sends
+  transfers: defineTable({
+    userId: v.id("users"),
+
+    // Recipient identification
+    recipientType: v.union(
+      v.literal("address"),      // Raw Solana address
+      v.literal("sol_name"),     // .sol domain
+      v.literal("contact")       // Saved contact
+    ),
+    recipientIdentifier: v.string(),  // The name/address entered by user
+    recipientAddress: v.string(),     // Resolved Solana address
+    recipientDisplayName: v.optional(v.string()), // Display name if available
+
+    // Amount details
+    amount: v.number(),               // Amount in smallest unit (lamports or token base units)
+    token: v.string(),                // Token symbol (SOL, USDC, etc.)
+    tokenMint: v.string(),            // Token mint address (native for SOL)
+    tokenDecimals: v.number(),        // Token decimals for display
+    amountUsd: v.number(),            // USD equivalent (cents)
+
+    // Fees
+    networkFee: v.number(),           // Solana network fee (lamports)
+    platformFee: v.number(),          // Platform fee (0.3%) in token base units
+    priorityFee: v.optional(v.number()), // Priority fee if used
+
+    // Memo
+    memo: v.optional(v.string()),
+
+    // Transaction details
+    solanaSignature: v.optional(v.string()),
+    status: v.union(
+      v.literal("pending"),           // Created, not yet signed
+      v.literal("signing"),           // Awaiting Turnkey signature
+      v.literal("submitted"),         // Submitted to Solana
+      v.literal("confirmed"),         // Confirmed on-chain
+      v.literal("finalized"),         // Finalized (Alpenglow)
+      v.literal("failed")             // Transaction failed
+    ),
+    errorMessage: v.optional(v.string()),
+
+    // Performance tracking
+    confirmationTimeMs: v.optional(v.number()),
+
+    // Idempotency
+    idempotencyKey: v.optional(v.string()),
+
+    // Timestamps
+    createdAt: v.number(),
+    signedAt: v.optional(v.number()),
+    submittedAt: v.optional(v.number()),
+    confirmedAt: v.optional(v.number()),
+  })
+    .index("by_user", ["userId"])
+    .index("by_user_status", ["userId", "status"])
+    .index("by_recipient", ["recipientAddress"])
+    .index("by_user_recipient", ["userId", "recipientAddress"])
+    .index("by_signature", ["solanaSignature"])
+    .index("by_idempotency", ["idempotencyKey"])
+    .index("by_created", ["createdAt"]),
+
+  // ============ PAYMENT REQUESTS ============
+  // Payment request links for requesting money
+  paymentRequests: defineTable({
+    userId: v.id("users"),
+
+    // Request identification
+    requestId: v.string(),            // Unique ID for the link (UUID)
+
+    // Request details
+    amount: v.number(),               // Amount in smallest unit
+    token: v.string(),                // Token symbol
+    tokenMint: v.string(),            // Token mint address
+    tokenDecimals: v.number(),
+    amountUsd: v.number(),            // USD equivalent (cents)
+    memo: v.optional(v.string()),
+
+    // Recipient (who should pay)
+    recipientAddress: v.optional(v.string()), // Specific payer if known
+    recipientName: v.optional(v.string()),
+
+    // Link types
+    linkType: v.union(
+      v.literal("solana_pay"),        // Standard Solana Pay URI
+      v.literal("deep_link"),         // discard:// deep link
+      v.literal("web_link")           // https://www.discard.tech/pay/...
+    ),
+    linkUrl: v.string(),              // The generated link
+
+    // QR code data (cached for display)
+    qrData: v.optional(v.string()),
+
+    // Status tracking
+    status: v.union(
+      v.literal("pending"),           // Awaiting payment
+      v.literal("viewed"),            // Link was opened
+      v.literal("paid"),              // Payment received
+      v.literal("expired"),           // Past expiry
+      v.literal("cancelled")          // User cancelled
+    ),
+
+    // Payment tracking
+    paymentSignature: v.optional(v.string()),
+    payerAddress: v.optional(v.string()),
+    transferId: v.optional(v.id("transfers")), // Link to transfer record
+
+    // Expiry
+    expiresAt: v.number(),
+
+    // Timestamps
+    createdAt: v.number(),
+    viewedAt: v.optional(v.number()),
+    paidAt: v.optional(v.number()),
+  })
+    .index("by_user", ["userId"])
+    .index("by_request_id", ["requestId"])
+    .index("by_status", ["status"])
+    .index("by_expires", ["expiresAt"]),
+
+  // ============ CONTACTS ============
+  // Saved contacts for quick transfers
+  contacts: defineTable({
+    userId: v.id("users"),
+
+    // Contact identity
+    name: v.string(),                 // Display name
+    identifier: v.string(),           // .sol name, address, etc.
+    identifierType: v.union(
+      v.literal("address"),           // Raw Solana address
+      v.literal("sol_name")           // .sol domain name
+    ),
+    resolvedAddress: v.string(),      // Cached resolved address
+
+    // Display
+    avatarInitials: v.string(),       // First letters for avatar
+    avatarColor: v.optional(v.string()), // Optional color override
+    verified: v.boolean(),            // Is this a verified contact
+
+    // Usage tracking
+    lastUsedAt: v.optional(v.number()),
+    transferCount: v.number(),        // Number of transfers to this contact
+    totalAmountSent: v.number(),      // Total USD sent (cents)
+
+    // Timestamps
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_user_address", ["userId", "resolvedAddress"])
+    .index("by_user_recent", ["userId", "lastUsedAt"])
+    .index("by_user_name", ["userId", "name"]),
 });
