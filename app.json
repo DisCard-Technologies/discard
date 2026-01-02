@@ -20,8 +20,8 @@
       "supportsTablet": true,
       "bundleIdentifier": "app.discard",
       "associatedDomains": [
-        "webcredentials:discard.tech",
-        "applinks:discard.tech"
+        "webcredentials:www.discard.tech",
+        "applinks:www.discard.tech"
       ],
       "infoPlist": {
         "NSFaceIDUsageDescription": "DisCard uses Face ID to securely authenticate transactions and access your wallet."
@@ -38,6 +38,19 @@
         "USE_FINGERPRINT",
         "android.permission.USE_BIOMETRIC",
         "android.permission.USE_FINGERPRINT"
+      ],
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "www.discard.tech"
+            }
+          ],
+          "category": ["BROWSABLE", "DEFAULT"]
+        }
       ],
       "edgeToEdgeEnabled": true
     },

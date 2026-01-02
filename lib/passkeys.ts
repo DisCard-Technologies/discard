@@ -40,7 +40,7 @@ const storage = {
 
 // Relying Party configuration
 export const RP_CONFIG = {
-  id: "discard.app",
+  id: process.env.EXPO_PUBLIC_TURNKEY_RP_ID || "discard.tech",
   name: "DisCard",
 };
 

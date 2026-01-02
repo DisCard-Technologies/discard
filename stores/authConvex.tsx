@@ -52,7 +52,7 @@ function isTurnkeyPasskeyAvailable(): boolean {
 }
 
 // Turnkey configuration - your app's domain for passkey binding
-const TURNKEY_RP_ID = "discard.tech";
+const TURNKEY_RP_ID = process.env.EXPO_PUBLIC_TURNKEY_RP_ID || "www.discard.tech";
 
 // Helper to check if userId is a local-only (not in Convex) ID
 // Now most users are in Convex, only offline/dev mode creates local IDs
@@ -214,7 +214,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const shouldQueryConvex = state.userId && !isLocalUserId(state.userId);
   const userData = useQuery(
     api.auth.passkeys.getUser,
-    shouldQueryConvex ? { userId: state.userId } : "skip"
+    shouldQueryConvex && state.userId ? { userId: state.userId } : "skip"
   );
 
   // Update user when data changes
@@ -224,7 +224,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         ...prev,
         user: {
           id: userData._id,
-          displayName: userData.displayName,
+          displayName: userData.displayName ?? "",
           solanaAddress: userData.solanaAddress,
           ethereumAddress: userData.ethereumAddress,
           kycStatus: userData.kycStatus,
@@ -389,10 +389,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           signature: authResult.response.signature,
           authenticatorData: authResult.response.authenticatorData,
           clientDataJSON: authResult.response.clientDataJSON,
-          challenge,
         });
 
-        if (result.verified && result.userId) {
+        if (result.userId) {
           // Store user ID
           await storage.setItem(USER_ID_KEY, result.userId);
           await storeCredential({
@@ -675,10 +674,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           credentialId: registrationResult.id,
           publicKey: registrationResult.response.publicKey || "",
           displayName,
-          deviceInfo: {
-            platform: "mobile",
-            userAgent: "DisCard Mobile App",
-          },
         });
 
         // Store credentials
@@ -734,7 +729,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     logout: async (): Promise<void> => {
       try {
         if (state.userId) {
-          await logoutMutation({ userId: state.userId });
+          await logoutMutation();
         }
       } catch (error) {
         console.error("Logout error:", error);
