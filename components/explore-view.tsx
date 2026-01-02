@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { StyleSheet, View, Pressable, TextInput, ScrollView, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -204,6 +205,18 @@ export function ExploreView() {
               filteredTokens.map((token) => (
                 <Pressable
                   key={token.mint}
+                  onPress={() => router.push({
+                    pathname: '/token-detail',
+                    params: {
+                      id: token.mint,
+                      symbol: token.symbol,
+                      name: token.name,
+                      price: token.priceUsd.toString(),
+                      change24h: token.change24h.toString(),
+                      volume24h: token.volume24h.toString(),
+                      logoUri: token.logoUri || '',
+                    },
+                  })}
                   style={({ pressed }) => [styles.tokenRow, pressed && styles.rowPressed]}
                 >
                   <View style={styles.tokenInfo}>
@@ -289,6 +302,20 @@ export function ExploreView() {
               filteredMarkets.map((market) => (
                 <Pressable
                   key={market.marketId}
+                  onPress={() => router.push({
+                    pathname: '/market-detail',
+                    params: {
+                      id: market.marketId,
+                      question: market.question,
+                      category: market.category,
+                      yesPrice: market.yesPrice.toString(),
+                      noPrice: market.noPrice.toString(),
+                      volume24h: market.volume24h.toString(),
+                      endDate: market.endDate,
+                      ticker: market.ticker,
+                      resolutionSource: market.resolutionSource || '',
+                    },
+                  })}
                   style={({ pressed }) => [styles.marketCard, { backgroundColor: cardBg }, pressed && styles.rowPressed]}
                 >
                   <View style={styles.marketHeader}>
@@ -372,6 +399,18 @@ export function ExploreView() {
               filteredRWA.map((asset) => (
                 <Pressable
                   key={asset.mint}
+                  onPress={() => router.push({
+                    pathname: '/asset-detail',
+                    params: {
+                      id: asset.mint,
+                      symbol: asset.symbol,
+                      issuer: asset.issuer,
+                      type: asset.type,
+                      yield: asset.expectedYield?.toString() || '',
+                      minInvestment: asset.minInvestment?.toString() || '',
+                      description: asset.description || '',
+                    },
+                  })}
                   style={({ pressed }) => [styles.rwaRow, pressed && styles.rowPressed]}
                 >
                   <View style={styles.rwaInfo}>

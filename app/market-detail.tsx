@@ -1,110 +1,79 @@
+import { useEffect } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
 import { MarketDetailScreen } from '@/components/market-detail-screen';
 
-// Mock market data - in a real app this would come from a store or API
-const mockMarkets: Record<string, {
-  question: string;
-  category: string;
-  volume: string;
-  yesPrice: number;
-  noPrice: number;
-  expiresIn: string;
-  traders: number;
-  trending?: boolean;
-  description?: string;
-  resolutionSource?: string;
-  position?: {
-    side: 'yes' | 'no';
-    shares: number;
-    avgPrice: number;
-    currentValue: number;
-    pnl: number;
-    pnlPercent: number;
-  };
-}> = {
-  'btc-100k': {
-    question: 'Will BTC reach $100k by EOY 2025?',
-    category: 'Crypto',
-    volume: '$4.2M',
-    yesPrice: 0.72,
-    noPrice: 0.28,
-    expiresIn: '182d',
-    traders: 12847,
-    trending: true,
-    description: 'This market will resolve to YES if Bitcoin reaches or exceeds $100,000 USD on any major exchange before December 31, 2025 11:59 PM ET.',
-    resolutionSource: 'CoinGecko',
-  },
-  'fed-rate-cut': {
-    question: 'Fed cuts rates in January?',
-    category: 'Economy',
-    volume: '$2.8M',
-    yesPrice: 0.82,
-    noPrice: 0.18,
-    expiresIn: '18d',
-    traders: 8934,
-    trending: true,
-    description: 'This market will resolve to YES if the Federal Reserve announces a rate cut at the January FOMC meeting.',
-    resolutionSource: 'Federal Reserve',
-    position: {
-      side: 'yes',
-      shares: 500,
-      avgPrice: 0.65,
-      currentValue: 410,
-      pnl: 85,
-      pnlPercent: 26.15,
-    },
-  },
-  'eth-5k': {
-    question: 'ETH > $5k by March 2025?',
-    category: 'Crypto',
-    volume: '$1.8M',
-    yesPrice: 0.68,
-    noPrice: 0.32,
-    expiresIn: '47d',
-    traders: 6521,
-    description: 'This market will resolve to YES if Ethereum reaches or exceeds $5,000 USD on any major exchange before March 31, 2025.',
-    resolutionSource: 'CoinGecko',
-    position: {
-      side: 'yes',
-      shares: 500,
-      avgPrice: 0.42,
-      currentValue: 340,
-      pnl: 130,
-      pnlPercent: 61.90,
-    },
-  },
+// Helper to calculate time remaining from end date
+const getTimeRemaining = (endDate: string): string => {
+  const end = new Date(endDate);
+  const now = new Date();
+  const diffMs = end.getTime() - now.getTime();
+  if (diffMs <= 0) return 'Ended';
+  const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  if (days > 30) return `${Math.floor(days / 30)}mo`;
+  return `${days}d`;
+};
+
+// Helper to format volume
+const formatVolume = (volume: number): string => {
+  if (volume >= 1_000_000_000) return `$${(volume / 1_000_000_000).toFixed(1)}B`;
+  if (volume >= 1_000_000) return `$${(volume / 1_000_000).toFixed(1)}M`;
+  if (volume >= 1_000) return `$${(volume / 1_000).toFixed(1)}K`;
+  return `$${volume.toFixed(0)}`;
 };
 
 export default function MarketDetailRoute() {
-  const { id } = useLocalSearchParams<{ id: string }>();
-  
-  const marketData = id ? mockMarkets[id] : Object.values(mockMarkets)[0];
+  const params = useLocalSearchParams<{
+    id: string; // DFlow market ID
+    question?: string;
+    category?: string;
+    yesPrice?: string;
+    noPrice?: string;
+    volume24h?: string;
+    endDate?: string;
+    ticker?: string;
+    resolutionSource?: string;
+  }>();
+
+  // Build market data from route params (real API data)
+  const marketData = params.question ? {
+    marketId: params.id,
+    question: params.question,
+    category: params.category || 'Other',
+    volume: formatVolume(parseFloat(params.volume24h || '0')),
+    yesPrice: parseFloat(params.yesPrice || '0.5'),
+    noPrice: parseFloat(params.noPrice || '0.5'),
+    expiresIn: params.endDate ? getTimeRemaining(params.endDate) : 'TBD',
+    ticker: params.ticker,
+    resolutionSource: params.resolutionSource,
+    traders: 0, // Would come from API
+  } : null;
+
+  useEffect(() => {
+    if (!marketData) {
+      router.back();
+    }
+  }, [marketData]);
 
   if (!marketData) {
-    router.back();
     return null;
   }
 
-  const { position, ...market } = marketData;
-
   return (
     <MarketDetailScreen
-      market={market}
-      position={position}
+      market={marketData}
       onBack={() => router.back()}
       onBuyYes={() => {
-        // Handle buy YES
+        // TODO: Navigate to DFlow buy YES flow
         router.back();
       }}
       onBuyNo={() => {
-        // Handle buy NO
+        // TODO: Navigate to DFlow buy NO flow
         router.back();
       }}
       onSell={() => {
-        // Handle sell position
+        // TODO: Navigate to DFlow sell flow
         router.back();
       }}
     />
   );
 }
-

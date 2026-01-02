@@ -15,6 +15,8 @@ interface AssetDetailProps {
     image: string;
     value: number;
     change: number;
+    mint?: string; // Solana mint address
+    issuer?: string;
     // NFT specific
     collection?: string;
     tokenId?: string;
@@ -26,6 +28,7 @@ interface AssetDetailProps {
     minInvest?: string;
     totalValue?: string;
     location?: string;
+    description?: string;
     // DePIN specific
     earnings?: number;
     uptime?: string;
@@ -62,9 +65,24 @@ export function AssetDetailScreen({
   );
 
   const handleCopyAddress = async () => {
-    await Clipboard.setStringAsync(`0x1a2b3c...${asset.name.slice(0, 4)}`);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    if (asset.mint) {
+      await Clipboard.setStringAsync(asset.mint);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  // Format Solana address for display
+  const formatAddress = (address?: string) => {
+    if (!address) return 'N/A';
+    return `${address.slice(0, 4)}...${address.slice(-4)}`;
+  };
+
+  // Open Solscan explorer
+  const handleOpenExplorer = () => {
+    if (asset.mint) {
+      console.log(`Opening Solscan: https://solscan.io/token/${asset.mint}`);
+    }
   };
 
   const isPositive = asset.change >= 0;
@@ -326,27 +344,29 @@ export function AssetDetailScreen({
           )}
         </View>
 
-        {/* Contract Info */}
-        <ThemedView style={styles.contractCard} lightColor="#f4f4f5" darkColor="#1c1c1e">
-          <ThemedText style={[styles.statsTitle, { color: mutedColor }]}>Contract</ThemedText>
-          <View style={styles.contractRow}>
-            <ThemedText style={[styles.contractAddress, { color: mutedColor }]}>
-              0x1a2b...{asset.name.slice(0, 4).toLowerCase()}
-            </ThemedText>
-            <View style={styles.contractActions}>
-              <Pressable onPress={handleCopyAddress} style={styles.contractButton}>
-                <Ionicons
-                  name={copied ? 'checkmark' : 'copy-outline'}
-                  size={16}
-                  color={copied ? '#22c55e' : mutedColor}
-                />
-              </Pressable>
-              <Pressable style={styles.contractButton}>
-                <Ionicons name="open-outline" size={16} color={mutedColor} />
-              </Pressable>
+        {/* Contract Info - Solana */}
+        {asset.mint && (
+          <ThemedView style={styles.contractCard} lightColor="#f4f4f5" darkColor="#1c1c1e">
+            <ThemedText style={[styles.statsTitle, { color: mutedColor }]}>Solana Contract</ThemedText>
+            <View style={styles.contractRow}>
+              <ThemedText style={[styles.contractAddress, { color: mutedColor }]}>
+                {formatAddress(asset.mint)}
+              </ThemedText>
+              <View style={styles.contractActions}>
+                <Pressable onPress={handleCopyAddress} style={styles.contractButton}>
+                  <Ionicons
+                    name={copied ? 'checkmark' : 'copy-outline'}
+                    size={16}
+                    color={copied ? '#22c55e' : mutedColor}
+                  />
+                </Pressable>
+                <Pressable onPress={handleOpenExplorer} style={styles.contractButton}>
+                  <Ionicons name="open-outline" size={16} color={mutedColor} />
+                </Pressable>
+              </View>
             </View>
-          </View>
-        </ThemedView>
+          </ThemedView>
+        )}
       </ScrollView>
     </ThemedView>
   );

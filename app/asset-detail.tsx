@@ -1,69 +1,45 @@
+import { useEffect } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
 import { AssetDetailScreen } from '@/components/asset-detail-screen';
-
-// Mock asset data - in a real app this would come from a store or API
-const mockAssets: Record<string, {
-  name: string;
-  type: 'nft' | 'rwa' | 'depin';
-  image: string;
-  value: number;
-  change: number;
-  collection?: string;
-  tokenId?: string;
-  rarity?: string;
-  floorPrice?: number;
-  lastSale?: number;
-  yield?: number;
-  minInvest?: string;
-  totalValue?: string;
-  location?: string;
-  earnings?: number;
-  uptime?: string;
-  network?: string;
-}> = {
-  'bored-ape-7284': {
-    name: 'Bored Ape #7284',
-    type: 'nft',
-    image: '/bored-ape-nft-pixel-art.jpg',
-    value: 42500,
-    change: -8.2,
-    collection: 'Bored Ape Yacht Club',
-    tokenId: '7284',
-    rarity: 'Rare',
-    floorPrice: 38000,
-    lastSale: 45000,
-  },
-  'manhattan-re': {
-    name: 'Manhattan RE Token',
-    type: 'rwa',
-    image: '/manhattan-building-token.jpg',
-    value: 25000,
-    change: 2.1,
-    yield: 8.2,
-    minInvest: '$100',
-    totalValue: '$45M',
-    location: 'NYC',
-  },
-  'helium-hotspot': {
-    name: 'Helium Hotspot #12847',
-    type: 'depin',
-    image: '/helium-hotspot-device.png',
-    value: 3200,
-    change: 15.4,
-    earnings: 42,
-    uptime: '99.8%',
-    network: 'Helium',
-  },
-};
+import type { RwaType } from '@/types/holdings.types';
 
 export default function AssetDetailRoute() {
-  const { id, owned } = useLocalSearchParams<{ id: string; owned?: string }>();
-  
-  const asset = id ? mockAssets[id] : Object.values(mockAssets)[0];
-  const isOwned = owned === 'true';
+  const params = useLocalSearchParams<{
+    id: string; // Solana mint address
+    symbol?: string;
+    issuer?: string;
+    type?: string;
+    yield?: string;
+    minInvestment?: string;
+    description?: string;
+  }>();
+
+  // Build RWA asset data from route params (real API data)
+  const asset = params.symbol ? {
+    name: params.symbol,
+    type: 'rwa' as const, // All assets from explore are RWA on Solana
+    mint: params.id, // Solana mint address
+    issuer: params.issuer || 'Unknown',
+    rwaType: (params.type || 'tokenized-fund') as RwaType,
+    image: '', // Would come from token metadata
+    value: 0, // Would come from user holdings
+    change: 0, // Would come from price API
+    yield: params.yield ? parseFloat(params.yield) : undefined,
+    minInvest: params.minInvestment
+      ? `$${(parseFloat(params.minInvestment) / 1000).toFixed(0)}K`
+      : undefined,
+    description: params.description,
+  } : null;
+
+  const isOwned = false; // Would check against user's holdings
+
+  useEffect(() => {
+    if (!asset) {
+      router.back();
+    }
+  }, [asset]);
 
   if (!asset) {
-    router.back();
     return null;
   }
 
@@ -73,22 +49,21 @@ export default function AssetDetailRoute() {
       owned={isOwned}
       onBack={() => router.back()}
       onBuy={() => {
-        // Navigate to buy flow
+        // TODO: Navigate to buy flow for RWA token
         router.back();
       }}
       onSell={() => {
-        // Navigate to sell flow
+        // TODO: Navigate to sell flow
         router.back();
       }}
       onSend={() => {
-        // Navigate to send flow
+        // TODO: Navigate to Solana send flow with mint address
         router.back();
       }}
       onList={() => {
-        // Navigate to list flow
+        // TODO: Navigate to list on marketplace
         router.back();
       }}
     />
   );
 }
-

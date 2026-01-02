@@ -20,6 +20,8 @@ interface TokenDetailProps {
     volume24h?: string;
     supply?: string;
     rank?: number;
+    mint?: string; // Solana mint address
+    logoUri?: string;
   };
   owned?: {
     balance: string;
@@ -97,13 +99,49 @@ export function TokenDetailScreen({
   };
 
   const handleCopyAddress = async () => {
-    await Clipboard.setStringAsync(`${token.symbol.toLowerCase()}.contract.eth`);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    if (token.mint) {
+      await Clipboard.setStringAsync(token.mint);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  // Format Solana address for display (first 4...last 4)
+  const formatAddress = (address?: string) => {
+    if (!address) return 'N/A';
+    return `${address.slice(0, 4)}...${address.slice(-4)}`;
+  };
+
+  // Open Solscan explorer
+  const handleOpenExplorer = () => {
+    if (token.mint) {
+      // Would use Linking.openURL in real implementation
+      console.log(`Opening Solscan: https://solscan.io/token/${token.mint}`);
+    }
+  };
+
+  // Format volume for display
+  const formatVolume = (volume?: string | number): string => {
+    if (!volume) return 'N/A';
+    const num = typeof volume === 'string' ? parseFloat(volume) : volume;
+    if (isNaN(num)) return 'N/A';
+    if (num >= 1_000_000_000) return `$${(num / 1_000_000_000).toFixed(2)}B`;
+    if (num >= 1_000_000) return `$${(num / 1_000_000).toFixed(2)}M`;
+    if (num >= 1_000) return `$${(num / 1_000).toFixed(2)}K`;
+    return `$${num.toFixed(2)}`;
+  };
+
+  // Format price for display
+  const formatPrice = (price: number): string => {
+    if (price >= 1000) return price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    if (price >= 1) return price.toFixed(2);
+    if (price >= 0.01) return price.toFixed(4);
+    return price.toFixed(6);
   };
 
   const isPositive = token.change24h >= 0;
   const chartColor = isPositive ? '#22c55e' : '#ef4444';
+  const buyButtonColor = '#22c55e'; // Consistent green for buy button
 
   return (
     <ThemedView style={styles.container}>
@@ -140,7 +178,7 @@ export function TokenDetailScreen({
         {/* Price Section */}
         <View style={styles.priceSection}>
           <ThemedText style={styles.priceValue}>
-            ${token.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            ${formatPrice(token.price)}
           </ThemedText>
           <View style={styles.changeRow}>
             <Ionicons
@@ -289,9 +327,9 @@ export function TokenDetailScreen({
             </>
           ) : (
             <View style={styles.buyRow}>
-              <Pressable onPress={onBuy} style={[styles.buyButton, { backgroundColor: primaryColor }]}>
+              <Pressable onPress={onBuy} style={[styles.buyButton, { backgroundColor: buyButtonColor }]}>
                 <Ionicons name="add" size={20} color="#fff" />
-                <ThemedText style={styles.buyButtonText}>Buy {token.symbol}</ThemedText>
+                <ThemedText style={[styles.buyButtonText, { color: '#fff' }]}>Buy {token.symbol}</ThemedText>
               </Pressable>
               <Pressable
                 onPress={() => setIsWatchlisted(!isWatchlisted)}
@@ -328,7 +366,7 @@ export function TokenDetailScreen({
             {token.volume24h && (
               <View style={styles.marketRow}>
                 <ThemedText style={[styles.marketLabel, { color: mutedColor }]}>24h Volume</ThemedText>
-                <ThemedText style={styles.marketValue}>{token.volume24h}</ThemedText>
+                <ThemedText style={styles.marketValue}>{formatVolume(token.volume24h)}</ThemedText>
               </View>
             )}
             {token.supply && (
@@ -346,27 +384,29 @@ export function TokenDetailScreen({
           </View>
         </ThemedView>
 
-        {/* Contract Info */}
-        <ThemedView style={styles.contractCard} lightColor="#f4f4f5" darkColor="#1c1c1e">
-          <ThemedText style={[styles.sectionTitle, { color: mutedColor }]}>Contract</ThemedText>
-          <View style={styles.contractRow}>
-            <ThemedText style={[styles.contractAddress, { color: mutedColor }]}>
-              {token.symbol.toLowerCase()}.contract...eth
-            </ThemedText>
-            <View style={styles.contractActions}>
-              <Pressable onPress={handleCopyAddress} style={styles.contractButton}>
-                <Ionicons
-                  name={copied ? 'checkmark' : 'copy-outline'}
-                  size={16}
-                  color={copied ? '#22c55e' : mutedColor}
-                />
-              </Pressable>
-              <Pressable style={styles.contractButton}>
-                <Ionicons name="open-outline" size={16} color={mutedColor} />
-              </Pressable>
+        {/* Contract Info - Solana */}
+        {token.mint && (
+          <ThemedView style={styles.contractCard} lightColor="#f4f4f5" darkColor="#1c1c1e">
+            <ThemedText style={[styles.sectionTitle, { color: mutedColor }]}>Solana Contract</ThemedText>
+            <View style={styles.contractRow}>
+              <ThemedText style={[styles.contractAddress, { color: mutedColor }]}>
+                {formatAddress(token.mint)}
+              </ThemedText>
+              <View style={styles.contractActions}>
+                <Pressable onPress={handleCopyAddress} style={styles.contractButton}>
+                  <Ionicons
+                    name={copied ? 'checkmark' : 'copy-outline'}
+                    size={16}
+                    color={copied ? '#22c55e' : mutedColor}
+                  />
+                </Pressable>
+                <Pressable onPress={handleOpenExplorer} style={styles.contractButton}>
+                  <Ionicons name="open-outline" size={16} color={mutedColor} />
+                </Pressable>
+              </View>
             </View>
-          </View>
-        </ThemedView>
+          </ThemedView>
+        )}
       </ScrollView>
     </ThemedView>
   );
@@ -424,14 +464,17 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingHorizontal: 16,
+    paddingTop: 8,
   },
   priceSection: {
     alignItems: 'center',
     marginBottom: 20,
+    paddingTop: 4,
   },
   priceValue: {
     fontSize: 36,
     fontWeight: '300',
+    lineHeight: 44,
     marginBottom: 4,
   },
   changeRow: {
