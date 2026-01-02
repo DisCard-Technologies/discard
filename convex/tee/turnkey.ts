@@ -15,6 +15,31 @@ import {
   internalAction,
 } from "../_generated/server";
 import { Id } from "../_generated/dataModel";
+import { Turnkey } from "@turnkey/sdk-server";
+
+// ============================================================================
+// Turnkey API Configuration
+// ============================================================================
+
+const TURNKEY_API_BASE_URL = process.env.TURNKEY_API_BASE_URL || "https://api.turnkey.com";
+const TURNKEY_API_PUBLIC_KEY = process.env.TURNKEY_API_PUBLIC_KEY;
+const TURNKEY_API_PRIVATE_KEY = process.env.TURNKEY_API_PRIVATE_KEY;
+const TURNKEY_ORGANIZATION_ID = process.env.TURNKEY_ORGANIZATION_ID;
+
+// Wallet account configurations for multi-chain support
+const SOLANA_WALLET_ACCOUNT = {
+  curve: "CURVE_ED25519" as const,
+  pathFormat: "PATH_FORMAT_BIP32" as const,
+  path: "m/44'/501'/0'/0'",
+  addressFormat: "ADDRESS_FORMAT_SOLANA" as const,
+};
+
+const ETHEREUM_WALLET_ACCOUNT = {
+  curve: "CURVE_SECP256K1" as const,
+  pathFormat: "PATH_FORMAT_BIP32" as const,
+  path: "m/44'/60'/0'/0/0",
+  addressFormat: "ADDRESS_FORMAT_ETHEREUM" as const,
+};
 
 // ============================================================================
 // Validators
@@ -499,6 +524,172 @@ export const resetDailySpending = internalMutation({
         updatedAt: now,
       });
     }
+  },
+});
+
+// ============================================================================
+// Actions - Turnkey API Calls
+// ============================================================================
+
+/**
+ * Create a Turnkey sub-organization with Solana and Ethereum wallets
+ * This is called during user registration to create TEE-managed wallets
+ *
+ * NON-CUSTODIAL: User provides passkey attestation, giving them sole control of wallet
+ */
+export const createSubOrganization = action({
+  args: {
+    displayName: v.string(),
+    userEmail: v.optional(v.string()),
+    // Passkey attestation from client for non-custodial wallet
+    passkey: v.object({
+      authenticatorName: v.string(),
+      challenge: v.string(), // Base64 encoded
+      attestation: v.object({
+        credentialId: v.string(), // Base64 URL encoded
+        clientDataJson: v.string(), // Base64 encoded
+        attestationObject: v.string(), // Base64 encoded
+        transports: v.array(v.string()), // e.g., ["AUTHENTICATOR_TRANSPORT_INTERNAL"]
+      }),
+    }),
+  },
+  handler: async (ctx, args): Promise<{
+    subOrganizationId: string;
+    walletId: string;
+    solanaAddress: string;
+    solanaPublicKey: string;
+    ethereumAddress: string;
+    rootUserId: string;
+  }> => {
+    // Validate configuration
+    if (!TURNKEY_API_PUBLIC_KEY || !TURNKEY_API_PRIVATE_KEY || !TURNKEY_ORGANIZATION_ID) {
+      throw new Error("Turnkey API credentials not configured");
+    }
+
+    // Initialize Turnkey client
+    const turnkeyClient = new Turnkey({
+      apiBaseUrl: TURNKEY_API_BASE_URL,
+      apiPublicKey: TURNKEY_API_PUBLIC_KEY,
+      apiPrivateKey: TURNKEY_API_PRIVATE_KEY,
+      defaultOrganizationId: TURNKEY_ORGANIZATION_ID,
+    });
+
+    const apiClient = turnkeyClient.apiClient();
+
+    // Generate unique sub-org name
+    const subOrgName = `DisCard-${args.displayName}-${Date.now()}`;
+
+    console.log("[Turnkey] Creating non-custodial sub-organization with passkey:", subOrgName);
+
+    // Create sub-organization with user's passkey as the root authenticator
+    // This gives the user sole control over their wallet (non-custodial)
+    const response = await apiClient.createSubOrganization({
+      subOrganizationName: subOrgName,
+      rootUsers: [{
+        userName: args.displayName,
+        userEmail: args.userEmail,
+        apiKeys: [],
+        authenticators: [{
+          authenticatorName: args.passkey.authenticatorName,
+          challenge: args.passkey.challenge,
+          attestation: {
+            credentialId: args.passkey.attestation.credentialId,
+            clientDataJson: args.passkey.attestation.clientDataJson,
+            attestationObject: args.passkey.attestation.attestationObject,
+            transports: args.passkey.attestation.transports as any,
+          },
+        }],
+        oauthProviders: [],
+      }],
+      rootQuorumThreshold: 1,
+      wallet: {
+        walletName: `${args.displayName} Wallet`,
+        accounts: [
+          SOLANA_WALLET_ACCOUNT,
+          ETHEREUM_WALLET_ACCOUNT,
+        ],
+      },
+      disableEmailRecovery: true,
+      disableEmailAuth: true,
+      disableSmsAuth: true,
+      disableOtpEmailAuth: true,
+    });
+
+    // Extract wallet addresses from response
+    const subOrganizationId = response.subOrganizationId;
+    const walletId = response.wallet?.walletId;
+    const addresses = response.wallet?.addresses || [];
+    const rootUserIds = response.rootUserIds || [];
+
+    if (!walletId || addresses.length < 2) {
+      throw new Error("Failed to create wallet with required addresses");
+    }
+
+    // First address is Solana, second is Ethereum (in order of accounts array)
+    const solanaAddress = addresses[0];
+    const ethereumAddress = addresses[1];
+    const rootUserId = rootUserIds[0] || "";
+
+    console.log("[Turnkey] Non-custodial sub-organization created:", {
+      subOrganizationId,
+      walletId,
+      solanaAddress,
+      ethereumAddress,
+      rootUserId,
+    });
+
+    return {
+      subOrganizationId,
+      walletId,
+      solanaAddress,
+      solanaPublicKey: solanaAddress, // For Solana, address is the public key
+      ethereumAddress,
+      rootUserId,
+    };
+  },
+});
+
+/**
+ * Sign a Solana transaction using Turnkey
+ * Requires the user's sub-organization ID and wallet address
+ */
+export const signSolanaTransaction = action({
+  args: {
+    subOrganizationId: v.string(),
+    walletAddress: v.string(),
+    unsignedTransaction: v.string(), // Base64 encoded transaction
+  },
+  handler: async (ctx, args): Promise<{ signature: string }> => {
+    if (!TURNKEY_API_PUBLIC_KEY || !TURNKEY_API_PRIVATE_KEY || !TURNKEY_ORGANIZATION_ID) {
+      throw new Error("Turnkey API credentials not configured");
+    }
+
+    const turnkeyClient = new Turnkey({
+      apiBaseUrl: TURNKEY_API_BASE_URL,
+      apiPublicKey: TURNKEY_API_PUBLIC_KEY,
+      apiPrivateKey: TURNKEY_API_PRIVATE_KEY,
+      defaultOrganizationId: args.subOrganizationId,
+    });
+
+    const apiClient = turnkeyClient.apiClient();
+
+    console.log("[Turnkey] Signing Solana transaction for:", args.walletAddress);
+
+    const response = await apiClient.signRawPayload({
+      signWith: args.walletAddress,
+      payload: args.unsignedTransaction,
+      encoding: "PAYLOAD_ENCODING_HEXADECIMAL",
+      hashFunction: "HASH_FUNCTION_NO_OP",
+    });
+
+    if (!response.r || !response.s) {
+      throw new Error("Failed to sign transaction");
+    }
+
+    // Combine r and s into signature
+    const signature = response.r + response.s;
+
+    return { signature };
   },
 });
 

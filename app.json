@@ -19,6 +19,10 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "app.discard",
+      "associatedDomains": [
+        "webcredentials:discard.tech",
+        "applinks:discard.tech"
+      ],
       "infoPlist": {
         "NSFaceIDUsageDescription": "DisCard uses Face ID to securely authenticate transactions and access your wallet."
       }

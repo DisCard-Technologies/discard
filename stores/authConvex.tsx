@@ -13,7 +13,7 @@ import React, {
   useCallback,
 } from "react";
 import { Platform } from "react-native";
-import { useMutation, useQuery } from "convex/react";
+import { useMutation, useQuery, useAction } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import * as SecureStore from "expo-secure-store";
@@ -30,10 +30,29 @@ try {
   console.log("[Auth] react-native-passkey not available (Expo Go mode)");
 }
 
+// Turnkey React Native Passkey Stamper for non-custodial wallets
+let PasskeyStamper: any = null;
+let createPasskey: any = null;
+try {
+  const turnkeyPasskey = require("@turnkey/react-native-passkey-stamper");
+  PasskeyStamper = turnkeyPasskey.PasskeyStamper;
+  createPasskey = turnkeyPasskey.createPasskey;
+} catch (e) {
+  console.log("[Auth] @turnkey/react-native-passkey-stamper not available");
+}
+
 // Check if native passkey module is available
 function isPasskeyAvailable(): boolean {
   return Passkey !== null && typeof Passkey?.register === "function";
 }
+
+// Check if Turnkey passkey stamper is available
+function isTurnkeyPasskeyAvailable(): boolean {
+  return createPasskey !== null && typeof createPasskey === "function";
+}
+
+// Turnkey configuration - your app's domain for passkey binding
+const TURNKEY_RP_ID = "discard.tech";
 
 // Helper to check if userId is a local-only (not in Convex) ID
 // Now most users are in Convex, only offline/dev mode creates local IDs
@@ -181,12 +200,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     error: null,
   });
 
-  // Convex mutations
+  // Convex mutations and actions
   const registerPasskeyMutation = useMutation(api.auth.passkeys.registerPasskey);
   const verifyPasskeyMutation = useMutation(api.auth.passkeys.verifyPasskey);
   const registerBiometricMutation = useMutation(api.auth.passkeys.registerBiometric);
   const loginBiometricMutation = useMutation(api.auth.passkeys.loginBiometric);
   const logoutMutation = useMutation(api.auth.sessions.logout);
+  // Turnkey registration action - creates TEE-managed wallets
+  const registerWithTurnkeyAction = useAction(api.auth.passkeys.registerWithTurnkey);
 
   // Get user data from Convex (reactive)
   // Skip query for legacy local IDs (bio_user_*, dev_user_*, etc.)
@@ -443,7 +464,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const useStoredAuthOnly = !passkeyAvailable && (!hasHardware || !isEnrolled);
 
         if (useBiometricAuth) {
-          console.log("[Auth] Using biometric registration (Expo Go mode)");
+          console.log("[Auth] Using biometric registration with Turnkey TEE wallets");
 
           // Authenticate with biometrics to confirm device owner
           const biometricResult = await LocalAuthentication.authenticateAsync({
@@ -457,38 +478,102 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             throw new Error(errorMsg || "Biometric authentication failed");
           }
 
-          // Generate Solana wallet
-          console.log("[Auth] Generating Solana wallet...");
-          const wallet = await generateAndStoreSolanaWallet();
-
           // Generate unique credential ID for this device
           const credentialId = await generateCredentialId();
           await storage.setItem(CREDENTIAL_ID_KEY, credentialId);
 
-          // Try to register with Convex (creates backend user record)
+          // Register with Turnkey via Convex action
+          // This creates TEE-managed Solana + Ethereum wallets
           let userId: string;
-          let solanaAddress = wallet.publicKey;
+          let solanaAddress: string;
+          let ethereumAddress: string | undefined;
 
           try {
-            console.log("[Auth] Registering with Convex...");
-            const result = await registerBiometricMutation({
-              credentialId,
-              displayName,
-              solanaAddress: wallet.publicKey,
-              deviceInfo: {
-                platform: Platform.OS,
-              },
-            });
+            console.log("[Auth] Creating Turnkey non-custodial wallets...");
 
-            userId = result.userId;
-            solanaAddress = result.solanaAddress || wallet.publicKey;
-            console.log("[Auth] Convex registration successful:", userId);
-          } catch (convexError) {
-            // Offline or Convex unavailable - use local-only mode
-            console.warn("[Auth] Convex unavailable, using local-only mode:", convexError);
-            userId = `local_${Date.now()}`;
-            // Mark for sync later
-            await storage.setItem("pending_sync", "true");
+            // Check if Turnkey passkey stamper is available
+            if (isTurnkeyPasskeyAvailable()) {
+              console.log("[Auth] Using Turnkey passkey for non-custodial wallet");
+
+              // Generate a challenge for passkey creation
+              const challengeBytes = await Crypto.getRandomBytesAsync(32);
+              const challenge = btoa(String.fromCharCode(...challengeBytes));
+
+              // Create passkey using Turnkey's stamper
+              const passkeyResult = await createPasskey({
+                rpId: TURNKEY_RP_ID,
+                rpName: "DisCard",
+                userName: displayName || "DisCard User",
+                userDisplayName: displayName || "DisCard User",
+                challenge,
+                // Use platform authenticator (biometric)
+                authenticatorSelection: {
+                  authenticatorAttachment: "platform",
+                  residentKey: "required",
+                  userVerification: "required",
+                },
+              });
+
+              console.log("[Auth] Passkey created, attestation received");
+
+              // Register with Turnkey using passkey attestation (non-custodial)
+              const result = await registerWithTurnkeyAction({
+                credentialId,
+                displayName,
+                deviceInfo: {
+                  platform: Platform.OS,
+                },
+                passkey: {
+                  authenticatorName: `${Platform.OS}-passkey-${Date.now()}`,
+                  challenge: passkeyResult.encodedChallenge || challenge,
+                  attestation: {
+                    credentialId: passkeyResult.attestation.credentialId,
+                    clientDataJson: passkeyResult.attestation.clientDataJson,
+                    attestationObject: passkeyResult.attestation.attestationObject,
+                    transports: passkeyResult.attestation.transports || ["AUTHENTICATOR_TRANSPORT_INTERNAL"],
+                  },
+                },
+              });
+
+              userId = result.userId;
+              solanaAddress = result.solanaAddress;
+              ethereumAddress = result.ethereumAddress;
+
+              console.log("[Auth] Non-custodial Turnkey registration successful:", {
+                userId,
+                solanaAddress,
+                ethereumAddress,
+                isExistingUser: result.isExistingUser,
+              });
+            } else {
+              throw new Error("Turnkey passkey stamper not available");
+            }
+          } catch (turnkeyError) {
+            // Turnkey/Convex unavailable - fall back to local wallet generation
+            console.warn("[Auth] Turnkey unavailable, falling back to local keypair:", turnkeyError);
+
+            // Generate local Solana wallet as fallback
+            const wallet = await generateAndStoreSolanaWallet();
+            solanaAddress = wallet.publicKey;
+
+            // Try legacy biometric registration
+            try {
+              const result = await registerBiometricMutation({
+                credentialId,
+                displayName,
+                solanaAddress: wallet.publicKey,
+                deviceInfo: {
+                  platform: Platform.OS,
+                },
+              });
+              userId = result.userId;
+              solanaAddress = result.solanaAddress || wallet.publicKey;
+            } catch (convexError) {
+              // Complete offline - use local-only mode
+              console.warn("[Auth] Convex unavailable, using local-only mode:", convexError);
+              userId = `local_${Date.now()}`;
+              await storage.setItem("pending_sync", "true");
+            }
           }
 
           // Store credentials locally
@@ -496,7 +581,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           await storeCredential({
             credentialId,
             userId,
-            publicKey: wallet.publicKey,
+            publicKey: solanaAddress,
           });
 
           setState((prev) => ({
@@ -506,6 +591,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               id: userId,
               displayName: displayName,
               solanaAddress: solanaAddress,
+              ethereumAddress: ethereumAddress,
               kycStatus: "none",
               createdAt: Date.now(),
             },
@@ -513,10 +599,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             error: null,
           }));
 
-          console.log("[Auth] Biometric registration successful:", {
+          console.log("[Auth] Registration successful:", {
             userId,
             solanaAddress,
-            isConvexUser: !userId.startsWith("local_"),
+            ethereumAddress,
+            isTurnkeyWallet: !userId.startsWith("local_"),
           });
           return true;
         }

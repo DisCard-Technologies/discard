@@ -10,9 +10,10 @@
  * - Biometric authentication for transaction signing
  * - Derived Solana address from P-256 public key
  */
-import { mutation, query, internalMutation, internalQuery } from "../_generated/server";
+import { mutation, query, internalMutation, internalQuery, action } from "../_generated/server";
 import { v } from "convex/values";
 import { Doc, Id } from "../_generated/dataModel";
+import { api, internal } from "../_generated/api";
 
 // ============ QUERIES ============
 
@@ -518,6 +519,110 @@ export const loginBiometric = mutation({
   },
 });
 
+// ============ ACTIONS ============
+
+/**
+ * Register a new user with Turnkey TEE-managed wallets (NON-CUSTODIAL)
+ *
+ * This action:
+ * 1. Accepts passkey attestation from the client
+ * 2. Calls Turnkey API to create a sub-organization with the passkey as root authenticator
+ * 3. Creates the user record with wallet addresses
+ * 4. Creates the Turnkey organization record for future signing
+ *
+ * The user controls their wallet through their passkey (non-custodial)
+ */
+export const registerWithTurnkey = action({
+  args: {
+    credentialId: v.string(),        // Device-generated unique ID (from SecureStore)
+    displayName: v.optional(v.string()),
+    deviceInfo: v.optional(v.object({
+      platform: v.string(),
+      model: v.optional(v.string()),
+    })),
+    // Passkey attestation for non-custodial wallet
+    passkey: v.object({
+      authenticatorName: v.string(),
+      challenge: v.string(), // Base64 encoded
+      attestation: v.object({
+        credentialId: v.string(), // Base64 URL encoded
+        clientDataJson: v.string(), // Base64 encoded
+        attestationObject: v.string(), // Base64 encoded
+        transports: v.array(v.string()), // e.g., ["AUTHENTICATOR_TRANSPORT_INTERNAL"]
+      }),
+    }),
+  },
+  handler: async (ctx, args): Promise<{
+    userId: Id<"users">;
+    solanaAddress: string;
+    ethereumAddress: string;
+    isExistingUser: boolean;
+  }> => {
+    // Check if user already exists with this credential
+    const existingUser = await ctx.runQuery(internal.auth.passkeys.getByCredentialId, {
+      credentialId: args.credentialId,
+    });
+
+    if (existingUser) {
+      // Return existing user data
+      return {
+        userId: existingUser._id,
+        solanaAddress: existingUser.solanaAddress ?? "",
+        ethereumAddress: existingUser.ethereumAddress ?? "",
+        isExistingUser: true,
+      };
+    }
+
+    // Create Turnkey sub-organization with passkey authentication (non-custodial)
+    console.log("[Registration] Creating non-custodial Turnkey sub-organization for:", args.displayName || "User");
+
+    const turnkeyResult = await ctx.runAction(api.tee.turnkey.createSubOrganization, {
+      displayName: args.displayName || `User-${Date.now()}`,
+      passkey: args.passkey,
+    });
+
+    console.log("[Registration] Non-custodial Turnkey wallets created:", {
+      solanaAddress: turnkeyResult.solanaAddress,
+      ethereumAddress: turnkeyResult.ethereumAddress,
+    });
+
+    // Create user record with Turnkey wallet addresses
+    const userId = await ctx.runMutation(internal.auth.passkeys.createUserWithTurnkey, {
+      credentialId: args.credentialId,
+      displayName: args.displayName,
+      solanaAddress: turnkeyResult.solanaAddress,
+      ethereumAddress: turnkeyResult.ethereumAddress,
+    });
+
+    // Create Turnkey organization record (for future signing operations)
+    await ctx.runMutation(api.tee.turnkey.create, {
+      userId,
+      subOrganizationId: turnkeyResult.subOrganizationId,
+      rootUserId: turnkeyResult.rootUserId,
+      serviceUserId: turnkeyResult.rootUserId, // Same as root for now
+      walletId: turnkeyResult.walletId,
+      walletAddress: turnkeyResult.solanaAddress,
+      walletPublicKey: turnkeyResult.solanaPublicKey,
+      ethereumAddress: turnkeyResult.ethereumAddress,
+    });
+
+    // Activate the organization
+    const turnkeyOrg = await ctx.runQuery(api.tee.turnkey.getByUserId, { userId });
+    if (turnkeyOrg) {
+      await ctx.runMutation(api.tee.turnkey.activate, { id: turnkeyOrg._id });
+    }
+
+    console.log("[Registration] User created successfully with non-custodial wallet:", userId);
+
+    return {
+      userId,
+      solanaAddress: turnkeyResult.solanaAddress,
+      ethereumAddress: turnkeyResult.ethereumAddress,
+      isExistingUser: false,
+    };
+  },
+});
+
 /**
  * Update user's Solana address after Turnkey wallet creation
  * Called after the client creates a Turnkey sub-organization
@@ -579,6 +684,51 @@ export const updateEthereumAddress = mutation({
 });
 
 // ============ INTERNAL MUTATIONS ============
+
+/**
+ * Create user with Turnkey wallet addresses
+ * Called by the registerWithTurnkey action
+ */
+export const createUserWithTurnkey = internalMutation({
+  args: {
+    credentialId: v.string(),
+    displayName: v.optional(v.string()),
+    solanaAddress: v.string(),
+    ethereumAddress: v.string(),
+  },
+  handler: async (ctx, args): Promise<Id<"users">> => {
+    // Verify credential is not already used
+    const existing = await ctx.db
+      .query("users")
+      .withIndex("by_credential", (q) => q.eq("credentialId", args.credentialId))
+      .first();
+
+    if (existing) {
+      throw new Error("Credential already registered");
+    }
+
+    // Create user with Turnkey wallet addresses
+    const userId = await ctx.db.insert("users", {
+      credentialId: args.credentialId,
+      publicKey: new ArrayBuffer(0), // Empty - Turnkey manages keys
+      solanaAddress: args.solanaAddress,
+      ethereumAddress: args.ethereumAddress,
+      displayName: args.displayName,
+      privacySettings: {
+        dataRetention: 365,
+        analyticsOptOut: false,
+        transactionIsolation: true,
+      },
+      kycStatus: "none",
+      riskScore: 0,
+      accountStatus: "active",
+      lastActive: Date.now(),
+      createdAt: Date.now(),
+    });
+
+    return userId;
+  },
+});
 
 /**
  * Update user's KYC status (called by compliance module)
