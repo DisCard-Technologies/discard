@@ -161,13 +161,35 @@ export function useMoonPay(options: UseMoonPayOptions = {}): UseMoonPayReturn {
       setError(null);
 
       try {
-        // If custom options, we need to regenerate and sign
-        if (buyOptions?.currencyCode || buyOptions?.baseCurrencyAmount) {
-          // For now, just open with default params
-          // TODO: Support dynamic params by creating new SDK instance
-        }
+        const currency = buyOptions?.currencyCode || defaultCurrency;
+        const amount = buyOptions?.baseCurrencyAmount;
 
-        await buySdk.openWithInAppBrowser?.();
+        // Get the correct wallet address for the selected currency
+        const walletAddr = getWalletAddressForCurrency(currency, solanaAddress, ethereumAddress);
+
+        // Build the MoonPay URL with all params including amount
+        const baseUrl = MOONPAY_ENVIRONMENT === 'sandbox'
+          ? 'https://buy-sandbox.moonpay.com'
+          : 'https://buy.moonpay.com';
+
+        const params = new URLSearchParams({
+          apiKey: MOONPAY_API_KEY,
+          currencyCode: currency,
+          ...(walletAddr && { walletAddress: walletAddr }),
+          ...(amount && { baseCurrencyAmount: amount.toString() }),
+          showWalletAddressForm: walletAddr ? 'false' : 'true',
+        });
+
+        const urlToSign = `${baseUrl}?${params.toString()}`;
+        console.log('[MoonPay] Buy URL to sign:', urlToSign);
+
+        // Sign the URL
+        const { signature } = await signUrl({ urlToSign });
+        console.log('[MoonPay] Signature received:', signature);
+
+        // Open the signed URL
+        const signedUrl = `${urlToSign}&signature=${encodeURIComponent(signature)}`;
+        await WebBrowser.openBrowserAsync(signedUrl);
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Failed to open MoonPay';
         setError(message);
@@ -176,7 +198,7 @@ export function useMoonPay(options: UseMoonPayOptions = {}): UseMoonPayReturn {
         setIsLoading(false);
       }
     },
-    [buySdk]
+    [defaultCurrency, solanaAddress, ethereumAddress, signUrl]
   );
 
   /**
@@ -188,7 +210,34 @@ export function useMoonPay(options: UseMoonPayOptions = {}): UseMoonPayReturn {
       setError(null);
 
       try {
-        await sellSdk.openWithInAppBrowser?.();
+        const currency = sellOptions?.currencyCode || defaultCurrency;
+        const amount = sellOptions?.quoteCurrencyAmount;
+
+        // Get the correct wallet address for the selected currency
+        const walletAddr = getWalletAddressForCurrency(currency, solanaAddress, ethereumAddress);
+
+        // Build the MoonPay sell URL with all params
+        const baseUrl = MOONPAY_ENVIRONMENT === 'sandbox'
+          ? 'https://sell-sandbox.moonpay.com'
+          : 'https://sell.moonpay.com';
+
+        const params = new URLSearchParams({
+          apiKey: MOONPAY_API_KEY,
+          baseCurrencyCode: currency,
+          ...(walletAddr && { refundWalletAddress: walletAddr }),
+          ...(amount && { quoteCurrencyAmount: amount.toString() }),
+        });
+
+        const urlToSign = `${baseUrl}?${params.toString()}`;
+        console.log('[MoonPay] Sell URL to sign:', urlToSign);
+
+        // Sign the URL
+        const { signature } = await signUrl({ urlToSign });
+        console.log('[MoonPay] Signature received:', signature);
+
+        // Open the signed URL
+        const signedUrl = `${urlToSign}&signature=${encodeURIComponent(signature)}`;
+        await WebBrowser.openBrowserAsync(signedUrl);
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Failed to open MoonPay';
         setError(message);
@@ -197,7 +246,7 @@ export function useMoonPay(options: UseMoonPayOptions = {}): UseMoonPayReturn {
         setIsLoading(false);
       }
     },
-    [sellSdk]
+    [defaultCurrency, solanaAddress, ethereumAddress, signUrl]
   );
 
   return {
@@ -217,13 +266,13 @@ export function useMoonPay(options: UseMoonPayOptions = {}): UseMoonPayReturn {
 export function useQuickDeposit(walletAddress?: string | null) {
   const moonpay = useMoonPay({
     walletAddress,
-    defaultCurrency: 'eth',
+    defaultCurrency: 'usdc',
   });
 
   const deposit = useCallback(
     async (amount?: number) => {
       await moonpay.openBuy({
-        currencyCode: 'eth',
+        currencyCode: 'usdc',
         baseCurrencyAmount: amount,
       });
     },

@@ -20,11 +20,11 @@ import { useTokenHoldings } from '@/hooks/useTokenHoldings';
 // Supported currencies for selling (mapped to token symbols)
 // Network suffix: _sol = Solana, no suffix = Ethereum
 const CURRENCY_CONFIG = [
-  { code: 'eth', name: 'Ethereum', symbol: 'ETH', icon: '◇', network: 'ethereum' },
   { code: 'usdc', name: 'USD Coin (ETH)', symbol: 'USDC', icon: '$', network: 'ethereum' },
-  { code: 'usdt', name: 'Tether (ETH)', symbol: 'USDT', icon: '₮', network: 'ethereum' },
-  { code: 'sol', name: 'Solana', symbol: 'SOL', icon: '◎', network: 'solana' },
   { code: 'usdc_sol', name: 'USD Coin (SOL)', symbol: 'USDC', icon: '$', network: 'solana' },
+  { code: 'eth', name: 'Ethereum', symbol: 'ETH', icon: '◇', network: 'ethereum' },
+  { code: 'sol', name: 'Solana', symbol: 'SOL', icon: '◎', network: 'solana' },
+  { code: 'usdt', name: 'Tether (ETH)', symbol: 'USDT', icon: '₮', network: 'ethereum' },
 ];
 
 // Helper to get wallet address based on currency network
@@ -79,7 +79,7 @@ export default function SellCryptoScreen() {
   }, [holdings]);
 
   // Selected currency (default to first available or from params)
-  const initialCurrency = params.currency?.toLowerCase() || 'eth';
+  const initialCurrency = params.currency?.toLowerCase() || 'usdc';
   const [selectedCurrency, setSelectedCurrency] = useState<typeof availableCurrencies[0] | null>(null);
 
   // Set initial currency when holdings load
@@ -101,7 +101,7 @@ export default function SellCryptoScreen() {
   const { openSell, isReady, isLoading, error } = useMoonPay({
     solanaAddress,
     ethereumAddress,
-    defaultCurrency: selectedCurrency?.code || 'eth',
+    defaultCurrency: selectedCurrency?.code || 'usdc',
   });
 
   // Handle sell action
@@ -168,11 +168,11 @@ export default function SellCryptoScreen() {
               You don't have any supported tokens in your wallet. Deposit some crypto first to sell.
             </ThemedText>
             <Pressable
-              onPress={() => router.replace('/buy-crypto?currency=eth')}
+              onPress={() => router.replace('/buy-crypto?currency=usdc&mode=deposit')}
               style={[styles.emptyStateButton, { backgroundColor: '#22c55e' }]}
             >
               <Ionicons name="add" size={20} color="#fff" />
-              <ThemedText style={[styles.emptyStateButtonText, { color: '#fff' }]}>Buy Crypto</ThemedText>
+              <ThemedText style={[styles.emptyStateButtonText, { color: '#fff' }]}>Deposit USDC</ThemedText>
             </Pressable>
           </View>
         )}

@@ -19,11 +19,11 @@ import { useMoonPay } from '@/hooks/useMoonPay';
 // Supported currencies for purchase
 // Network suffix: _sol = Solana, no suffix = Ethereum
 const CURRENCIES = [
-  { code: 'eth', name: 'Ethereum', symbol: 'ETH', icon: '◇', network: 'ethereum' },
   { code: 'usdc', name: 'USD Coin (ETH)', symbol: 'USDC', icon: '$', network: 'ethereum' },
-  { code: 'usdt', name: 'Tether (ETH)', symbol: 'USDT', icon: '₮', network: 'ethereum' },
-  { code: 'sol', name: 'Solana', symbol: 'SOL', icon: '◎', network: 'solana' },
   { code: 'usdc_sol', name: 'USD Coin (SOL)', symbol: 'USDC', icon: '$', network: 'solana' },
+  { code: 'eth', name: 'Ethereum', symbol: 'ETH', icon: '◇', network: 'ethereum' },
+  { code: 'sol', name: 'Solana', symbol: 'SOL', icon: '◎', network: 'solana' },
+  { code: 'usdt', name: 'Tether (ETH)', symbol: 'USDT', icon: '₮', network: 'ethereum' },
 ];
 
 // Helper to get wallet address based on currency network
@@ -62,8 +62,8 @@ export default function BuyCryptoScreen() {
   const solanaAddress = user?.solanaAddress || null;
   const ethereumAddress = user?.ethereumAddress || null;
 
-  // Selected currency (default to ETH or from params)
-  const initialCurrency = params.currency?.toLowerCase() || 'eth';
+  // Selected currency (default to USDC or from params)
+  const initialCurrency = params.currency?.toLowerCase() || 'usdc';
   const [selectedCurrency, setSelectedCurrency] = useState(
     CURRENCIES.find((c) => c.code === initialCurrency) || CURRENCIES[0]
   );
