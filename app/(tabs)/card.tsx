@@ -45,12 +45,60 @@ export default function CardScreen() {
 
   const [showDetails, setShowDetails] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [loadingSecrets, setLoadingSecrets] = useState(false);
+  const [cardSecrets, setCardSecrets] = useState<{
+    pan: string;
+    cvv: string;
+    expirationMonth: number;
+    expirationYear: number;
+  } | null>(null);
+
+  // Get card operations including getCardSecrets
+  const { getCardSecrets } = useCardOperations();
 
   // Use real frozen state from card
   const cardFrozen = activeCard?.status === 'frozen';
 
-  const cardNumber = activeCard?.cardNumber || "4532 •••• •••• 8847";
-  const cardBalance = activeCard?.currentBalance ? (activeCard.currentBalance / 100) : 200;
+  // Format card number with spaces
+  const formatCardNumber = (pan: string) => {
+    return pan.replace(/(.{4})/g, '$1 ').trim();
+  };
+
+  // Display card number based on showDetails state and available data
+  const displayCardNumber = useMemo(() => {
+    if (!showDetails) {
+      return "•••• •••• •••• ••••";
+    }
+    if (cardSecrets?.pan) {
+      return formatCardNumber(cardSecrets.pan);
+    }
+    if (activeCard?.last4 && activeCard.last4 !== "0000") {
+      return `•••• •••• •••• ${activeCard.last4}`;
+    }
+    return "•••• •••• •••• ••••";
+  }, [showDetails, cardSecrets, activeCard]);
+
+  const cardBalance = activeCard?.currentBalance ? (activeCard.currentBalance / 100) : 0;
+
+  // Handle showing/hiding card details
+  const toggleDetails = async () => {
+    if (!showDetails && activeCard && !cardSecrets) {
+      // Fetch secrets when showing details
+      setLoadingSecrets(true);
+      try {
+        const secrets = await getCardSecrets(activeCard._id);
+        if (secrets) {
+          setCardSecrets(secrets);
+        }
+      } catch (error) {
+        console.error('Failed to get card secrets:', error);
+        Alert.alert('Error', 'Failed to load card details');
+      } finally {
+        setLoadingSecrets(false);
+      }
+    }
+    setShowDetails(!showDetails);
+  };
 
   // Command bar state
   const backdropOpacity = useSharedValue(0);
@@ -82,7 +130,11 @@ export default function CardScreen() {
   };
 
   const copyCardNumber = async () => {
-    await Clipboard.setStringAsync(cardNumber);
+    if (cardSecrets?.pan) {
+      await Clipboard.setStringAsync(cardSecrets.pan);
+    } else if (activeCard?.last4) {
+      await Clipboard.setStringAsync(`**** **** **** ${activeCard.last4}`);
+    }
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -131,19 +183,34 @@ export default function CardScreen() {
             <View style={styles.cardBody}>
               <View style={styles.cardNumberRow}>
                 <ThemedText style={styles.cardNumber}>
-                  {showDetails ? "4532 •••• •••• 8847" : "•••• •••• •••• ••••"}
+                  {loadingSecrets ? "Loading..." : displayCardNumber}
                 </ThemedText>
-                <Pressable 
-                  onPress={() => setShowDetails(!showDetails)}
+                <Pressable
+                  onPress={toggleDetails}
                   style={styles.eyeButton}
+                  disabled={loadingSecrets}
                 >
-                  <Ionicons 
-                    name={showDetails ? "eye-off" : "eye"} 
-                    size={18} 
-                    color={mutedColor} 
+                  <Ionicons
+                    name={loadingSecrets ? "hourglass-outline" : (showDetails ? "eye-off" : "eye")}
+                    size={18}
+                    color={mutedColor}
                   />
                 </Pressable>
               </View>
+              {showDetails && cardSecrets && (
+                <View style={styles.cardDetailsRow}>
+                  <View>
+                    <ThemedText style={[styles.cardLabel, { color: mutedColor }]}>CVV</ThemedText>
+                    <ThemedText style={styles.cardDetailValue}>{cardSecrets.cvv}</ThemedText>
+                  </View>
+                  <View>
+                    <ThemedText style={[styles.cardLabel, { color: mutedColor }]}>EXPIRES</ThemedText>
+                    <ThemedText style={styles.cardDetailValue}>
+                      {String(cardSecrets.expirationMonth).padStart(2, '0')}/{String(cardSecrets.expirationYear).slice(-2)}
+                    </ThemedText>
+                  </View>
+                </View>
+              )}
             </View>
 
             {/* Card Footer */}
@@ -395,6 +462,16 @@ const styles = StyleSheet.create({
   },
   eyeButton: {
     padding: 4,
+  },
+  cardDetailsRow: {
+    flexDirection: 'row',
+    gap: 24,
+    marginTop: 12,
+  },
+  cardDetailValue: {
+    fontSize: 14,
+    fontWeight: '500',
+    letterSpacing: 1,
   },
   cardFooter: {
     flexDirection: 'row',

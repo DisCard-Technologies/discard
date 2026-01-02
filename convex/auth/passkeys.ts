@@ -109,6 +109,21 @@ export const getUserById = internalQuery({
   },
 });
 
+/**
+ * Get user by credential ID (internal)
+ */
+export const getByCredentialId = internalQuery({
+  args: {
+    credentialId: v.string(),
+  },
+  handler: async (ctx, args): Promise<Doc<"users"> | null> => {
+    return await ctx.db
+      .query("users")
+      .withIndex("by_credential", (q) => q.eq("credentialId", args.credentialId))
+      .first();
+  },
+});
+
 // ============ MUTATIONS ============
 
 /**

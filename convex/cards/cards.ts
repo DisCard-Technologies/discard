@@ -7,7 +7,7 @@
  * - Balance management with authorization holds
  * - Self-healing card support
  */
-import { mutation, query, internalMutation, internalQuery } from "../_generated/server";
+import { mutation, query, action, internalMutation, internalQuery } from "../_generated/server";
 import { v } from "convex/values";
 import { Doc, Id } from "../_generated/dataModel";
 import { internal } from "../_generated/api";
@@ -54,10 +54,11 @@ export const list = query({
 
     // Filter by status if specified (and not "all")
     if (args.status && args.status !== "all") {
+      const statusFilter = args.status as "pending" | "active" | "paused" | "frozen" | "reissuing" | "terminated" | "deleted";
       cardsQuery = ctx.db
         .query("cards")
         .withIndex("by_user_status", (q) =>
-          q.eq("userId", user._id).eq("status", args.status as string)
+          q.eq("userId", user._id).eq("status", statusFilter)
         );
     }
 
@@ -143,6 +144,18 @@ export const getByMarqetaToken = internalQuery({
 });
 
 /**
+ * Get card by ID (internal - for use in internal actions)
+ */
+export const getCardById = internalQuery({
+  args: {
+    cardId: v.id("cards"),
+  },
+  handler: async (ctx, args): Promise<Doc<"cards"> | null> => {
+    return await ctx.db.get(args.cardId);
+  },
+});
+
+/**
  * Get active authorization holds for a card
  */
 export const getActiveHolds = query({
@@ -206,6 +219,52 @@ export const getTransactions = query({
       .take(args.limit ?? 50);
 
     return transactions;
+  },
+});
+
+// ============ ACTIONS ============
+
+/**
+ * Get card secrets (PAN, CVV) from Marqeta
+ * Requires authentication and card ownership verification
+ */
+export const getSecrets = action({
+  args: {
+    cardId: v.id("cards"),
+  },
+  handler: async (ctx, args): Promise<{
+    pan: string;
+    cvv: string;
+    expirationMonth: number;
+    expirationYear: number;
+  } | null> => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Not authenticated");
+    }
+
+    // Verify card ownership
+    const card = await ctx.runQuery(internal.cards.cards.getCardById, {
+      cardId: args.cardId,
+    });
+
+    if (!card) {
+      throw new Error("Card not found");
+    }
+
+    // Get user to verify ownership
+    const user = await ctx.runQuery(internal.auth.passkeys.getByCredentialId, {
+      credentialId: identity.subject,
+    });
+
+    if (!user || card.userId !== user._id) {
+      throw new Error("Unauthorized: card does not belong to user");
+    }
+
+    // Fetch secrets from Marqeta
+    return await ctx.runAction(internal.cards.marqeta.getCardSecrets, {
+      cardId: args.cardId,
+    });
   },
 });
 

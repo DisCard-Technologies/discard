@@ -27,7 +27,7 @@ export interface CardWithDetails {
   expirationMonth: number;
   expirationYear: number;
   cardType: "virtual" | "physical";
-  status: "pending" | "active" | "frozen" | "cancelled" | "reissuing";
+  status: "pending" | "active" | "paused" | "frozen" | "reissuing" | "terminated" | "deleted";
   spendingLimit: number;
   dailyLimit: number;
   monthlyLimit: number;
@@ -65,7 +65,13 @@ export interface CardsActions {
   loadCards: () => Promise<void>;
   createCard: (cardData: CreateCardRequest) => Promise<CardWithDetails | null>;
   getCardDetails: (cardId: string) => Promise<any | null>;
-  updateCardStatus: (cardId: string, status: CardWithDetails["status"]) => Promise<void>;
+  getCardSecrets: (cardId: string) => Promise<{
+    pan: string;
+    cvv: string;
+    expirationMonth: number;
+    expirationYear: number;
+  } | null>;
+  updateCardStatus: (cardId: string, status: "active" | "paused") => Promise<void>;
   deleteCard: (cardId: string) => Promise<boolean>;
   selectCard: (card: CardWithDetails | null) => void;
   clearSensitiveData: (cardId: string) => void;
@@ -116,7 +122,7 @@ export function CardsProvider({ children }: { children: ReactNode }) {
   const updateStatusMutation = useMutation(api.cards.cards.updateStatus);
 
   // Actions
-  const provisionCardAction = useAction(api.cards.marqeta.provisionCard);
+  const getSecretsAction = useAction(api.cards.cards.getSecrets);
 
   // Transform Convex cards to legacy format
   const cards: CardWithDetails[] = Array.isArray(cardsData?.cards) 
@@ -162,9 +168,8 @@ export function CardsProvider({ children }: { children: ReactNode }) {
         setCreateCardLoading(true);
         setError(null);
 
-        // Create card in Convex
+        // Create card in Convex - server-side mutation handles auth and schedules provisioning
         const cardId = await createCardMutation({
-          userId,
           nickname: cardData.nickname,
           color: cardData.color,
           spendingLimit: cardData.spendingLimit,
@@ -172,37 +177,9 @@ export function CardsProvider({ children }: { children: ReactNode }) {
           monthlyLimit: cardData.monthlyLimit,
           blockedMccCodes: cardData.blockedMccCodes,
           blockedCountries: cardData.blockedCountries,
-          privacyIsolated: cardData.privacyIsolated,
         });
 
-        // Provision with Marqeta
-        try {
-          const provisionResult = await provisionCardAction({
-            cardId,
-            userId,
-          });
-
-          // Store sensitive data temporarily
-          if (provisionResult.cardNumber && provisionResult.cvv) {
-            setSensitiveData((prev) => ({
-              ...prev,
-              [cardId]: {
-                cardNumber: provisionResult.cardNumber,
-                cvv: provisionResult.cvv,
-              },
-            }));
-
-            // Auto-clear after 60 seconds
-            setTimeout(() => {
-              actions.clearSensitiveData(cardId);
-            }, 60000);
-          }
-        } catch (provisionError) {
-          console.error("Card provisioning failed:", provisionError);
-          // Card is created but not provisioned - will retry
-        }
-
-        // Return the newly created card
+        // Return the newly created card (provisioning happens server-side)
         const newCard = cards.find((c) => c._id === cardId);
         return newCard || null;
       } catch (err) {
@@ -224,11 +201,48 @@ export function CardsProvider({ children }: { children: ReactNode }) {
     },
 
     /**
-     * Update card status
+     * Get card secrets (PAN, CVV) from Marqeta
+     */
+    getCardSecrets: async (cardId: string): Promise<{
+      pan: string;
+      cvv: string;
+      expirationMonth: number;
+      expirationYear: number;
+    } | null> => {
+      try {
+        const secrets = await getSecretsAction({
+          cardId: cardId as Id<"cards">,
+        });
+
+        if (secrets) {
+          // Store sensitive data temporarily
+          setSensitiveData((prev) => ({
+            ...prev,
+            [cardId]: {
+              cardNumber: secrets.pan,
+              cvv: secrets.cvv,
+            },
+          }));
+
+          // Auto-clear after 60 seconds
+          setTimeout(() => {
+            actions.clearSensitiveData(cardId);
+          }, 60000);
+        }
+
+        return secrets;
+      } catch (err) {
+        console.error("Failed to get card secrets:", err);
+        return null;
+      }
+    },
+
+    /**
+     * Update card status (active/paused only - use freezeCard/unfreezeCard for frozen)
      */
     updateCardStatus: async (
       cardId: string,
-      status: CardWithDetails["status"]
+      status: "active" | "paused"
     ): Promise<void> => {
       try {
         await updateStatusMutation({
@@ -294,10 +308,11 @@ export function CardsProvider({ children }: { children: ReactNode }) {
     /**
      * Freeze a card
      */
-    freezeCard: async (cardId: string, _reason?: string): Promise<{ success: boolean }> => {
+    freezeCard: async (cardId: string, reason?: string): Promise<{ success: boolean }> => {
       try {
         await freezeCardMutation({
           cardId: cardId as Id<"cards">,
+          reason: reason || "User requested freeze",
         });
         return { success: true };
       } catch (err) {

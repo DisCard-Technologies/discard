@@ -168,13 +168,48 @@ export const getCardSecrets = internalAction({
     expirationMonth: number;
     expirationYear: number;
   } | null> => {
-    // In production:
-    // 1. Get card's Marqeta token
-    // 2. Call Marqeta GET /cards/{token}/showpan
-    // 3. Return decrypted details
+    // Get card from database to get Marqeta token
+    const card = await ctx.runQuery(internal.cards.cards.getCardById, {
+      cardId: args.cardId,
+    });
 
-    // Placeholder response
-    return null;
+    if (!card || !card.marqetaCardToken) {
+      console.error(`Card not found or not provisioned: ${args.cardId}`);
+      return null;
+    }
+
+    try {
+      // Call Marqeta to get card details with PAN
+      const response = await fetch(`${MARQETA_BASE_URL}/cards/${card.marqetaCardToken}/showpan`, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Basic ${btoa(`${MARQETA_APP_TOKEN}:${MARQETA_ADMIN_TOKEN}`)}`,
+        },
+      });
+
+      if (!response.ok) {
+        const error = await response.text();
+        console.error(`Marqeta showpan error: ${response.status} - ${error}`);
+        return null;
+      }
+
+      const data = await response.json();
+
+      // Parse expiration from MMYY format
+      const expMonth = parseInt(data.expiration?.slice(0, 2) || "0");
+      const expYear = 2000 + parseInt(data.expiration?.slice(2, 4) || "0");
+
+      return {
+        pan: data.pan,
+        cvv: data.cvv_number,
+        expirationMonth: expMonth,
+        expirationYear: expYear,
+      };
+    } catch (error) {
+      console.error(`Failed to get card secrets: ${error}`);
+      return null;
+    }
   },
 });
 
