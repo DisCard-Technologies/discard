@@ -19,6 +19,7 @@ import type { Id } from "@/convex/_generated/dataModel";
 import * as SecureStore from "expo-secure-store";
 import * as LocalAuthentication from "expo-local-authentication";
 import * as Crypto from "expo-crypto";
+import Constants from "expo-constants";
 import { Keypair } from "@solana/web3.js";
 import * as bs58 from "bs58";
 
@@ -41,13 +42,24 @@ try {
   console.log("[Auth] @turnkey/react-native-passkey-stamper not available");
 }
 
+// Check if running in Expo Go (native modules unavailable)
+function isExpoGo(): boolean {
+  return Constants.appOwnership === "expo";
+}
+
 // Check if native passkey module is available
 function isPasskeyAvailable(): boolean {
+  // Native passkey module requires a development build, not Expo Go
+  if (isExpoGo()) return false;
   return Passkey !== null && typeof Passkey?.register === "function";
 }
 
 // Check if Turnkey passkey stamper is available
+// NOTE: Turnkey passkey stamper also requires native code (react-native-passkey)
+// so it won't work in Expo Go even though the JS function exists
 function isTurnkeyPasskeyAvailable(): boolean {
+  // Native modules required - not available in Expo Go
+  if (isExpoGo()) return false;
   return createPasskey !== null && typeof createPasskey === "function";
 }
 
@@ -450,11 +462,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const isEnrolled = await LocalAuthentication.isEnrolledAsync();
         const passkeyAvailable = isPasskeyAvailable();
 
+        const turnkeyAvailable = isTurnkeyPasskeyAvailable();
+        const expoGo = isExpoGo();
+
         console.log("[Auth] Registration - Environment check:", {
           platform: Platform.OS,
           hasHardware,
           isEnrolled,
           passkeyAvailable,
+          turnkeyAvailable,
+          expoGo,
         });
 
         // Use biometric registration if passkeys unavailable (Expo Go) but biometrics available
@@ -463,7 +480,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const useStoredAuthOnly = !passkeyAvailable && (!hasHardware || !isEnrolled);
 
         if (useBiometricAuth) {
-          console.log("[Auth] Using biometric registration with Turnkey TEE wallets");
+          if (turnkeyAvailable) {
+            console.log("[Auth] Using biometric registration with Turnkey TEE wallets");
+          } else {
+            console.log("[Auth] Using biometric registration with local keypair (Expo Go - native passkey module unavailable)");
+          }
 
           // Authenticate with biometrics to confirm device owner
           const biometricResult = await LocalAuthentication.authenticateAsync({
