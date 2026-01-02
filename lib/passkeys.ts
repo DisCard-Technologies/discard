@@ -39,8 +39,9 @@ const storage = {
 };
 
 // Relying Party configuration
+// Must match the domain in app.json associatedDomains and assetlinks.json
 export const RP_CONFIG = {
-  id: process.env.EXPO_PUBLIC_TURNKEY_RP_ID || "discard.tech",
+  id: process.env.EXPO_PUBLIC_TURNKEY_RP_ID || "www.discard.tech",
   name: "DisCard",
 };
 

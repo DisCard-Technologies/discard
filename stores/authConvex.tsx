@@ -26,9 +26,20 @@ import * as bs58 from "bs58";
 // Conditionally import Passkey - it may not be available in Expo Go
 let Passkey: any = null;
 try {
-  Passkey = require("react-native-passkey").Passkey;
+  const passkeyModule = require("react-native-passkey");
+  Passkey = passkeyModule.Passkey;
+  console.log("[Auth] react-native-passkey loaded:", {
+    hasPasskey: !!Passkey,
+    // v3 API uses create/get instead of register/authenticate
+    hasCreate: typeof Passkey?.create,
+    hasGet: typeof Passkey?.get,
+    // v2 API (deprecated)
+    hasRegister: typeof Passkey?.register,
+    hasAuthenticate: typeof Passkey?.authenticate,
+    passkeyMethods: Passkey ? Object.keys(Passkey) : [],
+  });
 } catch (e) {
-  console.log("[Auth] react-native-passkey not available (Expo Go mode)");
+  console.log("[Auth] react-native-passkey not available:", e);
 }
 
 // Turnkey React Native Passkey Stamper for non-custodial wallets
@@ -38,8 +49,12 @@ try {
   const turnkeyPasskey = require("@turnkey/react-native-passkey-stamper");
   PasskeyStamper = turnkeyPasskey.PasskeyStamper;
   createPasskey = turnkeyPasskey.createPasskey;
+  console.log("[Auth] @turnkey/react-native-passkey-stamper loaded:", {
+    hasStamper: !!PasskeyStamper,
+    hasCreatePasskey: typeof createPasskey,
+  });
 } catch (e) {
-  console.log("[Auth] @turnkey/react-native-passkey-stamper not available");
+  console.log("[Auth] @turnkey/react-native-passkey-stamper not available:", e);
 }
 
 // Check if running in Expo Go (native modules unavailable)
@@ -51,7 +66,8 @@ function isExpoGo(): boolean {
 function isPasskeyAvailable(): boolean {
   // Native passkey module requires a development build, not Expo Go
   if (isExpoGo()) return false;
-  return Passkey !== null && typeof Passkey?.register === "function";
+  // v3 API uses create/get, v2 used register/authenticate
+  return Passkey !== null && (typeof Passkey?.create === "function" || typeof Passkey?.register === "function");
 }
 
 // Check if Turnkey passkey stamper is available
@@ -384,8 +400,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Generate challenge
         const challenge = await generateChallenge();
 
-        // Authenticate with passkey
-        const authResult = await Passkey.authenticate({
+        // Authenticate with passkey using v3 API (Passkey.get instead of Passkey.authenticate)
+        const authResult = await Passkey.get({
           challenge,
           rpId: RP_CONFIG.id,
           allowCredentials: stored.credentialId
@@ -568,9 +584,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             } else {
               throw new Error("Turnkey passkey stamper not available");
             }
-          } catch (turnkeyError) {
+          } catch (turnkeyError: any) {
             // Turnkey/Convex unavailable - fall back to local wallet generation
-            console.warn("[Auth] Turnkey unavailable, falling back to local keypair:", turnkeyError);
+            console.warn("[Auth] Turnkey unavailable, falling back to local keypair:", {
+              error: turnkeyError?.message || turnkeyError,
+              name: turnkeyError?.name,
+              code: turnkeyError?.code,
+              stack: turnkeyError?.stack?.split('\n').slice(0, 3).join('\n'),
+            });
 
             // Generate local Solana wallet as fallback
             const wallet = await generateAndStoreSolanaWallet();
@@ -665,8 +686,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const challenge = await generateChallenge();
         const webauthnUserId = await generateUserId();
 
-        // Create passkey
-        const registrationResult = await Passkey.register({
+        // Create passkey using v3 API (Passkey.create instead of Passkey.register)
+        const registrationResult = await Passkey.create({
           challenge,
           rp: {
             id: RP_CONFIG.id,
@@ -682,7 +703,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           ],
           authenticatorSelection: {
             authenticatorAttachment: "platform",
-            requireResidentKey: true,
             residentKey: "required",
             userVerification: "required",
           },
@@ -690,11 +710,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           attestation: "none",
         });
 
+        // Generate a local Solana wallet for this user
+        // Note: For TEE-managed wallets, use the Turnkey flow instead
+        const wallet = await generateAndStoreSolanaWallet();
+        console.log("[Auth] Generated Solana wallet for passkey user:", wallet.publicKey);
+
         // Register with Convex
+        // Convert base64url public key to ArrayBuffer for Convex v.bytes() validator
+        const publicKeyBase64url = registrationResult.response.publicKey || "";
+        // Convert base64url to standard base64 (replace - with +, _ with /, add padding)
+        let publicKeyBase64 = publicKeyBase64url.replace(/-/g, '+').replace(/_/g, '/');
+        while (publicKeyBase64.length % 4) publicKeyBase64 += '=';
+        const publicKeyBytes = publicKeyBase64
+          ? Uint8Array.from(atob(publicKeyBase64), c => c.charCodeAt(0)).buffer
+          : new ArrayBuffer(0);
+
         const result = await registerPasskeyMutation({
           credentialId: registrationResult.id,
-          publicKey: registrationResult.response.publicKey || "",
+          publicKey: publicKeyBytes,
           displayName,
+          solanaAddress: wallet.publicKey, // Pass real wallet address
         });
 
         // Store credentials

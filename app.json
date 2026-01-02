@@ -67,6 +67,14 @@
         {
           "faceIDPermission": "Allow DisCard to use Face ID for authentication"
         }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "compileSdkVersion": 34
+          }
+        }
       ]
     ],
     "experiments": {

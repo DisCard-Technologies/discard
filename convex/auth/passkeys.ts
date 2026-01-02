@@ -143,6 +143,7 @@ export const registerPasskey = mutation({
     displayName: v.optional(v.string()),
     phoneHash: v.optional(v.string()),
     email: v.optional(v.string()),
+    solanaAddress: v.optional(v.string()), // Client-generated wallet address
   },
   handler: async (ctx, args): Promise<{
     userId: Id<"users">;
@@ -170,9 +171,9 @@ export const registerPasskey = mutation({
       }
     }
 
-    // Derive Solana address from P-256 public key
-    // This uses a deterministic derivation compatible with the TextPay program
-    const solanaAddress = deriveSolanaAddressFromP256(args.publicKey);
+    // Use provided Solana address or derive from P-256 public key
+    // Note: Prefer client-generated address as deriveSolanaAddressFromP256 is a placeholder
+    const solanaAddress = args.solanaAddress || deriveSolanaAddressFromP256(args.publicKey);
 
     // Create user record
     const userId = await ctx.db.insert("users", {
