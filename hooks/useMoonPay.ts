@@ -14,8 +14,28 @@ import * as WebBrowser from 'expo-web-browser';
 const MOONPAY_API_KEY = process.env.EXPO_PUBLIC_MOONPAY_API_KEY || '';
 const MOONPAY_ENVIRONMENT = (process.env.EXPO_PUBLIC_MOONPAY_ENVIRONMENT || 'sandbox') as 'sandbox' | 'production';
 
+// Currencies that use Solana addresses (suffix _sol or 'sol')
+const SOLANA_CURRENCIES = ['sol', 'usdc_sol', 'usdt_sol', 'bonk_sol'];
+
+// Helper to determine which wallet address to use
+function getWalletAddressForCurrency(
+  currencyCode: string,
+  solanaAddress?: string | null,
+  ethereumAddress?: string | null
+): string | undefined {
+  const isSolana = SOLANA_CURRENCIES.includes(currencyCode.toLowerCase()) || currencyCode.toLowerCase() === 'sol';
+  if (isSolana) {
+    return solanaAddress || undefined;
+  }
+  return ethereumAddress || undefined;
+}
+
 interface UseMoonPayOptions {
+  // Legacy single address (backwards compatible)
   walletAddress?: string | null;
+  // Multi-chain support
+  solanaAddress?: string | null;
+  ethereumAddress?: string | null;
   defaultCurrency?: string;
 }
 
@@ -37,9 +57,17 @@ interface UseMoonPayReturn {
  * Hook for MoonPay buy/sell flows
  */
 export function useMoonPay(options: UseMoonPayOptions = {}): UseMoonPayReturn {
-  const { walletAddress, defaultCurrency = 'usdc' } = options;
+  const { walletAddress, solanaAddress, ethereumAddress, defaultCurrency = 'eth' } = options;
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Determine which wallet address to use based on currency
+  // If legacy walletAddress is provided, use it; otherwise determine from currency
+  const effectiveWalletAddress = walletAddress || getWalletAddressForCurrency(
+    defaultCurrency,
+    solanaAddress,
+    ethereumAddress
+  );
 
   // Convex action for signing URLs
   const signUrl = useAction(api.funding.moonpay.signUrl);
@@ -52,8 +80,8 @@ export function useMoonPay(options: UseMoonPayOptions = {}): UseMoonPayReturn {
       params: {
         apiKey: MOONPAY_API_KEY,
         currencyCode: defaultCurrency,
-        walletAddress: walletAddress || undefined,
-        showWalletAddressForm: !walletAddress,
+        walletAddress: effectiveWalletAddress,
+        showWalletAddressForm: !effectiveWalletAddress ? 'true' : 'false',
       },
     },
     browserOpener: {
@@ -71,7 +99,7 @@ export function useMoonPay(options: UseMoonPayOptions = {}): UseMoonPayReturn {
       params: {
         apiKey: MOONPAY_API_KEY,
         baseCurrencyCode: defaultCurrency,
-        refundWalletAddress: walletAddress || undefined,
+        refundWalletAddress: effectiveWalletAddress,
       },
     },
     browserOpener: {
@@ -88,11 +116,13 @@ export function useMoonPay(options: UseMoonPayOptions = {}): UseMoonPayReturn {
       if (!buySdk.ready || !buySdk.generateUrlForSigning) return;
 
       try {
-        // Pass variant to generateUrlForSigning
-        const urlToSign = buySdk.generateUrlForSigning({ variant: 'overlay' });
+        // Generate URL for signing with required variant parameter
+        const urlToSign = buySdk.generateUrlForSigning({ variant: 'inapp-browser' });
+        console.log('[MoonPay SDK] Buy URL to sign:', urlToSign);
         if (!urlToSign) return;
 
         const { signature } = await signUrl({ urlToSign });
+        console.log('[MoonPay SDK] Buy signature received:', signature);
         buySdk.updateSignature?.(signature);
       } catch (err) {
         console.error('Failed to sign buy URL:', err);
@@ -105,11 +135,13 @@ export function useMoonPay(options: UseMoonPayOptions = {}): UseMoonPayReturn {
       if (!sellSdk.ready || !sellSdk.generateUrlForSigning) return;
 
       try {
-        // Pass variant to generateUrlForSigning
-        const urlToSign = sellSdk.generateUrlForSigning({ variant: 'overlay' });
+        // Generate URL for signing with required variant parameter
+        const urlToSign = sellSdk.generateUrlForSigning({ variant: 'inapp-browser' });
+        console.log('[MoonPay SDK] Sell URL to sign:', urlToSign);
         if (!urlToSign) return;
 
         const { signature } = await signUrl({ urlToSign });
+        console.log('[MoonPay SDK] Sell signature received:', signature);
         sellSdk.updateSignature?.(signature);
       } catch (err) {
         console.error('Failed to sign sell URL:', err);
@@ -118,7 +150,7 @@ export function useMoonPay(options: UseMoonPayOptions = {}): UseMoonPayReturn {
 
     signAndUpdateBuy();
     signAndUpdateSell();
-  }, [walletAddress, buySdk.ready, sellSdk.ready]);
+  }, [effectiveWalletAddress, buySdk.ready, sellSdk.ready]);
 
   /**
    * Open buy flow in browser
@@ -185,13 +217,13 @@ export function useMoonPay(options: UseMoonPayOptions = {}): UseMoonPayReturn {
 export function useQuickDeposit(walletAddress?: string | null) {
   const moonpay = useMoonPay({
     walletAddress,
-    defaultCurrency: 'usdc',
+    defaultCurrency: 'eth',
   });
 
   const deposit = useCallback(
     async (amount?: number) => {
       await moonpay.openBuy({
-        currencyCode: 'usdc',
+        currencyCode: 'eth',
         baseCurrencyAmount: amount,
       });
     },

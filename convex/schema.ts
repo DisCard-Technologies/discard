@@ -15,6 +15,7 @@ export default defineSchema({
     credentialId: v.string(),           // WebAuthn credential ID
     publicKey: v.bytes(),               // P-256 public key for Solana signing
     solanaAddress: v.optional(v.string()), // Derived Solana wallet address
+    ethereumAddress: v.optional(v.string()), // Derived Ethereum wallet address (for MoonPay ETH purchases)
 
     // Profile
     displayName: v.optional(v.string()),
@@ -49,6 +50,7 @@ export default defineSchema({
     .index("by_credential", ["credentialId"])
     .index("by_phone_hash", ["phoneHash"])
     .index("by_solana_address", ["solanaAddress"])
+    .index("by_ethereum_address", ["ethereumAddress"])
     .index("by_email", ["email"]),
 
   // ============ INTENTS ============
@@ -866,10 +868,11 @@ export default defineSchema({
     rootUserId: v.string(),             // User's Turnkey user ID (passkey auth)
     serviceUserId: v.string(),          // DisCard's propose-only service user
 
-    // TEE-generated wallet
+    // TEE-generated wallets
     walletId: v.string(),               // Turnkey wallet ID
     walletAddress: v.string(),          // Solana address derived in TEE
     walletPublicKey: v.string(),        // Ed25519 public key (base58)
+    ethereumAddress: v.optional(v.string()), // Ethereum address (0x...) for MoonPay
 
     // Policy configuration (enforced in AWS Nitro Enclave)
     policies: v.object({

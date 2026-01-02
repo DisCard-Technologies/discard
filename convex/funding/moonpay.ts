@@ -51,7 +51,19 @@ export const signUrl = action({
       queryString = '?' + queryString;
     }
 
-    const signature = await generateSignature(queryString.substring(1)); // Remove leading ?
+    // Use URL parsing to get query string - sign WITHOUT the leading ?
+    const url = new URL(args.urlToSign);
+    const queryStringWithoutQuestion = url.search.startsWith('?') ? url.search.slice(1) : url.search;
+
+    // Debug logging
+    console.log("[MoonPay] URL to sign:", args.urlToSign);
+    console.log("[MoonPay] Query string (without ?):", queryStringWithoutQuestion);
+    console.log("[MoonPay] Secret key (first 20 chars):", MOONPAY_SECRET_KEY?.substring(0, 20) + "...");
+    console.log("[MoonPay] Secret key length:", MOONPAY_SECRET_KEY?.length);
+
+    const signature = await generateSignature(queryStringWithoutQuestion);
+
+    console.log("[MoonPay] Generated signature:", signature);
 
     return { signature };
   },
@@ -508,6 +520,7 @@ export const handleTransactionFailed = internalMutation({
 
 /**
  * Generate HMAC-SHA256 signature for MoonPay URL
+ * Signs the query string WITHOUT the leading ?
  */
 async function generateSignature(queryString: string): Promise<string> {
   if (!MOONPAY_SECRET_KEY) {
@@ -524,10 +537,13 @@ async function generateSignature(queryString: string): Promise<string> {
     ["sign"]
   );
 
+  // Sign the query string (without the leading ?)
+  console.log("[MoonPay] Actually signing:", queryString);
+
   const signature = await crypto.subtle.sign(
     "HMAC",
     key,
-    encoder.encode(`?${queryString}`)
+    encoder.encode(queryString)
   );
 
   // Convert to base64

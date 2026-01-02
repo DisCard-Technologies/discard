@@ -26,8 +26,9 @@ export interface SubOrganization {
   rootUserId: string;
   serviceUserId: string;
   walletId: string;
-  walletAddress: string;
-  walletPublicKey: string;
+  walletAddress: string;        // Solana address
+  walletPublicKey: string;      // Solana public key
+  ethereumAddress?: string;     // Ethereum address (0x...)
 }
 
 export interface PolicyConfig {
@@ -163,6 +164,12 @@ export class TurnkeyManager {
                 path: "m/44'/501'/0'/0'", // Solana derivation path
                 addressFormat: "ADDRESS_FORMAT_SOLANA",
               },
+              {
+                curve: "CURVE_SECP256K1",
+                pathFormat: "PATH_FORMAT_BIP32",
+                path: "m/44'/60'/0'/0/0", // Ethereum derivation path
+                addressFormat: "ADDRESS_FORMAT_ETHEREUM",
+              },
             ],
           },
         },
@@ -180,13 +187,18 @@ export class TurnkeyManager {
     // Extract created resources from activity result
     const subOrgResult = activity.result.createSubOrganizationResultV4;
 
+    // Addresses: [0] = Solana, [1] = Ethereum
+    const solanaAddress = subOrgResult.wallet.addresses[0];
+    const ethereumAddress = subOrgResult.wallet.addresses[1];
+
     return {
       subOrganizationId: subOrgResult.subOrganizationId,
       rootUserId: subOrgResult.rootUserIds[0],
       serviceUserId: "", // Will be created separately
       walletId: subOrgResult.wallet.walletId,
-      walletAddress: subOrgResult.wallet.addresses[0],
-      walletPublicKey: this.addressToPublicKey(subOrgResult.wallet.addresses[0]),
+      walletAddress: solanaAddress,
+      walletPublicKey: this.addressToPublicKey(solanaAddress),
+      ethereumAddress: ethereumAddress,
     };
   }
 

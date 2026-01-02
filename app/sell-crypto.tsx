@@ -5,7 +5,7 @@
  * Supports pre-selecting a token from token-detail or defaults to USDC.
  */
 import { useState, useCallback, useMemo, useEffect } from 'react';
-import { StyleSheet, View, Pressable, TextInput, ActivityIndicator } from 'react-native';
+import { StyleSheet, View, Pressable, TextInput, ActivityIndicator, Keyboard, TouchableWithoutFeedback, ScrollView } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -18,12 +18,26 @@ import { useMoonPay } from '@/hooks/useMoonPay';
 import { useTokenHoldings } from '@/hooks/useTokenHoldings';
 
 // Supported currencies for selling (mapped to token symbols)
+// Network suffix: _sol = Solana, no suffix = Ethereum
 const CURRENCY_CONFIG = [
-  { code: 'usdc', name: 'USD Coin', symbol: 'USDC', icon: '$' },
-  { code: 'sol', name: 'Solana', symbol: 'SOL', icon: '◎' },
-  { code: 'eth', name: 'Ethereum', symbol: 'ETH', icon: '◇' },
-  { code: 'usdt', name: 'Tether', symbol: 'USDT', icon: '₮' },
+  { code: 'eth', name: 'Ethereum', symbol: 'ETH', icon: '◇', network: 'ethereum' },
+  { code: 'usdc', name: 'USD Coin (ETH)', symbol: 'USDC', icon: '$', network: 'ethereum' },
+  { code: 'usdt', name: 'Tether (ETH)', symbol: 'USDT', icon: '₮', network: 'ethereum' },
+  { code: 'sol', name: 'Solana', symbol: 'SOL', icon: '◎', network: 'solana' },
+  { code: 'usdc_sol', name: 'USD Coin (SOL)', symbol: 'USDC', icon: '$', network: 'solana' },
 ];
+
+// Helper to get wallet address based on currency network
+function getWalletAddress(
+  currency: typeof CURRENCY_CONFIG[number],
+  solanaAddress?: string | null,
+  ethereumAddress?: string | null
+): string | null {
+  if (currency.network === 'solana') {
+    return solanaAddress || null;
+  }
+  return ethereumAddress || null;
+}
 
 // Quick percentage buttons for selling
 const QUICK_PERCENTAGES = [25, 50, 75, 100];
@@ -40,12 +54,13 @@ export default function SellCryptoScreen() {
     'background'
   );
 
-  // User wallet address
+  // User wallet addresses (both Solana and Ethereum)
   const { user } = useAuth();
-  const walletAddress = user?.solanaAddress || null;
+  const solanaAddress = user?.solanaAddress || null;
+  const ethereumAddress = user?.ethereumAddress || null;
 
-  // Get real token holdings
-  const { holdings, isLoading: holdingsLoading } = useTokenHoldings(walletAddress);
+  // Get real token holdings (Solana-based for now)
+  const { holdings, isLoading: holdingsLoading } = useTokenHoldings(solanaAddress);
 
   // Build available currencies with real balances
   const availableCurrencies = useMemo(() => {
@@ -58,13 +73,13 @@ export default function SellCryptoScreen() {
       return {
         ...currency,
         balance: holding ? parseFloat(holding.balance) : 0,
-        value: holding?.value || 0,
+        value: holding?.valueUsd || 0,
       };
     }).filter((c) => c.balance > 0);
   }, [holdings]);
 
   // Selected currency (default to first available or from params)
-  const initialCurrency = params.currency?.toLowerCase() || 'usdc';
+  const initialCurrency = params.currency?.toLowerCase() || 'eth';
   const [selectedCurrency, setSelectedCurrency] = useState<typeof availableCurrencies[0] | null>(null);
 
   // Set initial currency when holdings load
@@ -82,10 +97,11 @@ export default function SellCryptoScreen() {
   // Current balance for selected currency
   const currentBalance = selectedCurrency?.balance || 0;
 
-  // MoonPay hook
+  // MoonPay hook - pass both addresses, it will use the right one
   const { openSell, isReady, isLoading, error } = useMoonPay({
-    walletAddress,
-    defaultCurrency: selectedCurrency?.code || 'usdc',
+    solanaAddress,
+    ethereumAddress,
+    defaultCurrency: selectedCurrency?.code || 'eth',
   });
 
   // Handle sell action
@@ -124,7 +140,13 @@ export default function SellCryptoScreen() {
         <View style={styles.headerRight} />
       </View>
 
-      <View style={styles.content}>
+      <ScrollView
+        style={styles.content}
+        contentContainerStyle={styles.contentContainer}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+      >
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}><View style={styles.touchableContent}>
         {/* Loading State */}
         {holdingsLoading && (
           <View style={styles.emptyState}>
@@ -146,11 +168,11 @@ export default function SellCryptoScreen() {
               You don't have any supported tokens in your wallet. Deposit some crypto first to sell.
             </ThemedText>
             <Pressable
-              onPress={() => router.replace('/buy-crypto?currency=usdc&mode=deposit')}
+              onPress={() => router.replace('/buy-crypto?currency=eth')}
               style={[styles.emptyStateButton, { backgroundColor: '#22c55e' }]}
             >
               <Ionicons name="add" size={20} color="#fff" />
-              <ThemedText style={[styles.emptyStateButtonText, { color: '#fff' }]}>Deposit USDC</ThemedText>
+              <ThemedText style={[styles.emptyStateButtonText, { color: '#fff' }]}>Buy Crypto</ThemedText>
             </Pressable>
           </View>
         )}
@@ -272,7 +294,8 @@ export default function SellCryptoScreen() {
             )}
           </>
         )}
-      </View>
+        </View></TouchableWithoutFeedback>
+      </ScrollView>
 
       {/* Sell Button - only show if has holdings */}
       {!holdingsLoading && hasHoldings && selectedCurrency && (
@@ -370,7 +393,13 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
+  },
+  contentContainer: {
     paddingHorizontal: 16,
+    flexGrow: 1,
+  },
+  touchableContent: {
+    flex: 1,
   },
   section: {
     marginBottom: 24,

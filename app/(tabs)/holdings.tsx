@@ -237,13 +237,13 @@ export default function HoldingsScreen() {
           {mode === 'holdings' && (
             <View style={styles.headerActions}>
               <Pressable
-                onPress={() => router.push('/sell-crypto?currency=usdc')}
+                onPress={() => router.push('/sell-crypto?currency=eth')}
                 style={[styles.withdrawButton, { backgroundColor: cardBg }]}
               >
                 <Ionicons name="arrow-down" size={14} color="#ef4444" />
               </Pressable>
               <Pressable
-                onPress={() => router.push('/buy-crypto?currency=usdc&mode=deposit')}
+                onPress={() => router.push('/buy-crypto?currency=eth')}
                 style={[styles.depositButton, { backgroundColor: '#22c55e' }]}
               >
                 <Ionicons name="add" size={16} color="#fff" />

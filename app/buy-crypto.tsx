@@ -5,7 +5,7 @@
  * Supports pre-selecting a token from token-detail or defaults to USDC.
  */
 import { useState, useCallback } from 'react';
-import { StyleSheet, View, Pressable, TextInput, ActivityIndicator, Platform } from 'react-native';
+import { StyleSheet, View, Pressable, TextInput, ActivityIndicator, Platform, Keyboard, TouchableWithoutFeedback, ScrollView } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -17,12 +17,26 @@ import { useAuth } from '@/stores/authConvex';
 import { useMoonPay } from '@/hooks/useMoonPay';
 
 // Supported currencies for purchase
+// Network suffix: _sol = Solana, no suffix = Ethereum
 const CURRENCIES = [
-  { code: 'usdc', name: 'USD Coin', symbol: 'USDC', icon: '$' },
-  { code: 'sol', name: 'Solana', symbol: 'SOL', icon: '◎' },
-  { code: 'eth', name: 'Ethereum', symbol: 'ETH', icon: '◇' },
-  { code: 'usdt', name: 'Tether', symbol: 'USDT', icon: '₮' },
+  { code: 'eth', name: 'Ethereum', symbol: 'ETH', icon: '◇', network: 'ethereum' },
+  { code: 'usdc', name: 'USD Coin (ETH)', symbol: 'USDC', icon: '$', network: 'ethereum' },
+  { code: 'usdt', name: 'Tether (ETH)', symbol: 'USDT', icon: '₮', network: 'ethereum' },
+  { code: 'sol', name: 'Solana', symbol: 'SOL', icon: '◎', network: 'solana' },
+  { code: 'usdc_sol', name: 'USD Coin (SOL)', symbol: 'USDC', icon: '$', network: 'solana' },
 ];
+
+// Helper to get wallet address based on currency network
+function getWalletAddress(
+  currency: typeof CURRENCIES[number],
+  solanaAddress?: string | null,
+  ethereumAddress?: string | null
+): string | null {
+  if (currency.network === 'solana') {
+    return solanaAddress || null;
+  }
+  return ethereumAddress || null;
+}
 
 // Quick amount buttons
 const QUICK_AMOUNTS = [25, 50, 100, 250, 500];
@@ -43,23 +57,28 @@ export default function BuyCryptoScreen() {
   // Deposit mode locks to USDC only
   const isDepositMode = params.mode === 'deposit';
 
-  // User wallet address
+  // User wallet addresses (both Solana and Ethereum)
   const { user } = useAuth();
-  const walletAddress = user?.solanaAddress || null;
+  const solanaAddress = user?.solanaAddress || null;
+  const ethereumAddress = user?.ethereumAddress || null;
 
-  // Selected currency (default to USDC or from params)
-  const initialCurrency = params.currency?.toLowerCase() || 'usdc';
+  // Selected currency (default to ETH or from params)
+  const initialCurrency = params.currency?.toLowerCase() || 'eth';
   const [selectedCurrency, setSelectedCurrency] = useState(
     CURRENCIES.find((c) => c.code === initialCurrency) || CURRENCIES[0]
   );
+
+  // Get the appropriate wallet address for selected currency
+  const walletAddress = getWalletAddress(selectedCurrency, solanaAddress, ethereumAddress);
 
   // Amount input
   const [amount, setAmount] = useState(params.amount || '');
   const numericAmount = parseFloat(amount) || 0;
 
-  // MoonPay hook
+  // MoonPay hook - pass both addresses, it will use the right one
   const { openBuy, isReady, isLoading, error } = useMoonPay({
-    walletAddress,
+    solanaAddress,
+    ethereumAddress,
     defaultCurrency: selectedCurrency.code,
   });
 
@@ -99,7 +118,13 @@ export default function BuyCryptoScreen() {
         <View style={styles.headerRight} />
       </View>
 
-      <View style={styles.content}>
+      <ScrollView
+        style={styles.content}
+        contentContainerStyle={styles.contentContainer}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+      >
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}><View>
         {/* Currency Selector - hidden in deposit mode */}
         {!isDepositMode && (
           <View style={styles.section}>
@@ -198,7 +223,8 @@ export default function BuyCryptoScreen() {
             <ThemedText style={[styles.errorBannerText, { color: '#ef4444' }]}>{error}</ThemedText>
           </View>
         )}
-      </View>
+        </View></TouchableWithoutFeedback>
+      </ScrollView>
 
       {/* Buy Button */}
       <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
@@ -258,7 +284,10 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
+  },
+  contentContainer: {
     paddingHorizontal: 16,
+    flexGrow: 1,
   },
   section: {
     marginBottom: 24,

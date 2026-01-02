@@ -552,6 +552,32 @@ export const updateSolanaAddress = mutation({
   },
 });
 
+/**
+ * Update user's Ethereum address
+ * Used for MoonPay ETH purchases
+ */
+export const updateEthereumAddress = mutation({
+  args: {
+    userId: v.id("users"),
+    ethereumAddress: v.string(),
+  },
+  handler: async (ctx, args): Promise<void> => {
+    const user = await ctx.db.get(args.userId);
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    // Validate Ethereum address format (0x followed by 40 hex chars)
+    if (!/^0x[a-fA-F0-9]{40}$/.test(args.ethereumAddress)) {
+      throw new Error("Invalid Ethereum address format");
+    }
+
+    await ctx.db.patch(user._id, {
+      ethereumAddress: args.ethereumAddress,
+    });
+  },
+});
+
 // ============ INTERNAL MUTATIONS ============
 
 /**

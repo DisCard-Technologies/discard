@@ -197,6 +197,7 @@ export const create = mutation({
     walletId: v.string(),
     walletAddress: v.string(),
     walletPublicKey: v.string(),
+    ethereumAddress: v.optional(v.string()), // Ethereum address for MoonPay
     policies: v.optional(policiesValidator),
   },
   handler: async (ctx, args) => {
@@ -241,6 +242,7 @@ export const create = mutation({
       walletId: args.walletId,
       walletAddress: args.walletAddress,
       walletPublicKey: args.walletPublicKey,
+      ethereumAddress: args.ethereumAddress,
       policies: args.policies ?? defaultPolicies,
       status: "creating",
       totalTransactionsCount: 0,

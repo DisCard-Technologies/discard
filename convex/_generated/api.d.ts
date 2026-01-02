@@ -43,6 +43,7 @@ import type * as intents_intents from "../intents/intents.js";
 import type * as intents_solver from "../intents/solver.js";
 import type * as realtime_optimistic from "../realtime/optimistic.js";
 import type * as scripts_bulkCreateCards from "../scripts/bulkCreateCards.js";
+import type * as scripts_migrateEthereumWallets from "../scripts/migrateEthereumWallets.js";
 import type * as tee_turnkey from "../tee/turnkey.js";
 import type * as wallets_defi from "../wallets/defi.js";
 import type * as wallets_network from "../wallets/network.js";
@@ -92,6 +93,7 @@ declare const fullApi: ApiFromModules<{
   "intents/solver": typeof intents_solver;
   "realtime/optimistic": typeof realtime_optimistic;
   "scripts/bulkCreateCards": typeof scripts_bulkCreateCards;
+  "scripts/migrateEthereumWallets": typeof scripts_migrateEthereumWallets;
   "tee/turnkey": typeof tee_turnkey;
   "wallets/defi": typeof wallets_defi;
   "wallets/network": typeof wallets_network;

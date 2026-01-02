@@ -189,6 +189,7 @@ export function useTurnkey(
           walletId: subOrg.walletId,
           walletAddress: subOrg.walletAddress,
           walletPublicKey: subOrg.walletPublicKey,
+          ethereumAddress: subOrg.ethereumAddress,
         });
 
         // Activate

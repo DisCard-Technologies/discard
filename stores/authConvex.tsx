@@ -138,6 +138,7 @@ export interface User {
   id: string;
   displayName: string;
   solanaAddress?: string;
+  ethereumAddress?: string; // For MoonPay ETH purchases
   kycStatus: string;
   createdAt: number;
 }
@@ -204,6 +205,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           id: userData._id,
           displayName: userData.displayName,
           solanaAddress: userData.solanaAddress,
+          ethereumAddress: userData.ethereumAddress,
           kycStatus: userData.kycStatus,
           createdAt: userData.createdAt,
         },
