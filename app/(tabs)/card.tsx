@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { StyleSheet, View, Pressable, ScrollView, Keyboard, Alert } from 'react-native';
+import { StyleSheet, View, Pressable, ScrollView, Keyboard, Alert, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
@@ -7,6 +7,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Clipboard from 'expo-clipboard';
 import { KeyboardStickyView } from 'react-native-keyboard-controller';
 import Animated, { useSharedValue, useAnimatedStyle, withTiming } from 'react-native-reanimated';
+import { useQuery } from 'convex/react';
+import { api } from '@/convex/_generated/api';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -18,12 +20,70 @@ import { useCards, useCardOperations } from '@/stores/cardsConvex';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
-const transactions = [
-  { merchant: "Apple Store", amount: "-$1,299.00", date: "Today", category: "Shopping" },
-  { merchant: "Auto-Rebalance", amount: "+$200.00", date: "Today", category: "AI", isAmbient: true },
-  { merchant: "Whole Foods", amount: "-$127.84", date: "Today", category: "Groceries" },
-  { merchant: "Uber", amount: "-$24.50", date: "Yesterday", category: "Transport" },
-];
+// MCC code to category mapping
+const MCC_CATEGORIES: Record<string, string> = {
+  // Groceries
+  "5411": "Groceries", "5422": "Groceries", "5441": "Groceries", "5451": "Groceries", "5462": "Groceries",
+  // Restaurants & Food
+  "5812": "Restaurants", "5813": "Restaurants", "5814": "Fast Food",
+  // Gas & Auto
+  "5541": "Gas", "5542": "Gas", "7538": "Auto Service", "5571": "Auto",
+  // Transport
+  "4121": "Transport", "4131": "Transport", "4111": "Transport", "7512": "Car Rental",
+  // Shopping
+  "5311": "Shopping", "5310": "Shopping", "5300": "Shopping", "5399": "Shopping",
+  "5651": "Clothing", "5691": "Clothing", "5699": "Clothing",
+  // Electronics
+  "5732": "Electronics", "5734": "Electronics", "4812": "Electronics",
+  // Entertainment
+  "7832": "Entertainment", "7922": "Entertainment", "7941": "Entertainment",
+  // Travel
+  "4511": "Travel", "7011": "Hotels", "3000": "Travel",
+  // Healthcare
+  "5912": "Pharmacy", "8011": "Healthcare", "8021": "Healthcare",
+  // Utilities
+  "4900": "Utilities", "4814": "Telecom",
+};
+
+// Get category from MCC code
+function getMccCategory(mcc: string): string {
+  return MCC_CATEGORIES[mcc] || "Other";
+}
+
+// Format amount from cents to display string
+function formatAmount(cents: number): string {
+  const dollars = Math.abs(cents) / 100;
+  const sign = cents < 0 ? "-" : cents > 0 ? "+" : "";
+  return `${sign}$${dollars.toFixed(2)}`;
+}
+
+// Format timestamp to relative date
+function formatRelativeDate(timestamp: number): string {
+  const now = new Date();
+  const date = new Date(timestamp);
+
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
+  const txDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+
+  if (txDate.getTime() === today.getTime()) {
+    return "Today";
+  } else if (txDate.getTime() === yesterday.getTime()) {
+    return "Yesterday";
+  } else {
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  }
+}
+
+// Transform authorization to display format
+interface DisplayTransaction {
+  merchant: string;
+  amount: string;
+  date: string;
+  category: string;
+  status: string;
+  isAmbient?: boolean;
+}
 
 export default function CardScreen() {
   const insets = useSafeAreaInsets();
@@ -42,6 +102,27 @@ export default function CardScreen() {
   const activeCard = useMemo(() => {
     return cardsState?.selectedCard || cardsState?.cards?.[0] || null;
   }, [cardsState]);
+
+  // Query real transactions for the active card
+  const rawTransactions = useQuery(
+    api.cards.cards.getTransactions,
+    activeCard?._id ? { cardId: activeCard._id, limit: 20 } : "skip"
+  );
+
+  // Transform raw authorizations to display format
+  const transactions: DisplayTransaction[] = useMemo(() => {
+    if (!rawTransactions) return [];
+    return rawTransactions.map((auth) => ({
+      merchant: auth.merchantName || "Unknown Merchant",
+      amount: formatAmount(-auth.amount), // Negative for purchases
+      date: formatRelativeDate(auth.processedAt),
+      category: getMccCategory(auth.merchantMcc),
+      status: auth.status,
+      isAmbient: false,
+    }));
+  }, [rawTransactions]);
+
+  const isLoadingTransactions = activeCard?._id && rawTransactions === undefined;
 
   const [showDetails, setShowDetails] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -315,35 +396,67 @@ export default function CardScreen() {
         <View style={styles.transactionsSection}>
           <ThemedText style={[styles.sectionTitle, { color: mutedColor }]}>RECENT</ThemedText>
           <View style={styles.transactionsList}>
-            {transactions.map((tx, i) => (
+            {isLoadingTransactions ? (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="small" color={primaryColor} />
+                <ThemedText style={[styles.loadingText, { color: mutedColor }]}>
+                  Loading transactions...
+                </ThemedText>
+              </View>
+            ) : transactions.length === 0 ? (
               <ThemedView
-                key={i}
-                style={[
-                  styles.transactionCard,
-                  tx.isAmbient && { borderColor: `${primaryColor}30`, borderWidth: 1 }
-                ]}
+                style={styles.emptyContainer}
                 lightColor="#f4f4f5"
                 darkColor="#1c1c1e"
               >
-                <View style={styles.transactionLeft}>
-                  {tx.isAmbient && (
-                    <Ionicons name="flash" size={16} color={primaryColor} />
-                  )}
-                  <View>
-                    <ThemedText style={styles.merchantName}>{tx.merchant}</ThemedText>
-                    <ThemedText style={[styles.transactionDate, { color: mutedColor }]}>{tx.date}</ThemedText>
-                  </View>
-                </View>
-                <ThemedText 
-                  style={[
-                    styles.transactionAmount,
-                    tx.amount.startsWith("+") && { color: primaryColor }
-                  ]}
-                >
-                  {tx.amount}
+                <Ionicons name="receipt-outline" size={32} color={mutedColor} />
+                <ThemedText style={[styles.emptyText, { color: mutedColor }]}>
+                  No transactions yet
+                </ThemedText>
+                <ThemedText style={[styles.emptySubtext, { color: mutedColor }]}>
+                  Use your card to see transactions here
                 </ThemedText>
               </ThemedView>
-            ))}
+            ) : (
+              transactions.map((tx, i) => (
+                <ThemedView
+                  key={i}
+                  style={[
+                    styles.transactionCard,
+                    tx.isAmbient && { borderColor: `${primaryColor}30`, borderWidth: 1 }
+                  ]}
+                  lightColor="#f4f4f5"
+                  darkColor="#1c1c1e"
+                >
+                  <View style={styles.transactionLeft}>
+                    {tx.isAmbient && (
+                      <Ionicons name="flash" size={16} color={primaryColor} />
+                    )}
+                    <View>
+                      <ThemedText style={styles.merchantName}>{tx.merchant}</ThemedText>
+                      <ThemedText style={[styles.transactionDate, { color: mutedColor }]}>
+                        {tx.date} • {tx.category}
+                      </ThemedText>
+                    </View>
+                  </View>
+                  <View style={styles.transactionRight}>
+                    <ThemedText
+                      style={[
+                        styles.transactionAmount,
+                        tx.amount.startsWith("+") && { color: primaryColor }
+                      ]}
+                    >
+                      {tx.amount}
+                    </ThemedText>
+                    {tx.status !== "settled" && tx.status !== "approved" && (
+                      <ThemedText style={[styles.transactionStatus, { color: mutedColor }]}>
+                        {tx.status}
+                      </ThemedText>
+                    )}
+                  </View>
+                </ThemedView>
+              ))
+            )}
           </View>
         </View>
       </ScrollView>
@@ -585,5 +698,39 @@ const styles = StyleSheet.create({
   transactionAmount: {
     fontSize: 14,
     fontWeight: '500',
+  },
+  transactionRight: {
+    alignItems: 'flex-end',
+  },
+  transactionStatus: {
+    fontSize: 10,
+    textTransform: 'uppercase',
+    marginTop: 2,
+  },
+  loadingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    padding: 24,
+  },
+  loadingText: {
+    fontSize: 14,
+  },
+  emptyContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 32,
+    borderRadius: 12,
+    gap: 8,
+  },
+  emptyText: {
+    fontSize: 16,
+    fontWeight: '500',
+    marginTop: 8,
+  },
+  emptySubtext: {
+    fontSize: 13,
+    textAlign: 'center',
   },
 });
