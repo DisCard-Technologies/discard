@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { StyleSheet, View, Pressable, TextInput, ScrollView, ActivityIndicator } from 'react-native';
+import { StyleSheet, View, Pressable, TextInput, ScrollView, ActivityIndicator, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 
@@ -221,7 +221,11 @@ export function ExploreView() {
                 >
                   <View style={styles.tokenInfo}>
                     <View style={[styles.tokenIcon, { backgroundColor: inputBg }]}>
-                      <ThemedText style={styles.tokenIconText}>{token.symbol.slice(0, 2)}</ThemedText>
+                      {token.logoUri ? (
+                        <Image source={{ uri: token.logoUri }} style={styles.tokenIconImage} />
+                      ) : (
+                        <ThemedText style={styles.tokenIconText}>{token.symbol.slice(0, 2)}</ThemedText>
+                      )}
                     </View>
                     <View>
                       <View style={styles.tokenNameRow}>
@@ -541,6 +545,11 @@ const styles = StyleSheet.create({
   tokenIconText: {
     fontSize: 11,
     fontWeight: '700',
+  },
+  tokenIconImage: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
   },
   tokenNameRow: {
     flexDirection: 'row',

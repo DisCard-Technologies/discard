@@ -30,6 +30,7 @@ interface Token {
   value: number;
   change: number;
   icon: string;
+  logoUri?: string;
   price: number;
   isAmbientManaged?: boolean;
 }
@@ -105,6 +106,7 @@ export default function HoldingsScreen() {
       value: h.valueUsd,
       change: h.change24h || 0,
       icon: h.symbol.charAt(0),
+      logoUri: h.logoUri,
       price: h.priceUsd,
       isAmbientManaged: false,
     }));
@@ -345,7 +347,11 @@ export default function HoldingsScreen() {
                       >
                         <View style={styles.tokenLeft}>
                           <View style={[styles.tokenIcon, { backgroundColor: `${borderColor}` }]}>
-                            <ThemedText style={styles.tokenIconText}>{token.icon}</ThemedText>
+                            {token.logoUri ? (
+                              <Image source={{ uri: token.logoUri }} style={styles.tokenIconImage} />
+                            ) : (
+                              <ThemedText style={styles.tokenIconText}>{token.icon}</ThemedText>
+                            )}
                           </View>
                           <View>
                             <View style={styles.tokenNameRow}>
@@ -741,6 +747,11 @@ const styles = StyleSheet.create({
   },
   tokenIconText: {
     fontSize: 18,
+  },
+  tokenIconImage: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
   },
   tokenNameRow: {
     flexDirection: 'row',
