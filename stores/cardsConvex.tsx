@@ -15,7 +15,7 @@ import React, {
 import { useQuery, useMutation, useAction } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { useCurrentUserId } from "./authConvex";
+import { useCurrentUserId, useCurrentCredentialId } from "./authConvex";
 
 // Card interface (compatible with legacy)
 export interface CardWithDetails {
@@ -102,16 +102,17 @@ const CardsContext = createContext<{
 // Provider component
 export function CardsProvider({ children }: { children: ReactNode }) {
   const userId = useCurrentUserId();
+  const credentialId = useCurrentCredentialId();
   const [selectedCard, setSelectedCard] = useState<CardWithDetails | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [createCardLoading, setCreateCardLoading] = useState(false);
   const [deleteCardLoading, setDeleteCardLoading] = useState<{ [key: string]: boolean }>({});
   const [sensitiveData, setSensitiveData] = useState<{ [key: string]: { cardNumber?: string; cvv?: string } }>({});
 
-  // Real-time subscription to cards
+  // Real-time subscription to cards - pass credentialId for auth
   const cardsData = useQuery(
     api.cards.cards.list,
-    userId ? {} : "skip"
+    userId && credentialId ? { credentialId } : "skip"
   );
 
   // Mutations
@@ -159,8 +160,17 @@ export function CardsProvider({ children }: { children: ReactNode }) {
      * Create a new card
      */
     createCard: async (cardData: CreateCardRequest): Promise<CardWithDetails | null> => {
+      console.log('[CardsStore] createCard called', { userId, credentialId, cardData });
+
       if (!userId) {
+        console.log('[CardsStore] No userId - not authenticated');
         setError("Not authenticated");
+        return null;
+      }
+
+      if (!credentialId) {
+        console.log('[CardsStore] No credentialId - cannot authenticate with Convex');
+        setError("Missing credentials. Please log out and log in again.");
         return null;
       }
 
@@ -168,7 +178,8 @@ export function CardsProvider({ children }: { children: ReactNode }) {
         setCreateCardLoading(true);
         setError(null);
 
-        // Create card in Convex - server-side mutation handles auth and schedules provisioning
+        console.log('[CardsStore] Calling createCardMutation with credentialId:', credentialId);
+        // Create card in Convex - pass credentialId for auth when Convex auth isn't configured
         const cardId = await createCardMutation({
           nickname: cardData.nickname,
           color: cardData.color,
@@ -177,11 +188,35 @@ export function CardsProvider({ children }: { children: ReactNode }) {
           monthlyLimit: cardData.monthlyLimit,
           blockedMccCodes: cardData.blockedMccCodes,
           blockedCountries: cardData.blockedCountries,
+          credentialId: credentialId,
         });
+        console.log('[CardsStore] Card created with ID:', cardId);
 
-        // Return the newly created card (provisioning happens server-side)
-        const newCard = cards.find((c) => c._id === cardId);
-        return newCard || null;
+        // Card was created - return a placeholder that indicates success
+        // The actual card data will come through the Convex subscription
+        // We return a minimal object so the caller knows creation succeeded
+        return {
+          _id: cardId,
+          cardId: cardId,
+          userId: userId,
+          cardContext: '',
+          last4: '0000',
+          expirationMonth: 0,
+          expirationYear: 0,
+          cardType: 'virtual' as const,
+          status: 'pending' as const,
+          spendingLimit: cardData.spendingLimit ?? 100000,
+          dailyLimit: cardData.dailyLimit ?? 500000,
+          monthlyLimit: cardData.monthlyLimit ?? 2000000,
+          currentBalance: 0,
+          reservedBalance: 0,
+          overdraftLimit: 0,
+          privacyIsolated: true,
+          nickname: cardData.nickname,
+          color: cardData.color,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        };
       } catch (err) {
         const message = err instanceof Error ? err.message : "Failed to create card";
         setError(message);
@@ -212,6 +247,7 @@ export function CardsProvider({ children }: { children: ReactNode }) {
       try {
         const secrets = await getSecretsAction({
           cardId: cardId as Id<"cards">,
+          credentialId: credentialId ?? undefined,
         });
 
         if (secrets) {

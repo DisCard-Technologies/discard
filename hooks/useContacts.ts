@@ -10,9 +10,17 @@
 
 import { useState, useCallback, useEffect, useMemo } from "react";
 import { useQuery, useMutation } from "convex/react";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { api } from "@/convex/_generated/api";
 import { Id, Doc } from "@/convex/_generated/dataModel";
+
+// AsyncStorage is optional - may not be available in Expo Go
+let AsyncStorage: typeof import("@react-native-async-storage/async-storage").default | null = null;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  AsyncStorage = require("@react-native-async-storage/async-storage").default;
+} catch {
+  console.warn("[useContacts] AsyncStorage not available, caching disabled");
+}
 
 // ============================================================================
 // Types
@@ -131,6 +139,11 @@ export function useContacts(): UseContactsReturn {
 
   // Cache functions
   const loadCache = useCallback(async () => {
+    if (!AsyncStorage) {
+      setIsLoadingCache(false);
+      return;
+    }
+
     try {
       setIsLoadingCache(true);
       const cached = await AsyncStorage.getItem(CACHE_KEY);
@@ -149,6 +162,8 @@ export function useContacts(): UseContactsReturn {
   }, []);
 
   const saveCache = useCallback(async (contactsToCache: Contact[]) => {
+    if (!AsyncStorage) return;
+
     try {
       const data: CachedData = {
         version: CACHE_VERSION,
@@ -169,6 +184,11 @@ export function useContacts(): UseContactsReturn {
   }, [allContacts, saveCache]);
 
   const clearCache = useCallback(async () => {
+    if (!AsyncStorage) {
+      setCachedContacts([]);
+      return;
+    }
+
     try {
       await AsyncStorage.removeItem(CACHE_KEY);
       setCachedContacts([]);

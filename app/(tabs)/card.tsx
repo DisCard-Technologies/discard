@@ -97,10 +97,29 @@ export default function CardScreen() {
   // Real data from stores
   const { user } = useAuth();
   const { state: cardsState } = useCards();
-  const { freezeCard, unfreezeCard } = useCardOperations();
+  const { freezeCard, unfreezeCard, createCard } = useCardOperations();
 
   const activeCard = useMemo(() => {
-    return cardsState?.selectedCard || cardsState?.cards?.[0] || null;
+    // Use selected card if set
+    if (cardsState?.selectedCard) {
+      return cardsState.selectedCard;
+    }
+
+    // Find the most recent active/provisioned card (has real last4, not "0000")
+    const cards = cardsState?.cards || [];
+
+    // Prefer active cards with real card numbers first
+    const activeProvisioned = cards.find(
+      (c) => c.status === 'active' && c.last4 && c.last4 !== '0000'
+    );
+    if (activeProvisioned) return activeProvisioned;
+
+    // Fall back to any active card
+    const anyActive = cards.find((c) => c.status === 'active');
+    if (anyActive) return anyActive;
+
+    // Fall back to first card (could be pending)
+    return cards[0] || null;
   }, [cardsState]);
 
   // Query real transactions for the active card
@@ -127,6 +146,7 @@ export default function CardScreen() {
   const [showDetails, setShowDetails] = useState(false);
   const [copied, setCopied] = useState(false);
   const [loadingSecrets, setLoadingSecrets] = useState(false);
+  const [creatingCard, setCreatingCard] = useState(false);
   const [cardSecrets, setCardSecrets] = useState<{
     pan: string;
     cvv: string;
@@ -220,13 +240,82 @@ export default function CardScreen() {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const handleCreateCard = async () => {
+    console.log('[Card] handleCreateCard called');
+    setCreatingCard(true);
+    try {
+      const result = await createCard({
+        nickname: 'New Card',
+        // Default limits from cards.ts: $1000 per tx, $5000 daily, $20000 monthly
+      });
+      console.log('[Card] createCard result:', result);
+      if (!result) {
+        // createCard returned null - check cardsState.error for details
+        Alert.alert('Error', cardsState?.error || 'Failed to create card. Please try again.');
+      }
+    } catch (error) {
+      console.error('[Card] createCard error:', error);
+      Alert.alert('Error', error instanceof Error ? error.message : 'Failed to create card');
+    } finally {
+      setCreatingCard(false);
+    }
+  };
+
+  // Check if user has any cards
+  const hasCards = cardsState?.cards && cardsState.cards.length > 0;
+  const isLoadingCards = cardsState?.isLoading;
+
+  // Debug logging
+  console.log('[Card] Screen state:', {
+    hasCards,
+    isLoadingCards,
+    cardsCount: cardsState?.cards?.length,
+    activeCardId: activeCard?._id,
+    activeCardStatus: activeCard?.status,
+    activeCardLast4: activeCard?.last4,
+    allCardStatuses: cardsState?.cards?.map(c => ({ id: c._id.slice(-8), status: c.status, last4: c.last4 })),
+  });
+
   return (
     <ThemedView style={styles.container}>
       <StatusBar style={isDark ? 'light' : 'dark'} />
       <View style={{ height: insets.top }} />
-      
-      <ScrollView 
-        style={styles.scrollView} 
+
+      {/* Empty State - No Cards */}
+      {!hasCards && !isLoadingCards ? (
+        <View style={styles.emptyStateOverlay}>
+          <View style={styles.emptyStateContent}>
+            <View style={[styles.emptyStateIconContainer, { backgroundColor: `${primaryColor}20` }]}>
+              <Ionicons name="card-outline" size={48} color={primaryColor} />
+            </View>
+            <ThemedText style={styles.emptyStateTitle}>No Cards Yet</ThemedText>
+            <ThemedText style={[styles.emptyStateDescription, { color: mutedColor }]}>
+              Create your first virtual card to start spending securely with disposable card numbers.
+            </ThemedText>
+            <Pressable
+              onPress={handleCreateCard}
+              disabled={creatingCard}
+              style={({ pressed }) => [
+                styles.createCardButton,
+                { backgroundColor: primaryColor },
+                pressed && { opacity: 0.8 },
+                creatingCard && { opacity: 0.6 }
+              ]}
+            >
+              {creatingCard ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Ionicons name="add" size={20} color="#fff" />
+              )}
+              <ThemedText style={styles.createCardButtonText}>
+                {creatingCard ? "Creating Card..." : "Create Card"}
+              </ThemedText>
+            </Pressable>
+          </View>
+        </View>
+      ) : (
+      <ScrollView
+        style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
@@ -380,7 +469,7 @@ export default function CardScreen() {
             </ThemedText>
           </Pressable>
 
-          <Pressable 
+          <Pressable
             style={({ pressed }) => [
               styles.controlButton,
               { backgroundColor: isDark ? '#27272a' : '#f4f4f5' },
@@ -460,6 +549,7 @@ export default function CardScreen() {
           </View>
         </View>
       </ScrollView>
+      )}
 
       {/* Backdrop Overlay */}
       <AnimatedPressable
@@ -732,5 +822,50 @@ const styles = StyleSheet.create({
   emptySubtext: {
     fontSize: 13,
     textAlign: 'center',
+  },
+  // Empty state overlay styles
+  emptyStateOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 32,
+  },
+  emptyStateContent: {
+    alignItems: 'center',
+    maxWidth: 320,
+  },
+  emptyStateIconContainer: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  emptyStateTitle: {
+    fontSize: 24,
+    fontWeight: '600',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  emptyStateDescription: {
+    fontSize: 15,
+    lineHeight: 22,
+    textAlign: 'center',
+    marginBottom: 32,
+  },
+  createCardButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 16,
+    paddingHorizontal: 32,
+    borderRadius: 16,
+  },
+  createCardButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
   },
 });

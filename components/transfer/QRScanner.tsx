@@ -8,8 +8,7 @@
  */
 
 import { useState, useEffect, useCallback } from "react";
-import { StyleSheet, View, Pressable, Dimensions } from "react-native";
-import { CameraView, useCameraPermissions, BarcodeScanningResult } from "expo-camera";
+import { StyleSheet, View, Pressable, Dimensions, Alert } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import Animated, {
   useAnimatedStyle,
@@ -24,6 +23,23 @@ import * as Haptics from "expo-haptics";
 
 import { ThemedText } from "@/components/themed-text";
 import { useThemeColor } from "@/hooks/use-theme-color";
+
+// expo-camera is optional - may not be available in Expo Go
+type CameraViewType = React.ComponentType<any>;
+type BarcodeScanningResult = { data: string };
+type PermissionStatus = { granted: boolean; canAskAgain: boolean };
+
+let CameraView: CameraViewType | null = null;
+let useCameraPermissions: (() => [PermissionStatus | null, () => Promise<PermissionStatus>]) | null = null;
+
+try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const expoCamera = require("expo-camera");
+  CameraView = expoCamera.CameraView;
+  useCameraPermissions = expoCamera.useCameraPermissions;
+} catch {
+  console.warn("[QRScanner] expo-camera not available");
+}
 
 // ============================================================================
 // Types
@@ -183,12 +199,17 @@ export function QRScanner({
   onClose,
   flashEnabled = false,
 }: QRScannerProps) {
-  const [permission, requestPermission] = useCameraPermissions();
+  // Use camera permissions hook if available
+  const cameraPermissions = useCameraPermissions ? useCameraPermissions() : null;
+  const permission = cameraPermissions?.[0] ?? null;
+  const requestPermission = cameraPermissions?.[1] ?? (() => Promise.resolve({ granted: false, canAskAgain: false }));
+
   const [torch, setTorch] = useState(flashEnabled);
   const [hasScanned, setHasScanned] = useState(false);
 
   const mutedColor = useThemeColor({ light: "#687076", dark: "#9BA1A6" }, "icon");
   const bgColor = useThemeColor({ light: "#fff", dark: "#000" }, "background");
+  const primaryColor = useThemeColor({}, "tint");
 
   // Handle barcode scan
   const handleBarcodeScanned = useCallback(
@@ -217,15 +238,34 @@ export function QRScanner({
 
   // Request permission on mount
   useEffect(() => {
-    if (permission && !permission.granted) {
+    if (permission && !permission.granted && requestPermission) {
       requestPermission();
     }
   }, [permission, requestPermission]);
 
+  // Camera not available (e.g., in Expo Go)
+  if (!CameraView || !useCameraPermissions) {
+    return (
+      <View style={[styles.container, styles.centeredContainer, { backgroundColor: "#000" }]}>
+        <Ionicons name="camera-outline" size={48} color={mutedColor} />
+        <ThemedText style={styles.permissionText}>
+          Camera not available
+        </ThemedText>
+        <ThemedText style={[styles.permissionSubtext, { color: mutedColor }]}>
+          QR scanning requires a development build.{"\n"}
+          You can still enter addresses manually.
+        </ThemedText>
+        <Pressable onPress={onClose} style={[styles.permissionButton, { backgroundColor: primaryColor }]}>
+          <ThemedText style={{ color: "#000", fontWeight: "600" }}>Go Back</ThemedText>
+        </Pressable>
+      </View>
+    );
+  }
+
   // Show permission request
   if (!permission) {
     return (
-      <View style={[styles.container, { backgroundColor: "#000" }]}>
+      <View style={[styles.container, styles.centeredContainer, { backgroundColor: "#000" }]}>
         <ThemedText style={styles.permissionText}>
           Requesting camera permission...
         </ThemedText>
@@ -235,7 +275,7 @@ export function QRScanner({
 
   if (!permission.granted) {
     return (
-      <View style={[styles.container, { backgroundColor: "#000" }]}>
+      <View style={[styles.container, styles.centeredContainer, { backgroundColor: "#000" }]}>
         <Ionicons name="camera-outline" size={48} color={mutedColor} />
         <ThemedText style={styles.permissionText}>
           Camera permission is required to scan QR codes
@@ -327,6 +367,10 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#000",
+  },
+  centeredContainer: {
+    justifyContent: "center",
+    alignItems: "center",
   },
   overlay: {
     ...StyleSheet.absoluteFillObject,
@@ -440,6 +484,13 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginTop: 16,
     marginHorizontal: 24,
+  },
+  permissionSubtext: {
+    fontSize: 13,
+    textAlign: "center",
+    marginTop: 8,
+    marginHorizontal: 32,
+    lineHeight: 18,
   },
   permissionButton: {
     marginTop: 24,

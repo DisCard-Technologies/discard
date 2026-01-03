@@ -12,11 +12,10 @@
  */
 
 import { Connection, PublicKey } from "@solana/web3.js";
-import {
-  resolve,
-  getAllDomains,
-  reverseLookup,
-} from "@bonfida/spl-name-service";
+
+// SNS resolution is currently disabled in React Native due to bundler compatibility issues
+// with @bonfida/spl-name-service. TODO: Implement SNS resolution via API endpoint.
+const SNS_ENABLED = false;
 
 // ============================================================================
 // Types
@@ -180,23 +179,15 @@ async function resolveSolDomain(
   domain: string,
   connection?: Connection
 ): Promise<{ address: string; displayName: string } | null> {
-  try {
-    // Remove .sol suffix for SNS lookup
-    const domainName = domain.replace(/\.sol$/i, "");
-
-    const conn = connection || new Connection(SOLANA_RPC_URL);
-
-    // Resolve the domain to a public key
-    const { pubkey } = await resolve(conn, domainName);
-
-    return {
-      address: pubkey.toBase58(),
-      displayName: domain.toLowerCase(),
-    };
-  } catch (error) {
-    console.error("[AddressResolver] SNS resolution failed:", error);
+  // SNS resolution currently disabled in React Native
+  if (!SNS_ENABLED) {
+    console.warn("[AddressResolver] SNS resolution disabled, .sol domains not supported");
     return null;
   }
+
+  // TODO: Implement SNS resolution via API when available
+  // For now, return null to indicate resolution not available
+  return null;
 }
 
 /**
@@ -206,16 +197,13 @@ export async function reverseLookupAddress(
   address: string,
   connection?: Connection
 ): Promise<string | null> {
-  try {
-    const conn = connection || new Connection(SOLANA_RPC_URL);
-    const pubkey = new PublicKey(address);
-
-    const domain = await reverseLookup(conn, pubkey);
-    return domain ? `${domain}.sol` : null;
-  } catch (error) {
-    console.error("[AddressResolver] Reverse lookup failed:", error);
+  // SNS resolution currently disabled in React Native
+  if (!SNS_ENABLED) {
     return null;
   }
+
+  // TODO: Implement reverse lookup via API when available
+  return null;
 }
 
 /**
@@ -225,16 +213,13 @@ export async function getDomainsForAddress(
   address: string,
   connection?: Connection
 ): Promise<string[]> {
-  try {
-    const conn = connection || new Connection(SOLANA_RPC_URL);
-    const pubkey = new PublicKey(address);
-
-    const domains = await getAllDomains(conn, pubkey);
-    return domains.map((d) => `${d}.sol`);
-  } catch (error) {
-    console.error("[AddressResolver] Get domains failed:", error);
+  // SNS resolution currently disabled in React Native
+  if (!SNS_ENABLED) {
     return [];
   }
+
+  // TODO: Implement domain lookup via API when available
+  return [];
 }
 
 // ============================================================================

@@ -9,15 +9,16 @@
  *
  * Ported from: apps/api/src/services/payments/marqeta.service.ts
  */
-import { action, internalAction, internalMutation } from "../_generated/server";
+import { action, internalAction, internalMutation, internalQuery } from "../_generated/server";
 import { v } from "convex/values";
 import { Id } from "../_generated/dataModel";
 import { internal } from "../_generated/api";
 
 // Marqeta API configuration
 const MARQETA_BASE_URL = process.env.MARQETA_BASE_URL ?? "https://sandbox-api.marqeta.com/v3";
-const MARQETA_APP_TOKEN = process.env.MARQETA_APP_TOKEN;
-const MARQETA_ADMIN_TOKEN = process.env.MARQETA_ADMIN_TOKEN;
+// Support both old and new env var names
+const MARQETA_APP_TOKEN = process.env.MARQETA_APPLICATION_TOKEN ?? process.env.MARQETA_APP_TOKEN;
+const MARQETA_ADMIN_TOKEN = process.env.MARQETA_ACCESS_TOKEN ?? process.env.MARQETA_ADMIN_TOKEN;
 const MARQETA_CARD_PRODUCT_TOKEN = process.env.MARQETA_CARD_PRODUCT_TOKEN;
 
 // Solana RPC configuration for JIT funding
@@ -42,6 +43,15 @@ export const provisionCard = internalAction({
     userId: v.id("users"),
   },
   handler: async (ctx, args): Promise<void> => {
+    // Check if Marqeta credentials are configured
+    const hasMarqetaCredentials = MARQETA_APP_TOKEN && MARQETA_ADMIN_TOKEN && MARQETA_CARD_PRODUCT_TOKEN;
+
+    console.log(`[Marqeta] Provisioning card ${args.cardId}, credentials configured: ${hasMarqetaCredentials}`);
+
+    if (!hasMarqetaCredentials) {
+      throw new Error("Marqeta credentials not configured. Set MARQETA_APPLICATION_TOKEN, MARQETA_ACCESS_TOKEN, and MARQETA_CARD_PRODUCT_TOKEN in Convex environment.");
+    }
+
     try {
       // Get user details (use internal query since we don't have auth context)
       const user = await ctx.runQuery(internal.auth.passkeys.getUserById, {
@@ -81,6 +91,89 @@ export const provisionCard = internalAction({
       // In production, you might want to retry or notify the user
       throw error;
     }
+  },
+});
+
+/**
+ * Reprovision all pending cards (for development/migration)
+ * Run from CLI: npx convex run cards/marqeta:fixPendingCards "{}"
+ */
+export const fixPendingCards = action({
+  args: {},
+  handler: async (ctx): Promise<{ fixed: number; errors: string[] }> => {
+    // Get all pending cards
+    const pendingCards = await ctx.runQuery(internal.cards.marqeta.getPendingCards, {});
+
+    console.log(`[Marqeta] Found ${pendingCards.length} pending cards to reprovision`);
+
+    let fixed = 0;
+    const errors: string[] = [];
+
+    for (const card of pendingCards) {
+      try {
+        await ctx.runAction(internal.cards.marqeta.provisionCard, {
+          cardId: card._id,
+          userId: card.userId,
+        });
+        fixed++;
+        console.log(`[Marqeta] Reprovisioned card ${card._id}`);
+      } catch (error) {
+        const msg = `Failed to reprovision ${card._id}: ${error}`;
+        console.error(msg);
+        errors.push(msg);
+      }
+    }
+
+    return { fixed, errors };
+  },
+});
+
+/**
+ * Reprovision all pending cards (internal version)
+ * Run this from Convex dashboard to fix cards stuck in pending status
+ */
+export const reprovisionPendingCards = internalAction({
+  args: {},
+  handler: async (ctx): Promise<{ fixed: number; errors: string[] }> => {
+    // Get all pending cards
+    const pendingCards = await ctx.runQuery(internal.cards.marqeta.getPendingCards, {});
+
+    console.log(`[Marqeta] Found ${pendingCards.length} pending cards to reprovision`);
+
+    let fixed = 0;
+    const errors: string[] = [];
+
+    for (const card of pendingCards) {
+      try {
+        await ctx.runAction(internal.cards.marqeta.provisionCard, {
+          cardId: card._id,
+          userId: card.userId,
+        });
+        fixed++;
+        console.log(`[Marqeta] Reprovisioned card ${card._id}`);
+      } catch (error) {
+        const msg = `Failed to reprovision ${card._id}: ${error}`;
+        console.error(msg);
+        errors.push(msg);
+      }
+    }
+
+    return { fixed, errors };
+  },
+});
+
+/**
+ * Get all pending cards (internal query for reprovision action)
+ */
+export const getPendingCards = internalQuery({
+  args: {},
+  handler: async (ctx): Promise<Array<{ _id: Id<"cards">; userId: Id<"users"> }>> => {
+    const cards = await ctx.db
+      .query("cards")
+      .filter((q) => q.eq(q.field("status"), "pending"))
+      .collect();
+
+    return cards.map((c) => ({ _id: c._id, userId: c.userId }));
   },
 });
 
@@ -175,6 +268,12 @@ export const getCardSecrets = internalAction({
 
     if (!card || !card.marqetaCardToken) {
       console.error(`Card not found or not provisioned: ${args.cardId}`);
+      return null;
+    }
+
+    // Check if Marqeta credentials are configured
+    if (!MARQETA_APP_TOKEN || !MARQETA_ADMIN_TOKEN) {
+      console.error(`[Marqeta] No credentials configured for getCardSecrets`);
       return null;
     }
 

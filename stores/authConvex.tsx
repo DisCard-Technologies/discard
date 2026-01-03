@@ -194,6 +194,7 @@ export interface User {
 export interface AuthState {
   user: User | null;
   userId: Id<"users"> | null;
+  credentialId: string | null; // For passing to Convex mutations
   isLoading: boolean;
   isAuthenticated: boolean;
   error: string | null;
@@ -223,6 +224,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>({
     user: null,
     userId: null,
+    credentialId: null,
     isLoading: true,
     isAuthenticated: false,
     error: null,
@@ -798,6 +800,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setState({
           user: null,
           userId: null,
+          credentialId: null,
           isLoading: false,
           isAuthenticated: false,
           error: null,
@@ -813,11 +816,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setState((prev) => ({ ...prev, isLoading: true }));
 
         const storedUserId = await storage.getItem(USER_ID_KEY);
+        const storedCredentialId = await storage.getItem(CREDENTIAL_ID_KEY);
 
         if (storedUserId) {
           setState((prev) => ({
             ...prev,
             userId: storedUserId as Id<"users">,
+            credentialId: storedCredentialId,
             // isAuthenticated will be set when userData query returns
           }));
         }
@@ -886,6 +891,15 @@ export function useCurrentUserId(): Id<"users"> | null {
     throw new Error("useCurrentUserId must be used within an AuthProvider");
   }
   return context.state.userId;
+}
+
+// Hook to get current credential ID (for Convex mutations that need auth)
+export function useCurrentCredentialId(): string | null {
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error("useCurrentCredentialId must be used within an AuthProvider");
+  }
+  return context.state.credentialId;
 }
 
 // Backwards compatibility alias

@@ -28,19 +28,24 @@ export const list = query({
     )),
     limit: v.optional(v.number()),
     offset: v.optional(v.number()),
+    // Fallback for custom auth when ctx.auth is not configured
+    credentialId: v.optional(v.string()),
   },
   handler: async (ctx, args): Promise<{
     cards: Doc<"cards">[];
     total: number;
   }> => {
+    // Try Convex auth first, fall back to credentialId parameter
     const identity = await ctx.auth.getUserIdentity();
-    if (!identity) {
+    const credentialId = identity?.subject ?? args.credentialId;
+
+    if (!credentialId) {
       return { cards: [], total: 0 };
     }
 
     const user = await ctx.db
       .query("users")
-      .withIndex("by_credential", (q) => q.eq("credentialId", identity.subject))
+      .withIndex("by_credential", (q) => q.eq("credentialId", credentialId))
       .first();
 
     if (!user) {
@@ -227,10 +232,13 @@ export const getTransactions = query({
 /**
  * Get card secrets (PAN, CVV) from Marqeta
  * Requires authentication and card ownership verification
+ * Updated to support credentialId fallback for custom auth
  */
 export const getSecrets = action({
   args: {
     cardId: v.id("cards"),
+    // Fallback for custom auth when ctx.auth is not configured
+    credentialId: v.optional(v.string()),
   },
   handler: async (ctx, args): Promise<{
     pan: string;
@@ -238,8 +246,11 @@ export const getSecrets = action({
     expirationMonth: number;
     expirationYear: number;
   } | null> => {
+    // Try Convex auth first, fall back to credentialId parameter
     const identity = await ctx.auth.getUserIdentity();
-    if (!identity) {
+    const credentialId = identity?.subject ?? args.credentialId;
+
+    if (!credentialId) {
       throw new Error("Not authenticated");
     }
 
@@ -254,7 +265,7 @@ export const getSecrets = action({
 
     // Get user to verify ownership
     const user = await ctx.runQuery(internal.auth.passkeys.getByCredentialId, {
-      credentialId: identity.subject,
+      credentialId: credentialId,
     });
 
     if (!user || card.userId !== user._id) {
@@ -282,16 +293,21 @@ export const create = mutation({
     color: v.optional(v.string()),
     blockedMccCodes: v.optional(v.array(v.string())),
     blockedCountries: v.optional(v.array(v.string())),
+    // Fallback for custom auth when ctx.auth is not configured
+    credentialId: v.optional(v.string()),
   },
   handler: async (ctx, args): Promise<Id<"cards">> => {
+    // Try Convex auth first, fall back to credentialId parameter
     const identity = await ctx.auth.getUserIdentity();
-    if (!identity) {
+    const credentialId = identity?.subject ?? args.credentialId;
+
+    if (!credentialId) {
       throw new Error("Not authenticated");
     }
 
     const user = await ctx.db
       .query("users")
-      .withIndex("by_credential", (q) => q.eq("credentialId", identity.subject))
+      .withIndex("by_credential", (q) => q.eq("credentialId", credentialId))
       .first();
 
     if (!user) {
