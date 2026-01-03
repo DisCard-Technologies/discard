@@ -188,6 +188,13 @@ export default function CardScreen() {
       setLoadingSecrets(true);
       try {
         const secrets = await getCardSecrets(activeCard._id);
+        console.log('[Card] getCardSecrets result:', {
+          hasPan: !!secrets?.pan,
+          hasCvv: !!secrets?.cvv,
+          cvvValue: secrets?.cvv,
+          expMonth: secrets?.expirationMonth,
+          expYear: secrets?.expirationYear,
+        });
         if (secrets) {
           setCardSecrets(secrets);
         }
@@ -322,8 +329,8 @@ export default function CardScreen() {
         {/* Visa Card */}
         <View style={[styles.cardContainer, cardFrozen && styles.cardFrozen]}>
           <LinearGradient
-            colors={isDark 
-              ? ['#27272a', '#1c1c1e', '#18181b'] 
+            colors={isDark
+              ? ['#27272a', '#1c1c1e', '#18181b']
               : ['#e4e4e7', '#d4d4d8', '#a1a1aa']
             }
             start={{ x: 0, y: 0 }}
@@ -332,29 +339,22 @@ export default function CardScreen() {
           >
             {/* Glow effect */}
             <View style={[styles.cardGlow, { backgroundColor: `${primaryColor}20` }]} />
-            
+
             {/* Card Header */}
             <View style={styles.cardHeader}>
               <View style={styles.cardBrand}>
                 <View style={[styles.brandCircle, { backgroundColor: `${primaryColor}30` }]}>
-                  <ThemedText style={[styles.brandLetter, { color: primaryColor }]}>N</ThemedText>
+                  <ThemedText style={[styles.brandLetter, { color: primaryColor }]}>D</ThemedText>
                 </View>
-                <ThemedText style={styles.brandName}>NEXUS</ThemedText>
+                <ThemedText style={styles.brandName}>DISCARD</ThemedText>
               </View>
-              {cardFrozen && (
-                <View style={styles.frozenBadge}>
-                  <Ionicons name="snow" size={14} color="#a855f7" />
-                  <ThemedText style={styles.frozenText}>Frozen</ThemedText>
-                </View>
-              )}
-            </View>
-
-            {/* Card Number */}
-            <View style={styles.cardBody}>
-              <View style={styles.cardNumberRow}>
-                <ThemedText style={styles.cardNumber}>
-                  {loadingSecrets ? "Loading..." : displayCardNumber}
-                </ThemedText>
+              <View style={styles.cardHeaderRight}>
+                {cardFrozen && (
+                  <View style={styles.frozenBadge}>
+                    <Ionicons name="snow" size={14} color="#a855f7" />
+                    <ThemedText style={styles.frozenText}>Frozen</ThemedText>
+                  </View>
+                )}
                 <Pressable
                   onPress={toggleDetails}
                   style={styles.eyeButton}
@@ -362,16 +362,23 @@ export default function CardScreen() {
                 >
                   <Ionicons
                     name={loadingSecrets ? "hourglass-outline" : (showDetails ? "eye-off" : "eye")}
-                    size={18}
+                    size={20}
                     color={mutedColor}
                   />
                 </Pressable>
               </View>
+            </View>
+
+            {/* Card Number */}
+            <View style={styles.cardBody}>
+              <ThemedText style={styles.cardNumber}>
+                {loadingSecrets ? "Loading..." : displayCardNumber}
+              </ThemedText>
               {showDetails && cardSecrets && (
                 <View style={styles.cardDetailsRow}>
                   <View>
                     <ThemedText style={[styles.cardLabel, { color: mutedColor }]}>CVV</ThemedText>
-                    <ThemedText style={styles.cardDetailValue}>{cardSecrets.cvv}</ThemedText>
+                    <ThemedText style={styles.cardDetailValue}>{cardSecrets.cvv || "---"}</ThemedText>
                   </View>
                   <View>
                     <ThemedText style={[styles.cardLabel, { color: mutedColor }]}>EXPIRES</ThemedText>
@@ -386,8 +393,8 @@ export default function CardScreen() {
             {/* Card Footer */}
             <View style={styles.cardFooter}>
               <View>
-                <ThemedText style={[styles.cardLabel, { color: mutedColor }]}>Cardholder</ThemedText>
-                <ThemedText style={styles.cardHolder}>{(user?.displayName || 'CARDHOLDER').toUpperCase()}</ThemedText>
+                <ThemedText style={[styles.cardLabel, { color: mutedColor }]}>CARDHOLDER</ThemedText>
+                <ThemedText style={styles.cardHolder}>{(user?.displayName || 'CARD HOLDER').toUpperCase()}</ThemedText>
               </View>
               <ThemedText style={[styles.visaLogo, { color: isDark ? 'rgba(255,255,255,0.8)' : 'rgba(0,0,0,0.6)' }]}>VISA</ThemedText>
             </View>
@@ -594,16 +601,18 @@ const styles = StyleSheet.create({
   },
   // Card styles
   cardContainer: {
-    height: 208,
+    minHeight: 200,
     borderRadius: 24,
     overflow: 'hidden',
+    // Standard card aspect ratio is approximately 1.586:1
+    aspectRatio: 1.586,
   },
   cardFrozen: {
     opacity: 0.6,
   },
   cardGradient: {
     flex: 1,
-    padding: 24,
+    padding: 20,
     justifyContent: 'space-between',
   },
   cardGlow: {
@@ -619,6 +628,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+  },
+  cardHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
   },
   cardBrand: {
     flexDirection: 'row',
@@ -651,29 +665,25 @@ const styles = StyleSheet.create({
     color: '#a855f7',
   },
   cardBody: {
-    marginTop: 8,
-  },
-  cardNumberRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
+    flex: 1,
+    justifyContent: 'center',
   },
   cardNumber: {
-    fontSize: 20,
-    letterSpacing: 4,
+    fontSize: 18,
+    letterSpacing: 3,
     fontFamily: 'monospace',
   },
   eyeButton: {
-    padding: 4,
+    padding: 8,
   },
   cardDetailsRow: {
     flexDirection: 'row',
-    gap: 24,
+    gap: 32,
     marginTop: 12,
   },
   cardDetailValue: {
     fontSize: 14,
-    fontWeight: '500',
+    fontWeight: '600',
     letterSpacing: 1,
   },
   cardFooter: {
@@ -683,16 +693,17 @@ const styles = StyleSheet.create({
   },
   cardLabel: {
     fontSize: 9,
-    letterSpacing: 2,
+    letterSpacing: 1.5,
     textTransform: 'uppercase',
-    marginBottom: 4,
+    marginBottom: 2,
   },
   cardHolder: {
-    fontSize: 13,
-    fontWeight: '500',
+    fontSize: 12,
+    fontWeight: '600',
+    letterSpacing: 1,
   },
   visaLogo: {
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: '700',
     fontStyle: 'italic',
     letterSpacing: -1,

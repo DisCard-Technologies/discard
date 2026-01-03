@@ -273,9 +273,12 @@ export const getSecrets = action({
     }
 
     // Fetch secrets from Marqeta
-    return await ctx.runAction(internal.cards.marqeta.getCardSecrets, {
+    const secrets = await ctx.runAction(internal.cards.marqeta.getCardSecrets, {
       cardId: args.cardId,
     });
+
+    console.log(`[getSecrets] Marqeta returned:`, JSON.stringify(secrets));
+    return secrets;
   },
 });
 
