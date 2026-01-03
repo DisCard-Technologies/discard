@@ -1,16 +1,25 @@
 # DisCard
 
-> Intent-Centric Virtual Card Platform powered by Expo + Convex
+> Intent-Centric Super Wallet with Virtual Global Card and AI Co-Pilot
 
-DisCard is a mobile application that enables users to create disposable virtual debit cards funded with cryptocurrency. Natural language commands power an AI-driven interface where users simply describe what they want to do, and the system handles the complexity.
+DisCard is a mobile-first crypto wallet that combines disposable virtual debit cards with DeFi trading capabilities. Powered by conversational AI, users interact through natural language—describe what you want ("swap 50 USDC for SOL", "create a card with $100 limit") and the system parses your intent, clarifies ambiguity, and executes complex multi-step operations automatically.
+
+**Key capabilities:**
+- **Human Language Interface**: Conversational intent parsing with clarification flows for ambiguous commands
+- **Dual AI Security**: Two LLMs in Phala TEE—"Brain" (orchestrator) parses intents, "Soul" (your financial persona) executes—each validates the other
+- **Auto-Yield on Idle Funds**: Automatically deploy unused balances to DeFi protocols, withdraw seamlessly when needed
+- **Instant Virtual Cards**: Disposable debit cards with crypto funding, self-healing on breach detection
+- **MEV-Protected Trading**: Jupiter DEX integration with DFlow order flow for best execution
+- **ZK-Compressed State**: Light Protocol for privacy-preserving wallet state on Solana
 
 ## Features
 
 ### Core Features
-- **Intent-Centric UI**: Natural language command bar ("Fund my card with ETH yield")
+- **Intent-Centric UI**: Natural language command bar with conversational clarification
+- **Dual AI Validation**: Brain orchestrates, Soul executes—mutual verification in Phala TEE
+- **Auto-Yield**: Idle funds automatically deployed to DeFi, withdrawn on-demand
 - **Instant Card Creation**: Generate virtual debit cards in seconds
-- **Crypto Funding**: Support for ETH, SOL, USDT, USDC, and major tokens
-- **DeFi Integration**: Fund cards directly from yield-generating positions
+- **Crypto Funding**: Support for SOL, USDC, and major Solana tokens
 - **Privacy-First**: Cards with cryptographic isolation, no cross-card correlation
 - **Self-Healing Cards**: Automatic reissue when breach detected
 
@@ -20,6 +29,12 @@ DisCard is a mobile application that enables users to create disposable virtual 
 - **Virtual IBAN**: Direct bank deposits via dedicated IBAN (EU/UK transfers)
 - **Crypto Wallets**: Fund from connected ETH/SOL wallets
 - **DeFi Yield**: Withdraw from Aave, Compound, and other yield positions
+
+### Trading & Portfolio
+- **Jupiter DEX Integration**: Token exploration with real-time prices and images
+- **DFlow Order Flow**: MEV-protected swaps with best execution
+- **Holdings Dashboard**: Portfolio tracking across all connected wallets
+- **Transaction History**: Full audit trail with status tracking
 
 ### Security & Fraud Prevention
 - **Real-time Fraud Detection**: Sub-800ms transaction analysis with 5 anomaly algorithms
@@ -36,40 +51,69 @@ DisCard is a mobile application that enables users to create disposable virtual 
 
 ```
 discard/
-├── App.tsx                 # Main app entry
-├── convex/                 # Convex backend
+├── app/                    # Expo Router screens
+│   ├── (tabs)/             # Main tabbed screens
+│   │   ├── index.tsx       # Home/Dashboard
+│   │   ├── card.tsx        # Cards management + creation
+│   │   ├── holdings.tsx    # Asset holdings & portfolio
+│   │   └── transfer.tsx    # Send/receive transfers
+│   ├── auth.tsx            # Passkey authentication
+│   ├── buy-crypto.tsx      # MoonPay integration
+│   ├── sell-crypto.tsx     # Crypto off-ramp
+│   ├── history.tsx         # Transaction history
+│   ├── identity.tsx        # KYC flow
+│   └── settings.tsx        # App settings
+├── components/             # React Native UI components
+│   ├── command-bar.tsx     # Natural language command interface
+│   ├── explore-view.tsx    # Token exploration with Jupiter data
+│   ├── market-detail-screen.tsx
+│   ├── token-detail-screen.tsx
+│   └── ui/                 # Shared UI components
+├── convex/                 # Backend (serverless functions + DB)
 │   ├── schema.ts           # Database schema (13 tables)
 │   ├── auth/               # Passkey authentication
-│   ├── cards/              # Card management + Marqeta
+│   ├── cards/              # Card management + Marqeta API
 │   ├── funding/            # Stripe + crypto funding
-│   ├── intents/            # AI intent processing (Claude)
+│   ├── intents/            # Claude AI intent parsing
 │   ├── fraud/              # Fraud detection engine
-│   ├── http/               # Webhook handlers
-│   ├── crons/              # Scheduled jobs
-│   └── migrations/         # Data migration tools
-├── src/
-│   ├── components/         # React Native components
-│   │   └── command/        # Command bar UI
-│   ├── hooks/              # Convex subscription hooks
-│   ├── screens/            # App screens
-│   ├── stores/             # State management (Convex-based)
-│   ├── types/              # TypeScript definitions
-│   └── lib/                # Utilities (passkeys, etc.)
-├── assets/                 # Static assets
-└── docs/                   # Documentation
+│   ├── bridge/             # Turnkey integrations
+│   ├── http.ts             # Webhook handlers
+│   └── crons.ts            # Scheduled jobs
+├── services/               # External API clients
+│   ├── jupiterTokensClient.ts  # Jupiter token data
+│   ├── jupiterUltraClient.ts   # Jupiter DEX swaps
+│   ├── dflowClient.ts      # DFlow protocol integration
+│   ├── dflowSwapClient.ts  # DFlow swap execution
+│   └── brainClient.ts      # AI orchestrator
+├── programs/               # Solana smart contracts (Anchor)
+│   ├── discard-state/      # ZK compressed card state PDAs
+│   ├── discard-hooks/      # Token-2022 transfer hooks
+│   └── merchant-registry/  # On-chain merchant validation
+├── packages/               # elizaOS plugins
+│   ├── plugin-financial-armor/  # Turnkey bridging + TEE
+│   └── plugin-brain-orchestrator/  # Intent parsing + planning
+├── hooks/                  # Convex data subscription hooks
+├── stores/                 # State management
+├── lib/                    # Utilities (passkeys, etc.)
+├── assets/                 # Icons, images, splash screens
+└── docs/                   # Architecture documentation
 ```
 
 ## Tech Stack
 
-- **Frontend**: React Native, Expo, TypeScript
+- **Frontend**: React Native 0.81, Expo 54, TypeScript 5.9
 - **Backend**: Convex (real-time database + serverless functions)
-- **Authentication**: WebAuthn Passkeys (react-native-passkey)
-- **AI**: Claude API for intent parsing
+- **Authentication**: WebAuthn Passkeys (react-native-passkey + Turnkey SDK)
+- **AI**: Dual LLM in Phala TEE (Brain + Soul) via elizaOS plugins
 - **Card Issuing**: Marqeta JIT Funding
 - **Payments**: Stripe for fiat funding
 - **Crypto On-Ramp**: MoonPay for crypto purchases
-- **Banking**: Stripe Treasury / Railsr for virtual IBANs
-- **Blockchain**: Solana (via @solana/web3.js)
+- **Banking**: Stripe Treasury for virtual IBANs
+- **Blockchain**: Solana (@solana/web3.js v1.98)
+- **DEX Integration**: Jupiter (token data + swaps)
+- **Order Flow**: DFlow protocol for MEV-protected trades
+- **ZK Compression**: Light Protocol (compressed tokens + PDAs)
+- **Smart Contracts**: Anchor Framework (Token-2022 hooks)
 
 ## Getting Started
 
@@ -171,6 +215,28 @@ SOLANA_RPC_URL=https://api.mainnet-beta.solana.com
 | `POST /webhooks/iban` | Virtual IBAN deposit notifications |
 | `GET /health` | Health check endpoint |
 
+## Solana Programs
+
+On-chain smart contracts built with Anchor Framework:
+
+| Program | Purpose |
+|---------|---------|
+| `discard-state` | ZK-compressed card state using Light Protocol PDAs |
+| `discard-hooks` | Token-2022 transfer hooks for policy enforcement |
+| `merchant-registry` | On-chain merchant validation and whitelist management |
+
+## External Services
+
+Client integrations in `services/`:
+
+| Service | Purpose |
+|---------|---------|
+| `jupiterTokensClient` | Token metadata, prices, and images from Jupiter API |
+| `jupiterUltraClient` | DEX swap routing and execution |
+| `dflowClient` | DFlow protocol for MEV-protected order flow |
+| `dflowSwapClient` | Swap execution through DFlow auctions |
+| `brainClient` | AI orchestrator communication |
+
 ## Scripts
 
 ```bash
@@ -198,6 +264,8 @@ The command bar understands natural language:
 - "Top up $200 with MoonPay"
 - "Show me my IBAN for bank transfers"
 - "Buy $100 of ETH and add to my account"
+- "Swap 50 USDC for SOL"
+- "Show me trending tokens"
 
 ## Security
 
@@ -218,3 +286,9 @@ MIT
 - [Marqeta Docs](https://www.marqeta.com/docs)
 - [MoonPay Docs](https://docs.moonpay.com)
 - [Stripe Treasury](https://stripe.com/docs/treasury)
+- [Jupiter API](https://station.jup.ag/docs)
+- [DFlow Protocol](https://docs.dflow.net)
+- [Light Protocol](https://docs.lightprotocol.com)
+- [Turnkey Docs](https://docs.turnkey.com)
+- [Phala Network](https://docs.phala.network)
+- [elizaOS](https://elizaos.github.io/eliza/)
