@@ -19,8 +19,8 @@ import { useMoonPay } from '@/hooks/useMoonPay';
 // Supported currencies for purchase
 // Network suffix: _sol = Solana, no suffix = Ethereum
 const CURRENCIES = [
-  { code: 'usdc_sol', name: 'USD Coin (SOL)', symbol: 'USDC', icon: '$', network: 'solana' },
   { code: 'sol', name: 'Solana', symbol: 'SOL', icon: '◎', network: 'solana' },
+  { code: 'usdc_sol', name: 'USD Coin (SOL)', symbol: 'USDC', icon: '$', network: 'solana' },
   { code: 'usdt_sol', name: 'Tether (ETH)', symbol: 'USDT', icon: '₮', network: 'solana' },
   { code: 'eth_sol', name: 'Ethereum', symbol: 'ETH', icon: '◇', network: 'solana' },
 ];
