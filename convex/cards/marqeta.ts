@@ -280,7 +280,7 @@ export const getCardSecrets = internalAction({
     try {
       const authHeader = `Basic ${btoa(`${MARQETA_APP_TOKEN}:${MARQETA_ADMIN_TOKEN}`)}`;
 
-      // Call Marqeta showpan with show_cvv_number=true to get CVV in same response
+      // Call Marqeta showpan to get PAN and expiration
       const panResponse = await fetch(
         `${MARQETA_BASE_URL}/cards/${card.marqetaCardToken}/showpan?show_cvv_number=true`,
         {
@@ -299,12 +299,25 @@ export const getCardSecrets = internalAction({
       }
 
       const panData = await panResponse.json();
-      console.log(`[Marqeta] PAN response keys:`, Object.keys(panData));
-      console.log(`[Marqeta] PAN response:`, JSON.stringify(panData));
 
-      // CVV should be in the response when show_cvv_number=true is passed
-      const cvv = panData.cvv_number || panData.cvv2_number || panData.cvv || "";
-      console.log(`[Marqeta] CVV found: ${cvv ? "yes" : "no"}`);
+      // Get CVV from /cards/{cardToken}?fields=chip_cvv_number
+      const cardResponse = await fetch(
+        `${MARQETA_BASE_URL}/cards/${card.marqetaCardToken}?fields=chip_cvv_number`,
+        {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": authHeader,
+          },
+        }
+      );
+
+      let cvv = "";
+      if (cardResponse.ok) {
+        const cardData = await cardResponse.json();
+        const rawCvv = cardData.chip_cvv_number;
+        cvv = rawCvv !== undefined && rawCvv !== null ? String(rawCvv) : "";
+      }
 
       // Parse expiration from MMYY format
       const expMonth = parseInt(panData.expiration?.slice(0, 2) || "0");
