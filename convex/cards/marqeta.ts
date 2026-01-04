@@ -299,25 +299,32 @@ export const getCardSecrets = internalAction({
       }
 
       const panData = await panResponse.json();
+      console.log(`[Marqeta] showpan response keys:`, Object.keys(panData));
 
-      // Get CVV from /cards/{cardToken}?fields=chip_cvv_number
-      const cardResponse = await fetch(
-        `${MARQETA_BASE_URL}/cards/${card.marqetaCardToken}?fields=chip_cvv_number`,
-        {
-          method: "GET",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": authHeader,
-          },
+      // Try to get CVV from showpan response first (cvv_number field when show_cvv_number=true)
+      let cvv = panData.cvv_number || panData.cvv2_number || "";
+
+      // If CVV not in showpan response, try chip_cvv_number from card details
+      if (!cvv) {
+        const cardResponse = await fetch(
+          `${MARQETA_BASE_URL}/cards/${card.marqetaCardToken}?fields=chip_cvv_number`,
+          {
+            method: "GET",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": authHeader,
+            },
+          }
+        );
+
+        if (cardResponse.ok) {
+          const cardData = await cardResponse.json();
+          const rawCvv = cardData.chip_cvv_number;
+          cvv = rawCvv !== undefined && rawCvv !== null ? String(rawCvv) : "";
         }
-      );
-
-      let cvv = "";
-      if (cardResponse.ok) {
-        const cardData = await cardResponse.json();
-        const rawCvv = cardData.chip_cvv_number;
-        cvv = rawCvv !== undefined && rawCvv !== null ? String(rawCvv) : "";
       }
+
+      console.log(`[Marqeta] CVV retrieved: ${cvv ? "yes" : "no"}`)
 
       // Parse expiration from MMYY format
       const expMonth = parseInt(panData.expiration?.slice(0, 2) || "0");
