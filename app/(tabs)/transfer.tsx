@@ -16,10 +16,11 @@ import { useThemeColor } from '@/hooks/use-theme-color';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useAuth } from '@/stores/authConvex';
 import { useTokenHoldings } from '@/hooks/useTokenHoldings';
-import { RecipientInput } from '@/components/transfer';
+import { RecipientInput, SettlementSelector } from '@/components/transfer';
 import { useContacts } from '@/hooks/useContacts';
 import { useAddressResolver, type ResolvedAddress } from '@/hooks/useAddressResolver';
 import { useTransfer, type TransferToken } from '@/hooks/useTransfer';
+import { useCrossCurrencyTransfer } from '@/hooks/useCrossCurrencyTransfer';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
@@ -77,8 +78,16 @@ export default function TransferScreen() {
     return tokenHoldings.map(h => ({
       symbol: h.symbol,
       balance: h.balanceFormatted,
+      mint: h.mint,
+      decimals: h.decimals,
     }));
   }, [tokenHoldings]);
+
+  // Get the selected payment token's details
+  const selectedPaymentToken = useMemo(() => {
+    if (!tokenHoldings) return null;
+    return tokenHoldings.find(h => h.symbol === selectedToken) || null;
+  }, [tokenHoldings, selectedToken]);
 
   const [mode, setMode] = useState<TransferMode>('send');
   const [selectedContact, setSelectedContact] = useState<LocalContact | null>(null);
@@ -92,6 +101,28 @@ export default function TransferScreen() {
   const [newContactName, setNewContactName] = useState('');
   const [newContactHandle, setNewContactHandle] = useState('');
   const [contactsList, setContactsList] = useState<LocalContact[]>(initialContacts);
+
+  // Cross-currency settlement
+  const paymentAmountBaseUnits = useMemo(() => {
+    if (!amount || !selectedPaymentToken) return undefined;
+    const parsed = parseFloat(amount);
+    if (isNaN(parsed) || parsed <= 0) return undefined;
+    return Math.floor(parsed * Math.pow(10, selectedPaymentToken.decimals)).toString();
+  }, [amount, selectedPaymentToken]);
+
+  const {
+    settlementToken,
+    needsSwap,
+    isLoadingQuote,
+    quoteError,
+    estimatedReceivedFormatted,
+    setSettlementToken,
+    availableTokens,
+  } = useCrossCurrencyTransfer({
+    paymentMint: selectedPaymentToken?.mint,
+    paymentAmount: paymentAmountBaseUnits,
+    debounceMs: 500,
+  });
 
   // Format wallet address for display
   const displayAddress = walletAddress
@@ -154,15 +185,15 @@ export default function TransferScreen() {
         }),
         token: JSON.stringify({
           symbol: selectedToken,
-          mint: selectedToken === 'SOL' ? 'So11111111111111111111111111111111111111112' : 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
-          decimals: selectedToken === 'SOL' ? 9 : 6,
+          mint: selectedPaymentToken?.mint || 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+          decimals: selectedPaymentToken?.decimals || 6,
           balance: 0,
           balanceUsd: 0,
         }),
         amount: JSON.stringify({
           amount: parseFloat(amount),
           amountUsd: parseFloat(amount), // Simplified - assume stablecoin
-          amountBaseUnits: (parseFloat(amount) * (selectedToken === 'SOL' ? 1e9 : 1e6)).toString(),
+          amountBaseUnits: paymentAmountBaseUnits || (parseFloat(amount) * 1e6).toString(),
         }),
         fees: JSON.stringify({
           networkFee: 0.00001,
@@ -172,6 +203,15 @@ export default function TransferScreen() {
           ataRent: 0,
           totalFeesUsd: 0.001 + parseFloat(amount) * 0.003,
           totalCostUsd: parseFloat(amount) + 0.001 + parseFloat(amount) * 0.003,
+        }),
+        // Settlement token info for cross-currency transfers
+        settlement: JSON.stringify({
+          token: settlementToken.symbol,
+          mint: settlementToken.mint,
+          decimals: settlementToken.decimals,
+          currencySymbol: settlementToken.currencySymbol,
+          needsSwap,
+          estimatedOutput: estimatedReceivedFormatted,
         }),
         memo,
       },
@@ -609,6 +649,21 @@ export default function TransferScreen() {
             </View>
           )}
         </View>
+      )}
+
+      {/* Settlement Currency Selector (Send mode only) */}
+      {mode === 'send' && selectedPaymentToken && (
+        <SettlementSelector
+          selectedToken={settlementToken}
+          availableTokens={availableTokens}
+          paymentMint={selectedPaymentToken.mint}
+          isLoadingQuote={isLoadingQuote}
+          estimatedOutput={estimatedReceivedFormatted}
+          quoteError={quoteError}
+          needsSwap={needsSwap}
+          onSelect={setSettlementToken}
+          disabled={!amount || parseFloat(amount) <= 0}
+        />
       )}
 
       {/* Memo */}
