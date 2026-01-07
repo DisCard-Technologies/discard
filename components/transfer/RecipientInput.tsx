@@ -44,6 +44,8 @@ export interface RecipientInputProps {
   onSelect: (resolved: ResolvedAddress, contact?: Contact) => void;
   /** Callback to open QR scanner */
   onScanQR?: () => void;
+  /** Callback when user wants to invite via SMS */
+  onInvite?: (phoneNumber: string) => void;
   /** Placeholder text */
   placeholder?: string;
   /** Auto focus on mount */
@@ -103,16 +105,26 @@ function TypeBadge({
   type,
   isValid,
 }: {
-  type: "address" | "sol_name" | "unknown";
+  type: "address" | "sol_name" | "phone" | "email" | "unknown";
   isValid: boolean;
 }) {
   const successColor = useThemeColor({ light: "#4CAF50", dark: "#66BB6A" }, "text");
   const warningColor = useThemeColor({ light: "#FF9800", dark: "#FFB74D" }, "text");
+  const infoColor = useThemeColor({ light: "#2196F3", dark: "#64B5F6" }, "text");
 
   if (type === "unknown") return null;
 
-  const label = type === "sol_name" ? ".sol detected" : "Address valid";
-  const color = isValid ? successColor : warningColor;
+  const labels: Record<typeof type, string> = {
+    address: "Address valid",
+    sol_name: ".sol detected",
+    phone: "Phone detected",
+    email: "Email detected",
+    unknown: "",
+  };
+
+  const label = labels[type];
+  // Phone and email show info color when valid format but not yet resolved
+  const color = isValid ? successColor : (type === "phone" || type === "email") ? infoColor : warningColor;
 
   return (
     <Animated.View
@@ -121,7 +133,7 @@ function TypeBadge({
       style={[styles.badge, { backgroundColor: `${color}20` }]}
     >
       <Ionicons
-        name={isValid ? "checkmark-circle" : "alert-circle"}
+        name={isValid ? "checkmark-circle" : (type === "phone" || type === "email") ? "search" : "alert-circle"}
         size={12}
         color={color}
       />
@@ -138,7 +150,8 @@ export function RecipientInput({
   value,
   onSelect,
   onScanQR,
-  placeholder = "Address, .sol name, or contact",
+  onInvite,
+  placeholder = "Address, .sol, phone, email, or contact",
   autoFocus = false,
   disabled = false,
 }: RecipientInputProps) {
@@ -324,7 +337,7 @@ export function RecipientInput({
       )}
 
       {/* Error Message */}
-      {error && (
+      {error && !resolved?.canInvite && (
         <Animated.View
           entering={FadeIn.duration(150)}
           style={styles.errorContainer}
@@ -336,7 +349,49 @@ export function RecipientInput({
         </Animated.View>
       )}
 
-      {/* Resolved Address Display */}
+      {/* Invite Button - shown when phone number not found */}
+      {resolved?.canInvite && resolved.type === "phone" && onInvite && (
+        <Animated.View
+          entering={FadeIn.duration(200)}
+          style={[styles.inviteCard, { backgroundColor: inputBg, borderColor }]}
+        >
+          <View style={styles.inviteContent}>
+            <Ionicons name="person-add-outline" size={20} color={mutedColor} />
+            <View style={styles.inviteTextContainer}>
+              <ThemedText style={styles.inviteTitle}>Not on DisCard</ThemedText>
+              <ThemedText style={[styles.inviteSubtitle, { color: mutedColor }]}>
+                Send an SMS invite to join
+              </ThemedText>
+            </View>
+          </View>
+          <Pressable
+            onPress={() => onInvite(input)}
+            style={({ pressed }) => [
+              styles.inviteButton,
+              { backgroundColor: primaryColor },
+              pressed && styles.pressed,
+            ]}
+          >
+            <Ionicons name="send" size={14} color="#fff" />
+            <ThemedText style={styles.inviteButtonText}>Invite</ThemedText>
+          </Pressable>
+        </Animated.View>
+      )}
+
+      {/* Email not found message */}
+      {resolved?.canInvite === false && resolved.type === "email" && error && (
+        <Animated.View
+          entering={FadeIn.duration(150)}
+          style={styles.errorContainer}
+        >
+          <Ionicons name="mail-outline" size={14} color={mutedColor} />
+          <ThemedText style={[styles.errorText, { color: mutedColor }]}>
+            Email not found on DisCard
+          </ThemedText>
+        </Animated.View>
+      )}
+
+      {/* Resolved Address Display - for .sol domains */}
       {resolved?.isValid && resolved.type === "sol_name" && (
         <Animated.View
           entering={FadeIn.duration(200)}
@@ -348,6 +403,29 @@ export function RecipientInput({
           </View>
           <ThemedText style={[styles.resolvedAddress, { color: mutedColor }]}>
             {resolved.address}
+          </ThemedText>
+        </Animated.View>
+      )}
+
+      {/* Resolved User Display - for phone/email */}
+      {resolved?.isValid && (resolved.type === "phone" || resolved.type === "email") && (
+        <Animated.View
+          entering={FadeIn.duration(200)}
+          style={[styles.resolvedCard, { backgroundColor: inputBg, borderColor }]}
+        >
+          <View style={styles.resolvedHeader}>
+            <Ionicons name="checkmark-circle" size={16} color="#4CAF50" />
+            <ThemedText style={styles.resolvedLabel}>
+              DisCard user found
+            </ThemedText>
+          </View>
+          {resolved.displayName && (
+            <ThemedText style={styles.resolvedUserName}>
+              {resolved.displayName}
+            </ThemedText>
+          )}
+          <ThemedText style={[styles.resolvedAddress, { color: mutedColor }]}>
+            {formatAddress(resolved.address, 6)}
           </ThemedText>
         </Animated.View>
       )}
@@ -479,9 +557,54 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "500",
   },
+  resolvedUserName: {
+    fontSize: 15,
+    fontWeight: "600",
+    marginTop: 4,
+    marginBottom: 2,
+  },
   resolvedAddress: {
     fontSize: 12,
     fontFamily: "monospace",
+  },
+  inviteCard: {
+    marginTop: 12,
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  inviteContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    flex: 1,
+  },
+  inviteTextContainer: {
+    flex: 1,
+  },
+  inviteTitle: {
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  inviteSubtitle: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  inviteButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  inviteButtonText: {
+    color: "#fff",
+    fontSize: 13,
+    fontWeight: "600",
   },
   suggestionsCard: {
     marginTop: 8,

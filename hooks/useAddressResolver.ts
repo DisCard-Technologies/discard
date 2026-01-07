@@ -1,16 +1,19 @@
 /**
  * DisCard 2035 - useAddressResolver Hook
  *
- * React hook for resolving Solana addresses and .sol domains.
+ * React hook for resolving Solana addresses, .sol domains, phone numbers, and emails.
  * Features:
  * - Debounced input handling (300ms)
- * - Auto-detection of address type
+ * - Auto-detection of address type (address, sol_name, phone, email)
  * - Loading and error states
  * - Memory caching via the resolver lib
+ * - Convex integration for phone/email user discovery
  */
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Connection } from "@solana/web3.js";
+import { useConvex } from "convex/react";
+import { api } from "@/convex/_generated/api";
 import {
   resolveAddress,
   detectAddressType,
@@ -90,6 +93,9 @@ export function useAddressResolver(
     onError,
   } = options;
 
+  // Convex client for phone/email lookups
+  const convex = useConvex();
+
   // State
   const [input, setInputState] = useState("");
   const [type, setType] = useState<AddressType>("unknown");
@@ -139,6 +145,88 @@ export function useAddressResolver(
       setError(null);
 
       try {
+        const trimmed = value.trim();
+        const detectedType = detectAddressType(trimmed);
+
+        // Handle phone number lookup via Convex
+        if (detectedType === "phone") {
+          const user = await convex.query(api.transfers.lookup.findByPhone, {
+            phoneNumber: trimmed,
+          });
+
+          // Check if this is still the latest input
+          if (value !== latestInputRef.current) {
+            return null;
+          }
+
+          if (user && user.solanaAddress) {
+            const result: ResolvedAddress = {
+              input: trimmed,
+              type: "phone",
+              address: user.solanaAddress,
+              displayName: user.displayName || undefined,
+              isValid: true,
+              userId: user.userId,
+            };
+            setResolved(result);
+            onResolved?.(result);
+            return result;
+          } else {
+            // User not found - can invite via SMS
+            const result: ResolvedAddress = {
+              input: trimmed,
+              type: "phone",
+              address: "",
+              isValid: false,
+              error: "Not a DisCard user",
+              canInvite: true,
+            };
+            setResolved(result);
+            setError("Not a DisCard user");
+            return result;
+          }
+        }
+
+        // Handle email lookup via Convex
+        if (detectedType === "email") {
+          const user = await convex.query(api.transfers.lookup.findByEmail, {
+            email: trimmed,
+          });
+
+          // Check if this is still the latest input
+          if (value !== latestInputRef.current) {
+            return null;
+          }
+
+          if (user && user.solanaAddress) {
+            const result: ResolvedAddress = {
+              input: trimmed,
+              type: "email",
+              address: user.solanaAddress,
+              displayName: user.displayName || undefined,
+              isValid: true,
+              userId: user.userId,
+            };
+            setResolved(result);
+            onResolved?.(result);
+            return result;
+          } else {
+            // User not found - cannot invite via email (deferred feature)
+            const result: ResolvedAddress = {
+              input: trimmed,
+              type: "email",
+              address: "",
+              isValid: false,
+              error: "Not a DisCard user",
+              canInvite: false, // Email invitations deferred
+            };
+            setResolved(result);
+            setError("Not a DisCard user");
+            return result;
+          }
+        }
+
+        // Handle address and sol_name via existing resolver
         const result = await resolveAddress(value, connection);
 
         // Check if this is still the latest input
@@ -171,7 +259,7 @@ export function useAddressResolver(
         setIsResolving(false);
       }
     },
-    [connection, onResolved, onError]
+    [connection, convex, onResolved, onError]
   );
 
   // Debounced input handler
@@ -223,7 +311,8 @@ export function useAddressResolver(
         return;
       }
 
-      // For .sol domains, debounce the resolution
+      // For .sol domains, phone, and email - debounce the resolution
+      // These all require async lookups (SNS or Convex)
       setIsResolving(true);
       debounceTimerRef.current = setTimeout(() => {
         performResolution(trimmed);

@@ -20,6 +20,7 @@ export default defineSchema({
     // Profile
     displayName: v.optional(v.string()),
     phoneHash: v.optional(v.string()),  // For TextPay PDA derivation
+    phoneNumber: v.optional(v.string()), // E.164 format for P2P discovery
     email: v.optional(v.string()),      // Optional, for notifications only
 
     // Privacy settings
@@ -49,6 +50,7 @@ export default defineSchema({
   })
     .index("by_credential", ["credentialId"])
     .index("by_phone_hash", ["phoneHash"])
+    .index("by_phone_number", ["phoneNumber"])
     .index("by_solana_address", ["solanaAddress"])
     .index("by_ethereum_address", ["ethereumAddress"])
     .index("by_email", ["email"]),
@@ -1352,6 +1354,13 @@ export default defineSchema({
     tokenDecimals: v.number(),        // Token decimals for display
     amountUsd: v.number(),            // USD equivalent (cents)
 
+    // Settlement currency (for cross-currency transfers)
+    settlementToken: v.optional(v.string()),        // Token recipient receives (e.g., "USDC", "EURC")
+    settlementTokenMint: v.optional(v.string()),    // Settlement token mint address
+    settlementTokenDecimals: v.optional(v.number()),// Settlement token decimals
+    settlementAmount: v.optional(v.number()),       // Amount recipient receives (base units)
+    swapSignature: v.optional(v.string()),          // Jupiter swap transaction signature
+
     // Fees
     networkFee: v.number(),           // Solana network fee (lamports)
     platformFee: v.number(),          // Platform fee (0.3%) in token base units
@@ -1464,6 +1473,11 @@ export default defineSchema({
     ),
     resolvedAddress: v.string(),      // Cached resolved address
 
+    // DisCard user linking
+    linkedUserId: v.optional(v.id("users")), // If contact is a DisCard user
+    phoneNumber: v.optional(v.string()),     // Contact's phone number
+    email: v.optional(v.string()),           // Contact's email
+
     // Display
     avatarInitials: v.string(),       // First letters for avatar
     avatarColor: v.optional(v.string()), // Optional color override
@@ -1482,4 +1496,46 @@ export default defineSchema({
     .index("by_user_address", ["userId", "resolvedAddress"])
     .index("by_user_recent", ["userId", "lastUsedAt"])
     .index("by_user_name", ["userId", "name"]),
+
+  // ============ INVITATIONS ============
+  // SMS invitations for non-registered users
+  invitations: defineTable({
+    senderId: v.id("users"),
+
+    // Recipient identification
+    recipientPhone: v.string(),            // E.164 phone number
+    inviteCode: v.string(),                // Unique code for tracking/claiming
+    message: v.optional(v.string()),       // Custom invitation message
+
+    // Pending transfer (optional)
+    pendingTransferId: v.optional(v.id("transfers")),
+    pendingAmount: v.optional(v.number()), // Amount in cents
+    pendingToken: v.optional(v.string()),  // Token symbol
+
+    // Delivery status
+    deliveryStatus: v.union(
+      v.literal("pending"),                // Created, not yet sent
+      v.literal("sent"),                   // SMS delivered
+      v.literal("failed")                  // SMS failed
+    ),
+    deliveryError: v.optional(v.string()), // Error message if failed
+
+    // Claim status
+    claimStatus: v.union(
+      v.literal("unclaimed"),              // Not yet claimed
+      v.literal("claimed"),                // User signed up
+      v.literal("expired")                 // Expired without claim
+    ),
+    claimedByUserId: v.optional(v.id("users")),
+    claimedAt: v.optional(v.number()),
+
+    // Timestamps
+    expiresAt: v.number(),                 // Expiry timestamp
+    createdAt: v.number(),
+  })
+    .index("by_sender", ["senderId"])
+    .index("by_invite_code", ["inviteCode"])
+    .index("by_phone", ["recipientPhone"])
+    .index("by_claim_status", ["claimStatus"])
+    .index("by_expires", ["expiresAt"]),
 });

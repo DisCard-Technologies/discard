@@ -21,7 +21,7 @@ const SNS_ENABLED = false;
 // Types
 // ============================================================================
 
-export type AddressType = "address" | "sol_name" | "unknown";
+export type AddressType = "address" | "sol_name" | "phone" | "email" | "unknown";
 
 export interface ResolvedAddress {
   /** Original input string */
@@ -36,6 +36,10 @@ export interface ResolvedAddress {
   isValid: boolean;
   /** Error message if resolution failed */
   error?: string;
+  /** User ID if resolved to a DisCard user (for phone/email) */
+  userId?: string;
+  /** Whether user can be invited (phone/email not found) */
+  canInvite?: boolean;
 }
 
 export interface AddressValidation {
@@ -53,6 +57,12 @@ const SOLANA_ADDRESS_REGEX = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 
 /** Regex for .sol domain names */
 const SOL_DOMAIN_REGEX = /^[a-zA-Z0-9-]+\.sol$/i;
+
+/** Regex for E.164 phone numbers (e.g., +14155551234) */
+const PHONE_REGEX = /^\+[1-9]\d{6,14}$/;
+
+/** Regex for email addresses */
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /** Cache TTL in milliseconds (5 minutes) */
 const CACHE_TTL_MS = 5 * 60 * 1000;
@@ -103,6 +113,16 @@ function setCachedResult(input: string, result: ResolvedAddress): void {
 export function detectAddressType(input: string): AddressType {
   const trimmed = input.trim();
 
+  // Check for email first (before address to avoid false positives)
+  if (EMAIL_REGEX.test(trimmed)) {
+    return "email";
+  }
+
+  // Check for phone number (E.164 format)
+  if (PHONE_REGEX.test(trimmed)) {
+    return "phone";
+  }
+
   // Check for .sol domain
   if (SOL_DOMAIN_REGEX.test(trimmed)) {
     return "sol_name";
@@ -148,7 +168,7 @@ export function validateAddressInput(input: string): AddressValidation {
     return {
       isValid: false,
       type: "unknown",
-      error: "Invalid address format. Enter a Solana address or .sol domain.",
+      error: "Invalid format. Enter an address, .sol domain, phone, or email.",
     };
   }
 
@@ -160,6 +180,14 @@ export function validateAddressInput(input: string): AddressValidation {
         error: "Invalid Solana address.",
       };
     }
+  }
+
+  // Phone and email are always valid format if regex matched
+  if (type === "phone" || type === "email") {
+    return {
+      isValid: true,
+      type,
+    };
   }
 
   return {
