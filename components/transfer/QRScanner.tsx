@@ -47,7 +47,7 @@ try {
 
 export interface QRScanResult {
   /** Type of scanned data */
-  type: "solana_pay" | "address" | "discard_link" | "unknown";
+  type: "solana_pay" | "address" | "discard_link" | "discard_merchant" | "unknown";
   /** Raw scanned data */
   raw: string;
   /** Parsed address if available */
@@ -60,6 +60,16 @@ export interface QRScanResult {
   memo?: string;
   /** Label/recipient name if specified */
   label?: string;
+  /** Settlement token mint (what merchant accepts) */
+  settlementMint?: string;
+  /** Settlement token symbol (e.g., "USDC") */
+  settlementSymbol?: string;
+  /** Merchant name (for merchant QRs) */
+  merchantName?: string;
+  /** Merchant logo URL (optional) */
+  merchantLogo?: string;
+  /** Whether this is a merchant payment vs P2P */
+  isMerchantPayment?: boolean;
 }
 
 export interface QRScannerProps {
@@ -87,8 +97,48 @@ const SOLANA_ADDRESS_REGEX = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 // QR Parser
 // ============================================================================
 
+// Settlement token mints for identifying merchant payments
+const SETTLEMENT_TOKEN_MINTS: Record<string, string> = {
+  "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v": "USDC",
+  "2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo": "PYUSD",
+  "HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr": "EURC",
+  "FtgGSFADXBtroxq8VCausXRr2of47QBf5AS1NtZCu4GD": "BRZ",
+  "E77cpQ4VncGmcAXX16LHFFzNBEBb2U7Ar7LBmZNfCgwL": "MXNE",
+  "AhhdRu5YZdjVkKR3wbnUDaymVQL2ucjMQ63sZ3LFHsch": "VCHF",
+  "C2oEjBbrwaaAg9zpcMvd4VKKhqBjFFzGKybxPFQN9sBN": "VGBP",
+};
+
 function parseQRData(data: string): QRScanResult {
   const trimmed = data.trim();
+
+  // Check for DisCard merchant link: discard://merchant?...
+  if (trimmed.startsWith("discard://merchant")) {
+    try {
+      const url = new URL(trimmed);
+      const params = url.searchParams;
+      const address = params.get("to") || undefined;
+      const settlement = params.get("settlement") || "USDC";
+
+      // Find settlement mint from symbol
+      const settlementMint = Object.entries(SETTLEMENT_TOKEN_MINTS)
+        .find(([_, symbol]) => symbol === settlement)?.[0];
+
+      return {
+        type: "discard_merchant",
+        raw: data,
+        address,
+        amount: params.get("amount") ? parseFloat(params.get("amount")!) : undefined,
+        memo: params.get("memo") || undefined,
+        settlementMint,
+        settlementSymbol: settlement,
+        merchantName: params.get("name") ? decodeURIComponent(params.get("name")!) : undefined,
+        merchantLogo: params.get("logo") ? decodeURIComponent(params.get("logo")!) : undefined,
+        isMerchantPayment: true,
+      };
+    } catch {
+      return { type: "unknown", raw: data };
+    }
+  }
 
   // Check for Solana Pay URI: solana:<address>?...
   if (trimmed.startsWith("solana:")) {
@@ -101,15 +151,27 @@ function parseQRData(data: string): QRScanResult {
       }
 
       const params = url.searchParams;
+      const tokenMint = params.get("spl-token") || undefined;
+      const label = params.get("label") || undefined;
+      const amount = params.get("amount") ? parseFloat(params.get("amount")!) : undefined;
+
+      // Determine if this is a merchant payment (has amount + settlement token)
+      const settlementSymbol = tokenMint ? SETTLEMENT_TOKEN_MINTS[tokenMint] : undefined;
+      const isMerchantPayment = !!(amount && tokenMint && settlementSymbol);
 
       return {
         type: "solana_pay",
         raw: data,
         address,
-        amount: params.get("amount") ? parseFloat(params.get("amount")!) : undefined,
-        tokenMint: params.get("spl-token") || undefined,
+        amount,
+        tokenMint,
         memo: params.get("memo") || undefined,
-        label: params.get("label") || undefined,
+        label,
+        // Settlement info for merchant payments
+        settlementMint: isMerchantPayment ? tokenMint : undefined,
+        settlementSymbol: isMerchantPayment ? settlementSymbol : undefined,
+        merchantName: isMerchantPayment ? label : undefined,
+        isMerchantPayment,
       };
     } catch {
       return { type: "unknown", raw: data };
@@ -129,6 +191,7 @@ function parseQRData(data: string): QRScanResult {
         amount: params.get("amount") ? parseFloat(params.get("amount")!) : undefined,
         tokenMint: params.get("token") || undefined,
         memo: params.get("memo") || undefined,
+        isMerchantPayment: false,
       };
     } catch {
       return { type: "unknown", raw: data };
@@ -141,6 +204,7 @@ function parseQRData(data: string): QRScanResult {
       type: "address",
       raw: data,
       address: trimmed,
+      isMerchantPayment: false,
     };
   }
 

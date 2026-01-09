@@ -74,7 +74,8 @@ export default defineSchema({
         v.literal("withdraw_defi"),
         v.literal("create_card"),
         v.literal("freeze_card"),
-        v.literal("pay_bill")
+        v.literal("pay_bill"),
+        v.literal("merchant_payment")  // Cross-currency payment to merchant
       ),
       sourceType: v.union(
         v.literal("wallet"),
@@ -97,6 +98,9 @@ export default defineSchema({
     // Clarification flow
     clarificationQuestion: v.optional(v.string()),
     clarificationResponse: v.optional(v.string()),
+
+    // AI response text for conversational display
+    responseText: v.optional(v.string()),
 
     // Execution state
     status: v.union(
@@ -1361,6 +1365,13 @@ export default defineSchema({
     settlementAmount: v.optional(v.number()),       // Amount recipient receives (base units)
     swapSignature: v.optional(v.string()),          // Jupiter swap transaction signature
 
+    // Merchant payment fields (for cross-currency merchant payments)
+    isMerchantPayment: v.optional(v.boolean()),     // Whether this is a merchant payment
+    merchantName: v.optional(v.string()),           // Merchant display name
+    merchantReceived: v.optional(v.number()),       // Amount merchant received after fees (base units)
+    platformFeeAmount: v.optional(v.number()),      // Platform fee deducted (base units)
+    exchangeRate: v.optional(v.number()),           // Exchange rate at time of payment
+
     // Fees
     networkFee: v.number(),           // Solana network fee (lamports)
     platformFee: v.number(),          // Platform fee (0.3%) in token base units
@@ -1466,10 +1477,12 @@ export default defineSchema({
 
     // Contact identity
     name: v.string(),                 // Display name
-    identifier: v.string(),           // .sol name, address, etc.
+    identifier: v.string(),           // .sol name, address, phone, email, etc.
     identifierType: v.union(
       v.literal("address"),           // Raw Solana address
-      v.literal("sol_name")           // .sol domain name
+      v.literal("sol_name"),          // .sol domain name
+      v.literal("phone"),             // Phone number (E.164)
+      v.literal("email")              // Email address
     ),
     resolvedAddress: v.string(),      // Cached resolved address
 
@@ -1482,6 +1495,9 @@ export default defineSchema({
     avatarInitials: v.string(),       // First letters for avatar
     avatarColor: v.optional(v.string()), // Optional color override
     verified: v.boolean(),            // Is this a verified contact
+
+    // Favorites
+    isFavorite: v.optional(v.boolean()), // Mark as favorite contact
 
     // Usage tracking
     lastUsedAt: v.optional(v.number()),
@@ -1537,5 +1553,26 @@ export default defineSchema({
     .index("by_invite_code", ["inviteCode"])
     .index("by_phone", ["recipientPhone"])
     .index("by_claim_status", ["claimStatus"])
+    .index("by_expires", ["expiresAt"]),
+
+  // ============================================================================
+  // PHONE VERIFICATIONS - OTP verification for P2P discovery
+  // ============================================================================
+  phoneVerifications: defineTable({
+    userId: v.id("users"),
+    phoneNumber: v.string(),           // E.164 format
+    code: v.string(),                  // 6-digit OTP
+    attempts: v.number(),              // Failed verification attempts (max 3)
+    status: v.union(
+      v.literal("pending"),            // OTP sent, awaiting verification
+      v.literal("verified"),           // Successfully verified
+      v.literal("expired"),            // Timed out (10 min)
+      v.literal("failed")              // Too many failed attempts
+    ),
+    expiresAt: v.number(),             // 10-minute expiry
+    createdAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_phone", ["phoneNumber"])
     .index("by_expires", ["expiresAt"]),
 });
