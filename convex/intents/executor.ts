@@ -23,6 +23,9 @@ const SOLANA_RPC_URL = process.env.SOLANA_RPC_URL ?? "https://api.mainnet-beta.s
 const HELIUS_FIREDANCER_URL = process.env.HELIUS_RPC_URL; // Firedancer-optimized
 const TEXTPAY_PROGRAM_ID = "5XQH3sSdahXTgkyhVnHFm48Rz7nDZj4HEjkSojx5QBJU";
 
+// Jupiter configuration
+const JUPITER_API_KEY = process.env.JUPITER_API_KEY;
+
 // Alpenglow confirmation targets
 const ALPENGLOW_TARGET_MS = 150;
 const MAX_CONFIRMATION_WAIT_MS = 30000;
@@ -172,6 +175,14 @@ export const execute = internalAction({
           });
           return;
 
+        case "delete_card":
+          await executeDeleteCard(ctx, intent);
+          await ctx.runMutation(internal.intents.intents.updateStatus, {
+            intentId: args.intentId,
+            status: "completed",
+          });
+          return;
+
         case "transfer":
           transaction = await buildTransferTransaction(ctx, intent);
           break;
@@ -186,6 +197,10 @@ export const execute = internalAction({
 
         case "pay_bill":
           transaction = await buildPayBillTransaction(ctx, intent);
+          break;
+
+        case "merchant_payment":
+          transaction = await buildMerchantPaymentTransaction(ctx, intent);
           break;
 
         default:
@@ -469,6 +484,10 @@ async function buildSwapTransaction(
     throw new Error("Amount required for swap");
   }
 
+  if (!JUPITER_API_KEY) {
+    throw new Error("JUPITER_API_KEY environment variable not set");
+  }
+
   const blockhash = await getRecentBlockhash();
 
   // Swap would use Jupiter or Raydium
@@ -540,6 +559,139 @@ async function buildPayBillTransaction(
   };
 }
 
+/**
+ * Build merchant payment transaction (cross-currency via Jupiter)
+ *
+ * Uses Jupiter's atomic swap-to-destination feature where the output
+ * goes directly to the merchant's wallet in their settlement currency.
+ *
+ * Flow:
+ * 1. User pays in any stablecoin they hold
+ * 2. Jupiter swaps to merchant's settlement currency
+ * 3. Output goes directly to merchant (atomic)
+ * 4. Merchant receives settlement amount minus platform fee
+ */
+async function buildMerchantPaymentTransaction(
+  ctx: any,
+  intent: any
+): Promise<UnsignedTransaction> {
+  const { parsedIntent } = intent;
+  const metadata = parsedIntent.metadata || {};
+
+  if (!parsedIntent.amount) {
+    throw new Error("Amount required for merchant_payment");
+  }
+
+  if (!metadata.merchantAddress) {
+    throw new Error("Merchant address required for merchant_payment");
+  }
+
+  if (!metadata.settlementMint) {
+    throw new Error("Settlement token mint required for merchant_payment");
+  }
+
+  const blockhash = await getRecentBlockhash();
+
+  // For cross-currency payments, we use Jupiter's swap API
+  // with destinationTokenAccount set to merchant's ATA
+  // This is built by the merchantPayment.buildMerchantPaymentTransaction action
+  // which returns a base64-encoded transaction ready for signing
+
+  // If source and settlement are the same, it's a direct transfer
+  const isSameCurrency = metadata.sourceMint === metadata.settlementMint;
+
+  if (isSameCurrency) {
+    // Direct SPL token transfer (no swap needed)
+    const instruction: TransactionInstruction = {
+      programId: TEXTPAY_PROGRAM_ID,
+      keys: [
+        {
+          pubkey: "placeholder_user_token_account",
+          isSigner: false,
+          isWritable: true,
+        },
+        {
+          pubkey: metadata.merchantTokenAccount || "placeholder_merchant_ata",
+          isSigner: false,
+          isWritable: true,
+        },
+        {
+          pubkey: "placeholder_user_wallet",
+          isSigner: true,
+          isWritable: false,
+        },
+        // Token program
+        {
+          pubkey: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+          isSigner: false,
+          isWritable: false,
+        },
+      ],
+      data: encodeTransferInstruction(parsedIntent.amount),
+    };
+
+    return {
+      instructions: [instruction],
+      recentBlockhash: blockhash,
+      feePayer: "placeholder_fee_payer",
+      requiresSignature: true,
+    };
+  }
+
+  // For cross-currency, Jupiter handles the swap transaction
+  // The transaction would be pre-built by the merchantPayment action
+  // and passed in metadata.jupiterSwapTransaction
+
+  if (metadata.jupiterSwapTransaction) {
+    // Return the Jupiter-built swap transaction
+    // This is already a complete transaction with all instructions
+    return {
+      instructions: [], // Instructions are embedded in Jupiter's transaction
+      recentBlockhash: blockhash,
+      feePayer: "placeholder_fee_payer",
+      requiresSignature: true,
+    };
+  }
+
+  // Fallback: Build instruction that triggers Jupiter swap
+  // In practice, the frontend would call merchantPayment.buildMerchantPaymentTransaction
+  // before creating the intent with the full transaction
+  const instruction: TransactionInstruction = {
+    programId: TEXTPAY_PROGRAM_ID,
+    keys: [
+      {
+        pubkey: "placeholder_user_wallet",
+        isSigner: true,
+        isWritable: true,
+      },
+      {
+        pubkey: metadata.merchantAddress,
+        isSigner: false,
+        isWritable: true,
+      },
+      // Jupiter program
+      {
+        pubkey: "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",
+        isSigner: false,
+        isWritable: false,
+      },
+    ],
+    data: encodeMerchantPaymentInstruction(
+      parsedIntent.amount,
+      metadata.settlementAmount,
+      metadata.sourceMint,
+      metadata.settlementMint
+    ),
+  };
+
+  return {
+    instructions: [instruction],
+    recentBlockhash: blockhash,
+    feePayer: "placeholder_fee_payer",
+    requiresSignature: true,
+  };
+}
+
 // ============ NON-BLOCKCHAIN EXECUTORS ============
 
 /**
@@ -548,10 +700,11 @@ async function buildPayBillTransaction(
 async function executeCreateCard(ctx: any, intent: any): Promise<void> {
   const { parsedIntent } = intent;
 
-  // Create card via Convex mutation
+  // Create card via Convex mutation - pass userId for internal auth
   await ctx.runMutation(internal.cards.cards.create, {
     spendingLimit: parsedIntent.metadata?.spendingLimit,
     nickname: parsedIntent.metadata?.nickname,
+    userId: intent.userId,
   });
 }
 
@@ -569,6 +722,41 @@ async function executeFreezeCard(ctx: any, intent: any): Promise<void> {
     cardId: parsedIntent.targetId as Id<"cards">,
     reason: "User requested via intent",
   });
+}
+
+/**
+ * Execute card deletion (terminates in Marqeta and marks as deleted)
+ */
+async function executeDeleteCard(ctx: any, intent: any): Promise<void> {
+  const { parsedIntent } = intent;
+
+  // Handle multiple card deletions via metadata
+  const cardIds = parsedIntent.metadata?.cardIds as string[] | undefined;
+
+  console.log("[Executor] executeDeleteCard called");
+  console.log("[Executor] cardIds from metadata:", cardIds);
+  console.log("[Executor] targetId:", parsedIntent.targetId);
+
+  if (cardIds && cardIds.length > 0) {
+    // Delete multiple cards
+    console.log(`[Executor] Deleting ${cardIds.length} cards`);
+    for (const cardId of cardIds) {
+      console.log(`[Executor] Deleting card: ${cardId}`);
+      await ctx.runMutation(internal.cards.cards.deleteCardInternal, {
+        cardId: cardId as Id<"cards">,
+        userId: intent.userId,
+      });
+    }
+  } else if (parsedIntent.targetId) {
+    // Delete single card
+    console.log(`[Executor] Deleting single card: ${parsedIntent.targetId}`);
+    await ctx.runMutation(internal.cards.cards.deleteCardInternal, {
+      cardId: parsedIntent.targetId as Id<"cards">,
+      userId: intent.userId,
+    });
+  } else {
+    throw new Error("Card ID(s) required to delete. AI must specify targetId or metadata.cardIds");
+  }
 }
 
 // ============ HELPER FUNCTIONS ============
@@ -678,6 +866,43 @@ function encodeSwapInstruction(amount: number, targetCurrency: string): string {
   // Target currency as 4 bytes (truncated/padded)
   const currencyBytes = new TextEncoder().encode(targetCurrency.slice(0, 4).padEnd(4, "\0"));
   new Uint8Array(buffer, 9, 4).set(currencyBytes);
+
+  return Buffer.from(buffer).toString("base64");
+}
+
+/**
+ * Encode merchant payment instruction data
+ * For cross-currency payments via Jupiter atomic swap
+ */
+function encodeMerchantPaymentInstruction(
+  sourceAmount: number,
+  settlementAmount: number,
+  sourceMint: string,
+  settlementMint: string
+): string {
+  // In production, this would encode the Jupiter swap parameters
+  // For now, we use a simplified format for TextPay's merchant payment instruction
+  const buffer = new ArrayBuffer(25);
+  const view = new DataView(buffer);
+
+  // Instruction discriminator for merchant_payment
+  view.setUint8(0, 5); // merchant_payment = 5
+
+  // Source amount as u64 (little endian)
+  view.setUint32(1, sourceAmount & 0xffffffff, true);
+  view.setUint32(5, Math.floor(sourceAmount / 0x100000000), true);
+
+  // Settlement amount as u64 (little endian)
+  view.setUint32(9, settlementAmount & 0xffffffff, true);
+  view.setUint32(13, Math.floor(settlementAmount / 0x100000000), true);
+
+  // Last 4 bytes of source mint (for identification)
+  const sourceMintBytes = new TextEncoder().encode(sourceMint.slice(-4));
+  new Uint8Array(buffer, 17, 4).set(sourceMintBytes);
+
+  // Last 4 bytes of settlement mint (for identification)
+  const settlementMintBytes = new TextEncoder().encode(settlementMint.slice(-4));
+  new Uint8Array(buffer, 21, 4).set(settlementMintBytes);
 
   return Buffer.from(buffer).toString("base64");
 }

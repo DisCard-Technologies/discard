@@ -31,6 +31,34 @@ export interface PaymentLinkParams {
   requestId?: string;
 }
 
+export interface MerchantPaymentLinkParams {
+  /** Merchant wallet address */
+  merchantAddress: string;
+  /** Amount in settlement currency */
+  amount: number;
+  /** Settlement token symbol (USDC, PYUSD, EURC, etc.) */
+  settlementToken: string;
+  /** Merchant display name */
+  merchantName: string;
+  /** Optional merchant logo URL */
+  merchantLogo?: string;
+  /** Optional order/invoice memo */
+  memo?: string;
+  /** Request ID for tracking */
+  requestId?: string;
+}
+
+export interface MerchantPaymentLinkResult {
+  /** DisCard merchant URI (primary for QR) */
+  discardMerchantUri: string;
+  /** Solana Pay URI (fallback for other wallets) */
+  solanaPayUri: string;
+  /** Web link for sharing */
+  webLink?: string;
+  /** QR code data (uses DisCard merchant format) */
+  qrData: string;
+}
+
 export interface PaymentLinkResult {
   /** Solana Pay URI */
   solanaPayUri: string;
@@ -78,6 +106,17 @@ export const TOKEN_MINTS: Record<string, string> = {
   USDC: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
   USDT: "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
   SOL: "So11111111111111111111111111111111111111112",
+};
+
+/** Settlement token mints (currencies merchants can accept) */
+export const SETTLEMENT_TOKEN_MINTS: Record<string, string> = {
+  USDC: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+  PYUSD: "2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo",
+  EURC: "HzwqbKZw8HxMN6bF2yFZNrht3c2iXXzpKcFu7uBEDKtr",
+  BRZ: "FtgGSFADXBtroxq8VCausXRr2of47QBf5AS1NtZCu4GD",
+  MXNE: "E77cpQ4VncGmcAXX16LHFFzNBEBb2U7Ar7LBmZNfCgwL",
+  VCHF: "AhhdRu5YZdjVkKR3wbnUDaymVQL2ucjMQ63sZ3LFHsch",
+  VGBP: "C2oEjBbrwaaAg9zpcMvd4VKKhqBjFFzGKybxPFQN9sBN",
 };
 
 // ============================================================================
@@ -173,6 +212,105 @@ export function generateDiscardDeepLink(params: PaymentLinkParams): string {
  */
 export function generateWebLink(requestId: string): string {
   return `${DISCARD_WEB_DOMAIN}/pay/${requestId}`;
+}
+
+// ============================================================================
+// Merchant Payment Link Generation
+// ============================================================================
+
+/**
+ * Generate all merchant payment link formats
+ * Creates QR codes that specify the settlement currency for cross-currency payments
+ */
+export function generateMerchantPaymentLinks(params: MerchantPaymentLinkParams): MerchantPaymentLinkResult {
+  const discardMerchantUri = generateDiscardMerchantUri(params);
+  const solanaPayUri = generateMerchantSolanaPayUri(params);
+  const webLink = params.requestId
+    ? `${DISCARD_WEB_DOMAIN}/merchant/${params.requestId}`
+    : undefined;
+
+  return {
+    discardMerchantUri,
+    solanaPayUri,
+    webLink,
+    qrData: discardMerchantUri, // Use DisCard format for rich merchant data
+  };
+}
+
+/**
+ * Generate DisCard merchant URI
+ * Format: discard://merchant?to=<address>&amount=X&settlement=<symbol>&name=<name>&logo=<url>&memo=<memo>
+ */
+export function generateDiscardMerchantUri(params: MerchantPaymentLinkParams): string {
+  const { merchantAddress, amount, settlementToken, merchantName, merchantLogo, memo } = params;
+
+  const queryParams: string[] = [
+    `to=${merchantAddress}`,
+    `amount=${amount}`,
+    `settlement=${settlementToken}`,
+    `name=${encodeURIComponent(merchantName)}`,
+  ];
+
+  if (merchantLogo) {
+    queryParams.push(`logo=${encodeURIComponent(merchantLogo)}`);
+  }
+
+  if (memo) {
+    queryParams.push(`memo=${encodeURIComponent(memo)}`);
+  }
+
+  return `discard://merchant?${queryParams.join("&")}`;
+}
+
+/**
+ * Generate Solana Pay URI for merchant payment (fallback for other wallets)
+ * Uses the settlement token mint so other wallets can pay directly
+ */
+export function generateMerchantSolanaPayUri(params: MerchantPaymentLinkParams): string {
+  const { merchantAddress, amount, settlementToken, merchantName, memo } = params;
+
+  const settlementMint = SETTLEMENT_TOKEN_MINTS[settlementToken];
+  if (!settlementMint) {
+    throw new Error(`Unknown settlement token: ${settlementToken}`);
+  }
+
+  const queryParams: string[] = [
+    `amount=${amount}`,
+    `spl-token=${settlementMint}`,
+    `label=${encodeURIComponent(merchantName)}`,
+  ];
+
+  if (memo) {
+    queryParams.push(`memo=${encodeURIComponent(memo)}`);
+  }
+
+  return `solana:${merchantAddress}?${queryParams.join("&")}`;
+}
+
+/**
+ * Check if a token symbol is a valid settlement token
+ */
+export function isValidSettlementToken(symbol: string): boolean {
+  return symbol in SETTLEMENT_TOKEN_MINTS;
+}
+
+/**
+ * Get settlement token mint from symbol
+ */
+export function getSettlementTokenMint(symbol: string): string | undefined {
+  return SETTLEMENT_TOKEN_MINTS[symbol];
+}
+
+/**
+ * Get settlement token symbol from mint
+ */
+export function getSettlementTokenSymbol(mint: string): string | undefined {
+  for (const [symbol, tokenMint] of Object.entries(SETTLEMENT_TOKEN_MINTS)) {
+    if (tokenMint === mint) {
+      return symbol;
+    }
+  }
+  return undefined;
 }
 
 // ============================================================================

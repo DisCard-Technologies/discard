@@ -219,6 +219,74 @@ export const getTokenPrice = action({
 });
 
 /**
+ * Get swap quote with ExactOut mode (specify output amount, get required input)
+ * Useful for merchant payments where you need to deliver an exact amount.
+ */
+export const getExactOutQuote = action({
+  args: {
+    inputMint: v.string(),
+    outputMint: v.string(),
+    outputAmount: v.string(), // Exact amount to receive (in base units)
+    slippageBps: v.optional(v.number()), // Slippage in basis points (default: 50 = 0.5%)
+  },
+  handler: async (ctx, args): Promise<{
+    quote: JupiterQuoteResponse | null;
+    requiredInput: string;
+    priceImpact: string;
+    error?: string;
+  }> => {
+    const JUPITER_API_KEY = process.env.JUPITER_API_KEY;
+    const slippage = args.slippageBps || 50;
+
+    try {
+      const url = new URL("https://quote-api.jup.ag/v6/quote");
+      url.searchParams.set("inputMint", args.inputMint);
+      url.searchParams.set("outputMint", args.outputMint);
+      url.searchParams.set("amount", args.outputAmount);
+      url.searchParams.set("slippageBps", slippage.toString());
+      url.searchParams.set("swapMode", "ExactOut");
+
+      const headers: Record<string, string> = {
+        Accept: "application/json",
+      };
+
+      if (JUPITER_API_KEY) {
+        headers["x-api-key"] = JUPITER_API_KEY;
+      }
+
+      const response = await fetch(url.toString(), { headers });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("[CrossCurrency] Jupiter ExactOut quote error:", errorText);
+        return {
+          quote: null,
+          requiredInput: "0",
+          priceImpact: "0",
+          error: `ExactOut quote failed: ${response.status}`,
+        };
+      }
+
+      const quote: JupiterQuoteResponse = await response.json();
+
+      return {
+        quote,
+        requiredInput: quote.inAmount,
+        priceImpact: quote.priceImpactPct,
+      };
+    } catch (err) {
+      console.error("[CrossCurrency] ExactOut quote error:", err);
+      return {
+        quote: null,
+        requiredInput: "0",
+        priceImpact: "0",
+        error: err instanceof Error ? err.message : "Failed to get ExactOut quote",
+      };
+    }
+  },
+});
+
+/**
  * Get exchange rate between two tokens
  */
 export const getExchangeRate = action({

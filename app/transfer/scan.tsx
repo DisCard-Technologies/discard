@@ -5,6 +5,7 @@
  * - Solana addresses
  * - Solana Pay URIs
  * - DisCard payment links
+ * - Merchant payment QRs (cross-currency)
  */
 
 import { useCallback } from "react";
@@ -20,7 +21,26 @@ import { QRScanner, type QRScanResult } from "@/components/transfer/QRScanner";
 export default function TransferScanScreen() {
   // Handle scan result
   const handleScan = useCallback((result: QRScanResult) => {
-    // Navigate back with the scanned data
+    // Check if this is a merchant payment (cross-currency)
+    if (result.isMerchantPayment && result.settlementMint && result.amount) {
+      // Navigate to merchant payment screen for cross-currency payments
+      router.replace({
+        pathname: "/transfer/merchant-payment",
+        params: {
+          merchantAddress: result.address || "",
+          merchantName: result.merchantName || result.label || "",
+          merchantLogo: result.merchantLogo || "",
+          settlementMint: result.settlementMint,
+          settlementSymbol: result.settlementSymbol || "",
+          // Convert amount to base units (assuming 6 decimals for stablecoins)
+          settlementAmount: Math.floor(result.amount * 1_000_000).toString(),
+          memo: result.memo || "",
+        },
+      });
+      return;
+    }
+
+    // For non-merchant payments, navigate back with the scanned data
     router.back();
 
     // Pass scanned data to parent via params
