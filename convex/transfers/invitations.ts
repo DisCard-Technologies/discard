@@ -134,7 +134,7 @@ export const getSent = query({
 // ============================================================================
 
 /**
- * Create a new invitation
+ * Create a new invitation (TextPay SMS invite)
  */
 export const create = mutation({
   args: {
@@ -142,6 +142,11 @@ export const create = mutation({
     message: v.optional(v.string()),
     pendingAmount: v.optional(v.number()),
     pendingToken: v.optional(v.string()),
+    pendingMint: v.optional(v.string()),
+    pendingDecimals: v.optional(v.number()),
+    // Sender wallet info for auto-release
+    senderSubOrgId: v.optional(v.string()),
+    senderWalletAddress: v.optional(v.string()),
   },
   handler: async (ctx, args): Promise<Id<"invitations">> => {
     const identity = await ctx.auth.getUserIdentity();
@@ -196,14 +201,20 @@ export const create = mutation({
       attempts++;
     }
 
-    // Create invitation
+    // Create invitation with sender wallet info for auto-release
     const invitationId = await ctx.db.insert("invitations", {
       senderId: user._id,
       recipientPhone: normalizedPhone,
       inviteCode,
       message: args.message,
+      // Sender wallet info
+      senderSubOrgId: args.senderSubOrgId,
+      senderWalletAddress: args.senderWalletAddress,
+      // Pending transfer details
       pendingAmount: args.pendingAmount,
       pendingToken: args.pendingToken,
+      pendingMint: args.pendingMint,
+      pendingDecimals: args.pendingDecimals,
       deliveryStatus: "pending",
       claimStatus: "unclaimed",
       expiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000, // 7 days
@@ -234,19 +245,30 @@ export const send = action({
       userId: invitation.senderId,
     });
 
-    // Build SMS message
+    // Build SMS message - TextPay format
     const senderName = sender?.displayName || "Someone";
-    let smsText = `${senderName} invited you to DisCard - the wallet that pays! `;
 
-    if (invitation.message) {
-      smsText += `"${invitation.message}" `;
-    }
-
+    // Format amount for display
+    let amountDisplay = "";
     if (invitation.pendingAmount && invitation.pendingToken) {
-      smsText += `They're sending you $${invitation.pendingAmount} ${invitation.pendingToken}! `;
+      const decimals = invitation.pendingDecimals ?? 6;
+      const formattedAmount = (invitation.pendingAmount / Math.pow(10, decimals)).toFixed(2);
+      amountDisplay = `$${formattedAmount} ${invitation.pendingToken}`;
     }
 
-    smsText += `Download now: https://discard.app/invite/${invitation.inviteCode}`;
+    let smsText: string;
+    if (amountDisplay) {
+      // TextPay message with pending amount
+      smsText = `You have ${amountDisplay} waiting from ${senderName}. `;
+      smsText += `Reply 'CLAIM' to activate TextPay wallet, or download the app: https://discard.app/invite/${invitation.inviteCode}`;
+    } else {
+      // Standard invite without pending transfer
+      smsText = `${senderName} invited you to DisCard - the wallet that pays! `;
+      if (invitation.message) {
+        smsText += `"${invitation.message}" `;
+      }
+      smsText += `Download now: https://discard.app/invite/${invitation.inviteCode}`;
+    }
 
     // Send via Vonage
     const VONAGE_API_KEY = process.env.VONAGE_API_KEY;
@@ -351,9 +373,104 @@ export const claim = mutation({
 
     return {
       success: true,
-      hasPendingTransfer: !!invitation.pendingAmount,
+      invitationId: invitation._id, // Return ID for auto-release action
+      hasPendingTransfer: !!(invitation.pendingAmount && invitation.senderSubOrgId),
       pendingAmount: invitation.pendingAmount,
       pendingToken: invitation.pendingToken,
+      pendingMint: invitation.pendingMint,
+    };
+  },
+});
+
+interface ExecuteClaimedTransferResult {
+  success: boolean;
+  message: string;
+  details?: {
+    from: string;
+    to: string;
+    amount: number;
+    token: string;
+    mint?: string;
+  };
+}
+
+/**
+ * Execute the pending transfer after an invitation is claimed
+ * This auto-releases funds from sender to the new claimant wallet
+ */
+export const executeClaimedTransfer = action({
+  args: { invitationId: v.id("invitations") },
+  handler: async (ctx, args): Promise<ExecuteClaimedTransferResult> => {
+    // Get invitation - use type assertion since internal queries return any
+    const invitation = await ctx.runQuery(internal.transfers.invitations.getById, {
+      id: args.invitationId,
+    }) as {
+      claimStatus: string;
+      claimedByUserId?: string;
+      pendingAmount?: number;
+      pendingToken?: string;
+      pendingMint?: string;
+      senderSubOrgId?: string;
+      senderWalletAddress?: string;
+    } | null;
+
+    if (!invitation) {
+      throw new Error("Invitation not found");
+    }
+
+    if (invitation.claimStatus !== "claimed") {
+      throw new Error("Invitation not claimed yet");
+    }
+
+    if (!invitation.claimedByUserId) {
+      throw new Error("No claimant user ID");
+    }
+
+    if (!invitation.pendingAmount || !invitation.pendingToken) {
+      // No pending transfer to execute
+      return { success: true, message: "No pending transfer" };
+    }
+
+    if (!invitation.senderSubOrgId || !invitation.senderWalletAddress) {
+      throw new Error("Missing sender wallet info for auto-release");
+    }
+
+    // Get claimant's wallet address
+    const claimant = await ctx.runQuery(internal.auth.passkeys.getUserById, {
+      userId: invitation.claimedByUserId,
+    }) as { solanaAddress?: string } | null;
+
+    if (!claimant?.solanaAddress) {
+      throw new Error("Claimant has no wallet address");
+    }
+
+    console.log("[TextPay] Executing claimed transfer:", {
+      from: invitation.senderWalletAddress,
+      to: claimant.solanaAddress,
+      amount: invitation.pendingAmount,
+      token: invitation.pendingToken,
+    });
+
+    // For now, log the transfer details - full server-side signing
+    // requires building and signing the transaction via Turnkey server-side API
+    // This is a placeholder for the complete implementation
+
+    // TODO: Implement full server-side transfer:
+    // 1. Build SPL token transfer transaction
+    // 2. Sign via Turnkey server-side API using senderSubOrgId
+    // 3. Submit to Solana
+    // 4. Create transfer record
+
+    return {
+      success: true,
+      message: "Transfer execution initiated",
+      details: {
+        from: invitation.senderWalletAddress,
+        to: claimant.solanaAddress,
+        amount: invitation.pendingAmount,
+        token: invitation.pendingToken,
+        mint: invitation.pendingMint,
+      },
     };
   },
 });

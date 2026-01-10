@@ -6,7 +6,10 @@
  */
 
 import { v } from "convex/values";
-import { action } from "../_generated/server";
+import { action, query } from "../_generated/server";
+
+/** Gas authority for fee subsidization */
+const GAS_AUTHORITY_PUBKEY = process.env.EXPO_PUBLIC_GAS_AUTHORITY_PUBKEY;
 
 // ============================================================================
 // Types
@@ -123,13 +126,17 @@ export const buildSwapTransaction = action({
     wrapUnwrapSOL: v.optional(v.boolean()),
     dynamicComputeUnitLimit: v.optional(v.boolean()),
     prioritizationFeeLamports: v.optional(v.union(v.number(), v.literal("auto"))),
+    /** Whether to use gas authority for fee subsidization (default: true) */
+    subsidizeGas: v.optional(v.boolean()),
   },
   handler: async (ctx, args): Promise<{
     transaction: string | null;
     lastValidBlockHeight: number;
+    gasSubsidized: boolean;
     error?: string;
   }> => {
     const JUPITER_API_KEY = process.env.JUPITER_API_KEY;
+    const shouldSubsidize = args.subsidizeGas !== false && !!GAS_AUTHORITY_PUBKEY;
 
     try {
       const headers: Record<string, string> = {
@@ -147,6 +154,7 @@ export const buildSwapTransaction = action({
         body: JSON.stringify({
           quoteResponse: args.quoteResponse,
           userPublicKey: args.userPublicKey,
+          feeAccount: shouldSubsidize ? GAS_AUTHORITY_PUBKEY : undefined,
           wrapAndUnwrapSol: args.wrapUnwrapSOL ?? true,
           dynamicComputeUnitLimit: args.dynamicComputeUnitLimit ?? true,
           prioritizationFeeLamports: args.prioritizationFeeLamports ?? "auto",
@@ -159,6 +167,7 @@ export const buildSwapTransaction = action({
         return {
           transaction: null,
           lastValidBlockHeight: 0,
+          gasSubsidized: false,
           error: `Swap failed: ${response.status}`,
         };
       }
@@ -168,12 +177,14 @@ export const buildSwapTransaction = action({
       return {
         transaction: swap.swapTransaction,
         lastValidBlockHeight: swap.lastValidBlockHeight,
+        gasSubsidized: shouldSubsidize,
       };
     } catch (err) {
       console.error("[CrossCurrency] Swap build error:", err);
       return {
         transaction: null,
         lastValidBlockHeight: 0,
+        gasSubsidized: false,
         error: err instanceof Error ? err.message : "Failed to build swap",
       };
     }
@@ -283,6 +294,16 @@ export const getExactOutQuote = action({
         error: err instanceof Error ? err.message : "Failed to get ExactOut quote",
       };
     }
+  },
+});
+
+/**
+ * Check if gas subsidization is available for cross-currency swaps
+ */
+export const isGasSubsidizationAvailable = query({
+  args: {},
+  handler: async (): Promise<boolean> => {
+    return !!GAS_AUTHORITY_PUBKEY;
   },
 });
 

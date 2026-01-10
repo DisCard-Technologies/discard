@@ -27,10 +27,11 @@ import { useThemeColor } from "@/hooks/use-theme-color";
 import { useColorScheme } from "@/hooks/use-color-scheme";
 import { TransferSummary } from "@/components/transfer";
 import { useAuth } from "@/stores/authConvex";
-import { useMutation } from "convex/react";
+import { useMutation, useAction, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Connection, PublicKey } from "@solana/web3.js";
 import { useTurnkey } from "@/hooks/useTurnkey";
+import { useTextPay } from "@/hooks/useTextPay";
 import {
   getFiredancerClient,
   initializeFiredancerClient,
@@ -95,6 +96,12 @@ export default function TransferConfirmationScreen() {
   const createTransfer = useMutation(api.transfers.transfers.create);
   const updateTransferStatus = useMutation(api.transfers.transfers.updateStatus);
 
+  // TextPay hook for non-user phone invitations
+  const textPay = useTextPay();
+
+  // Get Turnkey org info for TextPay auto-release
+  const turnkeyOrg = useQuery(api.tee.turnkey.getByUserId, userId ? { userId } : "skip");
+
   // Theme colors
   const colorScheme = useColorScheme();
   const isDark = colorScheme === "dark";
@@ -133,7 +140,10 @@ export default function TransferConfirmationScreen() {
     router.dismissAll();
   }, []);
 
-  // Handle confirm - executes the actual transfer
+  // Check if this is a TextPay invite (non-user phone)
+  const isTextPayInvite = recipient?.canInvite === true && recipient?.type === "phone";
+
+  // Handle confirm - executes the actual transfer or TextPay invite
   const handleConfirm = useCallback(async () => {
     if (!recipient || !token || !amount || !fees || !userId || !walletAddress) {
       setError("Missing required data. Please go back and try again.");
@@ -155,7 +165,9 @@ export default function TransferConfirmationScreen() {
 
       if (hasHardware && isEnrolled) {
         const biometricResult = await LocalAuthentication.authenticateAsync({
-          promptMessage: `Send ${amount.amount} ${token.symbol} to ${recipient.displayName || "recipient"}`,
+          promptMessage: isTextPayInvite
+            ? `Send ${amount.amount} ${token.symbol} to ${recipient.input}`
+            : `Send ${amount.amount} ${token.symbol} to ${recipient.displayName || "recipient"}`,
           disableDeviceFallback: false,
           cancelLabel: "Cancel",
         });
@@ -175,6 +187,53 @@ export default function TransferConfirmationScreen() {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
 
+      // === TEXTPAY FLOW: Send SMS invite instead of direct transfer ===
+      if (isTextPayInvite && turnkeyOrg) {
+        setExecutionPhase("building");
+
+        // Parse amount base units
+        const amountBaseUnits = typeof amount.amountBaseUnits === 'string'
+          ? Number(amount.amountBaseUnits)
+          : Number(amount.amountBaseUnits);
+
+        // Send TextPay invite
+        const inviteResult = await textPay.sendInvite({
+          recipientPhone: recipient.input,
+          amount: amountBaseUnits,
+          token: token.symbol,
+          mint: token.mint,
+          decimals: token.decimals,
+          senderSubOrgId: turnkeyOrg.subOrganizationId,
+          senderWalletAddress: walletAddress,
+        });
+
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+        // Navigate to success screen for TextPay
+        router.push({
+          pathname: "/transfer/success",
+          params: {
+            result: JSON.stringify({
+              signature: "", // No signature for TextPay
+              confirmationTimeMs: Date.now() - startTime,
+              withinTarget: true,
+              transferId: inviteResult.invitationId,
+              explorerUrl: "",
+              isTextPay: true,
+            }),
+            recipient: params.recipient,
+            amountDisplay: amount.amount.toString(),
+            amountUsd: amount.amountUsd.toString(),
+            tokenSymbol: token.symbol,
+            feesPaid: "0", // No fees for TextPay until claimed
+            isTextPay: "true",
+          },
+        });
+
+        return;
+      }
+
+      // === NORMAL TRANSFER FLOW ===
       // Step 2: Build transaction
       setExecutionPhase("building");
 
@@ -344,7 +403,7 @@ export default function TransferConfirmationScreen() {
       setIsConfirming(false);
       setExecutionPhase("idle");
     }
-  }, [recipient, token, amount, fees, userId, walletAddress, turnkey, params, createTransfer, updateTransferStatus]);
+  }, [recipient, token, amount, fees, userId, walletAddress, turnkey, params, createTransfer, updateTransferStatus, isTextPayInvite, turnkeyOrg, textPay]);
 
   // Show error if params missing
   if (!recipient || !token || !amount || !fees) {

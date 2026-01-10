@@ -417,6 +417,13 @@ export default function TransferScreen() {
         >
           <Ionicons name="qr-code-outline" size={24} color="#fff" />
         </Pressable>
+        {/* Merchant PoS Button */}
+        <Pressable
+          onPress={() => router.push('/merchant/pos' as any)}
+          style={({ pressed }) => [styles.merchantButton, pressed && styles.pressed]}
+        >
+          <Ionicons name="storefront-outline" size={22} color="#00E5FF" />
+        </Pressable>
         <View style={styles.headerSpacer} />
         <Pressable
           onPress={() => router.push('/contacts' as any)}
@@ -762,6 +769,15 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  merchantButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 4,
+    backgroundColor: 'rgba(0,229,255,0.1)',
   },
   profileButton: {
     marginLeft: 8,

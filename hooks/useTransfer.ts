@@ -52,14 +52,18 @@ export type TransferState =
 export interface TransferRecipient {
   /** Original input (address or .sol domain) */
   input: string;
-  /** Resolved Solana address */
+  /** Resolved Solana address (empty for non-user phone/email) */
   address: string;
   /** Display name (.sol domain or contact name) */
   displayName?: string;
   /** Recipient type */
-  type: "address" | "sol_name" | "contact";
+  type: "address" | "sol_name" | "contact" | "phone" | "email";
   /** Contact ID if from contacts */
   contactId?: Id<"contacts">;
+  /** User ID if resolved to a DisCard user */
+  userId?: string;
+  /** Whether this is a non-user who can be invited (TextPay) */
+  canInvite?: boolean;
 }
 
 export interface TransferToken {

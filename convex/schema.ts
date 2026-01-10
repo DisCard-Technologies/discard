@@ -1514,7 +1514,7 @@ export default defineSchema({
     .index("by_user_name", ["userId", "name"]),
 
   // ============ INVITATIONS ============
-  // SMS invitations for non-registered users
+  // SMS invitations for non-registered users (TextPay)
   invitations: defineTable({
     senderId: v.id("users"),
 
@@ -1523,10 +1523,16 @@ export default defineSchema({
     inviteCode: v.string(),                // Unique code for tracking/claiming
     message: v.optional(v.string()),       // Custom invitation message
 
+    // Sender wallet info (for auto-release on claim)
+    senderSubOrgId: v.optional(v.string()),     // Turnkey sub-organization ID
+    senderWalletAddress: v.optional(v.string()),// Sender's Solana wallet address
+
     // Pending transfer (optional)
     pendingTransferId: v.optional(v.id("transfers")),
-    pendingAmount: v.optional(v.number()), // Amount in cents
+    pendingAmount: v.optional(v.number()), // Amount in base units (not cents)
     pendingToken: v.optional(v.string()),  // Token symbol
+    pendingMint: v.optional(v.string()),   // Token mint address
+    pendingDecimals: v.optional(v.number()), // Token decimals
 
     // Delivery status
     deliveryStatus: v.union(
@@ -1554,6 +1560,42 @@ export default defineSchema({
     .index("by_phone", ["recipientPhone"])
     .index("by_claim_status", ["claimStatus"])
     .index("by_expires", ["expiresAt"]),
+
+  // ============================================================================
+  // GAS SPONSORSHIPS - Fee subsidization tracking
+  // ============================================================================
+  gasSponsorships: defineTable({
+    sponsorshipId: v.string(),           // Unique sponsorship ID
+    userId: v.id("users"),               // User receiving sponsorship
+
+    // Transaction details
+    transactionType: v.string(),         // "transfer", "swap", "merchant_payment", "other"
+    feeLamports: v.number(),             // Estimated/actual fee in lamports
+
+    // Signatures
+    userSignature: v.optional(v.string()),          // User's transaction signature
+    gasAuthoritySignature: v.optional(v.string()), // Gas authority's co-signature
+    solanaSignature: v.optional(v.string()),        // Final on-chain signature
+
+    // Status
+    status: v.union(
+      v.literal("pending"),              // Approved, awaiting signing
+      v.literal("signed"),               // Both parties signed
+      v.literal("submitted"),            // Submitted to Solana
+      v.literal("confirmed"),            // Confirmed on-chain
+      v.literal("failed")                // Transaction failed
+    ),
+    error: v.optional(v.string()),       // Error message if failed
+
+    // Timestamps
+    createdAt: v.number(),
+    updatedAt: v.optional(v.number()),
+    completedAt: v.optional(v.number()),
+  })
+    .index("by_user", ["userId"])
+    .index("by_sponsorship_id", ["sponsorshipId"])
+    .index("by_status", ["status"])
+    .index("by_created", ["createdAt"]),
 
   // ============================================================================
   // PHONE VERIFICATIONS - OTP verification for P2P discovery

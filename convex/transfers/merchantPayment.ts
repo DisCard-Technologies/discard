@@ -88,6 +88,9 @@ const DEFAULT_SLIPPAGE_BPS = 50;
 /** Quote validity period in milliseconds (30 seconds) */
 const QUOTE_VALIDITY_MS = 30_000;
 
+/** Gas authority for fee subsidization */
+const GAS_AUTHORITY_PUBKEY = process.env.EXPO_PUBLIC_GAS_AUTHORITY_PUBKEY;
+
 /** Settlement token configurations */
 const SETTLEMENT_TOKENS: Record<string, { mint: string; decimals: number; symbol: string }> = {
   USDC: { mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", decimals: 6, symbol: "USDC" },
@@ -254,13 +257,17 @@ export const buildMerchantPaymentTransaction = action({
     merchantTokenAccount: v.optional(v.string()),
     /** Priority fee setting */
     prioritizationFeeLamports: v.optional(v.union(v.number(), v.literal("auto"))),
+    /** Whether to use gas authority for fee subsidization (default: true) */
+    subsidizeGas: v.optional(v.boolean()),
   },
   handler: async (ctx, args): Promise<{
     transaction: string | null;
     lastValidBlockHeight: number;
+    gasSubsidized: boolean;
     error?: string;
   }> => {
     const JUPITER_API_KEY = process.env.JUPITER_API_KEY;
+    const shouldSubsidize = args.subsidizeGas !== false && !!GAS_AUTHORITY_PUBKEY;
 
     try {
       const headers: Record<string, string> = {
@@ -272,10 +279,16 @@ export const buildMerchantPaymentTransaction = action({
         headers["x-api-key"] = JUPITER_API_KEY;
       }
 
+      // Use gas authority as fee payer if subsidization is enabled
+      const feePayerPublicKey = shouldSubsidize
+        ? GAS_AUTHORITY_PUBKEY
+        : args.userPublicKey;
+
       // Build swap request with destination set to merchant
       const swapRequest: Record<string, unknown> = {
         quoteResponse: args.quoteResponse,
         userPublicKey: args.userPublicKey,
+        feeAccount: shouldSubsidize ? GAS_AUTHORITY_PUBKEY : undefined,
         wrapAndUnwrapSol: true,
         dynamicComputeUnitLimit: true,
         prioritizationFeeLamports: args.prioritizationFeeLamports ?? "auto",
@@ -307,15 +320,27 @@ export const buildMerchantPaymentTransaction = action({
       return {
         transaction: swap.swapTransaction,
         lastValidBlockHeight: swap.lastValidBlockHeight,
+        gasSubsidized: shouldSubsidize,
       };
     } catch (err) {
       console.error("[MerchantPayment] Swap build error:", err);
       return {
         transaction: null,
         lastValidBlockHeight: 0,
+        gasSubsidized: false,
         error: err instanceof Error ? err.message : "Failed to build swap",
       };
     }
+  },
+});
+
+/**
+ * Check if gas subsidization is available for merchant payments
+ */
+export const isGasSubsidizationAvailable = query({
+  args: {},
+  handler: async (): Promise<boolean> => {
+    return !!GAS_AUTHORITY_PUBKEY;
   },
 });
 
