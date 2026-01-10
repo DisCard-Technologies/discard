@@ -16,6 +16,7 @@ import { internal } from "../_generated/api";
 
 /**
  * List intents for the authenticated user
+ * Accepts optional userId for apps without Convex auth configured
  */
 export const list = query({
   args: {
@@ -28,15 +29,24 @@ export const list = query({
       v.literal("failed")
     )),
     limit: v.optional(v.number()),
+    userId: v.optional(v.id("users")),
   },
   handler: async (ctx, args): Promise<Doc<"intents">[]> => {
+    // Try Convex auth first
     const identity = await ctx.auth.getUserIdentity();
-    if (!identity) return [];
+    let user: Doc<"users"> | null = null;
 
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_credential", (q) => q.eq("credentialId", identity.subject))
-      .first();
+    if (identity) {
+      user = await ctx.db
+        .query("users")
+        .withIndex("by_credential", (q) => q.eq("credentialId", identity.subject))
+        .first();
+    }
+
+    // Fallback to userId argument if auth not available
+    if (!user && args.userId) {
+      user = await ctx.db.get(args.userId);
+    }
 
     if (!user) return [];
 
@@ -61,19 +71,29 @@ export const list = query({
 
 /**
  * Get a single intent by ID
+ * Accepts optional userId for apps without Convex auth configured
  */
 export const get = query({
   args: {
     intentId: v.id("intents"),
+    userId: v.optional(v.id("users")),
   },
   handler: async (ctx, args): Promise<Doc<"intents"> | null> => {
+    // Try Convex auth first
     const identity = await ctx.auth.getUserIdentity();
-    if (!identity) return null;
+    let user: Doc<"users"> | null = null;
 
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_credential", (q) => q.eq("credentialId", identity.subject))
-      .first();
+    if (identity) {
+      user = await ctx.db
+        .query("users")
+        .withIndex("by_credential", (q) => q.eq("credentialId", identity.subject))
+        .first();
+    }
+
+    // Fallback to userId argument if auth not available
+    if (!user && args.userId) {
+      user = await ctx.db.get(args.userId);
+    }
 
     if (!user) return null;
 
@@ -148,6 +168,46 @@ export const getById = internalQuery({
   },
   handler: async (ctx, args): Promise<Doc<"intents"> | null> => {
     return await ctx.db.get(args.intentId);
+  },
+});
+
+/**
+ * Get recent intents for conversation history (internal)
+ * Returns the most recent completed/clarifying intents for context
+ */
+export const getRecentForContext = internalQuery({
+  args: {
+    userId: v.id("users"),
+    excludeIntentId: v.optional(v.id("intents")),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args): Promise<Doc<"intents">[]> => {
+    const allIntents = await ctx.db
+      .query("intents")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .collect();
+
+    // Filter to only include intents with useful context
+    // (completed conversations or clarifying interactions)
+    const relevantIntents = allIntents.filter((intent) => {
+      // Exclude the current intent being processed
+      if (args.excludeIntentId && intent._id === args.excludeIntentId) {
+        return false;
+      }
+      // Include completed intents (have responses)
+      if (intent.status === "completed" && intent.responseText) {
+        return true;
+      }
+      // Include clarifying intents (have questions)
+      if (intent.status === "clarifying" && intent.clarificationQuestion) {
+        return true;
+      }
+      return false;
+    });
+
+    // Sort by creation date (newest first) and limit
+    relevantIntents.sort((a, b) => b.createdAt - a.createdAt);
+    return relevantIntents.slice(0, args.limit ?? 5);
   },
 });
 
@@ -291,9 +351,14 @@ export const cancel = mutation({
       throw new Error("Intent not found");
     }
 
-    // Can only cancel intents that aren't executing or completed
-    if (intent.status === "executing" || intent.status === "completed") {
-      throw new Error("Cannot cancel intent in current state");
+    // Can't cancel while executing
+    if (intent.status === "executing") {
+      throw new Error("Cannot cancel intent while executing");
+    }
+
+    // For completed/cancelled/failed intents, just return silently (no-op)
+    if (intent.status === "completed" || intent.status === "cancelled" || intent.status === "failed") {
+      return;
     }
 
     await ctx.db.patch(args.intentId, {
@@ -329,6 +394,7 @@ export const updateStatus = internalMutation({
         v.literal("withdraw_defi"),
         v.literal("create_card"),
         v.literal("freeze_card"),
+        v.literal("delete_card"),
         v.literal("pay_bill")
       ),
       sourceType: v.union(
@@ -349,6 +415,7 @@ export const updateStatus = internalMutation({
       metadata: v.optional(v.any()),
     })),
     clarificationQuestion: v.optional(v.string()),
+    responseText: v.optional(v.string()),
     solanaTransactionSignature: v.optional(v.string()),
     solanaInstructions: v.optional(v.array(v.any())),
     errorMessage: v.optional(v.string()),
@@ -366,6 +433,10 @@ export const updateStatus = internalMutation({
 
     if (args.clarificationQuestion !== undefined) {
       updates.clarificationQuestion = args.clarificationQuestion;
+    }
+
+    if (args.responseText !== undefined) {
+      updates.responseText = args.responseText;
     }
 
     if (args.solanaTransactionSignature !== undefined) {

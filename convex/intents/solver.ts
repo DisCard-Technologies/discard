@@ -15,10 +15,10 @@ import { v } from "convex/values";
 import { internal } from "../_generated/api";
 import { Doc, Id } from "../_generated/dataModel";
 
-// Claude API configuration
-const CLAUDE_API_KEY = process.env.CLAUDE_API_KEY;
-const CLAUDE_API_URL = "https://api.anthropic.com/v1/messages";
-const CLAUDE_MODEL = "claude-3-5-sonnet-20241022";
+// Phala RedPill AI configuration (OpenAI-compatible API)
+const PHALA_AI_API_KEY = process.env.PHALA_AI_API_KEY;
+const PHALA_AI_BASE_URL = process.env.PHALA_AI_BASE_URL || "https://api.redpill.ai/v1";
+const PHALA_AI_MODEL = process.env.PHALA_AI_MODEL || "meta-llama/llama-3.3-70b-instruct";
 
 // Action types that the solver can return
 type IntentAction =
@@ -28,10 +28,18 @@ type IntentAction =
   | "withdraw_defi"
   | "create_card"
   | "freeze_card"
+  | "delete_card"
   | "pay_bill";
+
+const VALID_ACTIONS: IntentAction[] = [
+  "fund_card", "swap", "transfer", "withdraw_defi", "create_card", "freeze_card", "delete_card", "pay_bill"
+];
 
 type SourceType = "wallet" | "defi_position" | "card" | "external";
 type TargetType = "card" | "wallet" | "external";
+
+const VALID_SOURCE_TYPES: SourceType[] = ["wallet", "defi_position", "card", "external"];
+const VALID_TARGET_TYPES: TargetType[] = ["card", "wallet", "external"];
 
 interface ParsedIntent {
   action: IntentAction;
@@ -49,6 +57,8 @@ interface ClaudeResponse {
   needsClarification: boolean;
   clarificationQuestion?: string;
   confidence: number;
+  responseText?: string; // AI's conversational response
+  isConversational?: boolean; // True if this is just a chat response (no action)
 }
 
 // ============ INTERNAL ACTIONS ============
@@ -61,64 +71,133 @@ export const parseIntent = internalAction({
     intentId: v.id("intents"),
   },
   handler: async (ctx, args): Promise<void> => {
+    console.log("[Solver] parseIntent called with intentId:", args.intentId);
+    console.log("[Solver] PHALA_AI_API_KEY exists:", !!PHALA_AI_API_KEY);
+    console.log("[Solver] PHALA_AI_BASE_URL:", PHALA_AI_BASE_URL);
+    console.log("[Solver] PHALA_AI_MODEL:", PHALA_AI_MODEL);
+
     try {
       // Update status to parsing
+      console.log("[Solver] Updating status to parsing...");
       await ctx.runMutation(internal.intents.intents.updateStatus, {
         intentId: args.intentId,
         status: "parsing",
       });
 
       // Get intent details
+      console.log("[Solver] Fetching intent details...");
       const intent = await ctx.runQuery(internal.intents.intents.getById, {
         intentId: args.intentId,
       });
 
       if (!intent) {
+        console.error("[Solver] Intent not found!");
         throw new Error("Intent not found");
       }
+      console.log("[Solver] Intent found:", intent.rawText);
 
       // Gather user context for personalization
+      console.log("[Solver] Gathering user context for userId:", intent.userId);
       const userContext = await gatherUserContext(ctx, intent.userId);
+      console.log("[Solver] User context gathered:", JSON.stringify(userContext));
+
+      // Fetch recent conversation history for context
+      console.log("[Solver] Fetching conversation history...");
+      const recentIntents = await ctx.runQuery(internal.intents.intents.getRecentForContext, {
+        userId: intent.userId,
+        excludeIntentId: args.intentId,
+        limit: 5,
+      });
+      const conversationHistory = buildConversationHistory(recentIntents);
+      console.log("[Solver] Conversation history built:", conversationHistory.length, "messages");
 
       // Build system prompt
       const systemPrompt = buildSystemPrompt(userContext);
 
-      // Build user message (include clarification if present)
-      let userMessage = intent.rawText;
-      if (intent.clarificationResponse) {
-        userMessage = `Original request: ${intent.rawText}\n\nClarification provided: ${intent.clarificationResponse}`;
+      // Build user message (include clarification and conversation history if present)
+      let userMessage = "";
+
+      // Add conversation history if available
+      if (conversationHistory.length > 0) {
+        userMessage += "## Recent Conversation History\n";
+        userMessage += "(Use this context to understand what the user is referring to)\n\n";
+        userMessage += conversationHistory + "\n\n";
+        userMessage += "## Current Request\n";
       }
 
-      // Call Claude API
-      const claudeResponse = await callClaudeAPI(systemPrompt, userMessage);
+      if (intent.clarificationResponse) {
+        userMessage += `Original request: ${intent.rawText}\n\nClarification provided: ${intent.clarificationResponse}`;
+      } else {
+        userMessage += intent.rawText;
+      }
+      console.log("[Solver] User message:", userMessage);
 
-      // Handle response
-      if (claudeResponse.needsClarification) {
+      // Call Phala RedPill AI
+      console.log("[Solver] Calling Phala AI...");
+      const aiResponse = await callPhalaAI(systemPrompt, userMessage);
+      console.log("[Solver] AI response received:", JSON.stringify(aiResponse));
+
+      // Handle response based on type
+
+      // Type 1: Conversational response (no action needed, just display the response)
+      if (aiResponse.isConversational) {
+        console.log("[Solver] Conversational response - marking as completed");
+        await ctx.runMutation(internal.intents.intents.updateStatus, {
+          intentId: args.intentId,
+          status: "completed",
+          responseText: aiResponse.responseText || "I'm here to help!",
+        });
+        return;
+      }
+
+      // Type 2: Clarification needed
+      if (aiResponse.needsClarification) {
         await ctx.runMutation(internal.intents.intents.updateStatus, {
           intentId: args.intentId,
           status: "clarifying",
-          clarificationQuestion: claudeResponse.clarificationQuestion,
+          clarificationQuestion: aiResponse.clarificationQuestion || "Could you provide more details about what you'd like to do?",
+          responseText: aiResponse.responseText,
         });
-      } else if (claudeResponse.parsedIntent) {
-        // Validate the parsed intent
-        const validationResult = validateParsedIntent(claudeResponse.parsedIntent, userContext);
+        return;
+      }
+
+      // Type 3: Action response with parsed intent
+      if (aiResponse.parsedIntent) {
+        // Sanitize the AI response to convert null to undefined and validate types
+        const sanitizedIntent = sanitizeParsedIntent(aiResponse.parsedIntent);
+
+        if (!sanitizedIntent) {
+          // AI returned something that doesn't fit our schema
+          console.log("[Solver] AI response doesn't fit intent schema, treating as conversational");
+          await ctx.runMutation(internal.intents.intents.updateStatus, {
+            intentId: args.intentId,
+            status: "completed",
+            responseText: aiResponse.responseText || "I'm not sure how to help with that. Try asking me to create a card, fund your wallet, or make a transfer!",
+          });
+          return;
+        }
+
+        // Validate the parsed intent against user's resources
+        const validationResult = validateParsedIntent(sanitizedIntent, userContext);
 
         if (!validationResult.valid) {
           await ctx.runMutation(internal.intents.intents.updateStatus, {
             intentId: args.intentId,
             status: "clarifying",
             clarificationQuestion: validationResult.clarificationQuestion,
+            responseText: aiResponse.responseText,
           });
         } else {
           // Auto-approve simple intents with high confidence
           const shouldAutoApprove =
-            claudeResponse.confidence > 0.9 &&
-            isSimpleIntent(claudeResponse.parsedIntent);
+            aiResponse.confidence > 0.9 &&
+            isSimpleIntent(sanitizedIntent);
 
           await ctx.runMutation(internal.intents.intents.updateStatus, {
             intentId: args.intentId,
             status: shouldAutoApprove ? "approved" : "ready",
-            parsedIntent: claudeResponse.parsedIntent,
+            parsedIntent: sanitizedIntent,
+            responseText: aiResponse.responseText,
           });
 
           // If auto-approved, schedule execution
@@ -129,7 +208,13 @@ export const parseIntent = internalAction({
           }
         }
       } else {
-        throw new Error("Failed to parse intent");
+        // No parsed intent and not conversational - use responseText if available
+        console.log("[Solver] AI returned no parsedIntent, using responseText");
+        await ctx.runMutation(internal.intents.intents.updateStatus, {
+          intentId: args.intentId,
+          status: "completed",
+          responseText: aiResponse.responseText || "I'm not sure how to help with that. Try asking me to create a card, fund your wallet, or make a transfer!",
+        });
       }
     } catch (error) {
       console.error("Intent parsing failed:", error);
@@ -177,20 +262,73 @@ export const generateClarification = internalAction({
 // ============ HELPER FUNCTIONS ============
 
 /**
+ * Build conversation history from recent intents
+ * Formats previous user requests and AI responses for context
+ */
+function buildConversationHistory(recentIntents: any[]): string {
+  if (!recentIntents || recentIntents.length === 0) {
+    return "";
+  }
+
+  // Reverse to show oldest first (chronological order)
+  const chronological = [...recentIntents].reverse();
+
+  const history = chronological.map((intent) => {
+    let entry = `User: ${intent.rawText}`;
+    if (intent.responseText) {
+      entry += `\nAssistant: ${intent.responseText}`;
+    }
+    if (intent.parsedIntent?.action) {
+      entry += ` [Action: ${intent.parsedIntent.action}]`;
+    }
+    return entry;
+  });
+
+  return history.join("\n\n");
+}
+
+/**
  * Gather user context for Claude prompt
  */
 async function gatherUserContext(ctx: any, userId: Id<"users">): Promise<{
-  cards: Array<{ id: string; last4: string; balance: number; status: string; nickname?: string }>;
+  cards: Array<{ id: string; last4: string; balance: number; status: string; nickname?: string; createdAt: number }>;
   wallets: Array<{ id: string; network: string; type: string; balance?: number; nickname?: string }>;
   defiPositions: Array<{ id: string; protocol: string; available: number; yield: number }>;
 }> {
-  // Note: In production, these would be proper internal queries
-  // For now, return empty arrays - the actual implementation would query the database
+  // Query user's cards
+  const cards = await ctx.runQuery(internal.cards.cards.listByUserId, { userId });
+
+  // Query user's wallets
+  const wallets = await ctx.runQuery(internal.wallets.wallets.listByUserId, { userId });
+
+  // Query user's DeFi positions
+  const defiPositions = await ctx.runQuery(internal.wallets.defi.listByUserId, { userId });
 
   return {
-    cards: [],
-    wallets: [],
-    defiPositions: [],
+    // Sort cards by createdAt (oldest first) so AI knows order
+    cards: (cards || [])
+      .sort((a: Doc<"cards">, b: Doc<"cards">) => a.createdAt - b.createdAt)
+      .map((c: Doc<"cards">) => ({
+        id: c._id,
+        last4: c.last4,
+        balance: c.currentBalance || 0,
+        status: c.status,
+        nickname: c.nickname,
+        createdAt: c.createdAt,
+      })),
+    wallets: (wallets || []).map((w: Doc<"wallets">) => ({
+      id: w._id,
+      network: w.networkType,
+      type: w.walletType,
+      balance: w.cachedBalanceUsd,
+      nickname: w.nickname,
+    })),
+    defiPositions: (defiPositions || []).map((d: Doc<"defi">) => ({
+      id: d._id,
+      protocol: d.protocolName,
+      available: d.availableForFunding,
+      yield: d.currentYieldApy,
+    })),
   };
 }
 
@@ -202,22 +340,26 @@ function buildSystemPrompt(userContext: {
   wallets: Array<{ id: string; network: string; type: string; balance?: number; nickname?: string }>;
   defiPositions: Array<{ id: string; protocol: string; available: number; yield: number }>;
 }): string {
-  return `You are a financial intent parser for DisCard, a privacy-first virtual card platform built on Solana.
+  return `You are DisCard AI, a friendly and helpful assistant for DisCard - a privacy-first virtual card platform built on Solana.
 
-Your task is to parse natural language requests into structured financial actions.
+You can help users with two types of requests:
+1. **Conversational**: Answer questions, explain features, provide guidance
+2. **Actions**: Execute financial actions like creating cards, funding cards, transfers, swaps
 
-## Available Resources for This User
+## User's Available Resources
 
-### Cards
+### Cards (sorted oldest to newest)
 ${userContext.cards.length > 0
-  ? JSON.stringify(userContext.cards.map(c => ({
+  ? JSON.stringify(userContext.cards.map((c, index) => ({
       id: c.id,
       last4: c.last4,
       balance_cents: c.balance,
       status: c.status,
       nickname: c.nickname,
+      created_at: c.createdAt,
+      age_rank: index + 1, // 1 = oldest, higher = newer
     })), null, 2)
-  : "No cards available. User may need to create one first."}
+  : "No cards yet. User can create their first virtual card."}
 
 ### Wallets
 ${userContext.wallets.length > 0
@@ -228,7 +370,7 @@ ${userContext.wallets.length > 0
       balance_cents: w.balance,
       nickname: w.nickname,
     })), null, 2)
-  : "No wallets connected. Default passkey wallet is available."}
+  : "Default passkey wallet available (linked to their Solana address)."}
 
 ### DeFi Positions
 ${userContext.defiPositions.length > 0
@@ -238,14 +380,26 @@ ${userContext.defiPositions.length > 0
       available_cents: d.available,
       yield_apy_bps: d.yield,
     })), null, 2)
-  : "No DeFi positions."}
+  : "No DeFi positions yet."}
 
 ## Output Format
 
-Respond with a JSON object containing:
+ALWAYS respond with a JSON object. Choose ONE of these response types:
+
+### Type 1: Conversational Response (for questions, greetings, info requests)
 {
+  "isConversational": true,
+  "responseText": "Your friendly, helpful response here. Be concise but informative.",
+  "needsClarification": false,
+  "confidence": 1.0
+}
+
+### Type 2: Action Response (for financial actions)
+{
+  "isConversational": false,
+  "responseText": "I'll create a new virtual card for you.",
   "parsedIntent": {
-    "action": "fund_card" | "swap" | "transfer" | "withdraw_defi" | "create_card" | "freeze_card" | "pay_bill",
+    "action": "fund_card" | "swap" | "transfer" | "withdraw_defi" | "create_card" | "freeze_card" | "delete_card" | "pay_bill",
     "sourceType": "wallet" | "defi_position" | "card" | "external",
     "sourceId": "<id or null>",
     "targetType": "card" | "wallet" | "external",
@@ -254,30 +408,80 @@ Respond with a JSON object containing:
     "currency": "USD" | "ETH" | "SOL" | etc,
     "metadata": { any additional context }
   },
-  "needsClarification": true | false,
-  "clarificationQuestion": "<question if clarification needed>",
-  "confidence": <0.0 to 1.0>
+  "needsClarification": false,
+  "confidence": 0.95
 }
 
-## Rules
+### Type 3: Clarification Needed
+{
+  "isConversational": false,
+  "responseText": "I'd be happy to help with that!",
+  "needsClarification": true,
+  "clarificationQuestion": "How much would you like to add to your card?",
+  "confidence": 0.6
+}
 
-1. All amounts are in cents (100 = $1.00)
-2. If the user references "my card" without specifying, use the most recently used active card
-3. If the user says "ETH yield" or "DeFi yield", look for defi_position sources
-4. For "pay bill", the target should be "external"
-5. If any required information is missing, set needsClarification to true
-6. Set confidence based on how certain you are of the interpretation
+## Important Rules
+
+1. **ALWAYS include responseText** - This is your natural language response to the user
+2. For conversational messages (greetings, questions about the app, asking for info), set isConversational: true
+3. For action requests (create card, fund, transfer, swap), set isConversational: false and include parsedIntent
+4. Be friendly, concise, and helpful
+5. All amounts are in cents (100 = $1.00)
+6. If information is missing for an action, ask for clarification naturally
 
 ## Examples
 
-User: "Pay $50 to my Amazon card"
+User: "Hello!"
 Response: {
+  "isConversational": true,
+  "responseText": "Hey there! I'm your DisCard assistant. I can help you create virtual cards, manage your funds, make transfers, and more. What would you like to do?",
+  "needsClarification": false,
+  "confidence": 1.0
+}
+
+User: "What can you do?"
+Response: {
+  "isConversational": true,
+  "responseText": "I can help you with: creating virtual cards for online privacy, funding your cards from your Solana wallet, transferring money to friends, swapping tokens, and managing your DeFi positions. Just tell me what you need!",
+  "needsClarification": false,
+  "confidence": 1.0
+}
+
+User: "Show me my cards"
+Response: {
+  "isConversational": true,
+  "responseText": "${userContext.cards.length > 0
+    ? `You have ${userContext.cards.length} card(s). Check the Cards tab to see details like balances and spending limits.`
+    : "You don't have any cards yet. Would you like me to create one for you?"}",
+  "needsClarification": false,
+  "confidence": 1.0
+}
+
+User: "Create a new card"
+Response: {
+  "isConversational": false,
+  "responseText": "I'll create a new virtual card for you right away.",
+  "parsedIntent": {
+    "action": "create_card",
+    "sourceType": "wallet",
+    "targetType": "card",
+    "metadata": {}
+  },
+  "needsClarification": false,
+  "confidence": 0.95
+}
+
+User: "Fund my card with $50"
+Response: {
+  "isConversational": false,
+  "responseText": "I'll add $50 to your card.",
   "parsedIntent": {
     "action": "fund_card",
     "sourceType": "wallet",
     "sourceId": null,
     "targetType": "card",
-    "targetId": "<amazon card id if found>",
+    "targetId": null,
     "amount": 5000,
     "currency": "USD"
   },
@@ -285,46 +489,83 @@ Response: {
   "confidence": 0.95
 }
 
-User: "Use my ETH yield to fund my shopping card"
+User: "Send money"
 Response: {
-  "parsedIntent": {
-    "action": "withdraw_defi",
-    "sourceType": "defi_position",
-    "sourceId": "<eth lending position id>",
-    "targetType": "card",
-    "targetId": "<shopping card id>",
-    "amount": null,
-    "currency": "ETH"
-  },
+  "isConversational": false,
+  "responseText": "I can help you send money!",
   "needsClarification": true,
-  "clarificationQuestion": "How much would you like to withdraw from your ETH yield position?",
-  "confidence": 0.7
-}`;
+  "clarificationQuestion": "How much would you like to send, and who should I send it to?",
+  "confidence": 0.5
+}
+
+User: "Delete my card ending in 7796"
+Response: {
+  "isConversational": false,
+  "responseText": "I'll delete the card ending in 7796 for you.",
+  "parsedIntent": {
+    "action": "delete_card",
+    "sourceType": "wallet",
+    "targetType": "card",
+    "targetId": "<the card id from context with last4=7796>",
+    "metadata": {}
+  },
+  "needsClarification": false,
+  "confidence": 0.95
+}
+
+User: "Delete my 3 oldest cards"
+Response: {
+  "isConversational": false,
+  "responseText": "I'll delete your 3 oldest cards.",
+  "parsedIntent": {
+    "action": "delete_card",
+    "sourceType": "wallet",
+    "targetType": "card",
+    "metadata": {
+      "cardIds": ["<id1>", "<id2>", "<id3>"]
+    }
+  },
+  "needsClarification": false,
+  "confidence": 0.95
+}
+
+## Card Selection Rules
+- When user says "oldest cards", sort by creation time (older cards have smaller timestamps/ids)
+- When user says "card ending in XXXX", match the last4 field
+- For delete_card with multiple cards, put the card IDs in metadata.cardIds array
+- For delete_card with single card, use targetId
+- ALWAYS use actual card IDs from the User's Available Resources section above`;
 }
 
 /**
- * Call Claude API
+ * Call Phala RedPill AI (OpenAI-compatible API)
  */
-async function callClaudeAPI(
+async function callPhalaAI(
   systemPrompt: string,
   userMessage: string
 ): Promise<ClaudeResponse> {
-  if (!CLAUDE_API_KEY) {
-    throw new Error("Claude API key not configured");
+  console.log("[Solver] callPhalaAI - checking API key...");
+  if (!PHALA_AI_API_KEY) {
+    console.error("[Solver] PHALA_AI_API_KEY is missing!");
+    throw new Error("Phala AI API key not configured. Please add PHALA_AI_API_KEY to Convex environment variables.");
   }
 
-  const response = await fetch(CLAUDE_API_URL, {
+  const endpoint = `${PHALA_AI_BASE_URL}/chat/completions`;
+  console.log("[Solver] Making fetch request to:", endpoint);
+  const response = await fetch(endpoint, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "x-api-key": CLAUDE_API_KEY,
-      "anthropic-version": "2023-06-01",
+      "Authorization": `Bearer ${PHALA_AI_API_KEY}`,
     },
     body: JSON.stringify({
-      model: CLAUDE_MODEL,
+      model: PHALA_AI_MODEL,
       max_tokens: 1024,
-      system: systemPrompt,
       messages: [
+        {
+          role: "system",
+          content: systemPrompt,
+        },
         {
           role: "user",
           content: userMessage,
@@ -333,38 +574,48 @@ async function callClaudeAPI(
     }),
   });
 
+  console.log("[Solver] Fetch response status:", response.status);
   if (!response.ok) {
     const error = await response.text();
-    throw new Error(`Claude API error: ${response.status} - ${error}`);
+    console.error("[Solver] Phala AI API error:", response.status, error);
+    throw new Error(`Phala AI API error: ${response.status} - ${error}`);
   }
 
   const result = await response.json();
+  console.log("[Solver] Raw Phala AI result received");
 
-  // Extract content from Claude response
-  const content = result.content?.[0]?.text;
+  // Extract content from OpenAI-compatible response
+  const content = result.choices?.[0]?.message?.content;
   if (!content) {
-    throw new Error("Empty response from Claude");
+    console.error("[Solver] Empty response from Phala AI:", JSON.stringify(result));
+    throw new Error("Empty response from Phala AI");
   }
+  console.log("[Solver] Extracted content length:", content.length);
 
   // Parse JSON from response
   try {
-    // Find JSON in the response (Claude might include explanation text)
+    // Find JSON in the response (LLM might include explanation text)
+    console.log("[Solver] Parsing JSON from response...");
     const jsonMatch = content.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
-      throw new Error("No JSON found in Claude response");
+      console.error("[Solver] No JSON found in content:", content.substring(0, 500));
+      throw new Error("No JSON found in Phala AI response");
     }
 
     const parsed = JSON.parse(jsonMatch[0]);
+    console.log("[Solver] Successfully parsed JSON response");
 
     return {
       parsedIntent: parsed.parsedIntent,
       needsClarification: parsed.needsClarification ?? false,
       clarificationQuestion: parsed.clarificationQuestion,
       confidence: parsed.confidence ?? 0.5,
+      responseText: parsed.responseText,
+      isConversational: parsed.isConversational ?? false,
     };
   } catch (parseError) {
-    console.error("Failed to parse Claude response:", content);
-    throw new Error("Failed to parse Claude response as JSON");
+    console.error("[Solver] Failed to parse Phala AI response:", content.substring(0, 500));
+    throw new Error("Failed to parse Phala AI response as JSON");
   }
 }
 
@@ -428,6 +679,65 @@ function validateParsedIntent(
   }
 
   return { valid: true };
+}
+
+/**
+ * Sanitize parsed intent from AI response
+ * - Converts null values to undefined (Convex validators expect undefined, not null)
+ * - Validates action, sourceType, targetType are valid enum values
+ * - Returns null if the intent is not valid (e.g., conversational messages)
+ */
+function sanitizeParsedIntent(rawIntent: any): ParsedIntent | null {
+  if (!rawIntent || typeof rawIntent !== 'object') {
+    console.log("[Solver] sanitizeParsedIntent: rawIntent is null or not an object");
+    return null;
+  }
+
+  // Validate action is a known type
+  const action = rawIntent.action;
+  if (!action || !VALID_ACTIONS.includes(action)) {
+    console.log("[Solver] sanitizeParsedIntent: invalid action:", action);
+    return null;
+  }
+
+  // Validate sourceType (default to 'wallet' if missing)
+  let sourceType = rawIntent.sourceType;
+  if (!sourceType || !VALID_SOURCE_TYPES.includes(sourceType)) {
+    sourceType = "wallet"; // Default source
+  }
+
+  // Validate targetType (default based on action)
+  let targetType = rawIntent.targetType;
+  if (!targetType || !VALID_TARGET_TYPES.includes(targetType)) {
+    targetType = action === "fund_card" ? "card" : "wallet"; // Default target
+  }
+
+  // Build sanitized intent, converting null to undefined
+  const sanitized: ParsedIntent = {
+    action: action as IntentAction,
+    sourceType: sourceType as SourceType,
+    targetType: targetType as TargetType,
+  };
+
+  // Only include optional fields if they have non-null values
+  if (rawIntent.sourceId != null && rawIntent.sourceId !== "") {
+    sanitized.sourceId = String(rawIntent.sourceId);
+  }
+  if (rawIntent.targetId != null && rawIntent.targetId !== "") {
+    sanitized.targetId = String(rawIntent.targetId);
+  }
+  if (rawIntent.amount != null && typeof rawIntent.amount === 'number') {
+    sanitized.amount = rawIntent.amount;
+  }
+  if (rawIntent.currency != null && rawIntent.currency !== "") {
+    sanitized.currency = String(rawIntent.currency);
+  }
+  if (rawIntent.metadata != null && typeof rawIntent.metadata === 'object') {
+    sanitized.metadata = rawIntent.metadata;
+  }
+
+  console.log("[Solver] sanitizeParsedIntent: sanitized intent:", JSON.stringify(sanitized));
+  return sanitized;
 }
 
 /**

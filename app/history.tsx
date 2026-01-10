@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { StyleSheet, View, Pressable, ScrollView, Linking, ActivityIndicator } from 'react-native';
+import { StyleSheet, View, Pressable, ScrollView, Linking, ActivityIndicator, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -11,6 +11,7 @@ import { useThemeColor } from '@/hooks/use-theme-color';
 import { api } from '@/convex/_generated/api';
 import { formatAddress } from '@/lib/transfer/address-resolver';
 import { Doc } from '@/convex/_generated/dataModel';
+import { useChatHistory } from '@/hooks/useChatHistory';
 
 interface Transaction {
   id: string;
@@ -24,12 +25,7 @@ interface Transaction {
   isRealTransfer?: boolean;
 }
 
-interface ChatMessage {
-  id: number;
-  role: 'user' | 'assistant';
-  content: string;
-  timestamp: Date;
-}
+// ChatMessage type from useChatHistory hook
 
 const mockTransactions: Transaction[] = [
   {
@@ -104,13 +100,7 @@ const transferToTransaction = (transfer: Doc<'transfers'>): Transaction => {
   };
 };
 
-// Mock chat history - in real app this would come from props or context
-const chatHistory: ChatMessage[] = [
-  { id: 1, role: 'user', content: 'Send 0.5 ETH to alex.eth', timestamp: new Date(Date.now() - 7200000) },
-  { id: 2, role: 'assistant', content: 'I\'ve sent 0.5 ETH to alex.eth. Transaction confirmed!', timestamp: new Date(Date.now() - 7190000) },
-  { id: 3, role: 'user', content: 'What\'s my balance?', timestamp: new Date(Date.now() - 3600000) },
-  { id: 4, role: 'assistant', content: 'Your total balance is $178,171 across all wallets.', timestamp: new Date(Date.now() - 3590000) },
-];
+// Chat history now comes from useChatHistory hook
 
 const getIcon = (type: string): keyof typeof Ionicons.glyphMap => {
   switch (type) {
@@ -152,6 +142,9 @@ export default function HistoryScreen() {
   const [activeTab, setActiveTab] = useState<TabType>('transactions');
   const [filter, setFilter] = useState<FilterType>('all');
 
+  // Chat history hook
+  const { sessions, isLoading: isLoadingChats, deleteChat, getChatPreview } = useChatHistory();
+
   const primaryColor = useThemeColor({}, 'tint');
   const mutedColor = useThemeColor({ light: '#687076', dark: '#9BA1A6' }, 'icon');
   const cardBg = useThemeColor({ light: 'rgba(0,0,0,0.03)', dark: 'rgba(255,255,255,0.06)' }, 'background');
@@ -163,6 +156,30 @@ export default function HistoryScreen() {
   const swapColor = '#3b82f6';
   const blueAccent = '#60a5fa';
   const pendingColor = '#f59e0b';
+
+  // Handle selecting a chat to continue
+  const handleChatSelect = (sessionId: string) => {
+    router.push({
+      pathname: '/(tabs)',
+      params: { chatSessionId: sessionId },
+    });
+  };
+
+  // Handle deleting a chat
+  const handleChatDelete = (sessionId: string) => {
+    Alert.alert(
+      'Delete Conversation',
+      'Are you sure you want to delete this conversation?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => deleteChat(sessionId),
+        },
+      ]
+    );
+  };
 
   // Fetch real transfers from Convex
   const transfersQuery = useQuery(api.transfers.transfers.getByUser, { limit: 50 });
@@ -300,9 +317,9 @@ export default function HistoryScreen() {
           >
             Conversations
           </ThemedText>
-          {chatHistory.length > 0 && activeTab !== 'conversations' && (
+          {sessions.length > 0 && activeTab !== 'conversations' && (
             <View style={[styles.badge, { backgroundColor: blueAccent }]}>
-              <ThemedText style={styles.badgeText}>{chatHistory.length}</ThemedText>
+              <ThemedText style={styles.badgeText}>{sessions.length}</ThemedText>
             </View>
           )}
         </Pressable>
@@ -315,7 +332,15 @@ export default function HistoryScreen() {
           contentContainerStyle={[styles.conversationsContent, { paddingBottom: insets.bottom + 24 }]}
           showsVerticalScrollIndicator={false}
         >
-          {chatHistory.length === 0 ? (
+          {isLoadingChats && (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="small" color={primaryColor} />
+              <ThemedText style={[styles.loadingText, { color: mutedColor }]}>
+                Loading conversations...
+              </ThemedText>
+            </View>
+          )}
+          {!isLoadingChats && sessions.length === 0 ? (
             <View style={styles.emptyState}>
               <View style={[styles.emptyIcon, { backgroundColor: cardBg }]}>
                 <Ionicons name="chatbubble" size={32} color={mutedColor} />
@@ -328,48 +353,39 @@ export default function HistoryScreen() {
               </ThemedText>
             </View>
           ) : (
-            chatHistory.map((msg) => (
-              <View
-                key={msg.id}
-                style={[
-                  styles.messageRow,
-                  msg.role === 'user' ? styles.messageRowUser : styles.messageRowAssistant,
-                ]}
-              >
-                {msg.role === 'assistant' && (
-                  <View style={[styles.avatar, { backgroundColor: `${primaryColor}20` }]}>
-                    <Ionicons name="sparkles" size={16} color={primaryColor} />
+            sessions.map((session) => {
+              const preview = getChatPreview(session);
+              return (
+                <Pressable
+                  key={session.id}
+                  onPress={() => handleChatSelect(session.id)}
+                  onLongPress={() => handleChatDelete(session.id)}
+                  style={({ pressed }) => [
+                    styles.chatSessionItem,
+                    { backgroundColor: cardBg, borderColor },
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <View style={[styles.chatSessionIcon, { backgroundColor: `${primaryColor}20` }]}>
+                    <Ionicons name="chatbubble" size={18} color={primaryColor} />
                   </View>
-                )}
-                <View style={[styles.messageContainer, msg.role === 'user' && styles.messageContainerUser]}>
-                  <View
-                    style={[
-                      styles.messageBubble,
-                      msg.role === 'user'
-                        ? { backgroundColor: primaryColor, borderBottomRightRadius: 4 }
-                        : { backgroundColor: cardBg, borderColor, borderWidth: 1, borderBottomLeftRadius: 4 },
-                    ]}
-                  >
-                    <ThemedText
-                      style={[
-                        styles.messageText,
-                        { color: msg.role === 'user' ? '#000' : foregroundColor },
-                      ]}
-                    >
-                      {msg.content}
+                  <View style={styles.chatSessionInfo}>
+                    <ThemedText style={styles.chatSessionTitle} numberOfLines={1}>
+                      {preview.title}
+                    </ThemedText>
+                    <ThemedText style={[styles.chatSessionPreview, { color: mutedColor }]} numberOfLines={1}>
+                      {preview.lastMessage}
                     </ThemedText>
                   </View>
-                  <ThemedText style={[styles.messageTime, { color: mutedColor }]}>
-                    {formatTime(msg.timestamp)}
-                  </ThemedText>
-                </View>
-                {msg.role === 'user' && (
-                  <View style={[styles.avatar, { backgroundColor: `${blueAccent}20` }]}>
-                    <Ionicons name="person" size={16} color={blueAccent} />
+                  <View style={styles.chatSessionMeta}>
+                    <ThemedText style={[styles.chatSessionTime, { color: mutedColor }]}>
+                      {formatRelativeTime(preview.timestamp)}
+                    </ThemedText>
+                    <Ionicons name="chevron-forward" size={16} color={mutedColor} />
                   </View>
-                )}
-              </View>
-            ))
+                </Pressable>
+              );
+            })
           )}
         </ScrollView>
       )}
@@ -738,6 +754,42 @@ const styles = StyleSheet.create({
   pressed: {
     opacity: 0.7,
     transform: [{ scale: 0.98 }],
+  },
+  // Chat session list styles
+  chatSessionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    gap: 12,
+    marginBottom: 8,
+  },
+  chatSessionIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  chatSessionInfo: {
+    flex: 1,
+    minWidth: 0,
+  },
+  chatSessionTitle: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  chatSessionPreview: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  chatSessionMeta: {
+    alignItems: 'flex-end',
+    gap: 4,
+  },
+  chatSessionTime: {
+    fontSize: 11,
   },
 });
 

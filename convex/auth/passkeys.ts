@@ -11,7 +11,7 @@
  * - Derived Solana address from P-256 public key
  */
 import { mutation, query, internalMutation, internalQuery, action } from "../_generated/server";
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import { Doc, Id } from "../_generated/dataModel";
 import { api, internal } from "../_generated/api";
 
@@ -122,6 +122,38 @@ export const getByCredentialId = internalQuery({
       .query("users")
       .withIndex("by_credential", (q) => q.eq("credentialId", args.credentialId))
       .first();
+  },
+});
+
+/**
+ * Get user by Solana address (internal) - for account recovery
+ */
+export const getByAddress = internalQuery({
+  args: {
+    solanaAddress: v.string(),
+  },
+  handler: async (ctx, args): Promise<Doc<"users"> | null> => {
+    return await ctx.db
+      .query("users")
+      .withIndex("by_solana_address", (q) => q.eq("solanaAddress", args.solanaAddress))
+      .first();
+  },
+});
+
+/**
+ * Update credential ID for a user (internal) - for account recovery
+ */
+export const updateCredentialId = internalMutation({
+  args: {
+    userId: v.id("users"),
+    newCredentialId: v.string(),
+  },
+  handler: async (ctx, args): Promise<void> => {
+    await ctx.db.patch(args.userId, {
+      credentialId: args.newCredentialId,
+      lastActive: Date.now(),
+    });
+    console.log("[Auth] Credential ID updated for account recovery:", args.userId);
   },
 });
 
@@ -268,22 +300,33 @@ export const verifyPasskey = mutation({
  */
 export const updateProfile = mutation({
   args: {
+    userId: v.optional(v.id("users")),
     displayName: v.optional(v.string()),
     email: v.optional(v.string()),
   },
   handler: async (ctx, args): Promise<void> => {
+    let user: Doc<"users"> | null = null;
     const identity = await ctx.auth.getUserIdentity();
-    if (!identity) {
-      throw new Error("Not authenticated");
+
+    if (identity) {
+      // Try to find user by credential ID first
+      user = await ctx.db
+        .query("users")
+        .withIndex("by_credential", (q) => q.eq("credentialId", identity.subject))
+        .first();
+
+      // Fallback: try to normalize subject as user ID
+      if (!user) {
+        const userId = ctx.db.normalizeId("users", identity.subject);
+        if (userId) user = await ctx.db.get(userId);
+      }
+    } else if (args.userId) {
+      user = await ctx.db.get(args.userId);
     }
 
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_credential", (q) => q.eq("credentialId", identity.subject))
-      .first();
-
     if (!user) {
-      throw new Error("User not found");
+      console.error("User not found for identity:", identity);
+      throw new ConvexError("User not found or not authenticated");
     }
 
     // Check if new email is already in use
@@ -294,7 +337,7 @@ export const updateProfile = mutation({
         .first();
 
       if (emailExists) {
-        throw new Error("Email already in use");
+        throw new ConvexError("Email already in use");
       }
     }
 
@@ -310,23 +353,30 @@ export const updateProfile = mutation({
  */
 export const updatePrivacySettings = mutation({
   args: {
+    userId: v.optional(v.id("users")),
     dataRetention: v.optional(v.number()),
     analyticsOptOut: v.optional(v.boolean()),
     transactionIsolation: v.optional(v.boolean()),
   },
   handler: async (ctx, args): Promise<void> => {
+    let user: Doc<"users"> | null = null;
     const identity = await ctx.auth.getUserIdentity();
-    if (!identity) {
-      throw new Error("Not authenticated");
+
+    if (identity) {
+      user = await ctx.db
+        .query("users")
+        .withIndex("by_credential", (q) => q.eq("credentialId", identity.subject))
+        .first();
+      if (!user) {
+        const userId = ctx.db.normalizeId("users", identity.subject);
+        if (userId) user = await ctx.db.get(userId);
+      }
+    } else if (args.userId) {
+      user = await ctx.db.get(args.userId);
     }
 
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_credential", (q) => q.eq("credentialId", identity.subject))
-      .first();
-
     if (!user) {
-      throw new Error("User not found");
+      throw new Error("User not found or not authenticated");
     }
 
     const updatedSettings = {
@@ -347,21 +397,28 @@ export const updatePrivacySettings = mutation({
  */
 export const linkPhoneHash = mutation({
   args: {
+    userId: v.optional(v.id("users")),
     phoneHash: v.string(),
   },
   handler: async (ctx, args): Promise<void> => {
+    let user: Doc<"users"> | null = null;
     const identity = await ctx.auth.getUserIdentity();
-    if (!identity) {
-      throw new Error("Not authenticated");
+
+    if (identity) {
+      user = await ctx.db
+        .query("users")
+        .withIndex("by_credential", (q) => q.eq("credentialId", identity.subject))
+        .first();
+      if (!user) {
+        const userId = ctx.db.normalizeId("users", identity.subject);
+        if (userId) user = await ctx.db.get(userId);
+      }
+    } else if (args.userId) {
+      user = await ctx.db.get(args.userId);
     }
 
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_credential", (q) => q.eq("credentialId", identity.subject))
-      .first();
-
     if (!user) {
-      throw new Error("User not found");
+      throw new Error("User not found or not authenticated");
     }
 
     // Check if phone hash is already linked to another user
@@ -385,13 +442,20 @@ export const linkPhoneHash = mutation({
  */
 export const addPasskeyCredential = mutation({
   args: {
+    userId: v.optional(v.id("users")),
     newCredentialId: v.string(),
     newPublicKey: v.bytes(),
   },
   handler: async (ctx, args): Promise<void> => {
+    let user: Doc<"users"> | null = null;
     const identity = await ctx.auth.getUserIdentity();
-    if (!identity) {
-      throw new Error("Not authenticated");
+    
+    if (identity) {
+      // We don't strictly need the user record here to check existing credentials,
+      // but we might want to verify the user exists.
+      // For now, just proceeding with the check.
+    } else if (!args.userId) {
+       throw new Error("Not authenticated");
     }
 
     // Check if new credential is already registered
@@ -417,6 +481,10 @@ export const addPasskeyCredential = mutation({
  * Creates a user with:
  * - Device-generated credential ID (stored in SecureStore)
  * - Solana address (from generated keypair or Turnkey later)
+ *
+ * ACCOUNT RECOVERY: If a user with the same Solana address already exists,
+ * we update their credential ID and return the existing account. This handles
+ * the case where local storage was cleared but the user's wallet still exists.
  */
 export const registerBiometric = mutation({
   args: {
@@ -431,6 +499,7 @@ export const registerBiometric = mutation({
   handler: async (ctx, args): Promise<{
     userId: Id<"users">;
     solanaAddress: string | null;
+    isRecoveredAccount?: boolean;
   }> => {
     // Check if credential is already registered
     const existing = await ctx.db
@@ -440,6 +509,7 @@ export const registerBiometric = mutation({
 
     if (existing) {
       // Return existing user (allows re-registration on same device)
+      console.log("[Auth] Credential already registered, returning existing user:", existing._id);
       return {
         userId: existing._id,
         solanaAddress: existing.solanaAddress ?? null,
@@ -451,7 +521,58 @@ export const registerBiometric = mutation({
       throw new Error("Invalid Solana address format");
     }
 
-    // Create user record with empty public key (biometric-only auth)
+    // ACCOUNT RECOVERY: Check if Solana address already exists
+    // This handles the case where credential ID was lost (app reinstall, cache clear)
+    // but the user's Solana wallet is still stored in SecureStore
+    if (args.solanaAddress) {
+      // Use collect() to find all matches in case of duplicates
+      const usersByAddress = await ctx.db
+        .query("users")
+        .withIndex("by_solana_address", (q) => q.eq("solanaAddress", args.solanaAddress))
+        .collect();
+
+      // Pick the best user account to recover (most recently active)
+      const existingByAddress = usersByAddress.sort((a, b) => (b.lastActive ?? 0) - (a.lastActive ?? 0))[0];
+
+      if (existingByAddress) {
+        // RECOVERY: Update credential ID to the new one and return existing user
+        console.log("[Auth] ACCOUNT RECOVERY: Found existing user by Solana address:", existingByAddress._id);
+
+        if (existingByAddress.accountStatus === "suspended" || existingByAddress.accountStatus === "locked") {
+          throw new Error(`Account is ${existingByAddress.accountStatus}. Please contact support.`);
+        }
+
+        const updates: any = {
+          lastActive: Date.now(),
+        };
+
+        if (existingByAddress.credentialId !== args.credentialId) {
+          console.log("[Auth] Updating credential ID from", existingByAddress.credentialId, "to", args.credentialId);
+          updates.credentialId = args.credentialId;
+        }
+
+        // Backfill privacySettings if missing (prevents crashes in cards:create)
+        if (!existingByAddress.privacySettings) {
+          console.log("[Auth] Backfilling missing privacySettings for user:", existingByAddress._id);
+          updates.privacySettings = {
+            dataRetention: 365,
+            analyticsOptOut: false,
+            transactionIsolation: true,
+          };
+        }
+
+        await ctx.db.patch(existingByAddress._id, updates);
+
+        return {
+          userId: existingByAddress._id,
+          solanaAddress: existingByAddress.solanaAddress ?? null,
+          isRecoveredAccount: true,
+        };
+      }
+    }
+
+    // Create new user record with empty public key (biometric-only auth)
+    console.log("[Auth] Creating new user with Solana address:", args.solanaAddress);
     const userId = await ctx.db.insert("users", {
       credentialId: args.credentialId,
       publicKey: new ArrayBuffer(0), // Empty - no WebAuthn public key for biometric auth
@@ -541,6 +662,8 @@ export const registerWithTurnkey = action({
       platform: v.string(),
       model: v.optional(v.string()),
     })),
+    // Optional: existing Solana address for account recovery
+    existingSolanaAddress: v.optional(v.string()),
     // Passkey attestation for non-custodial wallet
     passkey: v.object({
       authenticatorName: v.string(),
@@ -558,6 +681,7 @@ export const registerWithTurnkey = action({
     solanaAddress: string;
     ethereumAddress: string;
     isExistingUser: boolean;
+    isRecoveredAccount?: boolean;
   }> => {
     // Check if user already exists with this credential
     const existingUser = await ctx.runQuery(internal.auth.passkeys.getByCredentialId, {
@@ -572,6 +696,35 @@ export const registerWithTurnkey = action({
         ethereumAddress: existingUser.ethereumAddress ?? "",
         isExistingUser: true,
       };
+    }
+
+    // ACCOUNT RECOVERY: Check if user exists with the provided Solana address
+    // This handles the case where SecureStore was cleared but the Solana address was preserved
+    if (args.existingSolanaAddress) {
+      const existingByAddress = await ctx.runQuery(internal.auth.passkeys.getByAddress, {
+        solanaAddress: args.existingSolanaAddress,
+      });
+
+      if (existingByAddress) {
+        // Update credential ID to new one (recovery)
+        await ctx.runMutation(internal.auth.passkeys.updateCredentialId, {
+          userId: existingByAddress._id,
+          newCredentialId: args.credentialId,
+        });
+
+        console.log("[Registration] ACCOUNT RECOVERY via Solana address:", {
+          userId: existingByAddress._id,
+          solanaAddress: args.existingSolanaAddress,
+        });
+
+        return {
+          userId: existingByAddress._id,
+          solanaAddress: existingByAddress.solanaAddress ?? "",
+          ethereumAddress: existingByAddress.ethereumAddress ?? "",
+          isExistingUser: true,
+          isRecoveredAccount: true,
+        };
+      }
     }
 
     // Create Turnkey sub-organization with passkey authentication (non-custodial)
@@ -630,21 +783,28 @@ export const registerWithTurnkey = action({
  */
 export const updateSolanaAddress = mutation({
   args: {
+    userId: v.optional(v.id("users")),
     solanaAddress: v.string(),
   },
   handler: async (ctx, args): Promise<void> => {
+    let user: Doc<"users"> | null = null;
     const identity = await ctx.auth.getUserIdentity();
-    if (!identity) {
-      throw new Error("Not authenticated");
+
+    if (identity) {
+      user = await ctx.db
+        .query("users")
+        .withIndex("by_credential", (q) => q.eq("credentialId", identity.subject))
+        .first();
+      if (!user) {
+        const userId = ctx.db.normalizeId("users", identity.subject);
+        if (userId) user = await ctx.db.get(userId);
+      }
+    } else if (args.userId) {
+      user = await ctx.db.get(args.userId);
     }
 
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_credential", (q) => q.eq("credentialId", identity.subject))
-      .first();
-
     if (!user) {
-      throw new Error("User not found");
+      throw new Error("User not found or not authenticated");
     }
 
     // Validate Solana address format (base58, 32-44 characters)
@@ -664,13 +824,28 @@ export const updateSolanaAddress = mutation({
  */
 export const updateEthereumAddress = mutation({
   args: {
-    userId: v.id("users"),
+    userId: v.optional(v.id("users")),
     ethereumAddress: v.string(),
   },
   handler: async (ctx, args): Promise<void> => {
-    const user = await ctx.db.get(args.userId);
+    let user: Doc<"users"> | null = null;
+    const identity = await ctx.auth.getUserIdentity();
+
+    if (identity) {
+      user = await ctx.db
+        .query("users")
+        .withIndex("by_credential", (q) => q.eq("credentialId", identity.subject))
+        .first();
+      if (!user) {
+        const userId = ctx.db.normalizeId("users", identity.subject);
+        if (userId) user = await ctx.db.get(userId);
+      }
+    } else if (args.userId) {
+      user = await ctx.db.get(args.userId);
+    }
+
     if (!user) {
-      throw new Error("User not found");
+      throw new Error("User not found or not authenticated");
     }
 
     // Validate Ethereum address format (0x followed by 40 hex chars)

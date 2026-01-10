@@ -1,0 +1,835 @@
+/**
+ * DisCard 2035 - Contacts Management Screen
+ *
+ * Full contacts management with:
+ * - View all saved contacts
+ * - Delete individual or multiple contacts
+ * - Toggle favorites
+ * - Import contacts from phone
+ * - Search functionality
+ */
+
+import { useState, useCallback, useMemo } from "react";
+import {
+  StyleSheet,
+  View,
+  Pressable,
+  ScrollView,
+  TextInput,
+  Alert,
+  ActivityIndicator,
+} from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { router } from "expo-router";
+import Animated, { FadeIn, FadeOut, LinearTransition } from "react-native-reanimated";
+
+import { ThemedText } from "@/components/themed-text";
+import { ThemedView } from "@/components/themed-view";
+import { useThemeColor } from "@/hooks/use-theme-color";
+import { useContacts, Contact } from "@/hooks/useContacts";
+import { formatAddress } from "@/lib/transfer/address-resolver";
+
+// ============================================================================
+// Contact Item Component
+// ============================================================================
+
+interface ContactItemProps {
+  contact: Contact;
+  isSelected: boolean;
+  selectionMode: boolean;
+  onPress: () => void;
+  onLongPress: () => void;
+  onToggleFavorite: () => void;
+  onDelete: () => void;
+}
+
+function ContactItem({
+  contact,
+  isSelected,
+  selectionMode,
+  onPress,
+  onLongPress,
+  onToggleFavorite,
+  onDelete,
+}: ContactItemProps) {
+  const mutedColor = useThemeColor({ light: "#687076", dark: "#9BA1A6" }, "icon");
+  const primaryColor = useThemeColor({}, "tint");
+  const dangerColor = "#ef4444";
+  const cardBg = useThemeColor(
+    { light: "rgba(0,0,0,0.03)", dark: "rgba(255,255,255,0.06)" },
+    "background"
+  );
+
+  return (
+    <Animated.View
+      entering={FadeIn.duration(200)}
+      exiting={FadeOut.duration(150)}
+      layout={LinearTransition.springify()}
+    >
+      <Pressable
+        onPress={onPress}
+        onLongPress={onLongPress}
+        style={({ pressed }) => [
+          styles.contactItem,
+          { backgroundColor: cardBg },
+          isSelected && styles.contactSelected,
+          isSelected && { borderColor: primaryColor },
+          pressed && styles.pressed,
+        ]}
+      >
+        {selectionMode && (
+          <View
+            style={[
+              styles.checkbox,
+              { borderColor: mutedColor },
+              isSelected && { backgroundColor: primaryColor, borderColor: primaryColor },
+            ]}
+          >
+            {isSelected && <Ionicons name="checkmark" size={14} color="#fff" />}
+          </View>
+        )}
+
+        <View style={[styles.avatar, { backgroundColor: contact.avatarColor }]}>
+          <ThemedText style={styles.avatarText}>{contact.avatarInitials}</ThemedText>
+        </View>
+
+        <View style={styles.contactInfo}>
+          <View style={styles.nameRow}>
+            <ThemedText style={styles.contactName} numberOfLines={1}>
+              {contact.name}
+            </ThemedText>
+            {contact.verified && (
+              <Ionicons name="checkmark-circle" size={14} color="#4CAF50" />
+            )}
+            {contact.importedFromPhone && (
+              <Ionicons name="phone-portrait-outline" size={12} color={mutedColor} />
+            )}
+          </View>
+          <ThemedText style={[styles.contactIdentifier, { color: mutedColor }]} numberOfLines={1}>
+            {contact.identifierType === "sol_name"
+              ? contact.identifier
+              : contact.identifierType === "phone"
+              ? contact.identifier
+              : contact.identifierType === "email"
+              ? contact.identifier
+              : formatAddress(contact.resolvedAddress, 8)}
+          </ThemedText>
+          {contact.transferCount > 0 && (
+            <ThemedText style={[styles.transferCount, { color: mutedColor }]}>
+              {contact.transferCount} transfer{contact.transferCount !== 1 ? "s" : ""}
+            </ThemedText>
+          )}
+        </View>
+
+        {!selectionMode && (
+          <View style={styles.actions}>
+            <Pressable
+              onPress={onToggleFavorite}
+              style={({ pressed }) => [styles.actionButton, pressed && styles.pressed]}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Ionicons
+                name={contact.isFavorite ? "star" : "star-outline"}
+                size={20}
+                color={contact.isFavorite ? "#FFD700" : mutedColor}
+              />
+            </Pressable>
+            <Pressable
+              onPress={onDelete}
+              style={({ pressed }) => [styles.actionButton, pressed && styles.pressed]}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Ionicons name="trash-outline" size={18} color={dangerColor} />
+            </Pressable>
+          </View>
+        )}
+      </Pressable>
+    </Animated.View>
+  );
+}
+
+// ============================================================================
+// Main Screen
+// ============================================================================
+
+export default function ContactsScreen() {
+  const insets = useSafeAreaInsets();
+  const {
+    contacts,
+    favoriteContacts,
+    isLoading,
+    deleteContact,
+    deleteMultipleContacts,
+    toggleFavorite,
+    refreshContacts,
+  } = useContacts();
+
+  // State
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [isImporting, setIsImporting] = useState(false);
+
+  // Theme colors
+  const primaryColor = useThemeColor({}, "tint");
+  const mutedColor = useThemeColor({ light: "#687076", dark: "#9BA1A6" }, "icon");
+  const borderColor = useThemeColor(
+    { light: "rgba(0,0,0,0.06)", dark: "rgba(255,255,255,0.08)" },
+    "background"
+  );
+  const inputBg = useThemeColor({ light: "#ffffff", dark: "#1c1c1e" }, "background");
+  const textColor = useThemeColor({}, "text");
+  const dangerColor = "#ef4444";
+
+  // Check if primary color is white (for dark mode button text)
+  const isWhitePrimary = primaryColor === "#fff" || primaryColor === "#ffffff" || primaryColor.toLowerCase() === "white";
+  const buttonTextColor = isWhitePrimary ? "#000" : "#fff";
+
+  // Filter contacts by search
+  const filteredContacts = useMemo(() => {
+    if (!searchQuery.trim()) return contacts;
+    const query = searchQuery.toLowerCase();
+    return contacts.filter(
+      (c) =>
+        c.name.toLowerCase().includes(query) ||
+        c.identifier.toLowerCase().includes(query) ||
+        c.resolvedAddress.toLowerCase().includes(query)
+    );
+  }, [contacts, searchQuery]);
+
+  // Handlers
+  const handleBack = useCallback(() => {
+    if (selectionMode) {
+      setSelectionMode(false);
+      setSelectedIds(new Set());
+    } else if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace("/");
+    }
+  }, [selectionMode]);
+
+  const handleContactPress = useCallback(
+    (contact: Contact) => {
+      if (selectionMode) {
+        setSelectedIds((prev) => {
+          const next = new Set(prev);
+          if (next.has(contact.id)) {
+            next.delete(contact.id);
+          } else {
+            next.add(contact.id);
+          }
+          return next;
+        });
+      }
+    },
+    [selectionMode]
+  );
+
+  const handleContactLongPress = useCallback((contact: Contact) => {
+    setSelectionMode(true);
+    setSelectedIds(new Set([contact.id]));
+  }, []);
+
+  const handleDeleteContact = useCallback(
+    (contact: Contact) => {
+      Alert.alert(
+        "Delete Contact",
+        `Are you sure you want to delete "${contact.name}"?`,
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Delete",
+            style: "destructive",
+            onPress: async () => {
+              try {
+                await deleteContact(contact.id);
+              } catch (err) {
+                Alert.alert("Error", "Failed to delete contact");
+              }
+            },
+          },
+        ]
+      );
+    },
+    [deleteContact]
+  );
+
+  const handleDeleteSelected = useCallback(() => {
+    if (selectedIds.size === 0) return;
+
+    Alert.alert(
+      "Delete Contacts",
+      `Are you sure you want to delete ${selectedIds.size} contact${selectedIds.size !== 1 ? "s" : ""}?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await deleteMultipleContacts(Array.from(selectedIds));
+              setSelectionMode(false);
+              setSelectedIds(new Set());
+            } catch (err) {
+              Alert.alert("Error", "Failed to delete contacts");
+            }
+          },
+        },
+      ]
+    );
+  }, [selectedIds, deleteMultipleContacts]);
+
+  const handleSelectAll = useCallback(() => {
+    if (selectedIds.size === filteredContacts.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filteredContacts.map((c) => c.id)));
+    }
+  }, [selectedIds.size, filteredContacts]);
+
+  const handleImportContacts = useCallback(async () => {
+    try {
+      // Check if expo-contacts is available
+      let Contacts;
+      try {
+        Contacts = require("expo-contacts");
+      } catch {
+        Alert.alert(
+          "Not Available",
+          "Contact import requires expo-contacts. Run: npx expo install expo-contacts"
+        );
+        return;
+      }
+
+      // Request permission
+      const { status } = await Contacts.requestPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert(
+          "Permission Required",
+          "Please allow access to contacts in your device settings."
+        );
+        return;
+      }
+
+      setIsImporting(true);
+
+      // Get contacts from phone
+      const { data } = await Contacts.getContactsAsync({
+        fields: [
+          Contacts.Fields.Name,
+          Contacts.Fields.PhoneNumbers,
+          Contacts.Fields.Emails,
+        ],
+      });
+
+      if (data.length === 0) {
+        Alert.alert("No Contacts", "No contacts found on your device.");
+        setIsImporting(false);
+        return;
+      }
+
+      // Filter contacts that have phone or email
+      const validContacts = data.filter(
+        (c: { name?: string; phoneNumbers?: unknown[]; emails?: unknown[] }) =>
+          c.name && (c.phoneNumbers?.length || c.emails?.length)
+      );
+
+      if (validContacts.length === 0) {
+        Alert.alert("No Valid Contacts", "No contacts with phone numbers or emails found.");
+        setIsImporting(false);
+        return;
+      }
+
+      // Show selection dialog
+      Alert.alert(
+        "Import Contacts",
+        `Found ${validContacts.length} contacts with phone/email. Import them to your contact list?`,
+        [
+          { text: "Cancel", style: "cancel", onPress: () => setIsImporting(false) },
+          {
+            text: "Import All",
+            onPress: async () => {
+              try {
+                let imported = 0;
+                let skipped = 0;
+
+                // Get existing contact identifiers to avoid duplicates
+                const existingIdentifiers = new Set(
+                  contacts.map((c) => c.identifier.toLowerCase())
+                );
+
+                const ContactsStorage = await import("@/lib/contacts-storage").then(
+                  (m) => m.ContactsStorage
+                );
+
+                for (const contact of validContacts) {
+                  const name = contact.name as string;
+
+                  // Try phone first, then email
+                  let identifier = "";
+                  let identifierType: "phone" | "email" = "phone";
+
+                  if (contact.phoneNumbers?.length) {
+                    const phone = (contact.phoneNumbers[0] as { number: string }).number;
+                    identifier = phone;
+                    identifierType = "phone";
+                  } else if (contact.emails?.length) {
+                    const email = (contact.emails[0] as { email: string }).email;
+                    identifier = email;
+                    identifierType = "email";
+                  }
+
+                  if (!identifier) {
+                    skipped++;
+                    continue;
+                  }
+
+                  // Skip if already exists
+                  if (existingIdentifiers.has(identifier.toLowerCase())) {
+                    skipped++;
+                    continue;
+                  }
+
+                  await ContactsStorage.create({
+                    name,
+                    identifier,
+                    identifierType,
+                    resolvedAddress: identifier, // Will be resolved when actually sending
+                    verified: false,
+                    importedFromPhone: true,
+                    phoneContactId: contact.id as string,
+                  });
+
+                  existingIdentifiers.add(identifier.toLowerCase());
+                  imported++;
+                }
+
+                // Refresh the contacts list
+                await refreshContacts();
+
+                Alert.alert(
+                  "Import Complete",
+                  `Imported: ${imported}\nAlready saved: ${skipped}`
+                );
+              } catch (err) {
+                console.error("[Contacts] Import error:", err);
+                Alert.alert("Error", "Failed to import contacts");
+              } finally {
+                setIsImporting(false);
+              }
+            },
+          },
+        ]
+      );
+    } catch (err) {
+      console.error("[Contacts] Import error:", err);
+      Alert.alert("Error", "Failed to access contacts");
+      setIsImporting(false);
+    }
+  }, [contacts, refreshContacts]);
+
+  const handleToggleFavorite = useCallback(
+    async (contactId: string) => {
+      try {
+        await toggleFavorite(contactId);
+      } catch (err) {
+        Alert.alert("Error", "Failed to update favorite status");
+      }
+    },
+    [toggleFavorite]
+  );
+
+  // Empty state
+  if (!isLoading && contacts.length === 0) {
+    return (
+      <ThemedView style={styles.container}>
+        <View style={{ height: insets.top }} />
+
+        {/* Header */}
+        <View style={styles.header}>
+          <Pressable
+            onPress={handleBack}
+            style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
+          >
+            <Ionicons name="chevron-back" size={24} color={mutedColor} />
+          </Pressable>
+          <ThemedText style={styles.headerTitle}>Contacts</ThemedText>
+          <View style={styles.headerSpacer} />
+        </View>
+
+        {/* Empty State */}
+        <View style={styles.emptyState}>
+          <View style={[styles.emptyIcon, { backgroundColor: `${primaryColor}15` }]}>
+            <Ionicons name="people-outline" size={48} color={primaryColor} />
+          </View>
+          <ThemedText style={styles.emptyTitle}>No Contacts Yet</ThemedText>
+          <ThemedText style={[styles.emptyDescription, { color: mutedColor }]}>
+            Contacts you send money to will appear here. You can also import contacts from your phone.
+          </ThemedText>
+          <Pressable
+            onPress={handleImportContacts}
+            disabled={isImporting}
+            style={({ pressed }) => [
+              styles.importButton,
+              { backgroundColor: primaryColor },
+              pressed && styles.pressed,
+            ]}
+          >
+            {isImporting ? (
+              <ActivityIndicator size="small" color={buttonTextColor} />
+            ) : (
+              <>
+                <Ionicons name="cloud-download-outline" size={20} color={buttonTextColor} />
+                <ThemedText style={[styles.importButtonText, { color: buttonTextColor }]}>Import from Phone</ThemedText>
+              </>
+            )}
+          </Pressable>
+        </View>
+      </ThemedView>
+    );
+  }
+
+  return (
+    <ThemedView style={styles.container}>
+      <View style={{ height: insets.top }} />
+
+      {/* Header */}
+      <View style={styles.header}>
+        <Pressable
+          onPress={handleBack}
+          style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
+        >
+          <Ionicons
+            name={selectionMode ? "close" : "chevron-back"}
+            size={24}
+            color={mutedColor}
+          />
+        </Pressable>
+        <ThemedText style={styles.headerTitle}>
+          {selectionMode ? `${selectedIds.size} Selected` : "Contacts"}
+        </ThemedText>
+        {selectionMode ? (
+          <Pressable
+            onPress={handleSelectAll}
+            style={({ pressed }) => [styles.headerButton, pressed && styles.pressed]}
+          >
+            <ThemedText style={[styles.headerButtonText, { color: primaryColor }]}>
+              {selectedIds.size === filteredContacts.length ? "Deselect All" : "Select All"}
+            </ThemedText>
+          </Pressable>
+        ) : (
+          <Pressable
+            onPress={handleImportContacts}
+            disabled={isImporting}
+            style={({ pressed }) => [styles.headerButton, pressed && styles.pressed]}
+          >
+            {isImporting ? (
+              <ActivityIndicator size="small" color={primaryColor} />
+            ) : (
+              <Ionicons name="cloud-download-outline" size={22} color={primaryColor} />
+            )}
+          </Pressable>
+        )}
+      </View>
+
+      {/* Search Bar */}
+      <View style={styles.searchContainer}>
+        <View style={[styles.searchBar, { backgroundColor: inputBg, borderColor }]}>
+          <Ionicons name="search" size={18} color={mutedColor} />
+          <TextInput
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholder="Search contacts..."
+            placeholderTextColor={mutedColor}
+            style={[styles.searchInput, { color: textColor }]}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          {searchQuery.length > 0 && (
+            <Pressable onPress={() => setSearchQuery("")}>
+              <Ionicons name="close-circle" size={18} color={mutedColor} />
+            </Pressable>
+          )}
+        </View>
+      </View>
+
+      {/* Stats Bar */}
+      <View style={styles.statsBar}>
+        <ThemedText style={[styles.statsText, { color: mutedColor }]}>
+          {filteredContacts.length} contact{filteredContacts.length !== 1 ? "s" : ""}
+          {favoriteContacts.length > 0 && ` • ${favoriteContacts.length} favorite${favoriteContacts.length !== 1 ? "s" : ""}`}
+        </ThemedText>
+      </View>
+
+      {/* Contact List */}
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 100 }]}
+        showsVerticalScrollIndicator={false}
+      >
+        {isLoading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={primaryColor} />
+          </View>
+        ) : filteredContacts.length === 0 ? (
+          <View style={styles.noResults}>
+            <Ionicons name="search-outline" size={32} color={mutedColor} />
+            <ThemedText style={[styles.noResultsText, { color: mutedColor }]}>
+              No contacts match "{searchQuery}"
+            </ThemedText>
+          </View>
+        ) : (
+          filteredContacts.map((contact) => (
+            <ContactItem
+              key={contact.id}
+              contact={contact}
+              isSelected={selectedIds.has(contact.id)}
+              selectionMode={selectionMode}
+              onPress={() => handleContactPress(contact)}
+              onLongPress={() => handleContactLongPress(contact)}
+              onToggleFavorite={() => handleToggleFavorite(contact.id)}
+              onDelete={() => handleDeleteContact(contact)}
+            />
+          ))
+        )}
+      </ScrollView>
+
+      {/* Selection Action Bar */}
+      {selectionMode && selectedIds.size > 0 && (
+        <Animated.View
+          entering={FadeIn.duration(200)}
+          exiting={FadeOut.duration(150)}
+          style={[
+            styles.selectionBar,
+            { backgroundColor: inputBg, borderColor, paddingBottom: insets.bottom + 16 },
+          ]}
+        >
+          <Pressable
+            onPress={handleDeleteSelected}
+            style={({ pressed }) => [
+              styles.deleteSelectedButton,
+              { backgroundColor: dangerColor },
+              pressed && styles.pressed,
+            ]}
+          >
+            <Ionicons name="trash-outline" size={18} color="#fff" />
+            <ThemedText style={styles.deleteSelectedText}>
+              Delete {selectedIds.size} Contact{selectedIds.size !== 1 ? "s" : ""}
+            </ThemedText>
+          </Pressable>
+        </Animated.View>
+      )}
+    </ThemedView>
+  );
+}
+
+// ============================================================================
+// Styles
+// ============================================================================
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(128,128,128,0.1)",
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  headerTitle: {
+    fontSize: 17,
+    fontWeight: "600",
+  },
+  headerSpacer: {
+    width: 40,
+  },
+  headerButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  headerButtonText: {
+    fontSize: 14,
+    fontWeight: "500",
+  },
+  searchContainer: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  searchBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    gap: 8,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 15,
+  },
+  statsBar: {
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+  },
+  statsText: {
+    fontSize: 12,
+  },
+  scrollView: {
+    flex: 1,
+  },
+  content: {
+    paddingHorizontal: 16,
+    gap: 8,
+  },
+  loadingContainer: {
+    paddingTop: 60,
+    alignItems: "center",
+  },
+  contactItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 12,
+    borderRadius: 16,
+    gap: 12,
+    borderWidth: 2,
+    borderColor: "transparent",
+  },
+  contactSelected: {
+    borderWidth: 2,
+  },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 2,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  avatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  avatarText: {
+    color: "#fff",
+    fontSize: 15,
+    fontWeight: "600",
+  },
+  contactInfo: {
+    flex: 1,
+  },
+  nameRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  contactName: {
+    fontSize: 15,
+    fontWeight: "500",
+  },
+  contactIdentifier: {
+    fontSize: 13,
+    marginTop: 2,
+  },
+  transferCount: {
+    fontSize: 11,
+    marginTop: 2,
+  },
+  actions: {
+    flexDirection: "row",
+    gap: 4,
+  },
+  actionButton: {
+    padding: 8,
+  },
+  emptyState: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 32,
+  },
+  emptyIcon: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 24,
+  },
+  emptyTitle: {
+    fontSize: 20,
+    fontWeight: "600",
+    marginBottom: 8,
+  },
+  emptyDescription: {
+    fontSize: 14,
+    textAlign: "center",
+    lineHeight: 20,
+    marginBottom: 24,
+  },
+  importButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 24,
+    paddingVertical: 14,
+    borderRadius: 12,
+  },
+  importButtonText: {
+    color: "#fff",
+    fontSize: 15,
+    fontWeight: "600",
+  },
+  noResults: {
+    alignItems: "center",
+    paddingTop: 60,
+    gap: 12,
+  },
+  noResultsText: {
+    fontSize: 14,
+  },
+  selectionBar: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+  },
+  deleteSelectedButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 14,
+    borderRadius: 12,
+  },
+  deleteSelectedText: {
+    color: "#fff",
+    fontSize: 15,
+    fontWeight: "600",
+  },
+  pressed: {
+    opacity: 0.7,
+  },
+});

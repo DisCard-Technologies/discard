@@ -76,9 +76,9 @@ export function useTokenHoldings(
     }
   }, [walletAddress, refreshAction]);
 
-  // Initial fetch on mount
+  // Initial fetch on mount - always refresh to get latest token metadata
   useEffect(() => {
-    if (walletAddress && fetchOnMount && !cachedHoldings) {
+    if (walletAddress && fetchOnMount) {
       refresh();
     }
   }, [walletAddress, fetchOnMount]); // eslint-disable-line react-hooks/exhaustive-deps

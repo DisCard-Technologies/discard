@@ -209,9 +209,39 @@ export const suspendCard = internalAction({
   handler: async (ctx, args): Promise<void> => {
     console.log(`Suspending card ${args.cardId} in Marqeta: ${args.reason}`);
 
-    // In production:
-    // 1. Get card's Marqeta token
-    // 2. Call Marqeta PUT /cards/{token}/transitions with state: SUSPENDED
+    // Check if Marqeta credentials are configured
+    if (!MARQETA_APP_TOKEN || !MARQETA_ADMIN_TOKEN) {
+      console.log(`[Marqeta] Credentials not configured, skipping suspend for card ${args.cardId}`);
+      return;
+    }
+
+    // Get card's Marqeta token
+    const card = await ctx.runQuery(internal.cards.cards.getCardById, {
+      cardId: args.cardId,
+    });
+
+    if (!card || !card.marqetaCardToken) {
+      console.log(`Card ${args.cardId} not provisioned, skipping Marqeta sync`);
+      return;
+    }
+
+    try {
+      // Call Marqeta API to suspend
+      await marqetaRequest(`/cardtransitions`, {
+        method: "POST",
+        body: JSON.stringify({
+          card_token: card.marqetaCardToken,
+          state: "SUSPENDED",
+          channel: "API",
+          reason_code: "00",
+        }),
+      });
+
+      console.log(`Card ${args.cardId} suspended in Marqeta`);
+    } catch (error) {
+      console.error(`Failed to suspend card ${args.cardId} in Marqeta:`, error);
+      // Don't throw, just log
+    }
   },
 });
 
@@ -225,9 +255,39 @@ export const activateCard = internalAction({
   handler: async (ctx, args): Promise<void> => {
     console.log(`Activating card ${args.cardId} in Marqeta`);
 
-    // In production:
-    // 1. Get card's Marqeta token
-    // 2. Call Marqeta PUT /cards/{token}/transitions with state: ACTIVE
+    // Check if Marqeta credentials are configured
+    if (!MARQETA_APP_TOKEN || !MARQETA_ADMIN_TOKEN) {
+      console.log(`[Marqeta] Credentials not configured, skipping activate for card ${args.cardId}`);
+      return;
+    }
+
+    // Get card's Marqeta token
+    const card = await ctx.runQuery(internal.cards.cards.getCardById, {
+      cardId: args.cardId,
+    });
+
+    if (!card || !card.marqetaCardToken) {
+      console.log(`Card ${args.cardId} not provisioned, skipping Marqeta sync`);
+      return;
+    }
+
+    try {
+      // Call Marqeta API to activate
+      await marqetaRequest(`/cardtransitions`, {
+        method: "POST",
+        body: JSON.stringify({
+          card_token: card.marqetaCardToken,
+          state: "ACTIVE",
+          channel: "API",
+          reason_code: "00",
+        }),
+      });
+
+      console.log(`Card ${args.cardId} activated in Marqeta`);
+    } catch (error) {
+      console.error(`Failed to activate card ${args.cardId} in Marqeta:`, error);
+      // Don't throw, just log
+    }
   },
 });
 

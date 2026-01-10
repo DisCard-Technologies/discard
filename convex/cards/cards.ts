@@ -43,10 +43,15 @@ export const list = query({
       return { cards: [], total: 0 };
     }
 
-    const user = await ctx.db
+    let user = await ctx.db
       .query("users")
       .withIndex("by_credential", (q) => q.eq("credentialId", credentialId))
       .first();
+
+    if (!user) {
+      const userId = ctx.db.normalizeId("users", credentialId);
+      if (userId) user = await ctx.db.get(userId);
+    }
 
     if (!user) {
       return { cards: [], total: 0 };
@@ -100,10 +105,15 @@ export const get = query({
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) return null;
 
-    const user = await ctx.db
+    let user = await ctx.db
       .query("users")
       .withIndex("by_credential", (q) => q.eq("credentialId", identity.subject))
       .first();
+
+    if (!user) {
+      const userId = ctx.db.normalizeId("users", identity.subject);
+      if (userId) user = await ctx.db.get(userId);
+    }
 
     if (!user) return null;
 
@@ -161,6 +171,22 @@ export const getCardById = internalQuery({
 });
 
 /**
+ * List cards by user ID (internal - for solver context)
+ */
+export const listByUserId = internalQuery({
+  args: {
+    userId: v.id("users"),
+  },
+  handler: async (ctx, args): Promise<Doc<"cards">[]> => {
+    return await ctx.db
+      .query("cards")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .filter((q) => q.neq(q.field("status"), "deleted"))
+      .collect();
+  },
+});
+
+/**
  * Get active authorization holds for a card
  */
 export const getActiveHolds = query({
@@ -171,10 +197,15 @@ export const getActiveHolds = query({
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) return [];
 
-    const user = await ctx.db
+    let user = await ctx.db
       .query("users")
       .withIndex("by_credential", (q) => q.eq("credentialId", identity.subject))
       .first();
+
+    if (!user) {
+      const userId = ctx.db.normalizeId("users", identity.subject);
+      if (userId) user = await ctx.db.get(userId);
+    }
 
     if (!user) return [];
 
@@ -204,10 +235,15 @@ export const getTransactions = query({
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) return [];
 
-    const user = await ctx.db
+    let user = await ctx.db
       .query("users")
       .withIndex("by_credential", (q) => q.eq("credentialId", identity.subject))
       .first();
+
+    if (!user) {
+      const userId = ctx.db.normalizeId("users", identity.subject);
+      if (userId) user = await ctx.db.get(userId);
+    }
 
     if (!user) return [];
 
@@ -298,23 +334,35 @@ export const create = mutation({
     blockedCountries: v.optional(v.array(v.string())),
     // Fallback for custom auth when ctx.auth is not configured
     credentialId: v.optional(v.string()),
+    // Fallback for internal calls (e.g., from intent executor)
+    userId: v.optional(v.id("users")),
   },
   handler: async (ctx, args): Promise<Id<"cards">> => {
-    // Try Convex auth first, fall back to credentialId parameter
+    // Try Convex auth first, fall back to credentialId parameter, then userId
     const identity = await ctx.auth.getUserIdentity();
     const credentialId = identity?.subject ?? args.credentialId;
 
-    if (!credentialId) {
-      throw new Error("Not authenticated");
+    let user: Doc<"users"> | null = null;
+
+    if (credentialId) {
+      user = await ctx.db
+        .query("users")
+        .withIndex("by_credential", (q) => q.eq("credentialId", credentialId))
+        .first();
+
+      if (!user) {
+        const userId = ctx.db.normalizeId("users", credentialId);
+        if (userId) user = await ctx.db.get(userId);
+      }
     }
 
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_credential", (q) => q.eq("credentialId", credentialId))
-      .first();
+    // Fallback to userId if credentialId lookup failed
+    if (!user && args.userId) {
+      user = await ctx.db.get(args.userId);
+    }
 
     if (!user) {
-      throw new Error("User not found");
+      throw new Error("Not authenticated");
     }
 
     // Generate unique card context for privacy isolation
@@ -342,7 +390,7 @@ export const create = mutation({
       status: "pending",
       blockedMccCodes: args.blockedMccCodes,
       blockedCountries: args.blockedCountries,
-      privacyIsolated: user.privacySettings.transactionIsolation,
+      privacyIsolated: user.privacySettings?.transactionIsolation ?? true,
       nickname: args.nickname,
       color: args.color,
       createdAt: Date.now(),
@@ -376,10 +424,15 @@ export const updateStatus = mutation({
       throw new Error("Not authenticated");
     }
 
-    const user = await ctx.db
+    let user = await ctx.db
       .query("users")
       .withIndex("by_credential", (q) => q.eq("credentialId", identity.subject))
       .first();
+
+    if (!user) {
+      const userId = ctx.db.normalizeId("users", identity.subject);
+      if (userId) user = await ctx.db.get(userId);
+    }
 
     if (!user) {
       throw new Error("User not found");
@@ -425,37 +478,55 @@ export const freeze = mutation({
     reason: v.string(),
   },
   handler: async (ctx, args): Promise<void> => {
+    console.log(`[freeze] Starting freeze for card ${args.cardId}, reason: ${args.reason}`);
+
     const identity = await ctx.auth.getUserIdentity();
+    console.log(`[freeze] Identity: ${JSON.stringify(identity)}`);
+
     if (!identity) {
       throw new Error("Not authenticated");
     }
 
-    const user = await ctx.db
+    let user = await ctx.db
       .query("users")
       .withIndex("by_credential", (q) => q.eq("credentialId", identity.subject))
       .first();
+
+    if (!user) {
+      const userId = ctx.db.normalizeId("users", identity.subject);
+      if (userId) user = await ctx.db.get(userId);
+    }
+
+    console.log(`[freeze] User: ${JSON.stringify(user)}`);
 
     if (!user) {
       throw new Error("User not found");
     }
 
     const card = await ctx.db.get(args.cardId);
+    console.log(`[freeze] Card: ${JSON.stringify(card)}`);
 
     if (!card || card.userId !== user._id) {
       throw new Error("Card not found");
     }
 
+    console.log(`[freeze] About to patch card ${args.cardId}`);
     await ctx.db.patch(args.cardId, {
       status: "frozen",
       updatedAt: Date.now(),
     });
+    console.log(`[freeze] Card patched successfully`);
 
     // Sync with Marqeta
     if (card.marqetaCardToken) {
+      console.log(`[freeze] Scheduling suspendCard for card with token`);
       await ctx.scheduler.runAfter(0, internal.cards.marqeta.suspendCard, {
         cardId: args.cardId,
         reason: args.reason,
       });
+      console.log(`[freeze] Scheduled suspendCard`);
+    } else {
+      console.log(`[freeze] Card has no marqeta token, skipping sync`);
     }
 
     console.log(`Card ${args.cardId} frozen: ${args.reason}`);
@@ -475,10 +546,15 @@ export const unfreeze = mutation({
       throw new Error("Not authenticated");
     }
 
-    const user = await ctx.db
+    let user = await ctx.db
       .query("users")
       .withIndex("by_credential", (q) => q.eq("credentialId", identity.subject))
       .first();
+
+    if (!user) {
+      const userId = ctx.db.normalizeId("users", identity.subject);
+      if (userId) user = await ctx.db.get(userId);
+    }
 
     if (!user) {
       throw new Error("User not found");
@@ -514,23 +590,36 @@ export const unfreeze = mutation({
 export const deleteCard = mutation({
   args: {
     cardId: v.id("cards"),
+    // Fallback for internal calls (e.g., from intent executor)
+    userId: v.optional(v.id("users")),
   },
   handler: async (ctx, args): Promise<{
     deletionProof: string;
     deletedAt: number;
   }> => {
+    // Try Convex auth first, fall back to userId parameter
     const identity = await ctx.auth.getUserIdentity();
-    if (!identity) {
-      throw new Error("Not authenticated");
+    let user: Doc<"users"> | null = null;
+
+    if (identity) {
+      user = await ctx.db
+        .query("users")
+        .withIndex("by_credential", (q) => q.eq("credentialId", identity.subject))
+        .first();
+
+      if (!user) {
+        const userId = ctx.db.normalizeId("users", identity.subject);
+        if (userId) user = await ctx.db.get(userId);
+      }
     }
 
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_credential", (q) => q.eq("credentialId", identity.subject))
-      .first();
+    // Fallback to userId if auth lookup failed
+    if (!user && args.userId) {
+      user = await ctx.db.get(args.userId);
+    }
 
     if (!user) {
-      throw new Error("User not found");
+      throw new Error("Not authenticated");
     }
 
     const card = await ctx.db.get(args.cardId);
@@ -590,10 +679,15 @@ export const updateRestrictions = mutation({
       throw new Error("Not authenticated");
     }
 
-    const user = await ctx.db
+    let user = await ctx.db
       .query("users")
       .withIndex("by_credential", (q) => q.eq("credentialId", identity.subject))
       .first();
+
+    if (!user) {
+      const userId = ctx.db.normalizeId("users", identity.subject);
+      if (userId) user = await ctx.db.get(userId);
+    }
 
     if (!user) {
       throw new Error("User not found");
@@ -630,10 +724,15 @@ export const updateLimits = mutation({
       throw new Error("Not authenticated");
     }
 
-    const user = await ctx.db
+    let user = await ctx.db
       .query("users")
       .withIndex("by_credential", (q) => q.eq("credentialId", identity.subject))
       .first();
+
+    if (!user) {
+      const userId = ctx.db.normalizeId("users", identity.subject);
+      if (userId) user = await ctx.db.get(userId);
+    }
 
     if (!user) {
       throw new Error("User not found");
@@ -655,6 +754,65 @@ export const updateLimits = mutation({
 });
 
 // ============ INTERNAL MUTATIONS ============
+
+/**
+ * Delete card internally (for intent executor)
+ * Bypasses auth check and uses userId directly
+ */
+export const deleteCardInternal = internalMutation({
+  args: {
+    cardId: v.id("cards"),
+    userId: v.id("users"),
+  },
+  handler: async (ctx, args): Promise<{
+    deletionProof: string;
+    deletedAt: number;
+  }> => {
+    const card = await ctx.db.get(args.cardId);
+
+    if (!card) {
+      throw new Error(`Card not found: ${args.cardId}`);
+    }
+
+    if (card.userId !== args.userId) {
+      throw new Error("Card does not belong to user");
+    }
+
+    // Cannot delete cards with active holds
+    const activeHolds = await ctx.db
+      .query("authorizationHolds")
+      .withIndex("by_card", (q) => q.eq("cardId", args.cardId))
+      .filter((q) => q.eq(q.field("status"), "active"))
+      .collect();
+
+    if (activeHolds.length > 0) {
+      throw new Error("Cannot delete card with active authorization holds");
+    }
+
+    // Generate deletion proof
+    const deletedAt = Date.now();
+    const deletionProof = generateDeletionProof(card.cardContext, deletedAt);
+
+    // Soft delete
+    await ctx.db.patch(args.cardId, {
+      status: "deleted",
+      updatedAt: deletedAt,
+    });
+
+    // Terminate card in Marqeta
+    if (card.marqetaCardToken) {
+      await ctx.scheduler.runAfter(0, internal.cards.marqeta.terminateCard, {
+        cardId: args.cardId,
+      });
+    }
+
+    console.log(`[deleteCardInternal] Card ${args.cardId} deleted`);
+    return {
+      deletionProof,
+      deletedAt,
+    };
+  },
+});
 
 /**
  * Create a card without auth context (for bulk provisioning scripts)

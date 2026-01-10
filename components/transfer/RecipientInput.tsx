@@ -54,17 +54,20 @@ export interface RecipientInputProps {
   disabled?: boolean;
 }
 
-interface RecentContactItemProps {
+interface ContactItemProps {
   contact: Contact;
   onPress: () => void;
+  onToggleFavorite?: () => void;
+  showFavoriteStar?: boolean;
 }
 
 // ============================================================================
 // Components
 // ============================================================================
 
-function RecentContactItem({ contact, onPress }: RecentContactItemProps) {
+function ContactItem({ contact, onPress, onToggleFavorite, showFavoriteStar = false }: ContactItemProps) {
   const mutedColor = useThemeColor({ light: "#687076", dark: "#9BA1A6" }, "icon");
+  const primaryColor = useThemeColor({}, "tint");
 
   return (
     <Pressable
@@ -95,7 +98,23 @@ function RecentContactItem({ contact, onPress }: RecentContactItemProps) {
         </ThemedText>
       </View>
       {contact.verified && (
-        <Ionicons name="checkmark-circle" size={16} color="#4CAF50" />
+        <Ionicons name="checkmark-circle" size={16} color="#4CAF50" style={styles.verifiedIcon} />
+      )}
+      {showFavoriteStar && onToggleFavorite && (
+        <Pressable
+          onPress={(e) => {
+            e.stopPropagation?.();
+            onToggleFavorite();
+          }}
+          style={({ pressed }) => [styles.favoriteButton, pressed && styles.pressed]}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Ionicons
+            name={contact.isFavorite ? "star" : "star-outline"}
+            size={18}
+            color={contact.isFavorite ? "#FFD700" : mutedColor}
+          />
+        </Pressable>
       )}
     </Pressable>
   );
@@ -193,8 +212,10 @@ export function RecipientInput({
   // Contacts
   const {
     recentContacts,
+    favoriteContacts,
     searchContacts,
     getContactByAddress,
+    toggleFavorite,
   } = useContacts();
 
   // Sync external value
@@ -264,7 +285,17 @@ export function RecipientInput({
     }),
   }));
 
+  // Handle favorite toggle
+  const handleToggleFavorite = useCallback(
+    (contactId: string) => {
+      toggleFavorite(contactId);
+    },
+    [toggleFavorite]
+  );
+
   // Determine what to show in suggestions
+  const showFavoriteContacts =
+    showSuggestions && !input.trim() && favoriteContacts.length > 0;
   const showRecentContacts =
     showSuggestions && !input.trim() && recentContacts.length > 0;
   const showMatchedContacts =
@@ -431,7 +462,7 @@ export function RecipientInput({
       )}
 
       {/* Suggestions Dropdown */}
-      {(showRecentContacts || showMatchedContacts) && (
+      {(showFavoriteContacts || showRecentContacts || showMatchedContacts) && (
         <Animated.View
           entering={FadeIn.duration(150)}
           exiting={FadeOut.duration(100)}
@@ -440,6 +471,27 @@ export function RecipientInput({
             { backgroundColor: inputBg, borderColor },
           ]}
         >
+          {showFavoriteContacts && (
+            <>
+              <ThemedText style={[styles.sectionLabel, { color: mutedColor }]}>
+                FAVORITES
+              </ThemedText>
+              <FlatList
+                data={favoriteContacts}
+                keyExtractor={(item) => item.id}
+                renderItem={({ item }) => (
+                  <ContactItem
+                    contact={item}
+                    onPress={() => handleContactSelect(item)}
+                    showFavoriteStar
+                    onToggleFavorite={() => handleToggleFavorite(item.id)}
+                  />
+                )}
+                scrollEnabled={false}
+              />
+            </>
+          )}
+
           {showRecentContacts && (
             <>
               <ThemedText style={[styles.sectionLabel, { color: mutedColor }]}>
@@ -447,11 +499,13 @@ export function RecipientInput({
               </ThemedText>
               <FlatList
                 data={recentContacts}
-                keyExtractor={(item) => item._id}
+                keyExtractor={(item) => item.id}
                 renderItem={({ item }) => (
-                  <RecentContactItem
+                  <ContactItem
                     contact={item}
                     onPress={() => handleContactSelect(item)}
+                    showFavoriteStar
+                    onToggleFavorite={() => handleToggleFavorite(item.id)}
                   />
                 )}
                 scrollEnabled={false}
@@ -466,11 +520,13 @@ export function RecipientInput({
               </ThemedText>
               <FlatList
                 data={matchedContacts}
-                keyExtractor={(item) => item._id}
+                keyExtractor={(item) => item.id}
                 renderItem={({ item }) => (
-                  <RecentContactItem
+                  <ContactItem
                     contact={item}
                     onPress={() => handleContactSelect(item)}
+                    showFavoriteStar
+                    onToggleFavorite={() => handleToggleFavorite(item.id)}
                   />
                 )}
                 scrollEnabled={false}
@@ -653,6 +709,12 @@ const styles = StyleSheet.create({
   contactAddress: {
     fontSize: 12,
     marginTop: 2,
+  },
+  verifiedIcon: {
+    marginRight: 4,
+  },
+  favoriteButton: {
+    padding: 4,
   },
 });
 

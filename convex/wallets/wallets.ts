@@ -3,8 +3,8 @@
  * Manages connected crypto wallets (Solana, Ethereum, etc.)
  */
 import { v } from "convex/values";
-import { query, mutation } from "../_generated/server";
-import { Id } from "../_generated/dataModel";
+import { query, mutation, internalQuery } from "../_generated/server";
+import { Id, Doc } from "../_generated/dataModel";
 
 // List all wallets for the current user
 export const list = query({
@@ -161,6 +161,22 @@ export const refreshBalance = mutation({
       balance: mockBalance,
       balanceUsd: mockBalanceUsd,
     };
+  },
+});
+
+/**
+ * List wallets by user ID (internal - for solver context)
+ */
+export const listByUserId = internalQuery({
+  args: {
+    userId: v.id("users"),
+  },
+  handler: async (ctx, args): Promise<Doc<"wallets">[]> => {
+    return await ctx.db
+      .query("wallets")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .filter((q) => q.eq(q.field("connectionStatus"), "connected"))
+      .collect();
   },
 });
 

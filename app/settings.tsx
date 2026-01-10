@@ -27,29 +27,30 @@ const settingsSections = [
   {
     title: 'Account',
     items: [
-      { icon: 'wallet' as const, label: 'Connected Wallets', value: '3 wallets' },
-      { icon: 'card' as const, label: 'Visa Card Settings', value: '' },
-      { icon: 'phone-portrait' as const, label: 'Linked Devices', value: '2 devices' },
+      { icon: 'wallet' as const, label: 'Connected Wallets', value: '3 wallets', route: '' },
+      { icon: 'card' as const, label: 'Visa Card Settings', value: '', route: '' },
+      { icon: 'people' as const, label: 'Saved Contacts', value: '', route: '/contacts' },
+      { icon: 'phone-portrait' as const, label: 'Linked Devices', value: '2 devices', route: '' },
     ],
   },
   {
     title: 'Preferences',
     items: [
-      { icon: 'notifications' as const, label: 'Notifications', value: 'On' },
-      { icon: 'globe' as const, label: 'Currency', value: 'USD' },
-      { icon: 'moon' as const, label: 'Appearance', value: 'Dark' },
-      { icon: 'flash' as const, label: 'Ambient Finance', value: 'Enabled' },
+      { icon: 'notifications' as const, label: 'Notifications', value: 'On', route: '' },
+      { icon: 'globe' as const, label: 'Currency', value: 'USD', route: '' },
+      { icon: 'moon' as const, label: 'Appearance', value: 'Dark', route: '' },
+      { icon: 'flash' as const, label: 'Ambient Finance', value: 'Enabled', route: '' },
     ],
   },
   {
     title: 'Security',
-    items: [{ icon: 'shield-checkmark' as const, label: 'Security Settings', value: '' }],
+    items: [{ icon: 'shield-checkmark' as const, label: 'Security Settings', value: '', route: '' }],
   },
   {
     title: 'Support',
     items: [
-      { icon: 'help-circle' as const, label: 'Help Center', value: '' },
-      { icon: 'document-text' as const, label: 'Terms & Privacy', value: '' },
+      { icon: 'help-circle' as const, label: 'Help Center', value: '', route: '' },
+      { icon: 'document-text' as const, label: 'Terms & Privacy', value: '', route: '' },
     ],
   },
 ];
@@ -262,6 +263,7 @@ export default function SettingsScreen() {
               {section.items.map((item, idx) => (
                 <Pressable
                   key={item.label}
+                  onPress={() => item.route ? router.push(item.route as any) : undefined}
                   style={({ pressed }) => [
                     styles.settingsItem,
                     idx !== section.items.length - 1 && [styles.itemBorder, { borderBottomColor: borderColor }],

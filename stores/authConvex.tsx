@@ -184,6 +184,8 @@ const storage = {
 export interface User {
   id: string;
   displayName: string;
+  email?: string;
+  phoneNumber?: string;
   solanaAddress?: string;
   ethereumAddress?: string; // For MoonPay ETH purchases
   kycStatus: string;
@@ -255,6 +257,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user: {
           id: userData._id,
           displayName: userData.displayName ?? "",
+          email: userData.email,
+          phoneNumber: userData.phoneNumber,
           solanaAddress: userData.solanaAddress,
           ethereumAddress: userData.ethereumAddress,
           kycStatus: userData.kycStatus,
@@ -520,6 +524,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const credentialId = await generateCredentialId();
           await storage.setItem(CREDENTIAL_ID_KEY, credentialId);
 
+          // Check for existing Solana address for account recovery
+          // This helps recover accounts when SecureStore is cleared but app data persists
+          const existingWallet = await getStoredSolanaWallet();
+          const existingSolanaAddress = existingWallet?.publicKey;
+          if (existingSolanaAddress) {
+            console.log("[Auth] Found existing Solana address for potential recovery:", existingSolanaAddress);
+          }
+
           // Register with Turnkey via Convex action
           // This creates TEE-managed Solana + Ethereum wallets
           let userId: string;
@@ -558,6 +570,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               const result = await registerWithTurnkeyAction({
                 credentialId,
                 displayName,
+                existingSolanaAddress, // For account recovery
                 deviceInfo: {
                   platform: Platform.OS,
                 },
@@ -582,6 +595,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 solanaAddress,
                 ethereumAddress,
                 isExistingUser: result.isExistingUser,
+                isRecoveredAccount: result.isRecoveredAccount,
               });
             } else {
               throw new Error("Turnkey passkey stamper not available");
@@ -590,27 +604,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             // Turnkey/Convex unavailable - fall back to local wallet generation
             console.warn("[Auth] Turnkey unavailable, falling back to local keypair:", {
               error: turnkeyError?.message || turnkeyError,
-              name: turnkeyError?.name,
-              code: turnkeyError?.code,
-              stack: turnkeyError?.stack?.split('\n').slice(0, 3).join('\n'),
             });
 
-            // Generate local Solana wallet as fallback
-            const wallet = await generateAndStoreSolanaWallet();
-            solanaAddress = wallet.publicKey;
+            // Use existing wallet if available (for recovery), otherwise generate new one
+            let walletPublicKey: string;
+            if (existingSolanaAddress) {
+              console.log("[Auth] Using existing Solana wallet for recovery:", existingSolanaAddress);
+              walletPublicKey = existingSolanaAddress;
+            } else {
+              console.log("[Auth] No existing wallet, generating new Solana keypair");
+              const wallet = await generateAndStoreSolanaWallet();
+              walletPublicKey = wallet.publicKey;
+            }
+            solanaAddress = walletPublicKey;
 
-            // Try legacy biometric registration
+            // Register with Convex - will recover account if address exists in DB
             try {
               const result = await registerBiometricMutation({
                 credentialId,
                 displayName,
-                solanaAddress: wallet.publicKey,
+                solanaAddress: walletPublicKey,
                 deviceInfo: {
                   platform: Platform.OS,
                 },
               });
               userId = result.userId;
-              solanaAddress = result.solanaAddress || wallet.publicKey;
+              solanaAddress = result.solanaAddress || walletPublicKey;
+
+              if (result.isRecoveredAccount) {
+                console.log("[Auth] Account recovered via Solana address!");
+              }
             } catch (convexError) {
               // Complete offline - use local-only mode
               console.warn("[Auth] Convex unavailable, using local-only mode:", convexError);
@@ -810,6 +833,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     /**
      * Check if user is already authenticated
+     * SECURITY: Requires biometric authentication before granting access
      */
     checkAuthStatus: async (): Promise<void> => {
       try {
@@ -819,6 +843,43 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const storedCredentialId = await storage.getItem(CREDENTIAL_ID_KEY);
 
         if (storedUserId) {
+          // Validate that the stored ID looks like a valid Convex ID
+          // and isn't corrupted (e.g., from a different table)
+          // Convex IDs are 32 chars and should be alphanumeric
+          const isValidFormat = /^[a-z0-9]{32}$/.test(storedUserId);
+
+          if (!isValidFormat) {
+            console.warn("[Auth] Stored userId has invalid format, clearing:", storedUserId);
+            await storage.deleteItem(USER_ID_KEY);
+            await storage.deleteItem(CREDENTIAL_ID_KEY);
+            setState((prev) => ({ ...prev, isLoading: false }));
+            return;
+          }
+
+          // SECURITY: Require device authentication before granting access
+          // Uses biometrics if available, falls back to device passcode
+          console.log("[Auth] Stored credentials found, requiring authentication...");
+
+          const authResult = await LocalAuthentication.authenticateAsync({
+            promptMessage: "Authenticate to access DisCard",
+            fallbackLabel: "Use passcode",
+            disableDeviceFallback: false, // Allow passcode as fallback
+          });
+
+          if (!authResult.success) {
+            // Authentication failed - don't grant access but DON'T clear credentials
+            // User can retry authentication
+            console.warn("[Auth] Authentication failed, access denied");
+            setState((prev) => ({
+              ...prev,
+              isLoading: false,
+              error: "Authentication required to access DisCard",
+            }));
+            return;
+          }
+
+          console.log("[Auth] Authentication successful, restoring session");
+
           setState((prev) => ({
             ...prev,
             userId: storedUserId as Id<"users">,
@@ -828,6 +889,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       } catch (error) {
         console.error("Auth status check error:", error);
+        // If there's an error checking auth, clear potentially corrupted credentials
+        console.warn("[Auth] Clearing potentially corrupted credentials due to error");
+        await storage.deleteItem(USER_ID_KEY);
+        await storage.deleteItem(CREDENTIAL_ID_KEY);
       } finally {
         setState((prev) => ({ ...prev, isLoading: false }));
       }

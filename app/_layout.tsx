@@ -1,10 +1,11 @@
-import { useEffect } from 'react';
-import { View, Text } from 'react-native';
+import { useEffect, useState } from 'react';
+import { View, Text, Platform } from 'react-native';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { router, Stack, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import 'react-native-reanimated';
+import * as SecureStore from 'expo-secure-store';
 
 import { ConvexProvider, ConvexReactClient } from 'convex/react';
 import { AuthProvider, useAuth } from '@/stores/authConvex';
@@ -17,6 +18,27 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 // Initialize Convex client
 const convexUrl = process.env.EXPO_PUBLIC_CONVEX_URL;
 const convex = convexUrl ? new ConvexReactClient(convexUrl) : null;
+
+// One-time cleanup for corrupted credentials (temporary migration fix)
+async function cleanupCorruptedCredentials(): Promise<void> {
+  if (Platform.OS === 'web') return;
+  try {
+    const storedUserId = await SecureStore.getItemAsync('discard_user_id');
+    // If the userId exists but causes "table name" validation errors,
+    // it's likely from a different table (e.g., fundingTransactions)
+    // Clear it to force re-authentication
+    if (storedUserId && storedUserId.startsWith('k')) {
+      // Convex IDs start with table-specific prefixes
+      // Users table IDs should start with 'm' in most deployments
+      // If we see a 'k' prefix, it might be from fundingTransactions
+      console.warn('[Layout] Detected potentially corrupted userId, clearing:', storedUserId.substring(0, 8));
+      await SecureStore.deleteItemAsync('discard_user_id');
+      await SecureStore.deleteItemAsync('discard_credential_id');
+    }
+  } catch (e) {
+    console.error('[Layout] Error during credential cleanup:', e);
+  }
+}
 
 export const unstable_settings = {
   anchor: '(tabs)',
@@ -69,6 +91,24 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
+  const [isReady, setIsReady] = useState(false);
+
+  // Run credential cleanup before mounting providers
+  useEffect(() => {
+    cleanupCorruptedCredentials().then(() => {
+      setIsReady(true);
+    });
+  }, []);
+
+  // Show loading screen while cleanup runs
+  if (!isReady) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#0A0A0A' }}>
+        <Text style={{ fontSize: 64, marginBottom: 16 }}>💳</Text>
+        <Text style={{ fontSize: 18, fontWeight: '600', color: '#FFFFFF' }}>Starting...</Text>
+      </View>
+    );
+  }
 
   // Wrap with Convex provider if available
   const content = (

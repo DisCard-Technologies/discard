@@ -1,14 +1,17 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { StyleSheet, View, Pressable, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
+import { useMutation } from 'convex/react';
+import { api } from '@/convex/_generated/api';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { useThemeColor } from '@/hooks/use-theme-color';
-import { useAuth } from '@/stores/authConvex';
+import { useAuth, useAuthOperations } from '@/stores/authConvex';
+import { ProfileField, PhoneVerificationModal } from '@/components/identity';
 
 const credentials = [
   { name: 'Proof of Humanity', issuer: 'WorldID', verified: true, icon: 'finger-print' as const },
@@ -26,6 +29,7 @@ export default function IdentityScreen() {
   const insets = useSafeAreaInsets();
   const [showQR, setShowQR] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [showPhoneModal, setShowPhoneModal] = useState(false);
 
   const primaryColor = useThemeColor({}, 'tint');
   const mutedColor = useThemeColor({ light: '#687076', dark: '#9BA1A6' }, 'icon');
@@ -34,10 +38,35 @@ export default function IdentityScreen() {
   const accentColor = '#a855f7'; // purple accent
 
   // Real data from auth
-  const { user } = useAuth();
+  const { user, userId } = useAuth();
+  const { checkAuthStatus } = useAuthOperations();
   const fullAddress = user?.solanaAddress || '0x8f3A2B4C5D6E7F8901234567890ABCDEF7d4e';
   const walletAddress = fullAddress.length > 10 ? `${fullAddress.slice(0, 6)}...${fullAddress.slice(-4)}` : fullAddress;
   const displayName = user?.displayName || 'anonymous.user';
+
+  // Profile mutations
+  const updateProfileMutation = useMutation(api.auth.passkeys.updateProfile);
+
+  // Handle profile field updates
+  const handleUpdateDisplayName = useCallback(async (name: string) => {
+    if (!userId) return;
+    await updateProfileMutation({ userId, displayName: name });
+    await checkAuthStatus();
+  }, [updateProfileMutation, userId, checkAuthStatus]);
+
+  const handleUpdateEmail = useCallback(async (email: string) => {
+    if (!userId) return;
+    await updateProfileMutation({ userId, email });
+    await checkAuthStatus();
+  }, [updateProfileMutation, userId, checkAuthStatus]);
+
+  // Format phone number for display
+  const formatPhoneNumber = (phone: string): string => {
+    if (phone.startsWith('+1') && phone.length === 12) {
+      return `(${phone.slice(2, 5)}) ${phone.slice(5, 8)}-${phone.slice(8)}`;
+    }
+    return phone;
+  };
 
   const handleCopyAddress = async () => {
     await Clipboard.setStringAsync(fullAddress);
@@ -156,6 +185,41 @@ export default function IdentityScreen() {
           </View>
         </ThemedView>
 
+        {/* Profile Edit Section */}
+        <View style={styles.section}>
+          <ThemedText style={[styles.sectionTitle, { color: mutedColor }]}>
+            PROFILE
+          </ThemedText>
+
+          <ProfileField
+            icon="person"
+            label="Display Name"
+            value={user?.displayName}
+            placeholder="Add a name"
+            inlineEdit
+            onSave={handleUpdateDisplayName}
+          />
+
+          <ProfileField
+            icon="mail"
+            label="Email"
+            value={user?.email}
+            placeholder="Add email"
+            keyboardType="email-address"
+            inlineEdit
+            onSave={handleUpdateEmail}
+          />
+
+          <ProfileField
+            icon="call"
+            label="Phone"
+            value={user?.phoneNumber ? formatPhoneNumber(user.phoneNumber) : undefined}
+            placeholder="Add phone for P2P"
+            verified={!!user?.phoneNumber}
+            onPress={() => setShowPhoneModal(true)}
+          />
+        </View>
+
         {/* Privacy by Default */}
         <ThemedView
           style={[styles.privacyCard, { backgroundColor: cardBg, borderColor: `${primaryColor}30` }]}
@@ -245,6 +309,13 @@ export default function IdentityScreen() {
           ))}
         </View>
       </ScrollView>
+
+      {/* Phone Verification Modal */}
+      <PhoneVerificationModal
+        visible={showPhoneModal}
+        onClose={() => setShowPhoneModal(false)}
+        onSuccess={() => checkAuthStatus()}
+      />
     </ThemedView>
   );
 }

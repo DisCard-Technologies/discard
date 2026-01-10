@@ -41,6 +41,9 @@ interface Intent {
   rawText: string;
   parsedIntent?: ParsedIntent;
   status: IntentStatus;
+  clarificationQuestion?: string;
+  clarificationResponse?: string;
+  responseText?: string; // AI's conversational response
   solanaTransactionSignature?: string;
   error?: string;
   createdAt: number;
@@ -69,15 +72,17 @@ export function useIntents(userId: Id<"users"> | null): UseIntentsReturn {
 
   // Real-time subscription to user's intents
   // Skip for mock auth since Convex won't recognize the user
+  // Pass userId for apps without Convex auth configured
   const intents = useQuery(
     api.intents.intents.list,
-    userId && !isMockAuth ? {} : "skip"
+    userId && !isMockAuth ? { userId } : "skip"
   );
 
   // Get active intent
+  // Pass userId for apps without Convex auth configured
   const activeIntent = useQuery(
     api.intents.intents.get,
-    activeIntentId && !isMockAuth ? { intentId: activeIntentId } : "skip"
+    activeIntentId && !isMockAuth ? { intentId: activeIntentId, userId: userId! } : "skip"
   );
 
   // Mutations (will be skipped in mock mode)
@@ -95,15 +100,23 @@ export function useIntents(userId: Id<"users"> | null): UseIntentsReturn {
    */
   const submitIntent = useCallback(
     async (rawText: string): Promise<Id<"intents">> => {
+      console.log('[useIntents] submitIntent called');
+      console.log('[useIntents] rawText:', rawText);
+      console.log('[useIntents] userId:', userId);
+      console.log('[useIntents] isMockAuth:', isMockAuth);
+
       if (!userId) {
+        console.error('[useIntents] No userId - throwing error');
         throw new Error("User not authenticated");
       }
 
       setIsProcessing(true);
+      console.log('[useIntents] isProcessing set to true');
 
       try {
         // DEV MODE: Call Brain Orchestrator directly (bypasses Convex auth)
         if (isMockAuth) {
+          console.log('[useIntents] DEV MODE - calling Brain directly');
           const mockIntentId = `mock_intent_${Date.now()}` as Id<"intents">;
 
           // Create initial pending intent
@@ -156,14 +169,21 @@ export function useIntents(userId: Id<"users"> | null): UseIntentsReturn {
 
         // PRODUCTION: Create the intent via Convex
         // The mutation automatically schedules AI parsing internally
+        console.log('[useIntents] PRODUCTION MODE - calling Convex mutation');
+        console.log('[useIntents] Creating intent with userId:', userId);
         const intentId = await createIntentMutation({
           rawText,
           userId,
         });
+        console.log('[useIntents] Convex mutation returned intentId:', intentId);
 
         setActiveIntentId(intentId);
         return intentId;
+      } catch (error) {
+        console.error('[useIntents] Error in submitIntent:', error);
+        throw error;
       } finally {
+        console.log('[useIntents] Setting isProcessing to false');
         setIsProcessing(false);
       }
     },

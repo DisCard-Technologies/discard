@@ -4,13 +4,12 @@
  * Displays parsed intent details and allows user approval/clarification.
  * Shows source, target, amount, and any clarification questions.
  */
-import React, { useState } from "react";
+import React from "react";
 import {
   View,
   Text,
   TouchableOpacity,
   StyleSheet,
-  TextInput,
   ActivityIndicator,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -23,9 +22,10 @@ interface ParsedIntent {
   targetId?: string;
   amount?: number;
   currency?: string;
-  needsClarification: boolean;
+  // These may come from AI response but aren't stored in Convex
+  needsClarification?: boolean;
   clarificationQuestion?: string;
-  confidence: number;
+  confidence?: number;
 }
 
 interface Intent {
@@ -33,6 +33,8 @@ interface Intent {
   rawText: string;
   parsedIntent?: ParsedIntent;
   status: string;
+  // Convex stores clarification question at top level
+  clarificationQuestion?: string;
 }
 
 interface IntentPreviewProps {
@@ -50,66 +52,34 @@ export function IntentPreview({
   onCancel,
   onClarify,
 }: IntentPreviewProps) {
-  const [clarificationInput, setClarificationInput] = useState("");
-
   const parsed = intent.parsedIntent;
 
-  // Still parsing
-  if (intent.status === "parsing" || !parsed) {
+  // Needs clarification - show as chat message (no separate input - user replies via command bar)
+  if (intent.status === "clarifying") {
+    const questionText = intent.clarificationQuestion || parsed?.clarificationQuestion || "Please provide more details";
     return (
       <View style={styles.container}>
-        <View style={styles.parsingContainer}>
-          <ActivityIndicator size="small" color="#8B5CF6" />
-          <Text style={styles.parsingText}>Understanding your request...</Text>
+        <View style={styles.chatMessage}>
+          <View style={styles.aiAvatar}>
+            <Ionicons name="sparkles" size={16} color="#8B5CF6" />
+          </View>
+          <View style={styles.messageBubble}>
+            <Text style={styles.messageText}>{questionText}</Text>
+          </View>
         </View>
-        <Text style={styles.rawText}>"{intent.rawText}"</Text>
+        <Text style={styles.replyHint}>Reply below to continue...</Text>
       </View>
     );
   }
 
-  // Needs clarification
-  if (parsed.needsClarification && intent.status === "clarifying") {
+  // Still parsing or no parsed intent yet - show loading
+  if (intent.status === "parsing" || intent.status === "pending" || !parsed) {
     return (
       <View style={styles.container}>
-        <View style={styles.clarificationContainer}>
-          <Ionicons name="help-circle" size={24} color="#F59E0B" />
-          <Text style={styles.clarificationQuestion}>
-            {parsed.clarificationQuestion}
-          </Text>
+        <View style={styles.parsingContainer}>
+          <ActivityIndicator size="small" color="#8B5CF6" />
+          <Text style={styles.parsingText}>Processing your request...</Text>
         </View>
-
-        <View style={styles.clarificationInputContainer}>
-          <TextInput
-            style={styles.clarificationInput}
-            value={clarificationInput}
-            onChangeText={setClarificationInput}
-            placeholder="Type your answer..."
-            placeholderTextColor="#6B7280"
-            returnKeyType="send"
-            onSubmitEditing={() => {
-              if (clarificationInput.trim()) {
-                onClarify(clarificationInput.trim());
-                setClarificationInput("");
-              }
-            }}
-          />
-          <TouchableOpacity
-            style={styles.clarifyButton}
-            onPress={() => {
-              if (clarificationInput.trim()) {
-                onClarify(clarificationInput.trim());
-                setClarificationInput("");
-              }
-            }}
-            disabled={!clarificationInput.trim()}
-          >
-            <Ionicons name="send" size={18} color="#FFFFFF" />
-          </TouchableOpacity>
-        </View>
-
-        <TouchableOpacity style={styles.cancelButton} onPress={onCancel}>
-          <Text style={styles.cancelButtonText}>Cancel</Text>
-        </TouchableOpacity>
       </View>
     );
   }
@@ -128,7 +98,7 @@ export function IntentPreview({
             </Text>
           )}
         </View>
-        <ConfidenceBadge confidence={parsed.confidence} />
+        <ConfidenceBadge confidence={parsed.confidence ?? 0.9} />
       </View>
 
       {/* Flow Details */}
@@ -388,40 +358,38 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "600",
   },
-  clarificationContainer: {
+  chatMessage: {
     flexDirection: "row",
     alignItems: "flex-start",
-    marginBottom: 16,
+    marginBottom: 8,
   },
-  clarificationQuestion: {
-    flex: 1,
-    color: "#FFFFFF",
-    fontSize: 16,
-    marginLeft: 12,
-    lineHeight: 24,
-  },
-  clarificationInputContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 12,
-  },
-  clarificationInput: {
-    flex: 1,
-    backgroundColor: "#374151",
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    color: "#FFFFFF",
-    fontSize: 16,
-    marginRight: 8,
-  },
-  clarifyButton: {
-    backgroundColor: "#8B5CF6",
-    borderRadius: 12,
-    width: 44,
-    height: 44,
+  aiAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "rgba(139, 92, 246, 0.2)",
     alignItems: "center",
     justifyContent: "center",
+    marginRight: 10,
+  },
+  messageBubble: {
+    flex: 1,
+    backgroundColor: "#374151",
+    borderRadius: 16,
+    borderTopLeftRadius: 4,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  messageText: {
+    color: "#FFFFFF",
+    fontSize: 15,
+    lineHeight: 22,
+  },
+  replyHint: {
+    color: "#6B7280",
+    fontSize: 12,
+    textAlign: "center",
+    marginTop: 4,
   },
 });
 

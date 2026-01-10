@@ -104,6 +104,9 @@ const ATA_RENT_LAMPORTS = 2039280;
 /** Base transaction fee */
 const BASE_FEE_LAMPORTS = 5000;
 
+/** Gas authority for fee subsidization (set via environment) */
+const GAS_AUTHORITY_PUBKEY = process.env.EXPO_PUBLIC_GAS_AUTHORITY_PUBKEY;
+
 /** Approximate SOL price for fee estimation (updated periodically) */
 let cachedSolPrice = 150; // Default fallback
 
@@ -185,12 +188,14 @@ export function updateSolPrice(price: number): void {
 
 /**
  * Build a native SOL transfer transaction
+ * @param subsidizeGas - If true and GAS_AUTHORITY_PUBKEY is set, use gas authority as fee payer
  */
 export async function buildSOLTransfer(
   connection: Connection,
   from: PublicKey,
   to: PublicKey,
-  lamports: bigint
+  lamports: bigint,
+  subsidizeGas: boolean = true
 ): Promise<TransferTransaction> {
   const transaction = new Transaction();
 
@@ -222,7 +227,13 @@ export async function buildSOLTransfer(
     await connection.getLatestBlockhash("confirmed");
   transaction.recentBlockhash = blockhash;
   transaction.lastValidBlockHeight = lastValidBlockHeight;
-  transaction.feePayer = from;
+
+  // Use gas authority for fee subsidization if configured
+  if (subsidizeGas && GAS_AUTHORITY_PUBKEY) {
+    transaction.feePayer = new PublicKey(GAS_AUTHORITY_PUBKEY);
+  } else {
+    transaction.feePayer = from;
+  }
 
   return {
     transaction,
@@ -236,17 +247,24 @@ export async function buildSOLTransfer(
 /**
  * Build an SPL token transfer transaction
  * Automatically creates recipient ATA if needed
+ * @param subsidizeGas - If true and GAS_AUTHORITY_PUBKEY is set, use gas authority as fee payer
  */
 export async function buildSPLTokenTransfer(
   connection: Connection,
   from: PublicKey,
   to: PublicKey,
   amount: bigint,
-  mint: PublicKey
+  mint: PublicKey,
+  subsidizeGas: boolean = true
 ): Promise<TransferTransaction> {
   const transaction = new Transaction();
   let createsAta = false;
   let totalCost = BASE_FEE_LAMPORTS;
+
+  // Determine fee payer (gas authority for subsidization or sender)
+  const feePayer = subsidizeGas && GAS_AUTHORITY_PUBKEY
+    ? new PublicKey(GAS_AUTHORITY_PUBKEY)
+    : from;
 
   // Add priority fee instruction
   const priorityFee = Math.ceil(
@@ -273,10 +291,10 @@ export async function buildSPLTokenTransfer(
   const needsAta = await recipientNeedsAta(connection, to, mint);
 
   if (needsAta) {
-    // Add create ATA instruction
+    // Add create ATA instruction - fee payer pays for ATA creation
     transaction.add(
       createAssociatedTokenAccountInstruction(
-        from, // payer
+        feePayer, // payer (gas authority if subsidized)
         toAta, // ata
         to, // owner
         mint // mint
@@ -301,7 +319,7 @@ export async function buildSPLTokenTransfer(
     await connection.getLatestBlockhash("confirmed");
   transaction.recentBlockhash = blockhash;
   transaction.lastValidBlockHeight = lastValidBlockHeight;
-  transaction.feePayer = from;
+  transaction.feePayer = feePayer;
 
   return {
     transaction,
@@ -314,14 +332,16 @@ export async function buildSPLTokenTransfer(
 
 /**
  * Build a transfer transaction (auto-detects SOL vs SPL)
+ * @param subsidizeGas - If true and GAS_AUTHORITY_PUBKEY is set, use gas authority as fee payer
  */
 export async function buildTransfer(
   connection: Connection,
-  params: TransferParams
+  params: TransferParams,
+  subsidizeGas: boolean = true
 ): Promise<TransferTransaction> {
   // If no mint or native SOL mint, use SOL transfer
   if (!params.mint || params.mint.equals(NATIVE_MINT)) {
-    return buildSOLTransfer(connection, params.from, params.to, params.amount);
+    return buildSOLTransfer(connection, params.from, params.to, params.amount, subsidizeGas);
   }
 
   // SPL token transfer
@@ -330,8 +350,23 @@ export async function buildTransfer(
     params.from,
     params.to,
     params.amount,
-    params.mint
+    params.mint,
+    subsidizeGas
   );
+}
+
+/**
+ * Check if gas subsidization is available
+ */
+export function isGasSubsidized(): boolean {
+  return !!GAS_AUTHORITY_PUBKEY;
+}
+
+/**
+ * Get the gas authority public key if configured
+ */
+export function getGasAuthorityPubkey(): PublicKey | null {
+  return GAS_AUTHORITY_PUBKEY ? new PublicKey(GAS_AUTHORITY_PUBKEY) : null;
 }
 
 // ============================================================================

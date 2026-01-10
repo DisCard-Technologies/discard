@@ -15,6 +15,11 @@ const DEFAULT_BRAIN_URL = Platform.OS === "android"
 
 const BRAIN_URL = process.env.EXPO_PUBLIC_BRAIN_URL || DEFAULT_BRAIN_URL;
 
+// Log the Brain URL on module load for debugging
+console.log("[BrainClient] Configured Brain URL:", BRAIN_URL);
+console.log("[BrainClient] From env:", process.env.EXPO_PUBLIC_BRAIN_URL);
+console.log("[BrainClient] Platform:", Platform.OS);
+
 export interface BrainConverseRequest {
   sessionId?: string;
   userId?: string;
