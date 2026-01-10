@@ -7,13 +7,18 @@ import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { ThemedText } from '@/components/themed-text';
 import { useThemeColor } from '@/hooks/use-theme-color';
 
-type IconName = 'home' | 'layers' | 'swap-horizontal' | 'card';
+type IconName = 'home' | 'search' | 'swap-horizontal' | 'grid';
 
-const tabConfig: Record<string, { icon: IconName; label: string }> = {
+interface TabConfig {
+  icon: IconName;
+  label: string;
+}
+
+const tabConfig: Record<string, TabConfig> = {
   index: { icon: 'home', label: 'Home' },
-  holdings: { icon: 'layers', label: 'Holdings' },
+  explore: { icon: 'search', label: 'Search' },
   transfer: { icon: 'swap-horizontal', label: 'Transfer' },
-  card: { icon: 'card', label: 'Card' },
+  menu: { icon: 'grid', label: 'Menu' },
 };
 
 export function PillTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
@@ -113,4 +118,3 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
 });
-
