@@ -1,3 +1,6 @@
+# Reference projects (not part of this repo)
+crypto-wallet-vision-2/
+
 # Dependencies
 node_modules/
 npm-debug.log*
