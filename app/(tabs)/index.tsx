@@ -143,10 +143,9 @@ export default function HomeScreen() {
   // Real wallet address from auth
   const walletAddress = user?.solanaAddress || '7F3a...8b2E';
 
-  // Navigation handlers
-  const handleIdentityTap = () => router.push('/identity');
-  const handleHistoryTap = () => router.push('/history');
-  const handleSettingsTap = () => router.push('/settings');
+  // Navigation handlers for top bar
+  const handlePortfolioTap = () => router.push('/strategy');
+  const handleCardTap = () => router.push('/card');
 
   // Quick action handlers
   const handleSend = () => router.push('/send');
@@ -188,9 +187,8 @@ export default function HomeScreen() {
       {/* Top Bar */}
       <TopBar
         walletAddress={walletAddress}
-        onIdentityTap={handleIdentityTap}
-        onHistoryTap={handleHistoryTap}
-        onSettingsTap={handleSettingsTap}
+        onPortfolioTap={handlePortfolioTap}
+        onCardTap={handleCardTap}
       />
 
       {/* Main Content */}

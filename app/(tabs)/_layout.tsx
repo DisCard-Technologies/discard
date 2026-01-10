@@ -11,9 +11,12 @@ export default function TabLayout() {
       }}
     >
       <Tabs.Screen name="index" />
-      <Tabs.Screen name="holdings" />
+      <Tabs.Screen name="explore" />
       <Tabs.Screen name="transfer" />
-      <Tabs.Screen name="card" />
+      <Tabs.Screen name="menu" />
+      {/* Hidden screens - accessible via top bar navigation */}
+      <Tabs.Screen name="strategy" options={{ href: null }} />
+      <Tabs.Screen name="card" options={{ href: null }} />
     </Tabs>
   );
 }

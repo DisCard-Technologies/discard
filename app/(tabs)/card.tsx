@@ -8,10 +8,12 @@ import * as Clipboard from 'expo-clipboard';
 import { KeyboardStickyView } from 'react-native-keyboard-controller';
 import Animated, { useSharedValue, useAnimatedStyle, withTiming } from 'react-native-reanimated';
 import { useQuery } from 'convex/react';
+import { router } from 'expo-router';
 import { api } from '@/convex/_generated/api';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { TopBar } from '@/components/top-bar';
 import { CommandBar } from '@/components/command-bar';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { useColorScheme } from '@/hooks/use-color-scheme';
@@ -272,6 +274,15 @@ export default function CardScreen() {
   const hasCards = cardsState?.cards && cardsState.cards.length > 0;
   const isLoadingCards = cardsState?.isLoading;
 
+  // Navigation handlers for top bar
+  const handlePortfolioTap = () => router.push('/strategy');
+  const handleCardTap = () => {
+    // Already on card screen
+  };
+
+  // Real wallet address from auth
+  const walletAddress = user?.solanaAddress || '';
+
   // Debug logging
   console.log('[Card] Screen state:', {
     hasCards,
@@ -287,6 +298,13 @@ export default function CardScreen() {
     <ThemedView style={styles.container}>
       <StatusBar style={isDark ? 'light' : 'dark'} />
       <View style={{ height: insets.top }} />
+
+      {/* Top Bar */}
+      <TopBar
+        walletAddress={walletAddress}
+        onPortfolioTap={handlePortfolioTap}
+        onCardTap={handleCardTap}
+      />
 
       {/* Empty State - No Cards */}
       {!hasCards && !isLoadingCards ? (
@@ -329,24 +347,23 @@ export default function CardScreen() {
         {/* Visa Card */}
         <View style={[styles.cardContainer, cardFrozen && styles.cardFrozen]}>
           <LinearGradient
-            colors={isDark
-              ? ['#27272a', '#1c1c1e', '#18181b']
-              : ['#e4e4e7', '#d4d4d8', '#a1a1aa']
-            }
+            colors={['#0d9488', '#10b981', '#14b8a6']}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={styles.cardGradient}
           >
             {/* Glow effect */}
-            <View style={[styles.cardGlow, { backgroundColor: `${primaryColor}20` }]} />
+            <View style={[styles.cardGlow, { backgroundColor: 'rgba(255,255,255,0.15)' }]} />
 
             {/* Card Header */}
             <View style={styles.cardHeader}>
               <View style={styles.cardBrand}>
-                <View style={[styles.brandCircle, { backgroundColor: `${primaryColor}30` }]}>
-                  <ThemedText style={[styles.brandLetter, { color: primaryColor }]}>D</ThemedText>
+                <View style={[styles.brandCircle, { backgroundColor: 'rgba(255,255,255,0.2)' }]}>
+                  <Ionicons name="wallet" size={14} color="#fff" />
                 </View>
-                <ThemedText style={styles.brandName}>DISCARD</ThemedText>
+                <ThemedText style={[styles.cardAddressText, { color: 'rgba(255,255,255,0.9)' }]}>
+                  {walletAddress ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}` : 'No wallet'}
+                </ThemedText>
               </View>
               <View style={styles.cardHeaderRight}>
                 {cardFrozen && (
@@ -355,83 +372,66 @@ export default function CardScreen() {
                     <ThemedText style={styles.frozenText}>Frozen</ThemedText>
                   </View>
                 )}
-                <Pressable
-                  onPress={toggleDetails}
-                  style={styles.eyeButton}
-                  disabled={loadingSecrets}
-                >
-                  <Ionicons
-                    name={loadingSecrets ? "hourglass-outline" : (showDetails ? "eye-off" : "eye")}
-                    size={20}
-                    color={mutedColor}
-                  />
-                </Pressable>
+                <View style={styles.contactlessIcon}>
+                  <Ionicons name="wifi" size={18} color="rgba(255,255,255,0.8)" />
+                </View>
               </View>
             </View>
 
-            {/* Card Number */}
+            {/* Card Number & Expiry */}
             <View style={styles.cardBody}>
-              <ThemedText style={styles.cardNumber}>
+              <ThemedText style={[styles.cardNumber, { color: '#fff' }]}>
                 {loadingSecrets ? "Loading..." : displayCardNumber}
               </ThemedText>
-              {showDetails && cardSecrets && (
-                <View style={styles.cardDetailsRow}>
-                  <View>
-                    <ThemedText style={[styles.cardLabel, { color: mutedColor }]}>CVV</ThemedText>
-                    <ThemedText style={styles.cardDetailValue}>{cardSecrets.cvv || "---"}</ThemedText>
-                  </View>
-                  <View>
-                    <ThemedText style={[styles.cardLabel, { color: mutedColor }]}>EXPIRES</ThemedText>
-                    <ThemedText style={styles.cardDetailValue}>
-                      {String(cardSecrets.expirationMonth).padStart(2, '0')}/{String(cardSecrets.expirationYear).slice(-2)}
-                    </ThemedText>
-                  </View>
-                </View>
-              )}
+              <ThemedText style={[styles.cardExpiry, { color: 'rgba(255,255,255,0.8)' }]}>
+                {cardSecrets ? `${String(cardSecrets.expirationMonth).padStart(2, '0')}/${String(cardSecrets.expirationYear).slice(-2)}` : '••/••'}
+              </ThemedText>
             </View>
 
             {/* Card Footer */}
             <View style={styles.cardFooter}>
-              <View>
-                <ThemedText style={[styles.cardLabel, { color: mutedColor }]}>CARDHOLDER</ThemedText>
-                <ThemedText style={styles.cardHolder}>{(user?.displayName || 'CARD HOLDER').toUpperCase()}</ThemedText>
-              </View>
-              <ThemedText style={[styles.visaLogo, { color: isDark ? 'rgba(255,255,255,0.8)' : 'rgba(0,0,0,0.6)' }]}>VISA</ThemedText>
+              <View />
+              <ThemedText style={[styles.visaLogo, { color: primaryColor }]}>VISA</ThemedText>
             </View>
           </LinearGradient>
         </View>
 
-        {/* Auto-Rebalance Panel */}
-        <ThemedView 
-          style={[styles.rebalanceCard, { borderColor: `${primaryColor}30` }]} 
-          lightColor="#f4f4f5" 
-          darkColor="#1c1c1e"
-        >
-          <View style={styles.rebalanceHeader}>
-            <Ionicons name="flash" size={14} color={primaryColor} />
-            <ThemedText style={[styles.rebalanceLabel, { color: primaryColor }]}>
-              Auto-Rebalance Active
-            </ThemedText>
-          </View>
-          <View style={styles.rebalanceContent}>
-            <View>
-              <ThemedText style={[styles.balanceLabel, { color: mutedColor }]}>Target Balance</ThemedText>
-              <ThemedText style={styles.balanceValue}>$200.00</ThemedText>
+        {/* Pagination Dots */}
+        <View style={styles.paginationDots}>
+          <View style={[styles.paginationDot, styles.paginationDotActive]} />
+          <View style={styles.paginationDot} />
+        </View>
+
+        {/* Recent Transaction */}
+        {transactions.length > 0 && (
+          <ThemedView
+            style={styles.recentTransaction}
+            lightColor="#f4f4f5"
+            darkColor="#1c1c1e"
+          >
+            <View style={styles.transactionIcon}>
+              <Ionicons name="arrow-up" size={16} color={mutedColor} />
             </View>
-            <View style={styles.balanceRight}>
-              <ThemedText style={[styles.balanceLabel, { color: mutedColor }]}>Current</ThemedText>
-              <ThemedText style={[styles.balanceValue, { color: primaryColor }]}>${cardBalance.toFixed(2)}</ThemedText>
+            <View style={styles.transactionInfo}>
+              <ThemedText style={styles.transactionMerchant}>{transactions[0].merchant}</ThemedText>
+              <ThemedText style={[styles.transactionTime, { color: mutedColor }]}>
+                {transactions[0].date}
+              </ThemedText>
             </View>
-          </View>
-          <ThemedText style={[styles.rebalanceHint, { color: mutedColor }]}>
-            {'"Keep my card balance at $200" — AI auto-rebalances from your portfolio'}
-          </ThemedText>
-        </ThemedView>
+            <View style={styles.transactionAmounts}>
+              <ThemedText style={styles.transactionAmount}>{transactions[0].amount}</ThemedText>
+              <ThemedText style={[styles.transactionFiat, { color: mutedColor }]}>
+                {transactions[0].amount.replace('-', '$').replace('+', '$')}
+              </ThemedText>
+            </View>
+          </ThemedView>
+        )}
 
         {/* Card Controls */}
         <View style={styles.controlsRow}>
           <Pressable 
-            onPress={copyCardNumber}
+            onPress={toggleDetails}
+            disabled={loadingSecrets}
             style={({ pressed }) => [
               styles.controlButton,
               { backgroundColor: isDark ? '#27272a' : '#f4f4f5' },
@@ -439,12 +439,12 @@ export default function CardScreen() {
             ]}
           >
             <Ionicons 
-              name={copied ? "checkmark" : "copy-outline"} 
-              size={18} 
-              color={copied ? primaryColor : textColor} 
+              name={showDetails ? "eye-off-outline" : "eye-off-outline"} 
+              size={22} 
+              color={mutedColor} 
             />
-            <ThemedText style={styles.controlText}>
-              {copied ? "Copied" : "Copy"}
+            <ThemedText style={[styles.controlText, { color: mutedColor }]}>
+              Hide data
             </ThemedText>
           </Pressable>
 
@@ -468,21 +468,19 @@ export default function CardScreen() {
             }}
             style={({ pressed }) => [
               styles.controlButton,
-              cardFrozen
-                ? { backgroundColor: 'rgba(168, 85, 247, 0.2)', borderWidth: 1, borderColor: '#a855f7' }
-                : { backgroundColor: isDark ? '#27272a' : '#f4f4f5' },
+              { backgroundColor: isDark ? '#27272a' : '#f4f4f5' },
               pressed && styles.controlButtonPressed
             ]}
           >
-            <Ionicons name="snow" size={18} color={cardFrozen ? '#a855f7' : textColor} />
-            <ThemedText style={styles.controlText}>
-              {cardFrozen ? "Unfreeze" : "Freeze"}
+            <Ionicons name="snow-outline" size={22} color={cardFrozen ? '#a855f7' : mutedColor} />
+            <ThemedText style={[styles.controlText, { color: mutedColor }]}>
+              Freeze
             </ThemedText>
           </Pressable>
 
           <Pressable
             onPress={() => {
-              Alert.alert('Limits', 'Card limits management coming soon');
+              Alert.alert('Edit Card', 'Card settings coming soon');
             }}
             style={({ pressed }) => [
               styles.controlButton,
@@ -490,8 +488,76 @@ export default function CardScreen() {
               pressed && styles.controlButtonPressed
             ]}
           >
-            <Ionicons name="settings-outline" size={18} color={textColor} />
-            <ThemedText style={styles.controlText}>Limits</ThemedText>
+            <Ionicons name="settings-outline" size={22} color={mutedColor} />
+            <ThemedText style={[styles.controlText, { color: mutedColor }]}>Edit card</ThemedText>
+          </Pressable>
+        </View>
+
+        {/* Manage Card Section */}
+        <View style={styles.manageCardSection}>
+          <ThemedText style={styles.manageCardTitle}>Manage Card</ThemedText>
+          
+          <Pressable
+            style={({ pressed }) => [
+              styles.manageCardItem,
+              { backgroundColor: isDark ? '#1c1c1e' : '#f4f4f5' },
+              pressed && styles.manageCardItemPressed
+            ]}
+            onPress={() => Alert.alert('Apple Pay', 'Add to Apple Pay')}
+          >
+            <View style={styles.manageCardItemLeft}>
+              <View style={[styles.manageCardItemIcon, { backgroundColor: '#000' }]}>
+                <ThemedText style={styles.applePayText}>Pay</ThemedText>
+              </View>
+              <View>
+                <ThemedText style={styles.manageCardItemTitle}>Apple Pay</ThemedText>
+                <ThemedText style={[styles.manageCardItemSubtitle, { color: mutedColor }]}>
+                  Card has been added
+                </ThemedText>
+              </View>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={mutedColor} />
+          </Pressable>
+
+          <Pressable
+            style={({ pressed }) => [
+              styles.manageCardItem,
+              { backgroundColor: isDark ? '#1c1c1e' : '#f4f4f5' },
+              pressed && styles.manageCardItemPressed
+            ]}
+            onPress={() => Alert.alert('Payment Method', 'Change payment method')}
+          >
+            <View style={styles.manageCardItemLeft}>
+              <View style={[styles.manageCardItemIcon, { backgroundColor: `${primaryColor}20` }]}>
+                <Ionicons name="card" size={16} color={primaryColor} />
+              </View>
+              <View>
+                <ThemedText style={styles.manageCardItemTitle}>Payment Method</ThemedText>
+                <ThemedText style={[styles.manageCardItemSubtitle, { color: mutedColor }]}>
+                  {walletAddress ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}` : 'Not set'}
+                </ThemedText>
+              </View>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={mutedColor} />
+          </Pressable>
+
+          <Pressable
+            style={({ pressed }) => [
+              styles.manageCardItem,
+              { backgroundColor: isDark ? '#1c1c1e' : '#f4f4f5' },
+              pressed && styles.manageCardItemPressed
+            ]}
+            onPress={() => Alert.alert('Card Design', 'Customize card design')}
+          >
+            <View style={styles.manageCardItemLeft}>
+              <View style={[styles.manageCardItemIcon, { backgroundColor: 'rgba(168, 85, 247, 0.2)' }]}>
+                <Ionicons name="color-palette" size={16} color="#a855f7" />
+              </View>
+              <View>
+                <ThemedText style={styles.manageCardItemTitle}>Card Design</ThemedText>
+              </View>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={mutedColor} />
           </Pressable>
         </View>
 
@@ -715,61 +781,138 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     letterSpacing: -1,
   },
-  // Rebalance card styles
-  rebalanceCard: {
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 1,
+  cardAddressText: {
+    fontSize: 13,
+    fontFamily: 'monospace',
   },
-  rebalanceHeader: {
+  contactlessIcon: {
+    padding: 4,
+  },
+  cardExpiry: {
+    fontSize: 14,
+    marginTop: 4,
+  },
+  // Pagination dots
+  paginationDots: {
     flexDirection: 'row',
+    justifyContent: 'center',
     alignItems: 'center',
     gap: 8,
-    marginBottom: 12,
+    marginTop: 12,
+    marginBottom: 16,
   },
-  rebalanceLabel: {
-    fontSize: 12,
-    fontWeight: '500',
+  paginationDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: 'rgba(255,255,255,0.3)',
   },
-  rebalanceContent: {
+  paginationDotActive: {
+    backgroundColor: '#fff',
+  },
+  // Recent transaction
+  recentTransaction: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    padding: 16,
+    borderRadius: 16,
+    marginBottom: 16,
   },
-  balanceLabel: {
-    fontSize: 13,
+  transactionIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
   },
-  balanceValue: {
-    fontSize: 24,
-    fontWeight: '300',
+  transactionInfo: {
+    flex: 1,
   },
-  balanceRight: {
+  transactionMerchant: {
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  transactionTime: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  transactionAmounts: {
     alignItems: 'flex-end',
   },
-  rebalanceHint: {
+  transactionAmount: {
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  transactionFiat: {
     fontSize: 12,
-    marginTop: 12,
-    lineHeight: 18,
+    marginTop: 2,
+  },
+  // Manage Card Section
+  manageCardSection: {
+    marginTop: 24,
+    gap: 12,
+  },
+  manageCardTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  manageCardItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    borderRadius: 14,
+  },
+  manageCardItemPressed: {
+    opacity: 0.7,
+  },
+  manageCardItemLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  manageCardItemIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  applePayText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  manageCardItemTitle: {
+    fontSize: 15,
+    fontWeight: '500',
+  },
+  manageCardItemSubtitle: {
+    fontSize: 12,
+    marginTop: 2,
   },
   // Control buttons
   controlsRow: {
     flexDirection: 'row',
-    gap: 12,
+    justifyContent: 'center',
+    gap: 32,
+    marginBottom: 8,
   },
   controlButton: {
-    flex: 1,
-    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    height: 44,
-    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
   },
   controlButtonPressed: {
     opacity: 0.7,
   },
   controlText: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '500',
   },
   // Transactions
