@@ -9,9 +9,25 @@ import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import { router } from 'expo-router';
 import QRCode from 'react-native-qrcode-svg';
-import { CameraView, useCameraPermissions } from 'expo-camera';
 
 import { ThemedText } from '@/components/themed-text';
+
+// expo-camera is optional - may not be available in Expo Go
+type CameraViewType = React.ComponentType<any>;
+type PermissionStatus = { granted: boolean; canAskAgain: boolean };
+
+let CameraView: CameraViewType | null = null;
+let useCameraPermissionsHook: (() => [PermissionStatus | null, () => Promise<PermissionStatus>]) | null = null;
+
+try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const expoCamera = require('expo-camera');
+  CameraView = expoCamera.CameraView;
+  useCameraPermissionsHook = expoCamera.useCameraPermissions;
+} catch {
+  console.warn('[Transfer] expo-camera not available');
+}
+
 import { ThemedView } from '@/components/themed-view';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { useColorScheme } from '@/hooks/use-color-scheme';
@@ -215,8 +231,10 @@ export default function TransferScreen() {
   const [copied, setCopied] = useState(false);
   const [showTokenSelector, setShowTokenSelector] = useState(false);
 
-  // Camera permissions for QR scan
-  const [permission, requestPermission] = useCameraPermissions();
+  // Camera permissions for QR scan (conditional - may not be available in Expo Go)
+  const cameraPermissions = useCameraPermissionsHook ? useCameraPermissionsHook() : null;
+  const permission = cameraPermissions?.[0] ?? null;
+  const requestPermission = cameraPermissions?.[1] ?? (async () => ({ granted: false, canAskAgain: false }));
 
   // Get selected token details
   const selectedPaymentToken = useMemo(() => {
@@ -641,7 +659,18 @@ export default function TransferScreen() {
         {qrMode === 'scan' ? (
           // Camera Scanner
           <View style={styles.scannerContainer}>
-            {permission?.granted ? (
+            {!CameraView ? (
+              // Camera not available (Expo Go limitation)
+              <View style={styles.permissionContainer}>
+                <Ionicons name="camera-off-outline" size={48} color={mutedColor} />
+                <ThemedText style={[styles.permissionText, { color: mutedColor }]}>
+                  Camera not available
+                </ThemedText>
+                <ThemedText style={[styles.permissionSubtext, { color: mutedColor }]}>
+                  Build a development client to use QR scanning
+                </ThemedText>
+              </View>
+            ) : permission?.granted ? (
               <>
                 <CameraView
                   style={styles.camera}
@@ -649,7 +678,7 @@ export default function TransferScreen() {
                   barcodeScannerSettings={{
                     barcodeTypes: ['qr'],
                   }}
-                  onBarcodeScanned={(result) => handleQRScanned(result.data)}
+                  onBarcodeScanned={(result: { data: string }) => handleQRScanned(result.data)}
                 />
                 <View style={styles.scannerOverlay}>
                   <View style={styles.scannerFrame} />
@@ -1079,6 +1108,11 @@ const styles = StyleSheet.create({
   permissionText: {
     fontSize: 16,
     textAlign: 'center',
+  },
+  permissionSubtext: {
+    fontSize: 14,
+    textAlign: 'center',
+    marginTop: 8,
   },
   permissionButton: {
     paddingHorizontal: 24,
