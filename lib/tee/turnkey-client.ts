@@ -5,8 +5,6 @@
  * and transaction signing within AWS Nitro Enclaves.
  */
 
-import { Turnkey } from "@turnkey/sdk-browser";
-import type { TurnkeyClient as TurnkeyApiClient } from "@turnkey/sdk-browser";
 import { PublicKey, Transaction, VersionedTransaction } from "@solana/web3.js";
 import { WebauthnStamper } from "@turnkey/webauthn-stamper";
 import bs58 from "bs58";
@@ -68,7 +66,6 @@ export interface SignatureResult {
 
 export class TurnkeyManager {
   private config: Required<TurnkeyConfig>;
-  private turnkey: Turnkey | null = null;
   private stamper: WebauthnStamper | null = null;
 
   constructor(config: TurnkeyConfig) {
@@ -90,18 +87,13 @@ export class TurnkeyManager {
     this.stamper = new WebauthnStamper({
       rpId: this.config.rpId,
     });
-
-    this.turnkey = new Turnkey({
-      apiBaseUrl: this.config.apiBaseUrl,
-      defaultOrganizationId: this.config.organizationId,
-    });
   }
 
   /**
    * Check if the client is initialized
    */
   isInitialized(): boolean {
-    return this.turnkey !== null && this.stamper !== null;
+    return this.stamper !== null;
   }
 
   // ==========================================================================
@@ -116,7 +108,7 @@ export class TurnkeyManager {
     userId: string,
     displayName: string
   ): Promise<SubOrganization> {
-    if (!this.turnkey) {
+    if (!this.stamper) {
       throw new Error("Turnkey client not initialized");
     }
 
@@ -290,7 +282,7 @@ export class TurnkeyManager {
     walletAddress: string,
     transaction: Transaction | VersionedTransaction
   ): Promise<SignatureResult> {
-    if (!this.turnkey || !this.stamper) {
+    if (!this.stamper) {
       throw new Error("Turnkey client not initialized");
     }
 
@@ -354,7 +346,7 @@ export class TurnkeyManager {
     walletAddress: string,
     message: Uint8Array
   ): Promise<SignatureResult> {
-    if (!this.turnkey || !this.stamper) {
+    if (!this.stamper) {
       throw new Error("Turnkey client not initialized");
     }
 
@@ -413,7 +405,7 @@ export class TurnkeyManager {
     subOrganizationId: string,
     policies: PolicyConfig
   ): Promise<void> {
-    if (!this.turnkey || !this.stamper) {
+    if (!this.stamper) {
       throw new Error("Turnkey client not initialized");
     }
 
@@ -497,10 +489,6 @@ export class TurnkeyManager {
    * Get wallet address for a sub-organization
    */
   async getWalletAddress(subOrganizationId: string, walletId: string): Promise<string> {
-    if (!this.turnkey) {
-      throw new Error("Turnkey client not initialized");
-    }
-
     const response = await fetch(
       `${this.config.apiBaseUrl}/public/v1/query/get_wallet?organizationId=${subOrganizationId}&walletId=${walletId}`,
       {

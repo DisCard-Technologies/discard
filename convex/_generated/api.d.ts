@@ -10,6 +10,7 @@
 
 import type * as attestations_sas from "../attestations/sas.js";
 import type * as auth_passkeys from "../auth/passkeys.js";
+import type * as auth_phoneVerification from "../auth/phoneVerification.js";
 import type * as auth_sessions from "../auth/sessions.js";
 import type * as bridge_financialArmorClient from "../bridge/financialArmorClient.js";
 import type * as bridge_settlement from "../bridge/settlement.js";
@@ -42,11 +43,11 @@ import type * as intents_executor from "../intents/executor.js";
 import type * as intents_intents from "../intents/intents.js";
 import type * as intents_solver from "../intents/solver.js";
 import type * as realtime_optimistic from "../realtime/optimistic.js";
-import type * as scripts_bulkCreateCards from "../scripts/bulkCreateCards.js";
-import type * as scripts_migrateEthereumWallets from "../scripts/migrateEthereumWallets.js";
-import type * as scripts_reprovisionCards from "../scripts/reprovisionCards.js";
 import type * as tee_turnkey from "../tee/turnkey.js";
 import type * as transfers_contacts from "../transfers/contacts.js";
+import type * as transfers_crossCurrency from "../transfers/crossCurrency.js";
+import type * as transfers_invitations from "../transfers/invitations.js";
+import type * as transfers_lookup from "../transfers/lookup.js";
 import type * as transfers_paymentRequests from "../transfers/paymentRequests.js";
 import type * as transfers_transfers from "../transfers/transfers.js";
 import type * as wallets_defi from "../wallets/defi.js";
@@ -64,6 +65,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   "attestations/sas": typeof attestations_sas;
   "auth/passkeys": typeof auth_passkeys;
+  "auth/phoneVerification": typeof auth_phoneVerification;
   "auth/sessions": typeof auth_sessions;
   "bridge/financialArmorClient": typeof bridge_financialArmorClient;
   "bridge/settlement": typeof bridge_settlement;
@@ -96,11 +98,11 @@ declare const fullApi: ApiFromModules<{
   "intents/intents": typeof intents_intents;
   "intents/solver": typeof intents_solver;
   "realtime/optimistic": typeof realtime_optimistic;
-  "scripts/bulkCreateCards": typeof scripts_bulkCreateCards;
-  "scripts/migrateEthereumWallets": typeof scripts_migrateEthereumWallets;
-  "scripts/reprovisionCards": typeof scripts_reprovisionCards;
   "tee/turnkey": typeof tee_turnkey;
   "transfers/contacts": typeof transfers_contacts;
+  "transfers/crossCurrency": typeof transfers_crossCurrency;
+  "transfers/invitations": typeof transfers_invitations;
+  "transfers/lookup": typeof transfers_lookup;
   "transfers/paymentRequests": typeof transfers_paymentRequests;
   "transfers/transfers": typeof transfers_transfers;
   "wallets/defi": typeof wallets_defi;

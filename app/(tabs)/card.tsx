@@ -452,10 +452,14 @@ export default function CardScreen() {
             onPress={async () => {
               if (activeCard) {
                 try {
+                  let result;
                   if (cardFrozen) {
-                    await unfreezeCard(activeCard._id);
+                    result = await unfreezeCard(activeCard._id);
                   } else {
-                    await freezeCard(activeCard._id);
+                    result = await freezeCard(activeCard._id, "User requested freeze");
+                  }
+                  if (!result.success) {
+                    Alert.alert('Error', 'Failed to update card status');
                   }
                 } catch (error) {
                   Alert.alert('Error', 'Failed to update card status');
@@ -477,6 +481,9 @@ export default function CardScreen() {
           </Pressable>
 
           <Pressable
+            onPress={() => {
+              Alert.alert('Limits', 'Card limits management coming soon');
+            }}
             style={({ pressed }) => [
               styles.controlButton,
               { backgroundColor: isDark ? '#27272a' : '#f4f4f5' },

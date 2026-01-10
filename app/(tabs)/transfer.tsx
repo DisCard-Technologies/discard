@@ -1,32 +1,31 @@
-import { useState, useMemo, useCallback } from 'react';
-import { StyleSheet, View, Pressable, ScrollView, TextInput, Keyboard, Alert, Text, ActivityIndicator } from 'react-native';
+import { useState, useMemo, useCallback, useRef } from 'react';
+import { StyleSheet, View, Pressable, ScrollView, TextInput, Keyboard, Alert, Text, ActivityIndicator, Dimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
-import { KeyboardStickyView } from 'react-native-keyboard-controller';
-import Animated, { useSharedValue, useAnimatedStyle, withTiming } from 'react-native-reanimated';
+import Animated, { FadeIn, FadeOut, useSharedValue, useAnimatedStyle, withTiming, withSpring } from 'react-native-reanimated';
+import { LinearGradient } from 'expo-linear-gradient';
 import * as Clipboard from 'expo-clipboard';
+import * as Haptics from 'expo-haptics';
 import { router } from 'expo-router';
 import QRCode from 'react-native-qrcode-svg';
+import { CameraView, useCameraPermissions } from 'expo-camera';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { CommandBar } from '@/components/command-bar';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useAuth } from '@/stores/authConvex';
 import { useTokenHoldings } from '@/hooks/useTokenHoldings';
-import { RecipientInput, SettlementSelector } from '@/components/transfer';
 import { useContacts } from '@/hooks/useContacts';
-import { useAddressResolver, type ResolvedAddress } from '@/hooks/useAddressResolver';
-import { useTransfer, type TransferToken } from '@/hooks/useTransfer';
 import { useCrossCurrencyTransfer } from '@/hooks/useCrossCurrencyTransfer';
 
-const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-type TransferMode = 'send' | 'receive' | 'request';
+type TransferMode = 'pay' | 'request' | 'qr';
+type QRMode = 'scan' | 'mycode';
 
-// Local contact type for display (adapts from Convex Contact)
+// Local contact type for display
 interface LocalContact {
   id: string;
   name: string;
@@ -36,45 +35,169 @@ interface LocalContact {
   verified?: boolean;
 }
 
-interface RecentTransfer {
-  id: string;
-  type: 'sent' | 'received' | 'requested';
-  contact: LocalContact;
-  amount: number;
-  token: string;
-  timestamp: string;
-  status: 'completed' | 'pending' | 'expired';
+// ============================================================================
+// Numpad Component
+// ============================================================================
+
+interface NumpadProps {
+  onPress: (key: string) => void;
+  disabled?: boolean;
 }
 
-// Initial empty contacts - users add their own
-const initialContacts: LocalContact[] = [];
+function Numpad({ onPress, disabled }: NumpadProps) {
+  const mutedColor = 'rgba(0,229,255,0.6)';
+  const textColor = '#fff';
 
-// Recent transfers will be populated from real transaction history when available
-const recentTransfers: RecentTransfer[] = [];
+  const keys = [
+    ['1', '2', '3'],
+    ['4', '5', '6'],
+    ['7', '8', '9'],
+    ['.', '0', 'del'],
+  ];
+
+  const handlePress = (key: string) => {
+    if (disabled) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    onPress(key);
+  };
+
+  return (
+    <View style={styles.numpad}>
+      {keys.map((row, rowIndex) => (
+        <View key={rowIndex} style={styles.numpadRow}>
+          {row.map((key) => (
+            <Pressable
+              key={key}
+              onPress={() => handlePress(key)}
+              disabled={disabled}
+              style={({ pressed }) => [
+                styles.numpadKey,
+                pressed && styles.numpadKeyPressed,
+                disabled && styles.numpadKeyDisabled,
+              ]}
+            >
+              {key === 'del' ? (
+                <Ionicons name="backspace-outline" size={28} color={mutedColor} />
+              ) : (
+                <Text style={[styles.numpadKeyText, { color: textColor }]}>{key}</Text>
+              )}
+            </Pressable>
+          ))}
+        </View>
+      ))}
+    </View>
+  );
+}
+
+// ============================================================================
+// Contact Selector
+// ============================================================================
+
+interface ContactSelectorProps {
+  contacts: LocalContact[];
+  favorites: LocalContact[];
+  onSelect: (contact: LocalContact) => void;
+  onAddNew: () => void;
+}
+
+function ContactSelector({ contacts, favorites, onSelect, onAddNew }: ContactSelectorProps) {
+  const primaryColor = useThemeColor({}, 'tint');
+  const mutedColor = useThemeColor({ light: '#687076', dark: '#9BA1A6' }, 'icon');
+
+  return (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={styles.contactsScrollContent}
+    >
+      {/* Add new contact button */}
+      <Pressable
+        onPress={onAddNew}
+        style={({ pressed }) => [styles.contactCircle, pressed && styles.pressed]}
+      >
+        <View style={[styles.contactAvatar, styles.addContactAvatar]}>
+          <Ionicons name="add" size={24} color={mutedColor} />
+        </View>
+        <ThemedText style={[styles.contactName, { color: mutedColor }]} numberOfLines={1}>
+          Get $15
+        </ThemedText>
+      </Pressable>
+
+      {/* Favorites first, then recent */}
+      {[...favorites, ...contacts.filter(c => !favorites.some(f => f.id === c.id))].slice(0, 10).map((contact) => (
+        <Pressable
+          key={contact.id}
+          onPress={() => onSelect(contact)}
+          style={({ pressed }) => [styles.contactCircle, pressed && styles.pressed]}
+        >
+          <View style={[styles.contactAvatar, { backgroundColor: primaryColor }]}>
+            <ThemedText style={styles.contactAvatarText}>{contact.avatar}</ThemedText>
+          </View>
+          <ThemedText style={[styles.contactName, { color: mutedColor }]} numberOfLines={1}>
+            {contact.name.split(' ')[0]}
+          </ThemedText>
+        </Pressable>
+      ))}
+    </ScrollView>
+  );
+}
+
+// ============================================================================
+// Main Transfer Screen
+// ============================================================================
 
 export default function TransferScreen() {
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
 
+  // CashApp green color
+  const cashAppGreen = '#00D632';
   const primaryColor = useThemeColor({}, 'tint');
   const mutedColor = useThemeColor({ light: '#687076', dark: '#9BA1A6' }, 'icon');
   const textColor = useThemeColor({}, 'text');
+  const bgColor = isDark ? '#000' : '#fff';
 
-  // Real data from hooks
+  // Auth and wallet
   const { user } = useAuth();
   const walletAddress = user?.solanaAddress || null;
 
-  const {
-    holdings: tokenHoldings,
-    isLoading: tokensLoading,
-  } = useTokenHoldings(walletAddress);
+  // Token holdings
+  const { holdings: tokenHoldings, isLoading: tokensLoading } = useTokenHoldings(walletAddress);
 
-  // Transform real token holdings for the UI
+  // Contacts
+  const {
+    contacts: allContacts,
+    favoriteContacts,
+    createContact,
+  } = useContacts();
+
+  // Transform contacts for UI
+  const contactsList = useMemo(() => {
+    return allContacts.map((c) => ({
+      id: c.id,
+      name: c.name,
+      handle: c.identifier,
+      avatar: c.avatarInitials,
+      recent: c.lastUsedAt !== undefined,
+      verified: c.verified,
+    }));
+  }, [allContacts]);
+
+  const favoritesList = useMemo(() => {
+    return favoriteContacts.map((c) => ({
+      id: c.id,
+      name: c.name,
+      handle: c.identifier,
+      avatar: c.avatarInitials || c.name.slice(0, 2).toUpperCase(),
+      recent: true,
+      verified: c.verified,
+    }));
+  }, [favoriteContacts]);
+
+  // Transform token holdings
   const tokens = useMemo(() => {
-    if (!tokenHoldings || tokenHoldings.length === 0) {
-      return [];
-    }
+    if (!tokenHoldings || tokenHoldings.length === 0) return [];
     return tokenHoldings.map(h => ({
       symbol: h.symbol,
       balance: h.balanceFormatted,
@@ -83,28 +206,27 @@ export default function TransferScreen() {
     }));
   }, [tokenHoldings]);
 
-  // Get the selected payment token's details
+  // State
+  const [mode, setMode] = useState<TransferMode>('pay');
+  const [qrMode, setQrMode] = useState<QRMode>('scan');
+  const [amount, setAmount] = useState('0');
+  const [selectedToken, setSelectedToken] = useState('USDC');
+  const [selectedContact, setSelectedContact] = useState<LocalContact | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [showTokenSelector, setShowTokenSelector] = useState(false);
+
+  // Camera permissions for QR scan
+  const [permission, requestPermission] = useCameraPermissions();
+
+  // Get selected token details
   const selectedPaymentToken = useMemo(() => {
     if (!tokenHoldings) return null;
     return tokenHoldings.find(h => h.symbol === selectedToken) || null;
   }, [tokenHoldings, selectedToken]);
 
-  const [mode, setMode] = useState<TransferMode>('send');
-  const [selectedContact, setSelectedContact] = useState<LocalContact | null>(null);
-  const [amount, setAmount] = useState('');
-  const [selectedToken, setSelectedToken] = useState('USDC');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [copied, setCopied] = useState(false);
-  const [memo, setMemo] = useState('');
-  const [showAllContacts, setShowAllContacts] = useState(false);
-  const [showAddContact, setShowAddContact] = useState(false);
-  const [newContactName, setNewContactName] = useState('');
-  const [newContactHandle, setNewContactHandle] = useState('');
-  const [contactsList, setContactsList] = useState<LocalContact[]>(initialContacts);
-
   // Cross-currency settlement
   const paymentAmountBaseUnits = useMemo(() => {
-    if (!amount || !selectedPaymentToken) return undefined;
+    if (!amount || amount === '0' || !selectedPaymentToken) return undefined;
     const parsed = parseFloat(amount);
     if (isNaN(parsed) || parsed <= 0) return undefined;
     return Math.floor(parsed * Math.pow(10, selectedPaymentToken.decimals)).toString();
@@ -114,7 +236,6 @@ export default function TransferScreen() {
     settlementToken,
     needsSwap,
     isLoadingQuote,
-    quoteError,
     estimatedReceivedFormatted,
     setSettlementToken,
     availableTokens,
@@ -128,57 +249,58 @@ export default function TransferScreen() {
   const displayAddress = walletAddress
     ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`
     : 'No wallet';
-  const fullAddress = walletAddress || '';
 
-  // Command bar state
-  const backdropOpacity = useSharedValue(0);
+  // Get currency symbol for selected token ($ for stablecoins, token symbol for others)
+  const currencySymbol = useMemo(() => {
+    const stablecoins = ['USDC', 'USDT', 'BUSD', 'DAI', 'UST', 'USDP', 'TUSD'];
+    return stablecoins.includes(selectedToken) ? '$' : '';
+  }, [selectedToken]);
 
-  const handleCommandBarFocusChange = (focused: boolean) => {
-    backdropOpacity.value = withTiming(focused ? 1 : 0, { duration: 200 });
-  };
+  // Numpad handler
+  const handleNumpadPress = useCallback((key: string) => {
+    setAmount(prev => {
+      if (key === 'del') {
+        if (prev.length <= 1) return '0';
+        return prev.slice(0, -1);
+      }
+      if (key === '.') {
+        if (prev.includes('.')) return prev;
+        return prev + '.';
+      }
+      // Limit decimal places based on token
+      const decimals = selectedPaymentToken?.decimals || 2;
+      if (prev.includes('.')) {
+        const [, decimal] = prev.split('.');
+        if (decimal && decimal.length >= decimals) return prev;
+      }
+      // Remove leading zero unless it's a decimal
+      if (prev === '0' && key !== '.') return key;
+      // Limit total length
+      if (prev.length >= 10) return prev;
+      return prev + key;
+    });
+  }, [selectedPaymentToken]);
 
-  const handleBackdropPress = () => {
-    Keyboard.dismiss();
-    backdropOpacity.value = withTiming(0, { duration: 200 });
-  };
+  // Navigate to confirmation
+  const handlePay = useCallback(() => {
+    if (amount === '0' || parseFloat(amount) <= 0) {
+      Alert.alert('Enter Amount', 'Please enter an amount to send');
+      return;
+    }
 
-  const backdropAnimatedStyle = useAnimatedStyle(() => ({
-    opacity: backdropOpacity.value,
-    pointerEvents: backdropOpacity.value > 0 ? 'auto' : 'none',
-  }));
+    // If no contact selected, open contact search
+    if (!selectedContact) {
+      router.push('/contacts' as any);
+      return;
+    }
 
-  const handleSendMessage = (message: string) => {
-    Alert.alert('Command', `You said: "${message}"`);
-  };
-
-  const handleCamera = () => {
-    router.push('/transfer/scan' as any);
-  };
-
-  const handleMic = () => {};
-
-  const filteredContacts = contactsList.filter(
-    (c) =>
-      c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      c.handle.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-
-  const handleCopy = async () => {
-    await Clipboard.setStringAsync(fullAddress);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  const handleSend = () => {
-    if (!selectedContact || !amount) return;
-
-    // Navigate to confirmation screen with transfer data
+    // Navigate to confirmation
     (router.push as any)({
       pathname: '/transfer/confirmation',
       params: {
         recipient: JSON.stringify({
           input: selectedContact.handle,
-          address: selectedContact.handle, // Would be resolved address in real implementation
+          address: selectedContact.handle,
           displayName: selectedContact.name,
           type: 'contact',
           contactId: selectedContact.id,
@@ -192,19 +314,18 @@ export default function TransferScreen() {
         }),
         amount: JSON.stringify({
           amount: parseFloat(amount),
-          amountUsd: parseFloat(amount), // Simplified - assume stablecoin
+          amountUsd: parseFloat(amount),
           amountBaseUnits: paymentAmountBaseUnits || (parseFloat(amount) * 1e6).toString(),
         }),
         fees: JSON.stringify({
           networkFee: 0.00001,
           networkFeeUsd: 0.001,
-          platformFee: parseFloat(amount) * 0.003,
+          platformFee: 0,
           priorityFee: 0.00001,
           ataRent: 0,
-          totalFeesUsd: 0.001 + parseFloat(amount) * 0.003,
-          totalCostUsd: parseFloat(amount) + 0.001 + parseFloat(amount) * 0.003,
+          totalFeesUsd: 0.001,
+          totalCostUsd: parseFloat(amount) + 0.001,
         }),
-        // Settlement token info for cross-currency transfers
         settlement: JSON.stringify({
           token: settlementToken.symbol,
           mint: settlementToken.mint,
@@ -213,1359 +334,804 @@ export default function TransferScreen() {
           needsSwap,
           estimatedOutput: estimatedReceivedFormatted,
         }),
-        memo,
       },
     });
-  };
+  }, [amount, selectedContact, selectedToken, selectedPaymentToken, paymentAmountBaseUnits, settlementToken, needsSwap, estimatedReceivedFormatted]);
 
-  const handleRequest = () => {
-    router.push('/transfer/request-link' as any);
-  };
-
-  const handleModeChange = (newMode: TransferMode) => {
-    setMode(newMode);
-    setSelectedContact(null);
-    setAmount('');
-  };
-
-  const renderModeTabs = () => {
-    // In dark mode, primaryColor is white so we need dark text on active tab
-    // In light mode, primaryColor is a tint color so white text works
-    const activeTextColor = isDark ? '#000' : '#fff';
-    
-    return (
-      <View style={[styles.modeTabs, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)' }]}>
-        {[
-          { id: 'send' as const, icon: 'arrow-up' as const, label: 'Send' },
-          { id: 'receive' as const, icon: 'arrow-down' as const, label: 'Receive' },
-          { id: 'request' as const, icon: 'document-text' as const, label: 'Request' },
-        ].map((tab) => {
-          const isActive = mode === tab.id;
-          return (
-            <Pressable
-              key={tab.id}
-              onPress={() => handleModeChange(tab.id)}
-              style={[
-                styles.modeTab,
-                isActive && { backgroundColor: primaryColor },
-              ]}
-            >
-              <Ionicons
-                name={tab.icon}
-                size={16}
-                color={isActive ? activeTextColor : mutedColor}
-              />
-              <Text
-                style={[
-                  styles.modeTabText,
-                  { color: isActive ? activeTextColor : mutedColor },
-                ]}
-              >
-                {tab.label}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
-    );
-  };
-
-  const renderRecentContacts = () => {
-    const recentContacts = contactsList.filter((c) => c.recent);
-
-    if (recentContacts.length === 0) {
-      return null; // Don't show section if no recent contacts
+  // Request payment
+  const handleRequest = useCallback(() => {
+    if (amount === '0' || parseFloat(amount) <= 0) {
+      Alert.alert('Enter Amount', 'Please enter an amount to request');
+      return;
     }
+    router.push('/transfer/request-link' as any);
+  }, [amount]);
 
+  // Copy address
+  const handleCopy = useCallback(async () => {
+    if (!walletAddress) return;
+    await Clipboard.setStringAsync(walletAddress);
+    setCopied(true);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    setTimeout(() => setCopied(false), 2000);
+  }, [walletAddress]);
+
+  // QR code scanned
+  const handleQRScanned = useCallback((data: string) => {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    // Parse Solana pay URI or address
+    let address = data;
+    if (data.startsWith('solana:')) {
+      address = data.replace('solana:', '').split('?')[0];
+    }
+    // Navigate to send with the scanned address
+    Alert.alert('Scanned', `Address: ${address.slice(0, 8)}...${address.slice(-8)}`);
+  }, []);
+
+  // Add contact
+  const handleAddContact = useCallback(() => {
+    router.push('/contacts' as any);
+  }, []);
+
+  // Select contact
+  const handleSelectContact = useCallback((contact: LocalContact) => {
+    setSelectedContact(contact);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  }, []);
+
+  // Render token balance indicator
+  const renderBalance = () => {
+    if (tokensLoading) {
+      return <ActivityIndicator size="small" color={mutedColor} />;
+    }
+    const balance = selectedPaymentToken?.balanceFormatted || '0';
     return (
-      <View style={styles.section}>
-        <ThemedText style={[styles.sectionLabel, { color: mutedColor }]}>RECENT</ThemedText>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.recentContactsScroll}
-        >
-          {recentContacts.map((contact) => (
-            <Pressable
-              key={contact.id}
-              onPress={() => setSelectedContact(contact)}
-              style={styles.recentContact}
-            >
-              <View style={styles.avatarContainer}>
-                <View style={[styles.avatar, { backgroundColor: `${primaryColor}20` }]}>
-                  <ThemedText style={styles.avatarText}>{contact.avatar}</ThemedText>
-                </View>
-                {contact.verified && (
-                  <View style={[styles.verifiedBadge, { backgroundColor: primaryColor }]}>
-                    <Ionicons name="checkmark" size={10} color="#fff" />
-                  </View>
-                )}
-              </View>
-              <ThemedText style={[styles.recentContactName, { color: mutedColor }]} numberOfLines={1}>
-                {contact.name.split(' ')[0]}
-              </ThemedText>
-            </Pressable>
-          ))}
-        </ScrollView>
-      </View>
+      <Pressable
+        onPress={() => setShowTokenSelector(true)}
+        style={styles.balanceButton}
+      >
+        <ThemedText style={[styles.balanceText, { color: mutedColor }]}>
+          {selectedToken} {balance}
+        </ThemedText>
+        <Ionicons name="chevron-down" size={14} color={mutedColor} />
+      </Pressable>
     );
   };
 
-  const handleAddContact = () => {
-    if (!newContactName.trim() || !newContactHandle.trim()) return;
+  // ============================================================================
+  // RENDER: Main Numpad View (Pay/Request modes)
+  // ============================================================================
 
-    const initials = newContactName
-      .split(' ')
-      .map((n) => n[0])
-      .join('')
-      .toUpperCase()
-      .slice(0, 2);
-
-    const newContact: LocalContact = {
-      id: Date.now().toString(),
-      name: newContactName.trim(),
-      handle: newContactHandle.trim(),
-      avatar: initials,
-      recent: true,
-      verified: false,
-    };
-
-    setContactsList([newContact, ...contactsList]);
-    setNewContactName('');
-    setNewContactHandle('');
-    setShowAddContact(false);
-    setShowAllContacts(true);
-  };
-
-  const handleCancelAddContact = () => {
-    setShowAddContact(false);
-    setNewContactName('');
-    setNewContactHandle('');
-  };
-
-  const renderContactsList = () => (
-    <View style={styles.section}>
-      <View style={styles.sectionHeaderRow}>
+  const renderMainView = () => (
+    <LinearGradient
+      colors={['#2A2E35', '#1F2228', '#2A2E35']}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+      style={styles.mainContainer}
+    >
+      {/* Header with QR button */}
+      <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
         <Pressable
-          onPress={() => setShowAllContacts(!showAllContacts)}
-          style={styles.contactsHeaderLeft}
+          onPress={() => setMode('qr')}
+          style={({ pressed }) => [styles.qrButton, pressed && styles.pressed]}
         >
-          <ThemedText style={[styles.sectionLabel, { color: mutedColor }]}>
-            ALL CONTACTS ({filteredContacts.length})
-          </ThemedText>
-          <Ionicons
-            name={showAllContacts ? 'chevron-up' : 'chevron-down'}
-            size={16}
-            color={mutedColor}
-          />
+          <Ionicons name="qr-code-outline" size={24} color="#fff" />
         </Pressable>
+        <View style={styles.headerSpacer} />
         <Pressable
-          onPress={() => setShowAddContact(true)}
-          style={[styles.addContactButton, { backgroundColor: `${primaryColor}15` }]}
+          onPress={() => router.push('/contacts' as any)}
+          style={({ pressed }) => [styles.searchButton, pressed && styles.pressed]}
         >
-          <Ionicons name="person-add" size={12} color={primaryColor} />
-          <ThemedText style={[styles.addContactText, { color: primaryColor }]}>Add</ThemedText>
+          <Ionicons name="search" size={24} color="#fff" />
         </Pressable>
+        {user && (
+          <Pressable
+            onPress={() => router.push('/settings' as any)}
+            style={({ pressed }) => [styles.profileButton, pressed && styles.pressed]}
+          >
+            <View style={styles.profileAvatar}>
+              <ThemedText style={styles.profileAvatarText}>
+                {user.displayName?.[0]?.toUpperCase() || 'U'}
+              </ThemedText>
+            </View>
+          </Pressable>
+        )}
       </View>
 
-      {/* Add Contact Form */}
-      {showAddContact && (
-        <View style={[styles.addContactForm, { backgroundColor: `${primaryColor}08`, borderColor: `${primaryColor}25` }]}>
-          <View style={styles.addContactFormHeader}>
-            <ThemedText style={styles.addContactFormTitle}>New Contact</ThemedText>
-            <Pressable
-              onPress={handleCancelAddContact}
-              style={({ pressed }) => [styles.closeButton, pressed && { opacity: 0.7 }]}
-            >
-              <Ionicons name="close" size={18} color={mutedColor} />
-            </Pressable>
-          </View>
-
-          <View style={styles.addContactInputs}>
-            <TextInput
-              value={newContactName}
-              onChangeText={setNewContactName}
-              placeholder="Name"
-              placeholderTextColor={mutedColor}
-              style={[styles.addContactInput, { backgroundColor: isDark ? '#27272a' : '#e4e4e7', color: textColor }]}
-            />
-            <TextInput
-              value={newContactHandle}
-              onChangeText={setNewContactHandle}
-              placeholder="ENS, address, or handle"
-              placeholderTextColor={mutedColor}
-              style={[styles.addContactInput, { backgroundColor: isDark ? '#27272a' : '#e4e4e7', color: textColor }]}
-              autoCapitalize="none"
-            />
-          </View>
-
-          <View style={styles.addContactButtons}>
-            <Pressable
-              onPress={handleCancelAddContact}
-              style={({ pressed }) => [
-                styles.addContactCancelButton,
-                { backgroundColor: isDark ? '#27272a' : '#e4e4e7' },
-                pressed && { opacity: 0.7 },
-              ]}
-            >
-              <ThemedText style={[styles.addContactCancelText, { color: mutedColor }]}>Cancel</ThemedText>
-            </Pressable>
-            <Pressable
-              onPress={handleAddContact}
-              disabled={!newContactName.trim() || !newContactHandle.trim()}
-              style={({ pressed }) => [
-                styles.addContactSaveButton,
-                { backgroundColor: primaryColor },
-                (!newContactName.trim() || !newContactHandle.trim()) && { opacity: 0.5 },
-                pressed && { opacity: 0.9 },
-              ]}
-            >
-              <ThemedText style={styles.addContactSaveText}>Save Contact</ThemedText>
-            </Pressable>
-          </View>
-        </View>
-      )}
-      {showAllContacts && (
-        <View style={styles.contactsList}>
-          {filteredContacts.length === 0 ? (
-            <View style={styles.emptyContactsContainer}>
-              <View style={[styles.emptyContactsIcon, { backgroundColor: `${primaryColor}10` }]}>
-                <Ionicons name="people-outline" size={24} color={primaryColor} />
-              </View>
-              <ThemedText style={[styles.emptyContactsText, { color: mutedColor }]}>
-                No contacts yet
-              </ThemedText>
-              <ThemedText style={[styles.emptyContactsSubtext, { color: mutedColor }]}>
-                Add contacts to send money quickly
-              </ThemedText>
-            </View>
-          ) : (
-            filteredContacts.map((contact) => (
-              <Pressable
-                key={contact.id}
-                onPress={() => setSelectedContact(contact)}
-                style={({ pressed }) => [
-                  styles.contactItem,
-                  pressed && { opacity: 0.7 },
-                ]}
-              >
-                <View style={styles.avatarContainer}>
-                  <View style={[styles.avatarSmall, { backgroundColor: `${primaryColor}20` }]}>
-                    <ThemedText style={styles.avatarTextSmall}>{contact.avatar}</ThemedText>
-                  </View>
-                  {contact.verified && (
-                    <View style={[styles.verifiedBadgeSmall, { backgroundColor: primaryColor }]}>
-                      <Ionicons name="checkmark" size={8} color="#fff" />
-                    </View>
-                  )}
-                </View>
-                <View style={styles.contactInfo}>
-                  <ThemedText style={styles.contactName}>{contact.name}</ThemedText>
-                  <ThemedText style={[styles.contactHandle, { color: mutedColor }]}>{contact.handle}</ThemedText>
-                </View>
-                <Ionicons name="chevron-forward" size={16} color={mutedColor} />
-              </Pressable>
-            ))
-          )}
-        </View>
-      )}
-    </View>
-  );
-
-  const renderRecentActivity = () => (
-    <ThemedView style={styles.card} lightColor="#f4f4f5" darkColor="#1c1c1e">
-      <ThemedText style={[styles.sectionLabel, { color: mutedColor }]}>RECENT ACTIVITY</ThemedText>
-      {recentTransfers.length === 0 ? (
-        <View style={styles.emptyActivityContainer}>
-          <View style={[styles.emptyActivityIcon, { backgroundColor: `${primaryColor}10` }]}>
-            <Ionicons name="swap-horizontal-outline" size={24} color={primaryColor} />
-          </View>
-          <ThemedText style={[styles.emptyActivityText, { color: mutedColor }]}>
-            No transfers yet
-          </ThemedText>
-          <ThemedText style={[styles.emptyActivitySubtext, { color: mutedColor }]}>
-            Your transfer history will appear here
-          </ThemedText>
-        </View>
-      ) : (
-        recentTransfers.slice(0, 3).map((transfer) => (
-          <View key={transfer.id} style={styles.activityItem}>
-            <View
-              style={[
-                styles.activityIcon,
-                {
-                  backgroundColor:
-                    transfer.type === 'sent'
-                      ? 'rgba(249, 115, 22, 0.1)'
-                      : transfer.type === 'received'
-                      ? 'rgba(34, 197, 94, 0.1)'
-                      : `${primaryColor}15`,
-                },
-              ]}
-            >
-              <Ionicons
-                name={
-                  transfer.type === 'sent'
-                    ? 'arrow-up'
-                    : transfer.type === 'received'
-                    ? 'arrow-down'
-                    : 'document-text'
-                }
-                size={16}
-                color={
-                  transfer.type === 'sent'
-                    ? '#f97316'
-                    : transfer.type === 'received'
-                    ? '#22c55e'
-                    : primaryColor
-                }
-              />
-            </View>
-            <View style={styles.activityInfo}>
-              <ThemedText style={styles.activityLabel}>
-                {transfer.type === 'sent'
-                  ? 'Sent to'
-                  : transfer.type === 'received'
-                  ? 'From'
-                  : 'Requested from'}{' '}
-                {transfer.contact.name.split(' ')[0]}
-              </ThemedText>
-              <ThemedText style={[styles.activityTime, { color: mutedColor }]}>
-                {transfer.timestamp}
-              </ThemedText>
-            </View>
-            <View style={styles.activityAmountContainer}>
-              <ThemedText
-                style={[
-                  styles.activityAmount,
-                  transfer.type === 'received' && { color: '#22c55e' },
-                ]}
-              >
-                {transfer.type === 'received' ? '+' : transfer.type === 'sent' ? '-' : ''}
-                {transfer.amount} {transfer.token}
-              </ThemedText>
-              {transfer.status === 'pending' && (
-                <ThemedText style={styles.pendingLabel}>Pending</ThemedText>
-              )}
-            </View>
-          </View>
-        ))
-      )}
-    </ThemedView>
-  );
-
-  const renderAmountEntry = () => (
-    <ThemedView style={styles.card} lightColor="#f4f4f5" darkColor="#1c1c1e">
-      {/* Selected Contact */}
-      <Pressable onPress={() => setSelectedContact(null)} style={styles.selectedContactRow}>
-        <View style={styles.avatarContainer}>
-          <View style={[styles.avatar, { backgroundColor: `${primaryColor}20` }]}>
-            <ThemedText style={styles.avatarText}>{selectedContact?.avatar}</ThemedText>
-          </View>
-          {selectedContact?.verified && (
-            <View style={[styles.verifiedBadge, { backgroundColor: primaryColor }]}>
-              <Ionicons name="checkmark" size={10} color="#fff" />
-            </View>
-          )}
-        </View>
-        <View style={styles.selectedContactInfo}>
-          <ThemedText style={[styles.sendingToLabel, { color: mutedColor }]}>
-            {mode === 'send' ? 'Sending to' : 'Requesting from'}
-          </ThemedText>
-          <ThemedText style={styles.selectedContactName}>{selectedContact?.name}</ThemedText>
-        </View>
-        <ThemedText style={[styles.changeText, { color: primaryColor }]}>Change</ThemedText>
-      </Pressable>
-
-      {/* Amount Input */}
-      <View style={styles.amountInputContainer}>
+      {/* Amount Display */}
+      <View style={styles.amountContainer}>
         <View style={styles.amountRow}>
-          <ThemedText style={[styles.currencySymbol, { color: mutedColor }]}>$</ThemedText>
-          <TextInput
-            value={amount}
-            onChangeText={(text) => setAmount(text.replace(/[^0-9.]/g, ''))}
-            placeholder="0"
-            placeholderTextColor={mutedColor}
-            keyboardType="decimal-pad"
-            style={[styles.amountInput, { color: textColor }]}
-          />
+          {currencySymbol ? (
+            <Text style={styles.amountCurrency}>{currencySymbol}</Text>
+          ) : null}
+          <Text style={styles.amountValue}>{amount}</Text>
         </View>
-
-        {/* Quick amounts */}
-        <View style={styles.quickAmounts}>
-          {['25', '50', '100', '500'].map((amt) => (
-            <Pressable
-              key={amt}
-              onPress={() => setAmount(amt)}
-              style={[styles.quickAmountButton, { backgroundColor: isDark ? '#27272a' : '#e4e4e7' }]}
-            >
-              <ThemedText style={[styles.quickAmountText, { color: mutedColor }]}>${amt}</ThemedText>
-            </Pressable>
-          ))}
-        </View>
+        {!currencySymbol && (
+          <Text style={styles.amountTokenLabel}>{selectedToken}</Text>
+        )}
+        {renderBalance()}
       </View>
 
-      {/* Token Selector (Send mode only) */}
-      {mode === 'send' && (
-        <View style={styles.tokenSection}>
-          <ThemedText style={[styles.tokenLabel, { color: mutedColor }]}>PAY WITH</ThemedText>
-          {tokensLoading ? (
-            <View style={styles.tokenLoadingContainer}>
-              <ActivityIndicator size="small" color={primaryColor} />
-              <ThemedText style={[styles.tokenLoadingText, { color: mutedColor }]}>Loading tokens...</ThemedText>
+      {/* Numpad */}
+      <View style={styles.numpadContainer}>
+        <Numpad onPress={handleNumpadPress} />
+      </View>
+
+      {/* Bottom buttons */}
+      <View style={[styles.bottomButtons, { paddingBottom: insets.bottom + 16 }]}>
+        <View style={styles.actionRow}>
+          <Pressable
+            onPress={handleRequest}
+            style={styles.actionButton}
+          >
+            {({ pressed }) => (
+              <LinearGradient
+                colors={pressed ? ['#00E5FF', '#7B61FF'] : ['#2A2E35', '#1A4D5C', '#3D2680']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.actionButtonGradient}
+              >
+                <ThemedText style={styles.actionButtonText}>Request</ThemedText>
+              </LinearGradient>
+            )}
+          </Pressable>
+          <Pressable
+            onPress={handlePay}
+            style={styles.actionButton}
+          >
+            {({ pressed }) => (
+              <LinearGradient
+                colors={pressed ? ['#00E5FF', '#7B61FF'] : ['#2A2E35', '#00464D', '#1A0F33']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.actionButtonGradient}
+              >
+                <ThemedText style={styles.actionButtonText}>Pay</ThemedText>
+              </LinearGradient>
+            )}
+          </Pressable>
+        </View>
+
+        {/* Selected contact indicator */}
+        {selectedContact && (
+          <Animated.View entering={FadeIn.duration(200)} style={styles.selectedContactBar}>
+            <View style={styles.selectedContactInfo}>
+              <View style={[styles.selectedContactAvatar, { backgroundColor: '#fff' }]}>
+                <ThemedText style={[styles.selectedContactAvatarText, { color: cashAppGreen }]}>
+                  {selectedContact.avatar}
+                </ThemedText>
+              </View>
+              <ThemedText style={styles.selectedContactName}>{selectedContact.name}</ThemedText>
             </View>
-          ) : tokens.length === 0 ? (
-            <View style={styles.tokenEmptyContainer}>
-              <ThemedText style={[styles.tokenEmptyText, { color: mutedColor }]}>
-                {walletAddress ? 'No tokens found' : 'Connect wallet to see tokens'}
-              </ThemedText>
-            </View>
-          ) : (
-            <View style={styles.tokenList}>
+            <Pressable onPress={() => setSelectedContact(null)}>
+              <Ionicons name="close-circle" size={24} color="rgba(255,255,255,0.6)" />
+            </Pressable>
+          </Animated.View>
+        )}
+
+        {/* Quick contacts */}
+        {!selectedContact && contactsList.length > 0 && (
+          <ContactSelector
+            contacts={contactsList}
+            favorites={favoritesList}
+            onSelect={handleSelectContact}
+            onAddNew={handleAddContact}
+          />
+        )}
+      </View>
+
+      {/* Token selector modal */}
+      {showTokenSelector && (
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => setShowTokenSelector(false)}
+        >
+          <Animated.View
+            entering={FadeIn.duration(200)}
+            style={[styles.tokenModal, { backgroundColor: isDark ? '#1c1c1e' : '#fff' }]}
+          >
+            <ThemedText style={styles.tokenModalTitle}>Select Token</ThemedText>
+            <ScrollView style={styles.tokenList}>
               {tokens.map((token) => (
                 <Pressable
                   key={token.symbol}
-                  onPress={() => setSelectedToken(token.symbol)}
-                  style={[
-                    styles.tokenButton,
-                    {
-                      backgroundColor:
-                        selectedToken === token.symbol
-                          ? `${primaryColor}15`
-                          : isDark
-                          ? '#27272a'
-                          : '#e4e4e7',
-                      borderColor: selectedToken === token.symbol ? `${primaryColor}40` : 'transparent',
-                      borderWidth: selectedToken === token.symbol ? 1 : 0,
-                    },
+                  onPress={() => {
+                    setSelectedToken(token.symbol);
+                    setShowTokenSelector(false);
+                  }}
+                  style={({ pressed }) => [
+                    styles.tokenItem,
+                    selectedToken === token.symbol && { backgroundColor: `${primaryColor}20` },
+                    pressed && styles.pressed,
                   ]}
                 >
-                  <ThemedText style={styles.tokenSymbol}>{token.symbol}</ThemedText>
-                  <ThemedText style={[styles.tokenBalance, { color: mutedColor }]}>
-                    {typeof token.balance === 'number' ? token.balance.toLocaleString() : token.balance}
+                  <ThemedText style={styles.tokenItemSymbol}>{token.symbol}</ThemedText>
+                  <ThemedText style={[styles.tokenItemBalance, { color: mutedColor }]}>
+                    {token.balance}
                   </ThemedText>
                 </Pressable>
               ))}
-            </View>
-          )}
-        </View>
+            </ScrollView>
+          </Animated.View>
+        </Pressable>
       )}
-
-      {/* Settlement Currency Selector (Send mode only) */}
-      {mode === 'send' && selectedPaymentToken && (
-        <SettlementSelector
-          selectedToken={settlementToken}
-          availableTokens={availableTokens}
-          paymentMint={selectedPaymentToken.mint}
-          isLoadingQuote={isLoadingQuote}
-          estimatedOutput={estimatedReceivedFormatted}
-          quoteError={quoteError}
-          needsSwap={needsSwap}
-          onSelect={setSettlementToken}
-          disabled={!amount || parseFloat(amount) <= 0}
-        />
-      )}
-
-      {/* Memo */}
-      <View style={[styles.memoContainer, { backgroundColor: isDark ? '#27272a' : '#e4e4e7' }]}>
-        <Ionicons name="document-text-outline" size={16} color={mutedColor} />
-        <TextInput
-          value={memo}
-          onChangeText={setMemo}
-          placeholder={mode === 'send' ? 'Add a note (optional)' : "What's this for?"}
-          placeholderTextColor={mutedColor}
-          style={[styles.memoInput, { color: textColor }]}
-        />
-      </View>
-    </ThemedView>
+    </LinearGradient>
   );
 
-  const renderTransferDetails = () => (
-    <ThemedView style={styles.card} lightColor="#f4f4f5" darkColor="#1c1c1e">
-      <View style={styles.detailRow}>
-        <ThemedText style={[styles.detailLabel, { color: mutedColor }]}>Network fee</ThemedText>
-        <View style={styles.detailValue}>
-          <Ionicons name="flash" size={12} color="#22c55e" />
-          <ThemedText style={styles.detailValueText}>~$0.02</ThemedText>
-        </View>
-      </View>
-      <View style={styles.detailRow}>
-        <ThemedText style={[styles.detailLabel, { color: mutedColor }]}>Arrives in</ThemedText>
-        <ThemedText style={styles.detailValueText}>Instant</ThemedText>
-      </View>
-      <View style={styles.detailRow}>
-        <ThemedText style={[styles.detailLabel, { color: mutedColor }]}>Route</ThemedText>
-        <View style={styles.detailValue}>
-          <Ionicons name="sparkles" size={12} color={primaryColor} />
-          <ThemedText style={styles.detailValueText}>AI Optimized</ThemedText>
-        </View>
-      </View>
-    </ThemedView>
-  );
+  // ============================================================================
+  // RENDER: QR Mode
+  // ============================================================================
 
-  const renderSendButton = () => (
-    <Pressable
-      onPress={handleSend}
-      disabled={!amount || parseFloat(amount) <= 0}
-      style={({ pressed }) => [
-        styles.sendButton,
-        { backgroundColor: primaryColor },
-        (!amount || parseFloat(amount) <= 0) && styles.sendButtonDisabled,
-        pressed && { opacity: 0.9 },
-      ]}
-    >
-      <Ionicons name="arrow-up" size={20} color="#fff" />
-      <ThemedText style={styles.sendButtonText}>
-        Send {amount ? `$${amount}` : ''} {selectedToken}
-      </ThemedText>
-    </Pressable>
-  );
+  const renderQRView = () => (
+    <View style={[styles.qrContainer, { backgroundColor: bgColor }]}>
+      {/* Header */}
+      <View style={[styles.qrHeader, { paddingTop: insets.top + 8 }]}>
+        <Pressable
+          onPress={() => setMode('pay')}
+          style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}
+        >
+          <Ionicons name="close" size={28} color={textColor} />
+        </Pressable>
+        <View style={styles.headerSpacer} />
+        {qrMode === 'scan' && (
+          <Pressable
+            style={({ pressed }) => [styles.flashButton, pressed && styles.pressed]}
+          >
+            <Ionicons name="flashlight-outline" size={24} color={textColor} />
+          </Pressable>
+        )}
+      </View>
 
-  const renderRequestButton = () => (
-    <Pressable
-      onPress={handleRequest}
-      disabled={!amount || parseFloat(amount) <= 0}
-      style={({ pressed }) => [
-        styles.sendButton,
-        { backgroundColor: primaryColor },
-        (!amount || parseFloat(amount) <= 0) && styles.sendButtonDisabled,
-        pressed && { opacity: 0.9 },
-      ]}
-    >
-      <Ionicons name="arrow-forward" size={20} color="#fff" />
-      <ThemedText style={styles.sendButtonText}>Request ${amount || '0'}</ThemedText>
-    </Pressable>
-  );
-
-  const renderReceiveMode = () => (
-    <View style={styles.receiveContainer}>
-      <ThemedView style={styles.card} lightColor="#f4f4f5" darkColor="#1c1c1e">
-        {/* QR Code */}
-        <View style={styles.qrContainer}>
-          <View style={styles.qrCode}>
-            {fullAddress ? (
-              <QRCode
-                value={`solana:${fullAddress}`}
-                size={160}
-                backgroundColor="#fff"
-                color="#18181b"
-              />
+      {/* QR Mode Tabs */}
+      <View style={[styles.qrTabs, { backgroundColor: isDark ? '#1c1c1e' : '#f4f4f5' }]}>
+        <Pressable
+          onPress={() => setQrMode('scan')}
+          style={styles.qrTab}
+        >
+          {({ pressed }) => (
+            qrMode === 'scan' || pressed ? (
+              <LinearGradient
+                colors={pressed ? ['#00E5FF', '#7B61FF'] : ['#2A2E35', '#1A4D5C', '#3D2680']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.qrTabGradient}
+              >
+                <ThemedText style={[styles.qrTabText, { color: '#fff' }]}>
+                  Scan
+                </ThemedText>
+              </LinearGradient>
             ) : (
-              <View style={styles.qrInner}>
-                <Ionicons name="qr-code" size={96} color="#18181b" />
+              <View style={styles.qrTabGradient}>
+                <ThemedText style={[styles.qrTabText, { color: mutedColor }]}>
+                  Scan
+                </ThemedText>
+              </View>
+            )
+          )}
+        </Pressable>
+        <Pressable
+          onPress={() => setQrMode('mycode')}
+          style={styles.qrTab}
+        >
+          {({ pressed }) => (
+            qrMode === 'mycode' || pressed ? (
+              <LinearGradient
+                colors={pressed ? ['#00E5FF', '#7B61FF'] : ['#2A2E35', '#1A4D5C', '#3D2680']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.qrTabGradient}
+              >
+                <ThemedText style={[styles.qrTabText, { color: '#fff' }]}>
+                  My Code
+                </ThemedText>
+              </LinearGradient>
+            ) : (
+              <View style={styles.qrTabGradient}>
+                <ThemedText style={[styles.qrTabText, { color: mutedColor }]}>
+                  My Code
+                </ThemedText>
+              </View>
+            )
+          )}
+        </Pressable>
+      </View>
+
+      {/* QR Content */}
+      <View style={styles.qrContent}>
+        {qrMode === 'scan' ? (
+          // Camera Scanner
+          <View style={styles.scannerContainer}>
+            {permission?.granted ? (
+              <>
+                <CameraView
+                  style={styles.camera}
+                  facing="back"
+                  barcodeScannerSettings={{
+                    barcodeTypes: ['qr'],
+                  }}
+                  onBarcodeScanned={(result) => handleQRScanned(result.data)}
+                />
+                <View style={styles.scannerOverlay}>
+                  <View style={styles.scannerFrame} />
+                </View>
+              </>
+            ) : (
+              <View style={styles.permissionContainer}>
+                <Ionicons name="camera-outline" size={48} color={mutedColor} />
+                <ThemedText style={[styles.permissionText, { color: mutedColor }]}>
+                  Camera access needed to scan QR codes
+                </ThemedText>
+                <Pressable
+                  onPress={requestPermission}
+                  style={[styles.permissionButton, { backgroundColor: primaryColor }]}
+                >
+                  <ThemedText style={styles.permissionButtonText}>Enable Camera</ThemedText>
+                </Pressable>
               </View>
             )}
+            <ThemedText style={styles.scanHint}>Scan QR code to pay</ThemedText>
           </View>
-          <ThemedText style={[styles.qrHint, { color: mutedColor }]}>
-            Scan to send funds to this wallet
-          </ThemedText>
-        </View>
-
-        {/* Address */}
-        <View style={styles.addressSection}>
-          <ThemedText style={[styles.sectionLabel, { color: mutedColor, textAlign: 'center' }]}>
-            YOUR ADDRESS
-          </ThemedText>
-          <Pressable
-            onPress={handleCopy}
-            style={[styles.addressButton, { backgroundColor: isDark ? '#27272a' : '#e4e4e7' }]}
-          >
-            <ThemedText style={styles.addressText}>{displayAddress}</ThemedText>
-            <Ionicons
-              name={copied ? 'checkmark' : 'copy-outline'}
-              size={16}
-              color={copied ? '#22c55e' : mutedColor}
-            />
-          </Pressable>
-        </View>
-
-        {/* Networks */}
-        <View style={styles.networksSection}>
-          <ThemedText style={[styles.sectionLabel, { color: mutedColor, textAlign: 'center' }]}>
-            SUPPORTED NETWORKS
-          </ThemedText>
-          <View style={styles.networkPills}>
-            {['Ethereum', 'Base', 'Arbitrum', 'Optimism', 'Polygon'].map((network) => (
-              <View
-                key={network}
-                style={[styles.networkPill, { backgroundColor: isDark ? '#27272a' : '#e4e4e7' }]}
-              >
-                <ThemedText style={[styles.networkPillText, { color: mutedColor }]}>{network}</ThemedText>
-              </View>
-            ))}
-          </View>
-        </View>
-      </ThemedView>
-
-      {/* Share Options */}
-      <ThemedView style={styles.card} lightColor="#f4f4f5" darkColor="#1c1c1e">
-        <View style={styles.shareOptions}>
-          {[
-            { icon: 'people' as const, label: 'Share' },
-            { icon: 'document-text' as const, label: 'Invoice' },
-            { icon: 'repeat' as const, label: 'Recurring' },
-          ].map((action) => (
+        ) : (
+          // My QR Code
+          <View style={styles.myCodeContainer}>
+            <ThemedText style={styles.myCodeName}>{user?.displayName || 'Your Name'}</ThemedText>
+            {walletAddress && (
+              <ThemedText style={[styles.myCodeHandle, { color: mutedColor }]}>
+                {displayAddress}
+              </ThemedText>
+            )}
+            <View style={styles.qrCodeWrapper}>
+              {walletAddress ? (
+                <QRCode
+                  value={`solana:${walletAddress}`}
+                  size={200}
+                  backgroundColor="#fff"
+                  color="#000"
+                  logo={require('@/assets/icon.png')}
+                  logoSize={50}
+                  logoBackgroundColor="#fff"
+                  logoBorderRadius={12}
+                />
+              ) : (
+                <View style={[styles.qrPlaceholder, { backgroundColor: isDark ? '#333' : '#eee' }]}>
+                  <Ionicons name="qr-code" size={100} color={mutedColor} />
+                </View>
+              )}
+            </View>
             <Pressable
-              key={action.label}
-              style={[styles.shareOption, { backgroundColor: isDark ? '#27272a' : '#e4e4e7' }]}
+              onPress={handleCopy}
+              style={[styles.copyButton, { backgroundColor: isDark ? '#333' : '#f4f4f5' }]}
             >
-              <Ionicons name={action.icon} size={20} color={primaryColor} />
-              <ThemedText style={[styles.shareOptionText, { color: mutedColor }]}>{action.label}</ThemedText>
+              <Ionicons
+                name={copied ? 'checkmark' : 'copy-outline'}
+                size={18}
+                color={copied ? cashAppGreen : mutedColor}
+              />
+              <ThemedText style={[styles.copyButtonText, copied && { color: cashAppGreen }]}>
+                {copied ? 'Copied!' : 'Copy Address'}
+              </ThemedText>
             </Pressable>
-          ))}
-        </View>
-      </ThemedView>
+          </View>
+        )}
+      </View>
     </View>
   );
 
-  const renderPendingRequests = () => {
-    const pendingRequests = recentTransfers.filter(
-      (t) => t.type === 'requested' && t.status === 'pending'
-    );
-
-    if (pendingRequests.length === 0) return null;
-
-    return (
-      <ThemedView style={styles.card} lightColor="#f4f4f5" darkColor="#1c1c1e">
-        <View style={styles.sectionHeaderRow}>
-          <ThemedText style={[styles.sectionLabel, { color: mutedColor }]}>PENDING REQUESTS</ThemedText>
-          <ThemedText style={[styles.viewAllText, { color: primaryColor }]}>View all</ThemedText>
-        </View>
-        {pendingRequests.map((request) => (
-          <View
-            key={request.id}
-            style={[styles.pendingItem, { backgroundColor: 'rgba(251, 191, 36, 0.05)', borderColor: 'rgba(251, 191, 36, 0.1)' }]}
-          >
-            <View style={[styles.pendingIcon, { backgroundColor: 'rgba(251, 191, 36, 0.1)' }]}>
-              <Ionicons name="time" size={16} color="#fbbf24" />
-            </View>
-            <View style={styles.pendingInfo}>
-              <ThemedText style={styles.pendingName}>From {request.contact.name}</ThemedText>
-              <ThemedText style={[styles.pendingTime, { color: mutedColor }]}>{request.timestamp}</ThemedText>
-            </View>
-            <View style={styles.pendingAmountContainer}>
-              <ThemedText style={styles.pendingAmount}>
-                ${request.amount} {request.token}
-              </ThemedText>
-              <ThemedText style={[styles.remindText, { color: primaryColor }]}>Remind</ThemedText>
-            </View>
-          </View>
-        ))}
-      </ThemedView>
-    );
-  };
+  // ============================================================================
+  // RENDER: Main
+  // ============================================================================
 
   return (
     <ThemedView style={styles.container}>
-      <StatusBar style={isDark ? 'light' : 'dark'} />
-      <View style={{ height: insets.top }} />
-
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-      >
-        {/* Header */}
-        <View style={styles.header}>
-          <ThemedText style={styles.title}>Move Money</ThemedText>
-          <Pressable
-            style={styles.historyButton}
-            onPress={() => router.push('/history')}
-          >
-            <Ionicons name="time-outline" size={14} color={primaryColor} />
-            <ThemedText style={[styles.historyText, { color: primaryColor }]}>History</ThemedText>
-          </Pressable>
-        </View>
-
-        {/* Mode Tabs */}
-        {renderModeTabs()}
-
-        {/* SEND MODE */}
-        {mode === 'send' && (
-          <View style={styles.modeContent}>
-            {!selectedContact ? (
-              <>
-                {/* Search */}
-                <ThemedView style={styles.card} lightColor="#f4f4f5" darkColor="#1c1c1e">
-                  <View style={[styles.searchContainer, { backgroundColor: isDark ? '#27272a' : '#e4e4e7' }]}>
-                    <Ionicons name="search" size={16} color={mutedColor} />
-                    <TextInput
-                      value={searchQuery}
-                      onChangeText={setSearchQuery}
-                      placeholder="Search name, ENS, or address..."
-                      placeholderTextColor={mutedColor}
-                      style={[styles.searchInput, { color: textColor }]}
-                    />
-                    <Ionicons name="sparkles" size={16} color={primaryColor} />
-                  </View>
-                  {renderRecentContacts()}
-                  {renderContactsList()}
-                </ThemedView>
-                {renderRecentActivity()}
-              </>
-            ) : (
-              <>
-                {renderAmountEntry()}
-                {renderTransferDetails()}
-                {renderSendButton()}
-              </>
-            )}
-          </View>
-        )}
-
-        {/* RECEIVE MODE */}
-        {mode === 'receive' && renderReceiveMode()}
-
-        {/* REQUEST MODE */}
-        {mode === 'request' && (
-          <View style={styles.modeContent}>
-            {!selectedContact ? (
-              <>
-                <ThemedView style={styles.card} lightColor="#f4f4f5" darkColor="#1c1c1e">
-                  <View style={[styles.searchContainer, { backgroundColor: isDark ? '#27272a' : '#e4e4e7' }]}>
-                    <Ionicons name="search" size={16} color={mutedColor} />
-                    <TextInput
-                      value={searchQuery}
-                      onChangeText={setSearchQuery}
-                      placeholder="Request from..."
-                      placeholderTextColor={mutedColor}
-                      style={[styles.searchInput, { color: textColor }]}
-                    />
-                  </View>
-                  <View style={styles.contactsList}>
-                    {filteredContacts.map((contact) => (
-                      <Pressable
-                        key={contact.id}
-                        onPress={() => setSelectedContact(contact)}
-                        style={({ pressed }) => [
-                          styles.contactItem,
-                          pressed && { opacity: 0.7 },
-                        ]}
-                      >
-                        <View style={[styles.avatarSmall, { backgroundColor: `${primaryColor}20` }]}>
-                          <ThemedText style={styles.avatarTextSmall}>{contact.avatar}</ThemedText>
-                        </View>
-                        <View style={styles.contactInfo}>
-                          <ThemedText style={styles.contactName}>{contact.name}</ThemedText>
-                          <ThemedText style={[styles.contactHandle, { color: mutedColor }]}>{contact.handle}</ThemedText>
-                        </View>
-                        <Ionicons name="chevron-forward" size={16} color={mutedColor} />
-                      </Pressable>
-                    ))}
-                  </View>
-                </ThemedView>
-                {renderPendingRequests()}
-              </>
-            ) : (
-              <>
-                {renderAmountEntry()}
-                {renderRequestButton()}
-              </>
-            )}
-          </View>
-        )}
-      </ScrollView>
-
-      {/* Backdrop Overlay */}
-      <AnimatedPressable
-        style={[styles.backdrop, backdropAnimatedStyle]}
-        onPress={handleBackdropPress}
-      />
-
-      {/* Command Bar */}
-      <KeyboardStickyView offset={{ closed: 0, opened: insets.bottom }} style={styles.stickyCommandBar}>
-        <CommandBar
-          onSend={handleSendMessage}
-          onCamera={handleCamera}
-          onMic={handleMic}
-          onFocusChange={handleCommandBarFocusChange}
-        />
-        <View style={{ height: insets.bottom }} />
-      </KeyboardStickyView>
+      <StatusBar style={mode === 'qr' ? (isDark ? 'light' : 'dark') : 'light'} />
+      {mode === 'qr' ? renderQRView() : renderMainView()}
     </ThemedView>
   );
 }
+
+// ============================================================================
+// Styles
+// ============================================================================
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  scrollView: {
+  mainContainer: {
     flex: 1,
-  },
-  scrollContent: {
-    paddingHorizontal: 16,
-    paddingBottom: 100,
-    gap: 16,
-  },
-  backdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    zIndex: 10,
-  },
-  stickyCommandBar: {
-    zIndex: 20,
   },
   header: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingTop: 8,
+    paddingHorizontal: 16,
+    paddingBottom: 8,
   },
-  title: {
-    fontSize: 20,
-    fontWeight: '600',
-  },
-  historyButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  historyText: {
-    fontSize: 12,
-  },
-  modeTabs: {
-    flexDirection: 'row',
-    padding: 4,
-    borderRadius: 12,
-    gap: 4,
-  },
-  modeTab: {
+  headerSpacer: {
     flex: 1,
-    flexDirection: 'row',
+  },
+  qrButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: 8,
   },
-  modeTabText: {
-    fontSize: 13,
-    fontWeight: '500',
-  },
-  modeContent: {
-    gap: 16,
-  },
-  card: {
-    borderRadius: 16,
-    padding: 16,
-    gap: 16,
-  },
-  searchContainer: {
-    flexDirection: 'row',
+  searchButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: 'center',
-    gap: 12,
-    padding: 12,
-    borderRadius: 12,
+    justifyContent: 'center',
   },
-  searchInput: {
-    flex: 1,
-    fontSize: 14,
+  profileButton: {
+    marginLeft: 8,
   },
-  section: {
-    gap: 8,
-  },
-  sectionLabel: {
-    fontSize: 10,
-    letterSpacing: 2,
-  },
-  sectionHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  profileAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(0,0,0,0.2)',
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  contactsHeaderLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  addContactButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 20,
-  },
-  addContactText: {
-    fontSize: 10,
-    fontWeight: '600',
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
-  },
-  addContactForm: {
-    padding: 16,
-    borderRadius: 14,
-    borderWidth: 1,
-    gap: 14,
-  },
-  addContactFormHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  addContactFormTitle: {
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  closeButton: {
-    padding: 4,
-  },
-  addContactInputs: {
-    gap: 10,
-  },
-  addContactInput: {
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    borderRadius: 12,
-    fontSize: 14,
-  },
-  addContactButtons: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  addContactCancelButton: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  addContactCancelText: {
-    fontSize: 14,
-  },
-  addContactSaveButton: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  addContactSaveText: {
+  profileAvatarText: {
     color: '#fff',
-    fontSize: 14,
-    fontWeight: '500',
+    fontSize: 16,
+    fontWeight: '600',
   },
-  recentContactsScroll: {
+  amountContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+  amountRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  amountCurrency: {
+    fontSize: 48,
+    fontWeight: '700',
+    color: '#00E5FF',
+    marginRight: 4,
+    marginTop: 8,
+  },
+  amountValue: {
+    fontSize: 72,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  amountTokenLabel: {
+    fontSize: 24,
+    fontWeight: '500',
+    color: 'rgba(0,229,255,0.7)',
+    marginTop: 4,
+  },
+  balanceButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: 'rgba(0,229,255,0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(0,229,255,0.3)',
+  },
+  balanceText: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.7)',
+  },
+  numpadContainer: {
+    paddingHorizontal: 24,
+  },
+  numpad: {
+    gap: 8,
+  },
+  numpadRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
     gap: 16,
   },
-  recentContact: {
-    alignItems: 'center',
-    gap: 8,
-    width: 64,
-  },
-  avatarContainer: {
-    position: 'relative',
-  },
-  avatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+  numpadKey: {
+    width: (SCREEN_WIDTH - 80) / 3,
+    height: 64,
+    borderRadius: 32,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  avatarText: {
-    fontSize: 14,
-    fontWeight: '500',
+  numpadKeyPressed: {
+    backgroundColor: 'rgba(0,229,255,0.2)',
   },
-  avatarSmall: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
+  numpadKeyDisabled: {
+    opacity: 0.5,
   },
-  avatarTextSmall: {
-    fontSize: 12,
-    fontWeight: '500',
+  numpadKeyText: {
+    fontSize: 32,
+    fontWeight: '400',
+    color: '#fff',
   },
-  verifiedBadge: {
-    position: 'absolute',
-    bottom: -2,
-    right: -2,
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    alignItems: 'center',
-    justifyContent: 'center',
+  bottomButtons: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    gap: 16,
   },
-  verifiedBadgeSmall: {
-    position: 'absolute',
-    bottom: -1,
-    right: -1,
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  recentContactName: {
-    fontSize: 12,
-    textAlign: 'center',
-  },
-  contactsList: {
-    gap: 4,
-  },
-  contactItem: {
+  actionRow: {
     flexDirection: 'row',
-    alignItems: 'center',
     gap: 12,
-    paddingVertical: 8,
   },
-  contactInfo: {
+  actionButton: {
     flex: 1,
+    borderRadius: 28,
+    overflow: 'hidden',
   },
-  contactName: {
-    fontSize: 14,
-    fontWeight: '500',
+  actionButtonGradient: {
+    height: 56,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  contactHandle: {
-    fontSize: 12,
+  requestButton: {
+    backgroundColor: 'rgba(0,0,0,0.15)',
   },
-  activityItem: {
+  payButton: {
+    backgroundColor: '#000',
+  },
+  actionButtonText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  selectedContactBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    paddingVertical: 8,
-  },
-  activityIcon: {
-    width: 32,
-    height: 32,
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(0,229,255,0.1)',
     borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  activityInfo: {
-    flex: 1,
-  },
-  activityLabel: {
-    fontSize: 14,
-  },
-  activityTime: {
-    fontSize: 12,
-  },
-  activityAmountContainer: {
-    alignItems: 'flex-end',
-  },
-  activityAmount: {
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  pendingLabel: {
-    fontSize: 10,
-    color: '#fbbf24',
-  },
-  selectedContactRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(0,229,255,0.3)',
   },
   selectedContactInfo: {
-    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
   },
-  sendingToLabel: {
-    fontSize: 12,
+  selectedContactAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  selectedContactAvatarText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
   selectedContactName: {
     fontSize: 16,
     fontWeight: '500',
+    color: '#fff',
   },
-  changeText: {
-    fontSize: 12,
-  },
-  amountInputContainer: {
+  contactsScrollContent: {
+    paddingHorizontal: 8,
     gap: 16,
-    paddingVertical: 8,
   },
-  amountRow: {
-    flexDirection: 'row',
+  contactCircle: {
+    alignItems: 'center',
+    width: 64,
+  },
+  contactAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
+    marginBottom: 4,
   },
-  currencySymbol: {
-    fontSize: 32,
-    fontWeight: '300',
+  addContactAvatar: {
+    backgroundColor: 'rgba(42,46,53,0.6)',
+    borderWidth: 2,
+    borderColor: 'rgba(0,229,255,0.4)',
+    borderStyle: 'dashed',
   },
-  amountInput: {
-    fontSize: 48,
-    fontWeight: '300',
-    textAlign: 'center',
-    minWidth: 100,
+  contactAvatarText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
   },
-  quickAmounts: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  quickAmountButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-  },
-  quickAmountText: {
+  contactName: {
     fontSize: 12,
+    textAlign: 'center',
+    color: 'rgba(255,255,255,0.7)',
   },
-  tokenSection: {
-    gap: 8,
+  pressed: {
+    opacity: 0.7,
+  },
+  modalOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.5)',
     alignItems: 'center',
+    justifyContent: 'flex-end',
   },
-  tokenLabel: {
-    fontSize: 10,
-    letterSpacing: 2,
+  tokenModal: {
+    width: '100%',
+    maxHeight: '60%',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+  },
+  tokenModalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    marginBottom: 16,
+    textAlign: 'center',
   },
   tokenList: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-    gap: 8,
+    maxHeight: 300,
   },
-  tokenButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 12,
-  },
-  tokenSymbol: {
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  tokenBalance: {
-    fontSize: 12,
-  },
-  memoContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    padding: 12,
-    borderRadius: 12,
-  },
-  memoInput: {
-    flex: 1,
-    fontSize: 14,
-  },
-  detailRow: {
+  tokenItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-  },
-  detailLabel: {
-    fontSize: 14,
-  },
-  detailValue: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  detailValueText: {
-    fontSize: 14,
-  },
-  sendButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
     paddingVertical: 16,
-    borderRadius: 16,
-  },
-  sendButtonDisabled: {
-    opacity: 0.5,
-  },
-  sendButtonText: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: '500',
-  },
-  receiveContainer: {
-    gap: 16,
-  },
-  qrContainer: {
-    alignItems: 'center',
-    gap: 16,
-  },
-  qrCode: {
-    width: 192,
-    height: 192,
-    borderRadius: 16,
-    backgroundColor: '#fff',
-    padding: 12,
-    position: 'relative',
-  },
-  qrInner: {
-    flex: 1,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  qrLogo: {
-    position: 'absolute',
-    top: '50%',
-    left: '50%',
-    width: 48,
-    height: 48,
-    marginTop: -24,
-    marginLeft: -24,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  qrLogoText: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: '700',
-  },
-  qrHint: {
-    fontSize: 14,
-  },
-  addressSection: {
-    gap: 8,
-    alignItems: 'center',
-  },
-  addressButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
     paddingHorizontal: 16,
+    borderRadius: 12,
+    marginBottom: 8,
+  },
+  tokenItemSymbol: {
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  tokenItemBalance: {
+    fontSize: 14,
+  },
+
+  // QR Mode Styles
+  qrContainer: {
+    flex: 1,
+  },
+  qrHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+  },
+  closeButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  flashButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  qrTabs: {
+    flexDirection: 'row',
+    marginHorizontal: 24,
+    borderRadius: 12,
+    padding: 4,
+  },
+  qrTab: {
+    flex: 1,
+    borderRadius: 8,
+    overflow: 'hidden',
+  },
+  qrTabGradient: {
+    paddingVertical: 10,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  qrTabText: {
+    fontSize: 15,
+    fontWeight: '500',
+  },
+  qrContent: {
+    flex: 1,
+    paddingHorizontal: 24,
+    paddingTop: 24,
+  },
+  scannerContainer: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  camera: {
+    width: SCREEN_WIDTH - 48,
+    height: SCREEN_WIDTH - 48,
+    borderRadius: 24,
+    overflow: 'hidden',
+  },
+  scannerOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    top: 0,
+    left: 24,
+    right: 24,
+    bottom: 0,
+  },
+  scannerFrame: {
+    width: 200,
+    height: 200,
+    borderWidth: 3,
+    borderColor: '#fff',
+    borderRadius: 24,
+  },
+  scanHint: {
+    marginTop: 24,
+    fontSize: 16,
+    textAlign: 'center',
+  },
+  permissionContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 16,
+    padding: 32,
+  },
+  permissionText: {
+    fontSize: 16,
+    textAlign: 'center',
+  },
+  permissionButton: {
+    paddingHorizontal: 24,
     paddingVertical: 12,
-    borderRadius: 12,
+    borderRadius: 24,
   },
-  addressText: {
-    fontFamily: 'monospace',
-    fontSize: 14,
+  permissionButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
   },
-  networksSection: {
-    gap: 8,
-  },
-  networkPills: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  networkPill: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-  },
-  networkPillText: {
-    fontSize: 12,
-  },
-  shareOptions: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  shareOption: {
+  myCodeContainer: {
     flex: 1,
     alignItems: 'center',
-    gap: 8,
-    paddingVertical: 16,
-    borderRadius: 12,
+    paddingTop: 24,
   },
-  shareOptionText: {
-    fontSize: 12,
-  },
-  viewAllText: {
-    fontSize: 12,
-  },
-  pendingItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    padding: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-  },
-  pendingIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  pendingInfo: {
-    flex: 1,
-  },
-  pendingName: {
-    fontSize: 14,
-  },
-  pendingTime: {
-    fontSize: 12,
-  },
-  pendingAmountContainer: {
-    alignItems: 'flex-end',
-  },
-  pendingAmount: {
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  remindText: {
-    fontSize: 10,
-  },
-  // Token loading/empty states
-  tokenLoadingContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 16,
-  },
-  tokenLoadingText: {
-    fontSize: 12,
-  },
-  tokenEmptyContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 16,
-  },
-  tokenEmptyText: {
-    fontSize: 12,
-  },
-  // Empty contacts state
-  emptyContactsContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 24,
-    gap: 8,
-  },
-  emptyContactsIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
+  myCodeName: {
+    fontSize: 28,
+    fontWeight: '700',
     marginBottom: 4,
   },
-  emptyContactsText: {
-    fontSize: 14,
-    fontWeight: '500',
+  myCodeHandle: {
+    fontSize: 16,
+    marginBottom: 32,
   },
-  emptyContactsSubtext: {
-    fontSize: 12,
-    textAlign: 'center',
-  },
-  // Empty activity state
-  emptyActivityContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 24,
-    gap: 8,
-  },
-  emptyActivityIcon: {
-    width: 48,
-    height: 48,
+  qrCodeWrapper: {
+    backgroundColor: '#fff',
+    padding: 24,
     borderRadius: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  qrPlaceholder: {
+    width: 200,
+    height: 200,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 4,
   },
-  emptyActivityText: {
-    fontSize: 14,
+  copyButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 32,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 24,
+  },
+  copyButtonText: {
+    fontSize: 15,
     fontWeight: '500',
-  },
-  emptyActivitySubtext: {
-    fontSize: 12,
-    textAlign: 'center',
   },
 });

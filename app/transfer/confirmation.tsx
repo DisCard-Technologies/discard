@@ -19,17 +19,49 @@ import { router, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import Animated, { FadeIn, FadeInUp } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
+import * as LocalAuthentication from "expo-local-authentication";
 
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { useThemeColor } from "@/hooks/use-theme-color";
+import { useColorScheme } from "@/hooks/use-color-scheme";
 import { TransferSummary } from "@/components/transfer";
+import { useAuth } from "@/stores/authConvex";
+import { useMutation } from "convex/react";
+import { api } from "@/convex/_generated/api";
+import { Connection, PublicKey } from "@solana/web3.js";
+import { useTurnkey } from "@/hooks/useTurnkey";
+import {
+  getFiredancerClient,
+  initializeFiredancerClient,
+  type ConfirmationResult,
+} from "@/lib/solana/firedancer-client";
+import {
+  buildSOLTransfer,
+  buildSPLTokenTransfer,
+  simulateTransaction,
+  NATIVE_MINT,
+} from "@/lib/transfer/transaction-builder";
 import type {
   TransferRecipient,
   TransferToken,
   TransferAmount,
   TransferFees,
+  TransferResult,
 } from "@/hooks/useTransfer";
+
+// ============================================================================
+// Constants
+// ============================================================================
+
+const SOLANA_RPC_URL =
+  process.env.EXPO_PUBLIC_SOLANA_RPC_URL ||
+  "https://api.mainnet-beta.solana.com";
+
+const TURNKEY_RP_ID = process.env.EXPO_PUBLIC_TURNKEY_RP_ID || "www.discard.tech";
+const TURNKEY_ORG_ID = process.env.EXPO_PUBLIC_TURNKEY_ORG_ID || "";
+
+type ExecutionPhase = "idle" | "building" | "signing" | "submitting" | "confirming";
 
 // ============================================================================
 // Component
@@ -46,13 +78,32 @@ export default function TransferConfirmationScreen() {
   }>();
 
   const [isConfirming, setIsConfirming] = useState(false);
+  const [executionPhase, setExecutionPhase] = useState<ExecutionPhase>("idle");
   const [error, setError] = useState<string | null>(null);
 
+  // Auth and Turnkey
+  const { user, userId } = useAuth();
+  const turnkey = useTurnkey(userId, {
+    organizationId: TURNKEY_ORG_ID,
+    rpId: TURNKEY_RP_ID,
+  });
+
+  // Use user's Solana address from auth (biometric flow) OR Turnkey (TEE flow)
+  const walletAddress = user?.solanaAddress || turnkey.walletAddress;
+
+  // Convex mutations for transfer records
+  const createTransfer = useMutation(api.transfers.transfers.create);
+  const updateTransferStatus = useMutation(api.transfers.transfers.updateStatus);
+
   // Theme colors
+  const colorScheme = useColorScheme();
+  const isDark = colorScheme === "dark";
   const primaryColor = useThemeColor({}, "tint");
   const mutedColor = useThemeColor({ light: "#687076", dark: "#9BA1A6" }, "icon");
   const bgColor = useThemeColor({ light: "#fff", dark: "#000" }, "background");
   const errorColor = useThemeColor({ light: "#F44336", dark: "#EF5350" }, "text");
+  // In dark mode, tint is white so button needs dark text; in light mode, tint is teal so white text
+  const confirmButtonTextColor = isDark ? "#000" : "#fff";
 
   // Parse params
   let recipient: TransferRecipient | null = null;
@@ -82,33 +133,218 @@ export default function TransferConfirmationScreen() {
     router.dismissAll();
   }, []);
 
-  // Handle confirm
+  // Handle confirm - executes the actual transfer
   const handleConfirm = useCallback(async () => {
-    if (!recipient || !token || !amount || !fees) return;
+    if (!recipient || !token || !amount || !fees || !userId || !walletAddress) {
+      setError("Missing required data. Please go back and try again.");
+      return;
+    }
 
     setIsConfirming(true);
     setError(null);
+    setExecutionPhase("idle");
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
+    const startTime = Date.now();
+    let transferId: any = null;
+
     try {
-      // Navigate to the transfer execution
-      // The actual signing happens in the parent component via the useTransfer hook
+      // Step 1: Biometric authentication
+      const hasHardware = await LocalAuthentication.hasHardwareAsync();
+      const isEnrolled = await LocalAuthentication.isEnrolledAsync();
+
+      if (hasHardware && isEnrolled) {
+        const biometricResult = await LocalAuthentication.authenticateAsync({
+          promptMessage: `Send ${amount.amount} ${token.symbol} to ${recipient.displayName || "recipient"}`,
+          disableDeviceFallback: false,
+          cancelLabel: "Cancel",
+        });
+
+        if (!biometricResult.success) {
+          const errorMsg = 'error' in biometricResult ? biometricResult.error : "unknown";
+          if (errorMsg === "user_cancel") {
+            setError("Authentication cancelled");
+          } else {
+            setError("Biometric authentication failed. Please try again.");
+          }
+          setIsConfirming(false);
+          setExecutionPhase("idle");
+          return;
+        }
+
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+
+      // Step 2: Build transaction
+      setExecutionPhase("building");
+
+      const connection = new Connection(SOLANA_RPC_URL, "confirmed");
+      const fromPubkey = new PublicKey(walletAddress);
+      const toPubkey = new PublicKey(recipient.address);
+
+      // Parse amount base units (handle both string and bigint)
+      const amountBaseUnits = typeof amount.amountBaseUnits === 'string'
+        ? BigInt(amount.amountBaseUnits)
+        : amount.amountBaseUnits;
+
+      let txResult;
+      if (token.mint === "native" || token.mint === NATIVE_MINT.toBase58()) {
+        txResult = await buildSOLTransfer(
+          connection,
+          fromPubkey,
+          toPubkey,
+          amountBaseUnits
+        );
+      } else {
+        txResult = await buildSPLTokenTransfer(
+          connection,
+          fromPubkey,
+          toPubkey,
+          amountBaseUnits,
+          new PublicKey(token.mint)
+        );
+      }
+
+      // Step 3: Simulate transaction
+      const simulation = await simulateTransaction(connection, txResult.transaction);
+      if (!simulation.success) {
+        throw new Error(simulation.error || "Transaction simulation failed");
+      }
+
+      // Step 4: Create Convex transfer record
+      transferId = await createTransfer({
+        recipientType: recipient.type,
+        recipientIdentifier: recipient.input,
+        recipientAddress: recipient.address,
+        recipientDisplayName: recipient.displayName,
+        amount: amount.amount,
+        token: token.symbol,
+        tokenMint: token.mint,
+        tokenDecimals: token.decimals,
+        amountUsd: amount.amountUsd,
+        networkFee: fees.networkFeeUsd,
+        platformFee: fees.platformFee,
+        priorityFee: fees.priorityFee * 150, // Convert SOL to USD estimate
+      });
+
+      // Step 5: Sign with Turnkey
+      setExecutionPhase("signing");
+
+      await updateTransferStatus({
+        transferId,
+        status: "signing",
+      });
+
+      const { signedTransaction } = await turnkey.signTransaction(txResult.transaction);
+
+      // Step 6: Submit to Firedancer
+      setExecutionPhase("submitting");
+
+      // Initialize Firedancer client if not already done
+      let firedancer;
+      try {
+        firedancer = getFiredancerClient();
+      } catch {
+        firedancer = initializeFiredancerClient({
+          primaryEndpoint: SOLANA_RPC_URL,
+          targetConfirmationMs: 150,
+          maxRetries: 3,
+        });
+      }
+
+      const { signature, confirmationPromise } = await firedancer.sendTransaction(
+        signedTransaction as any
+      );
+
+      await updateTransferStatus({
+        transferId,
+        status: "submitted",
+        solanaSignature: signature,
+      });
+
+      // Step 7: Wait for confirmation
+      setExecutionPhase("confirming");
+
+      const confirmation: ConfirmationResult = await confirmationPromise;
+      const confirmationTimeMs = Date.now() - startTime;
+
+      if (!confirmation.confirmed) {
+        await updateTransferStatus({
+          transferId,
+          status: "failed",
+          errorMessage: confirmation.error || "Confirmation failed",
+        });
+        throw new Error(confirmation.error || "Transaction failed to confirm on the network");
+      }
+
+      // Step 8: Success!
+      await updateTransferStatus({
+        transferId,
+        status: "confirmed",
+        confirmationTimeMs,
+      });
+
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+      // Navigate to success screen with real data
+      const result: TransferResult = {
+        signature,
+        confirmationTimeMs,
+        withinTarget: confirmation.withinTarget,
+        transferId,
+        explorerUrl: `https://solscan.io/tx/${signature}`,
+      };
+
       router.push({
         pathname: "/transfer/success",
         params: {
+          result: JSON.stringify(result),
           recipient: params.recipient,
-          token: params.token,
-          amount: params.amount,
-          fees: params.fees,
-          memo: params.memo,
-          // The parent will handle actual execution and pass result
+          amountDisplay: amount.amount.toString(),
+          amountUsd: amount.amountUsd.toString(),
+          tokenSymbol: token.symbol,
+          feesPaid: fees.totalFeesUsd.toString(),
         },
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Confirmation failed");
+      console.error("[Confirmation] Transfer failed:", err);
+
+      // Update Convex record if we created one
+      if (transferId) {
+        try {
+          await updateTransferStatus({
+            transferId,
+            status: "failed",
+            errorMessage: err instanceof Error ? err.message : "Unknown error",
+          });
+        } catch (updateErr) {
+          console.error("[Confirmation] Failed to update status:", updateErr);
+        }
+      }
+
+      // Show user-friendly error message
+      let errorMessage = "Transfer failed. Please try again.";
+      if (err instanceof Error) {
+        if (err.message.includes("cancelled")) {
+          errorMessage = "Transfer cancelled";
+        } else if (err.message.includes("insufficient") || err.message.includes("balance")) {
+          errorMessage = "Insufficient balance for this transfer";
+        } else if (err.message.includes("simulation")) {
+          errorMessage = "Transaction validation failed. Please check your balance.";
+        } else if (err.message.includes("confirm")) {
+          errorMessage = "Network confirmation failed. Your funds are safe - please try again.";
+        } else {
+          errorMessage = err.message;
+        }
+      }
+
+      setError(errorMessage);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    } finally {
       setIsConfirming(false);
+      setExecutionPhase("idle");
     }
-  }, [recipient, token, amount, fees, params]);
+  }, [recipient, token, amount, fees, userId, walletAddress, turnkey, params, createTransfer, updateTransferStatus]);
 
   // Show error if params missing
   if (!recipient || !token || !amount || !fees) {
@@ -169,16 +405,28 @@ export default function TransferConfirmationScreen() {
             />
           </Animated.View>
 
-          {/* Error Message */}
+          {/* Error Message with Retry */}
           {error && (
             <Animated.View
               entering={FadeIn.duration(200)}
               style={styles.errorBanner}
             >
-              <Ionicons name="alert-circle" size={18} color={errorColor} />
-              <ThemedText style={[styles.errorBannerText, { color: errorColor }]}>
-                {error}
-              </ThemedText>
+              <View style={styles.errorContent}>
+                <Ionicons name="alert-circle" size={18} color={errorColor} />
+                <ThemedText style={[styles.errorBannerText, { color: errorColor }]}>
+                  {error}
+                </ThemedText>
+              </View>
+              <View style={styles.errorActions}>
+                <Pressable
+                  onPress={() => setError(null)}
+                  style={[styles.errorButton, { backgroundColor: `${errorColor}20` }]}
+                >
+                  <ThemedText style={[styles.errorButtonText, { color: errorColor }]}>
+                    Dismiss
+                  </ThemedText>
+                </Pressable>
+              </View>
             </Animated.View>
           )}
         </View>
@@ -217,12 +465,21 @@ export default function TransferConfirmationScreen() {
             ]}
           >
             {isConfirming ? (
-              <ActivityIndicator size="small" color="#fff" />
+              <View style={styles.confirmingContent}>
+                <ActivityIndicator size="small" color={confirmButtonTextColor} />
+                <ThemedText style={[styles.confirmButtonText, { color: confirmButtonTextColor }]}>
+                  {executionPhase === "building" && "Building transaction..."}
+                  {executionPhase === "signing" && "Signing..."}
+                  {executionPhase === "submitting" && "Submitting..."}
+                  {executionPhase === "confirming" && "Confirming..."}
+                  {executionPhase === "idle" && "Processing..."}
+                </ThemedText>
+              </View>
             ) : (
               <>
-                <Ionicons name="finger-print" size={22} color="#fff" />
-                <ThemedText style={styles.confirmButtonText}>
-                  Confirm with Face ID
+                <Ionicons name="finger-print" size={22} color={confirmButtonTextColor} />
+                <ThemedText style={[styles.confirmButtonText, { color: confirmButtonTextColor }]}>
+                  {error ? "Try Again" : "Confirm with Face ID"}
                 </ThemedText>
               </>
             )}
@@ -302,17 +559,34 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   errorBanner: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
+    flexDirection: "column",
+    gap: 12,
     padding: 12,
     backgroundColor: "rgba(244, 67, 54, 0.1)",
     borderRadius: 12,
     marginTop: 16,
   },
+  errorContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
   errorBannerText: {
     fontSize: 14,
     flex: 1,
+  },
+  errorActions: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+  },
+  errorButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  errorButtonText: {
+    fontSize: 13,
+    fontWeight: "500",
   },
   bottomActions: {
     paddingHorizontal: 20,
@@ -344,6 +618,11 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 17,
     fontWeight: "600",
+  },
+  confirmingContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
   },
   buttonDisabled: {
     opacity: 0.6,

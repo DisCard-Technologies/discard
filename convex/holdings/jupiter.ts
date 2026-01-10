@@ -32,6 +32,81 @@ const RWA_METADATA: Record<string, { issuer: string; type: string; expectedYield
   ApoL1k7GWhhmE8AvCXeFHVGrw3aKNc5SpJbT3V9UpGNu: { issuer: "Apollo", type: "private-credit", expectedYield: 9.5 },
 };
 
+// Fallback metadata for well-known tokens (used when Jupiter Token API fails)
+const KNOWN_TOKEN_METADATA: Record<string, { symbol: string; name: string; logoUri: string }> = {
+  EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v: {
+    symbol: "USDC",
+    name: "USD Coin",
+    logoUri: "https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v/logo.png",
+  },
+  Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB: {
+    symbol: "USDT",
+    name: "Tether USD",
+    logoUri: "https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB/logo.svg",
+  },
+  So11111111111111111111111111111111111111112: {
+    symbol: "SOL",
+    name: "Wrapped SOL",
+    logoUri: "https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png",
+  },
+  mSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK7ytfqcJm7So: {
+    symbol: "mSOL",
+    name: "Marinade staked SOL",
+    logoUri: "https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/mSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK7ytfqcJm7So/logo.png",
+  },
+  DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263: {
+    symbol: "BONK",
+    name: "Bonk",
+    logoUri: "https://arweave.net/hQiPZOsRZXGXBJd_82PhVdlM_hACsT_q6wqwf5cSY7I",
+  },
+  JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN: {
+    symbol: "JUP",
+    name: "Jupiter",
+    logoUri: "https://static.jup.ag/jup/icon.png",
+  },
+  "7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs": {
+    symbol: "ETH",
+    name: "Wormhole Wrapped ETH",
+    logoUri: "https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs/logo.png",
+  },
+  bSo13r4TkiE4KumL71LsHTPpL2euBYLFx6h9HP3piy1: {
+    symbol: "bSOL",
+    name: "BlazeStake Staked SOL",
+    logoUri: "https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/bSo13r4TkiE4KumL71LsHTPpL2euBYLFx6h9HP3piy1/logo.png",
+  },
+  J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn: {
+    symbol: "jitoSOL",
+    name: "Jito Staked SOL",
+    logoUri: "https://storage.googleapis.com/token-metadata/JitoSOL-256.png",
+  },
+};
+
+// Helper to fetch token metadata from Jupiter Token API
+async function fetchTokenMetadata(mint: string): Promise<{
+  symbol: string;
+  name: string;
+  logoUri?: string;
+} | null> {
+  // Check known tokens fallback first
+  const knownToken = KNOWN_TOKEN_METADATA[mint];
+  if (knownToken) {
+    return knownToken;
+  }
+
+  try {
+    const response = await fetch(`https://tokens.jup.ag/token/${mint}`);
+    if (!response.ok) return null;
+    const data = await response.json();
+    return {
+      symbol: data.symbol || mint.slice(0, 4).toUpperCase(),
+      name: data.name || mint.slice(0, 8),
+      logoUri: data.logoURI,
+    };
+  } catch {
+    return null;
+  }
+}
+
 // ============================================================================
 // Queries
 // ============================================================================
@@ -165,6 +240,16 @@ export const refreshHoldings = action({
 
     // Iterate over token holdings (object keyed by mint)
     const tokensObj = data.tokens || {};
+    const mints = Object.keys(tokensObj);
+
+    // Fetch token metadata from Jupiter Token API in parallel
+    const metadataResults = await Promise.all(
+      mints.map(mint => fetchTokenMetadata(mint))
+    );
+    const tokenMetadata = new Map(
+      mints.map((mint, i) => [mint, metadataResults[i]])
+    );
+
     for (const [mint, accounts] of Object.entries(tokensObj)) {
       // Each mint can have multiple token accounts (array)
       const tokenAccounts = accounts as Array<{
@@ -191,17 +276,19 @@ export const refreshHoldings = action({
 
       const isRwa = RWA_MINTS.has(mint);
       const rwaMetadata = isRwa ? RWA_METADATA[mint] : undefined;
+      const meta = tokenMetadata.get(mint);
 
       holdings.push({
         mint,
-        symbol: mint.slice(0, 4).toUpperCase(), // Placeholder - would need token list
-        name: mint.slice(0, 8), // Placeholder
+        symbol: meta?.symbol || mint.slice(0, 4).toUpperCase(),
+        name: meta?.name || mint.slice(0, 8),
         decimals,
         balance: totalBalance.toString(),
         balanceFormatted: totalUiAmount,
         valueUsd: 0, // Jupiter holdings doesn't include prices
         priceUsd: 0,
         change24h: 0,
+        logoUri: meta?.logoUri,
         isRwa,
         rwaMetadata,
       });

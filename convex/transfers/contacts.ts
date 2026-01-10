@@ -52,9 +52,17 @@ export const create = mutation({
   args: {
     name: v.string(),
     identifier: v.string(),
-    identifierType: v.union(v.literal("address"), v.literal("sol_name")),
+    identifierType: v.union(
+      v.literal("address"),
+      v.literal("sol_name"),
+      v.literal("phone"),
+      v.literal("email")
+    ),
     resolvedAddress: v.string(),
     verified: v.optional(v.boolean()),
+    linkedUserId: v.optional(v.id("users")),
+    phoneNumber: v.optional(v.string()),
+    email: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
@@ -99,6 +107,9 @@ export const create = mutation({
       identifier: args.identifier,
       identifierType: args.identifierType,
       resolvedAddress: args.resolvedAddress,
+      linkedUserId: args.linkedUserId,
+      phoneNumber: args.phoneNumber,
+      email: args.email,
       avatarInitials: getInitials(args.name),
       avatarColor: generateAvatarColor(),
       verified: args.verified ?? false,
@@ -121,10 +132,16 @@ export const update = mutation({
     name: v.optional(v.string()),
     identifier: v.optional(v.string()),
     identifierType: v.optional(
-      v.union(v.literal("address"), v.literal("sol_name"))
+      v.union(
+        v.literal("address"),
+        v.literal("sol_name"),
+        v.literal("phone"),
+        v.literal("email")
+      )
     ),
     resolvedAddress: v.optional(v.string()),
     verified: v.optional(v.boolean()),
+    isFavorite: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
@@ -160,6 +177,10 @@ export const update = mutation({
 
     if (args.verified !== undefined) {
       updates.verified = args.verified;
+    }
+
+    if (args.isFavorite !== undefined) {
+      updates.isFavorite = args.isFavorite;
     }
 
     await ctx.db.patch(args.contactId, updates);
@@ -218,8 +239,14 @@ export const getOrCreate = mutation({
   args: {
     name: v.string(),
     identifier: v.string(),
-    identifierType: v.union(v.literal("address"), v.literal("sol_name")),
+    identifierType: v.union(
+      v.literal("address"),
+      v.literal("sol_name"),
+      v.literal("phone"),
+      v.literal("email")
+    ),
     resolvedAddress: v.string(),
+    linkedUserId: v.optional(v.id("users")),
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
@@ -257,6 +284,7 @@ export const getOrCreate = mutation({
       identifier: args.identifier,
       identifierType: args.identifierType,
       resolvedAddress: args.resolvedAddress,
+      linkedUserId: args.linkedUserId,
       avatarInitials: getInitials(args.name),
       avatarColor: generateAvatarColor(),
       verified: false,
@@ -472,5 +500,74 @@ export const getFrequent = query({
       .slice(0, args.limit ?? 5);
 
     return frequentContacts;
+  },
+});
+
+/**
+ * Get favorite contacts
+ */
+export const getFavorites = query({
+  args: {
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      return [];
+    }
+
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_credential", (q) =>
+        q.eq("credentialId", identity.subject)
+      )
+      .first();
+
+    if (!user) {
+      return [];
+    }
+
+    const contacts = await ctx.db
+      .query("contacts")
+      .withIndex("by_user", (q) => q.eq("userId", user._id))
+      .collect();
+
+    // Filter favorites and sort by name
+    const favoriteContacts = contacts
+      .filter((c) => c.isFavorite === true)
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .slice(0, args.limit ?? 20);
+
+    return favoriteContacts;
+  },
+});
+
+/**
+ * Toggle favorite status for a contact
+ */
+export const toggleFavorite = mutation({
+  args: {
+    contactId: v.id("contacts"),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Not authenticated");
+    }
+
+    const contact = await ctx.db.get(args.contactId);
+    if (!contact) {
+      throw new Error("Contact not found");
+    }
+
+    // Toggle the favorite status
+    const newFavoriteStatus = !contact.isFavorite;
+
+    await ctx.db.patch(args.contactId, {
+      isFavorite: newFavoriteStatus,
+      updatedAt: Date.now(),
+    });
+
+    return { isFavorite: newFavoriteStatus };
   },
 });

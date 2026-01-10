@@ -3,7 +3,8 @@
  * Manages DeFi positions for yield-based card funding
  */
 import { v } from "convex/values";
-import { query, mutation } from "../_generated/server";
+import { query, mutation, internalQuery } from "../_generated/server";
+import { Doc } from "../_generated/dataModel";
 
 // List all DeFi positions for a user
 export const listPositions = query({
@@ -94,6 +95,23 @@ export const getAvailableFunding = query({
       totalEarned,
       positionCount: activePositions.length,
     };
+  },
+});
+
+/**
+ * List DeFi positions by user ID (internal - for solver context)
+ */
+export const listByUserId = internalQuery({
+  args: {
+    userId: v.id("users"),
+  },
+  handler: async (ctx, args): Promise<Doc<"defi">[]> => {
+    const positions = await ctx.db
+      .query("defi")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .collect();
+
+    return positions.filter((p) => !p.closedAt);
   },
 });
 
