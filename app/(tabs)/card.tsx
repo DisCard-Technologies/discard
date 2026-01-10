@@ -1,12 +1,31 @@
-import { useState, useMemo } from 'react';
-import { StyleSheet, View, Pressable, ScrollView, Keyboard, Alert, ActivityIndicator } from 'react-native';
+import { useState, useMemo, useCallback } from 'react';
+import {
+  StyleSheet,
+  View,
+  Pressable,
+  Keyboard,
+  Alert,
+  ActivityIndicator,
+  Dimensions,
+  FlatList,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Clipboard from 'expo-clipboard';
+import * as Haptics from 'expo-haptics';
 import { KeyboardStickyView } from 'react-native-keyboard-controller';
-import Animated, { useSharedValue, useAnimatedStyle, withTiming } from 'react-native-reanimated';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+  withSpring,
+  interpolate,
+  Extrapolation,
+  runOnJS,
+} from 'react-native-reanimated';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useQuery } from 'convex/react';
 import { router } from 'expo-router';
 import { api } from '@/convex/_generated/api';
@@ -20,64 +39,49 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useAuth } from '@/stores/authConvex';
 import { useCards, useCardOperations } from '@/stores/cardsConvex';
 
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const CARD_WIDTH = SCREEN_WIDTH - 80;
+const CARD_MARGIN = 12;
+
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 // MCC code to category mapping
 const MCC_CATEGORIES: Record<string, string> = {
-  // Groceries
   "5411": "Groceries", "5422": "Groceries", "5441": "Groceries", "5451": "Groceries", "5462": "Groceries",
-  // Restaurants & Food
   "5812": "Restaurants", "5813": "Restaurants", "5814": "Fast Food",
-  // Gas & Auto
   "5541": "Gas", "5542": "Gas", "7538": "Auto Service", "5571": "Auto",
-  // Transport
   "4121": "Transport", "4131": "Transport", "4111": "Transport", "7512": "Car Rental",
-  // Shopping
   "5311": "Shopping", "5310": "Shopping", "5300": "Shopping", "5399": "Shopping",
   "5651": "Clothing", "5691": "Clothing", "5699": "Clothing",
-  // Electronics
   "5732": "Electronics", "5734": "Electronics", "4812": "Electronics",
-  // Entertainment
   "7832": "Entertainment", "7922": "Entertainment", "7941": "Entertainment",
-  // Travel
   "4511": "Travel", "7011": "Hotels", "3000": "Travel",
-  // Healthcare
   "5912": "Pharmacy", "8011": "Healthcare", "8021": "Healthcare",
-  // Utilities
   "4900": "Utilities", "4814": "Telecom",
 };
 
-// Get category from MCC code
 function getMccCategory(mcc: string): string {
   return MCC_CATEGORIES[mcc] || "Other";
 }
 
-// Format amount from cents to display string
 function formatAmount(cents: number): string {
   const dollars = Math.abs(cents) / 100;
   const sign = cents < 0 ? "-" : cents > 0 ? "+" : "";
   return `${sign}$${dollars.toFixed(2)}`;
 }
 
-// Format timestamp to relative date
 function formatRelativeDate(timestamp: number): string {
   const now = new Date();
   const date = new Date(timestamp);
-
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
   const txDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
 
-  if (txDate.getTime() === today.getTime()) {
-    return "Today";
-  } else if (txDate.getTime() === yesterday.getTime()) {
-    return "Yesterday";
-  } else {
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  }
+  if (txDate.getTime() === today.getTime()) return "Today";
+  if (txDate.getTime() === yesterday.getTime()) return "Yesterday";
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
-// Transform authorization to display format
 interface DisplayTransaction {
   merchant: string;
   amount: string;
@@ -85,7 +89,13 @@ interface DisplayTransaction {
   category: string;
   status: string;
   isAmbient?: boolean;
+  fee?: string;
+  exactTime?: string;
 }
+
+// Bottom drawer constants
+const DRAWER_CLOSED_HEIGHT = 220;
+const DRAWER_OPEN_HEIGHT = 380;
 
 export default function CardScreen() {
   const insets = useSafeAreaInsets();
@@ -95,34 +105,25 @@ export default function CardScreen() {
   const primaryColor = useThemeColor({}, 'tint');
   const mutedColor = useThemeColor({ light: '#687076', dark: '#9BA1A6' }, 'icon');
   const textColor = useThemeColor({}, 'text');
+  const cardBg = useThemeColor({ light: '#f4f4f5', dark: '#1c1c1e' }, 'background');
+  const borderColor = useThemeColor({ light: 'rgba(0,0,0,0.08)', dark: 'rgba(255,255,255,0.1)' }, 'background');
 
   // Real data from stores
   const { user } = useAuth();
   const { state: cardsState } = useCards();
-  const { freezeCard, unfreezeCard, createCard } = useCardOperations();
+  const { freezeCard, unfreezeCard, createCard, getCardSecrets } = useCardOperations();
 
-  const activeCard = useMemo(() => {
-    // Use selected card if set
-    if (cardsState?.selectedCard) {
-      return cardsState.selectedCard;
-    }
-
-    // Find the most recent active/provisioned card (has real last4, not "0000")
+  // Card carousel state
+  const [activeCardIndex, setActiveCardIndex] = useState(0);
+  
+  // Get all cards for carousel
+  const allCards = useMemo(() => {
     const cards = cardsState?.cards || [];
+    // Add a placeholder for "add card" if we have cards
+    return cards;
+  }, [cardsState?.cards]);
 
-    // Prefer active cards with real card numbers first
-    const activeProvisioned = cards.find(
-      (c) => c.status === 'active' && c.last4 && c.last4 !== '0000'
-    );
-    if (activeProvisioned) return activeProvisioned;
-
-    // Fall back to any active card
-    const anyActive = cards.find((c) => c.status === 'active');
-    if (anyActive) return anyActive;
-
-    // Fall back to first card (could be pending)
-    return cards[0] || null;
-  }, [cardsState]);
+  const activeCard = allCards[activeCardIndex] || null;
 
   // Query real transactions for the active card
   const rawTransactions = useQuery(
@@ -130,16 +131,17 @@ export default function CardScreen() {
     activeCard?._id ? { cardId: activeCard._id, limit: 20 } : "skip"
   );
 
-  // Transform raw authorizations to display format
   const transactions: DisplayTransaction[] = useMemo(() => {
     if (!rawTransactions) return [];
     return rawTransactions.map((auth) => ({
       merchant: auth.merchantName || "Unknown Merchant",
-      amount: formatAmount(-auth.amount), // Negative for purchases
+      amount: formatAmount(-auth.amount),
       date: formatRelativeDate(auth.processedAt),
       category: getMccCategory(auth.merchantMcc),
       status: auth.status,
       isAmbient: false,
+      fee: "$0.45",
+      exactTime: new Date(auth.processedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
     }));
   }, [rawTransactions]);
 
@@ -156,50 +158,36 @@ export default function CardScreen() {
     expirationYear: number;
   } | null>(null);
 
-  // Get card operations including getCardSecrets
-  const { getCardSecrets } = useCardOperations();
+  // Transaction stack state
+  const [currentTxIndex, setCurrentTxIndex] = useState(0);
+  const [isExpanded, setIsExpanded] = useState(false);
 
-  // Use real frozen state from card
+  // Bottom drawer state
+  const drawerY = useSharedValue(0);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+
   const cardFrozen = activeCard?.status === 'frozen';
 
-  // Format card number with spaces
   const formatCardNumber = (pan: string) => {
     return pan.replace(/(.{4})/g, '$1 ').trim();
   };
 
-  // Display card number based on showDetails state and available data
   const displayCardNumber = useMemo(() => {
-    if (!showDetails) {
-      return "•••• •••• •••• ••••";
-    }
-    if (cardSecrets?.pan) {
-      return formatCardNumber(cardSecrets.pan);
-    }
+    if (!showDetails) return "•••• •••• •••• ••••";
+    if (cardSecrets?.pan) return formatCardNumber(cardSecrets.pan);
     if (activeCard?.last4 && activeCard.last4 !== "0000") {
       return `•••• •••• •••• ${activeCard.last4}`;
     }
     return "•••• •••• •••• ••••";
   }, [showDetails, cardSecrets, activeCard]);
 
-  const cardBalance = activeCard?.currentBalance ? (activeCard.currentBalance / 100) : 0;
-
-  // Handle showing/hiding card details
   const toggleDetails = async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (!showDetails && activeCard && !cardSecrets) {
-      // Fetch secrets when showing details
       setLoadingSecrets(true);
       try {
         const secrets = await getCardSecrets(activeCard._id);
-        console.log('[Card] getCardSecrets result:', {
-          hasPan: !!secrets?.pan,
-          hasCvv: !!secrets?.cvv,
-          cvvValue: secrets?.cvv,
-          expMonth: secrets?.expirationMonth,
-          expYear: secrets?.expirationYear,
-        });
-        if (secrets) {
-          setCardSecrets(secrets);
-        }
+        if (secrets) setCardSecrets(secrets);
       } catch (error) {
         console.error('Failed to get card secrets:', error);
         Alert.alert('Error', 'Failed to load card details');
@@ -235,11 +223,10 @@ export default function CardScreen() {
     Alert.alert('Camera', 'Camera/scan coming soon');
   };
 
-  const handleMic = () => {
-    // Voice input feedback handled by CommandBar
-  };
+  const handleMic = () => {};
 
   const copyCardNumber = async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (cardSecrets?.pan) {
       await Clipboard.setStringAsync(cardSecrets.pan);
     } else if (activeCard?.last4) {
@@ -250,63 +237,214 @@ export default function CardScreen() {
   };
 
   const handleCreateCard = async () => {
-    console.log('[Card] handleCreateCard called');
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setCreatingCard(true);
     try {
-      const result = await createCard({
-        nickname: 'New Card',
-        // Default limits from cards.ts: $1000 per tx, $5000 daily, $20000 monthly
-      });
-      console.log('[Card] createCard result:', result);
+      const result = await createCard({ nickname: 'New Card' });
       if (!result) {
-        // createCard returned null - check cardsState.error for details
         Alert.alert('Error', cardsState?.error || 'Failed to create card. Please try again.');
       }
     } catch (error) {
-      console.error('[Card] createCard error:', error);
       Alert.alert('Error', error instanceof Error ? error.message : 'Failed to create card');
     } finally {
       setCreatingCard(false);
     }
   };
 
-  // Check if user has any cards
+  const handleToggleFreeze = async () => {
+    if (!activeCard) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    try {
+      if (cardFrozen) {
+        await unfreezeCard(activeCard._id);
+      } else {
+        await freezeCard(activeCard._id, "User requested freeze");
+      }
+    } catch (error) {
+      Alert.alert('Error', 'Failed to update card status');
+    }
+  };
+
   const hasCards = cardsState?.cards && cardsState.cards.length > 0;
   const isLoadingCards = cardsState?.isLoading;
 
-  // Navigation handlers for top bar
   const handlePortfolioTap = () => router.push('/strategy');
-  const handleCardTap = () => {
-    // Already on card screen
-  };
+  const handleCardTap = () => {};
 
-  // Real wallet address from auth
   const walletAddress = user?.solanaAddress || '';
 
-  // Debug logging
-  console.log('[Card] Screen state:', {
-    hasCards,
-    isLoadingCards,
-    cardsCount: cardsState?.cards?.length,
-    activeCardId: activeCard?._id,
-    activeCardStatus: activeCard?.status,
-    activeCardLast4: activeCard?.last4,
-    allCardStatuses: cardsState?.cards?.map(c => ({ id: c._id.slice(-8), status: c.status, last4: c.last4 })),
-  });
+  // Stacked transactions helpers
+  const getStackedTransactions = useCallback(() => {
+    const result = [];
+    for (let i = 0; i < Math.min(3, transactions.length); i++) {
+      const index = (currentTxIndex + i) % transactions.length;
+      result.push({ ...transactions[index], stackIndex: i });
+    }
+    return result;
+  }, [transactions, currentTxIndex]);
+
+  const nextTransaction = () => {
+    if (!isExpanded && transactions.length > 1) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      setCurrentTxIndex((prev) => (prev + 1) % transactions.length);
+    }
+  };
+
+  const toggleExpand = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setIsExpanded(!isExpanded);
+  };
+
+  // Bottom drawer gesture
+  const setDrawerOpenJS = (open: boolean) => {
+    setDrawerOpen(open);
+  };
+
+  const drawerGesture = Gesture.Pan()
+    .onUpdate((event) => {
+      const newY = Math.max(
+        -(DRAWER_OPEN_HEIGHT - DRAWER_CLOSED_HEIGHT),
+        Math.min(0, drawerY.value + event.translationY * 0.5)
+      );
+      drawerY.value = newY;
+    })
+    .onEnd((event) => {
+      const shouldOpen = event.velocityY < -500 || (drawerY.value < -50 && event.velocityY < 200);
+      if (shouldOpen) {
+        drawerY.value = withSpring(-(DRAWER_OPEN_HEIGHT - DRAWER_CLOSED_HEIGHT), {
+          damping: 20,
+          stiffness: 300,
+        });
+        runOnJS(setDrawerOpenJS)(true);
+      } else {
+        drawerY.value = withSpring(0, { damping: 20, stiffness: 300 });
+        runOnJS(setDrawerOpenJS)(false);
+      }
+    });
+
+  const toggleDrawer = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (drawerOpen) {
+      drawerY.value = withSpring(0, { damping: 20, stiffness: 300 });
+      setDrawerOpen(false);
+    } else {
+      drawerY.value = withSpring(-(DRAWER_OPEN_HEIGHT - DRAWER_CLOSED_HEIGHT), {
+        damping: 20,
+        stiffness: 300,
+      });
+      setDrawerOpen(true);
+    }
+  };
+
+  const drawerAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: drawerY.value }],
+  }));
+
+  // Card carousel scroll handler
+  const handleCardScroll = (event: any) => {
+    const offsetX = event.nativeEvent.contentOffset.x;
+    const newIndex = Math.round(offsetX / (CARD_WIDTH + CARD_MARGIN * 2));
+    if (newIndex !== activeCardIndex && newIndex >= 0 && newIndex < allCards.length) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      setActiveCardIndex(newIndex);
+      // Reset card secrets when switching cards
+      setCardSecrets(null);
+      setShowDetails(false);
+    }
+  };
+
+  // Render a single card in carousel
+  const renderCard = ({ item, index }: { item: any; index: number }) => {
+    const isActive = index === activeCardIndex;
+    const isFrozen = item.status === 'frozen';
+    
+    return (
+      <View style={[styles.cardWrapper, { marginHorizontal: CARD_MARGIN }]}>
+        <View style={[styles.cardContainer, isFrozen && styles.cardFrozen]}>
+          <LinearGradient
+            colors={['#0d9488', '#10b981', '#14b8a6']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.cardGradient}
+          >
+            {/* Glow effect */}
+            <View style={styles.cardGlow} />
+            
+            {/* Watermark pattern */}
+            <View style={styles.watermarkContainer}>
+              <ThemedText style={styles.watermarkText}>$</ThemedText>
+            </View>
+
+            {/* Card Header */}
+            <View style={styles.cardHeader}>
+              <View style={styles.cardBrand}>
+                <View style={styles.brandCircle}>
+                  <ThemedText style={styles.brandSymbol}>≡</ThemedText>
+                </View>
+                <ThemedText style={styles.cardAddressText}>
+                  {walletAddress ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}` : 'No wallet'}
+                </ThemedText>
+              </View>
+              <View style={styles.cardHeaderRight}>
+                {isFrozen && (
+                  <View style={styles.frozenBadge}>
+                    <Ionicons name="snow" size={14} color="#a855f7" />
+                    <ThemedText style={styles.frozenText}>Frozen</ThemedText>
+                  </View>
+                )}
+                <View style={styles.contactlessIcon}>
+                  <Ionicons name="wifi" size={18} color="rgba(255,255,255,0.8)" style={{ transform: [{ rotate: '90deg' }] }} />
+                </View>
+              </View>
+            </View>
+
+            {/* Card Body */}
+            <View style={styles.cardBody}>
+              <ThemedText style={styles.cardNumber}>
+                {isActive && loadingSecrets ? "Loading..." : (isActive ? displayCardNumber : `•••• •••• •••• ${item.last4 || '••••'}`)}
+              </ThemedText>
+              <ThemedText style={styles.cardExpiry}>
+                {isActive && cardSecrets 
+                  ? `${String(cardSecrets.expirationMonth).padStart(2, '0')}/${String(cardSecrets.expirationYear).slice(-2)}` 
+                  : '••/••'}
+              </ThemedText>
+            </View>
+
+            {/* Card Footer */}
+            <View style={styles.cardFooter}>
+              <View />
+              <ThemedText style={styles.visaLogo}>VISA</ThemedText>
+            </View>
+          </LinearGradient>
+        </View>
+      </View>
+    );
+  };
 
   return (
     <ThemedView style={styles.container}>
       <StatusBar style={isDark ? 'light' : 'dark'} />
       <View style={{ height: insets.top }} />
 
-      {/* Top Bar */}
+      {/* Ambient gradient background */}
+      <View style={styles.ambientGradient}>
+        <LinearGradient
+          colors={isDark 
+            ? ['rgba(16, 185, 129, 0.08)', 'transparent'] 
+            : ['rgba(16, 185, 129, 0.05)', 'transparent']}
+          style={StyleSheet.absoluteFill}
+          start={{ x: 0.5, y: 0 }}
+          end={{ x: 0.5, y: 0.6 }}
+        />
+      </View>
+
       <TopBar
         walletAddress={walletAddress}
         onPortfolioTap={handlePortfolioTap}
         onCardTap={handleCardTap}
       />
 
-      {/* Empty State - No Cards */}
+      {/* Empty State */}
       {!hasCards && !isLoadingCards ? (
         <View style={styles.emptyStateOverlay}>
           <View style={styles.emptyStateContent}>
@@ -339,296 +477,249 @@ export default function CardScreen() {
           </View>
         </View>
       ) : (
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Visa Card */}
-        <View style={[styles.cardContainer, cardFrozen && styles.cardFrozen]}>
-          <LinearGradient
-            colors={['#0d9488', '#10b981', '#14b8a6']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.cardGradient}
-          >
-            {/* Glow effect */}
-            <View style={[styles.cardGlow, { backgroundColor: 'rgba(255,255,255,0.15)' }]} />
-
-            {/* Card Header */}
-            <View style={styles.cardHeader}>
-              <View style={styles.cardBrand}>
-                <View style={[styles.brandCircle, { backgroundColor: 'rgba(255,255,255,0.2)' }]}>
-                  <Ionicons name="wallet" size={14} color="#fff" />
-                </View>
-                <ThemedText style={[styles.cardAddressText, { color: 'rgba(255,255,255,0.9)' }]}>
-                  {walletAddress ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}` : 'No wallet'}
-                </ThemedText>
-              </View>
-              <View style={styles.cardHeaderRight}>
-                {cardFrozen && (
-                  <View style={styles.frozenBadge}>
-                    <Ionicons name="snow" size={14} color="#a855f7" />
-                    <ThemedText style={styles.frozenText}>Frozen</ThemedText>
-                  </View>
-                )}
-                <View style={styles.contactlessIcon}>
-                  <Ionicons name="wifi" size={18} color="rgba(255,255,255,0.8)" />
-                </View>
-              </View>
-            </View>
-
-            {/* Card Number & Expiry */}
-            <View style={styles.cardBody}>
-              <ThemedText style={[styles.cardNumber, { color: '#fff' }]}>
-                {loadingSecrets ? "Loading..." : displayCardNumber}
-              </ThemedText>
-              <ThemedText style={[styles.cardExpiry, { color: 'rgba(255,255,255,0.8)' }]}>
-                {cardSecrets ? `${String(cardSecrets.expirationMonth).padStart(2, '0')}/${String(cardSecrets.expirationYear).slice(-2)}` : '••/••'}
-              </ThemedText>
-            </View>
-
-            {/* Card Footer */}
-            <View style={styles.cardFooter}>
-              <View />
-              <ThemedText style={[styles.visaLogo, { color: primaryColor }]}>VISA</ThemedText>
-            </View>
-          </LinearGradient>
-        </View>
-
-        {/* Pagination Dots */}
-        <View style={styles.paginationDots}>
-          <View style={[styles.paginationDot, styles.paginationDotActive]} />
-          <View style={styles.paginationDot} />
-        </View>
-
-        {/* Recent Transaction */}
-        {transactions.length > 0 && (
-          <ThemedView
-            style={styles.recentTransaction}
-            lightColor="#f4f4f5"
-            darkColor="#1c1c1e"
-          >
-            <View style={styles.transactionIcon}>
-              <Ionicons name="arrow-up" size={16} color={mutedColor} />
-            </View>
-            <View style={styles.transactionInfo}>
-              <ThemedText style={styles.transactionMerchant}>{transactions[0].merchant}</ThemedText>
-              <ThemedText style={[styles.transactionTime, { color: mutedColor }]}>
-                {transactions[0].date}
-              </ThemedText>
-            </View>
-            <View style={styles.transactionAmounts}>
-              <ThemedText style={styles.transactionAmount}>{transactions[0].amount}</ThemedText>
-              <ThemedText style={[styles.transactionFiat, { color: mutedColor }]}>
-                {transactions[0].amount.replace('-', '$').replace('+', '$')}
-              </ThemedText>
-            </View>
-          </ThemedView>
-        )}
-
-        {/* Card Controls */}
-        <View style={styles.controlsRow}>
-          <Pressable 
-            onPress={toggleDetails}
-            disabled={loadingSecrets}
-            style={({ pressed }) => [
-              styles.controlButton,
-              { backgroundColor: isDark ? '#27272a' : '#f4f4f5' },
-              pressed && styles.controlButtonPressed
-            ]}
-          >
-            <Ionicons 
-              name={showDetails ? "eye-off-outline" : "eye-off-outline"} 
-              size={22} 
-              color={mutedColor} 
+        <View style={styles.mainContent}>
+          {/* Card Carousel */}
+          <View style={styles.carouselContainer}>
+            {/* Side peek indicators */}
+            <View style={[styles.sidePeek, styles.sidePeekLeft, { backgroundColor: cardBg, borderColor }]} />
+            <View style={[styles.sidePeek, styles.sidePeekRight, { backgroundColor: cardBg, borderColor }]} />
+            
+            <FlatList
+              data={allCards}
+              renderItem={renderCard}
+              keyExtractor={(item) => item._id}
+              horizontal
+              pagingEnabled
+              showsHorizontalScrollIndicator={false}
+              onMomentumScrollEnd={handleCardScroll}
+              contentContainerStyle={styles.carouselContent}
+              snapToInterval={CARD_WIDTH + CARD_MARGIN * 2}
+              decelerationRate="fast"
+              snapToAlignment="center"
             />
-            <ThemedText style={[styles.controlText, { color: mutedColor }]}>
-              Hide data
-            </ThemedText>
-          </Pressable>
+          </View>
 
-          <Pressable
-            onPress={async () => {
-              if (activeCard) {
-                try {
-                  let result;
-                  if (cardFrozen) {
-                    result = await unfreezeCard(activeCard._id);
-                  } else {
-                    result = await freezeCard(activeCard._id, "User requested freeze");
-                  }
-                  if (!result.success) {
-                    Alert.alert('Error', 'Failed to update card status');
-                  }
-                } catch (error) {
-                  Alert.alert('Error', 'Failed to update card status');
-                }
-              }
-            }}
-            style={({ pressed }) => [
-              styles.controlButton,
-              { backgroundColor: isDark ? '#27272a' : '#f4f4f5' },
-              pressed && styles.controlButtonPressed
-            ]}
-          >
-            <Ionicons name="snow-outline" size={22} color={cardFrozen ? '#a855f7' : mutedColor} />
-            <ThemedText style={[styles.controlText, { color: mutedColor }]}>
-              Freeze
-            </ThemedText>
-          </Pressable>
+          {/* Pagination dots */}
+          <View style={styles.paginationDots}>
+            {allCards.map((_, index) => (
+              <View
+                key={index}
+                style={[
+                  styles.paginationDot,
+                  index === activeCardIndex && styles.paginationDotActive,
+                  { backgroundColor: index === activeCardIndex ? textColor : mutedColor }
+                ]}
+              />
+            ))}
+          </View>
 
-          <Pressable
-            onPress={() => {
-              Alert.alert('Edit Card', 'Card settings coming soon');
-            }}
-            style={({ pressed }) => [
-              styles.controlButton,
-              { backgroundColor: isDark ? '#27272a' : '#f4f4f5' },
-              pressed && styles.controlButtonPressed
-            ]}
-          >
-            <Ionicons name="settings-outline" size={22} color={mutedColor} />
-            <ThemedText style={[styles.controlText, { color: mutedColor }]}>Edit card</ThemedText>
-          </Pressable>
-        </View>
-
-        {/* Manage Card Section */}
-        <View style={styles.manageCardSection}>
-          <ThemedText style={styles.manageCardTitle}>Manage Card</ThemedText>
-          
-          <Pressable
-            style={({ pressed }) => [
-              styles.manageCardItem,
-              { backgroundColor: isDark ? '#1c1c1e' : '#f4f4f5' },
-              pressed && styles.manageCardItemPressed
-            ]}
-            onPress={() => Alert.alert('Apple Pay', 'Add to Apple Pay')}
-          >
-            <View style={styles.manageCardItemLeft}>
-              <View style={[styles.manageCardItemIcon, { backgroundColor: '#000' }]}>
-                <ThemedText style={styles.applePayText}>Pay</ThemedText>
-              </View>
-              <View>
-                <ThemedText style={styles.manageCardItemTitle}>Apple Pay</ThemedText>
-                <ThemedText style={[styles.manageCardItemSubtitle, { color: mutedColor }]}>
-                  Card has been added
-                </ThemedText>
-              </View>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color={mutedColor} />
-          </Pressable>
-
-          <Pressable
-            style={({ pressed }) => [
-              styles.manageCardItem,
-              { backgroundColor: isDark ? '#1c1c1e' : '#f4f4f5' },
-              pressed && styles.manageCardItemPressed
-            ]}
-            onPress={() => Alert.alert('Payment Method', 'Change payment method')}
-          >
-            <View style={styles.manageCardItemLeft}>
-              <View style={[styles.manageCardItemIcon, { backgroundColor: `${primaryColor}20` }]}>
-                <Ionicons name="card" size={16} color={primaryColor} />
-              </View>
-              <View>
-                <ThemedText style={styles.manageCardItemTitle}>Payment Method</ThemedText>
-                <ThemedText style={[styles.manageCardItemSubtitle, { color: mutedColor }]}>
-                  {walletAddress ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}` : 'Not set'}
-                </ThemedText>
-              </View>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color={mutedColor} />
-          </Pressable>
-
-          <Pressable
-            style={({ pressed }) => [
-              styles.manageCardItem,
-              { backgroundColor: isDark ? '#1c1c1e' : '#f4f4f5' },
-              pressed && styles.manageCardItemPressed
-            ]}
-            onPress={() => Alert.alert('Card Design', 'Customize card design')}
-          >
-            <View style={styles.manageCardItemLeft}>
-              <View style={[styles.manageCardItemIcon, { backgroundColor: 'rgba(168, 85, 247, 0.2)' }]}>
-                <Ionicons name="color-palette" size={16} color="#a855f7" />
-              </View>
-              <View>
-                <ThemedText style={styles.manageCardItemTitle}>Card Design</ThemedText>
-              </View>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color={mutedColor} />
-          </Pressable>
-        </View>
-
-        {/* Transactions */}
-        <View style={styles.transactionsSection}>
-          <ThemedText style={[styles.sectionTitle, { color: mutedColor }]}>RECENT</ThemedText>
-          <View style={styles.transactionsList}>
-            {isLoadingTransactions ? (
-              <View style={styles.loadingContainer}>
-                <ActivityIndicator size="small" color={primaryColor} />
-                <ThemedText style={[styles.loadingText, { color: mutedColor }]}>
-                  Loading transactions...
-                </ThemedText>
-              </View>
-            ) : transactions.length === 0 ? (
-              <ThemedView
-                style={styles.emptyContainer}
-                lightColor="#f4f4f5"
-                darkColor="#1c1c1e"
-              >
-                <Ionicons name="receipt-outline" size={32} color={mutedColor} />
-                <ThemedText style={[styles.emptyText, { color: mutedColor }]}>
-                  No transactions yet
-                </ThemedText>
-                <ThemedText style={[styles.emptySubtext, { color: mutedColor }]}>
-                  Use your card to see transactions here
-                </ThemedText>
-              </ThemedView>
-            ) : (
-              transactions.map((tx, i) => (
-                <ThemedView
-                  key={i}
-                  style={[
-                    styles.transactionCard,
-                    tx.isAmbient && { borderColor: `${primaryColor}30`, borderWidth: 1 }
-                  ]}
-                  lightColor="#f4f4f5"
-                  darkColor="#1c1c1e"
-                >
-                  <View style={styles.transactionLeft}>
-                    {tx.isAmbient && (
-                      <Ionicons name="flash" size={16} color={primaryColor} />
-                    )}
-                    <View>
-                      <ThemedText style={styles.merchantName}>{tx.merchant}</ThemedText>
-                      <ThemedText style={[styles.transactionDate, { color: mutedColor }]}>
-                        {tx.date} • {tx.category}
-                      </ThemedText>
+          {/* Transaction Stack */}
+          {transactions.length > 0 && (
+            <View style={styles.transactionStackContainer}>
+              {getStackedTransactions().map((tx, index) => {
+                const stackIndex = tx.stackIndex;
+                const isTop = stackIndex === 0;
+                
+                return (
+                  <Pressable
+                    key={`${tx.merchant}-${index}`}
+                    onPress={isTop ? toggleExpand : nextTransaction}
+                    style={[
+                      styles.stackedTransaction,
+                      {
+                        backgroundColor: cardBg,
+                        borderColor,
+                        transform: [
+                          { translateY: -stackIndex * 6 },
+                          { scale: 1 - stackIndex * 0.03 },
+                        ],
+                        opacity: 1 - stackIndex * 0.15,
+                        zIndex: 10 - stackIndex,
+                      },
+                    ]}
+                  >
+                    <View style={styles.transactionRow}>
+                      <View style={[styles.transactionIconCircle, { backgroundColor: `${mutedColor}20` }]}>
+                        <Ionicons name="arrow-up" size={18} color={mutedColor} />
+                      </View>
+                      <View style={styles.transactionInfo}>
+                        <ThemedText style={styles.transactionMerchant}>{tx.merchant}</ThemedText>
+                        <ThemedText style={[styles.transactionTime, { color: mutedColor }]}>
+                          {tx.date}
+                        </ThemedText>
+                      </View>
+                      <View style={styles.transactionAmounts}>
+                        <ThemedText style={styles.transactionAmount}>{tx.amount}</ThemedText>
+                        <ThemedText style={[styles.transactionFiat, { color: mutedColor }]}>
+                          {tx.amount.replace('-', '$').replace('+', '$')}
+                        </ThemedText>
+                      </View>
                     </View>
-                  </View>
-                  <View style={styles.transactionRight}>
-                    <ThemedText
-                      style={[
-                        styles.transactionAmount,
-                        tx.amount.startsWith("+") && { color: primaryColor }
-                      ]}
-                    >
-                      {tx.amount}
-                    </ThemedText>
-                    {tx.status !== "settled" && tx.status !== "approved" && (
-                      <ThemedText style={[styles.transactionStatus, { color: mutedColor }]}>
-                        {tx.status}
-                      </ThemedText>
+                    
+                    {/* Expanded details */}
+                    {isTop && isExpanded && (
+                      <View style={[styles.expandedDetails, { borderTopColor: borderColor }]}>
+                        <View style={styles.detailRow}>
+                          <Ionicons name="time-outline" size={14} color={mutedColor} />
+                          <ThemedText style={[styles.detailText, { color: mutedColor }]}>
+                            Fee: {tx.fee}
+                          </ThemedText>
+                        </View>
+                        <ThemedText style={[styles.detailText, { color: mutedColor }]}>
+                          {tx.exactTime}
+                        </ThemedText>
+                      </View>
                     )}
-                  </View>
-                </ThemedView>
-              ))
-            )}
+                  </Pressable>
+                );
+              })}
+            </View>
+          )}
+
+          {/* Empty transactions state */}
+          {!isLoadingTransactions && transactions.length === 0 && (
+            <View style={[styles.emptyTransactions, { backgroundColor: cardBg }]}>
+              <Ionicons name="receipt-outline" size={24} color={mutedColor} />
+              <ThemedText style={[styles.emptyTransactionsText, { color: mutedColor }]}>
+                No transactions yet
+              </ThemedText>
+            </View>
+          )}
+
+          {/* Loading transactions */}
+          {isLoadingTransactions && (
+            <View style={[styles.loadingTransactions, { backgroundColor: cardBg }]}>
+              <ActivityIndicator size="small" color={primaryColor} />
+              <ThemedText style={[styles.loadingText, { color: mutedColor }]}>
+                Loading transactions...
+              </ThemedText>
+            </View>
+          )}
+
+          {/* Circular Action Buttons */}
+          <View style={[styles.actionButtonsRow, isExpanded && { marginTop: 48 }]}>
+            <Pressable onPress={toggleDetails} disabled={loadingSecrets} style={styles.actionButton}>
+              <View style={[styles.actionButtonCircle, { backgroundColor: cardBg, borderColor }]}>
+                <Ionicons name={showDetails ? "eye-outline" : "eye-off-outline"} size={22} color={textColor} />
+              </View>
+              <ThemedText style={[styles.actionButtonLabel, { color: mutedColor }]}>
+                {showDetails ? 'Show data' : 'Hide data'}
+              </ThemedText>
+            </Pressable>
+
+            <Pressable onPress={handleToggleFreeze} style={styles.actionButton}>
+              <View style={[
+                styles.actionButtonCircle,
+                { backgroundColor: cardFrozen ? `${primaryColor}20` : cardBg, borderColor: cardFrozen ? primaryColor : borderColor }
+              ]}>
+                <Ionicons name="snow-outline" size={22} color={cardFrozen ? primaryColor : textColor} />
+              </View>
+              <ThemedText style={[styles.actionButtonLabel, { color: mutedColor }]}>
+                {cardFrozen ? 'Unfreeze' : 'Freeze'}
+              </ThemedText>
+            </Pressable>
+
+            <Pressable onPress={() => Alert.alert('Edit Card', 'Card settings coming soon')} style={styles.actionButton}>
+              <View style={[styles.actionButtonCircle, { backgroundColor: cardBg, borderColor }]}>
+                <Ionicons name="settings-outline" size={22} color={textColor} />
+              </View>
+              <ThemedText style={[styles.actionButtonLabel, { color: mutedColor }]}>Edit card</ThemedText>
+            </Pressable>
           </View>
         </View>
-      </ScrollView>
+      )}
+
+      {/* Gradient overlay before drawer */}
+      {hasCards && (
+        <LinearGradient
+          colors={isDark ? ['transparent', '#0f1419'] : ['transparent', '#ffffff']}
+          style={[styles.drawerGradient, { bottom: DRAWER_CLOSED_HEIGHT - 40 }]}
+          pointerEvents="none"
+        />
+      )}
+
+      {/* Bottom Drawer - Manage Card */}
+      {hasCards && (
+        <GestureDetector gesture={drawerGesture}>
+          <Animated.View
+            style={[
+              styles.drawer,
+              {
+                backgroundColor: isDark ? '#1a1f25' : '#ffffff',
+                borderTopColor: borderColor,
+                height: DRAWER_OPEN_HEIGHT,
+                top: SCREEN_HEIGHT - DRAWER_CLOSED_HEIGHT - insets.bottom,
+              },
+              drawerAnimatedStyle,
+            ]}
+          >
+            {/* Drawer Handle */}
+            <Pressable onPress={toggleDrawer} style={styles.drawerHandle}>
+              <View style={[styles.drawerHandleBar, { backgroundColor: mutedColor }]} />
+            </Pressable>
+
+            {/* Drawer Content */}
+            <View style={styles.drawerContent}>
+              <ThemedText style={styles.drawerTitle}>Manage Card</ThemedText>
+
+              {/* Apple Pay */}
+              <Pressable
+                style={({ pressed }) => [styles.drawerItem, pressed && styles.drawerItemPressed]}
+                onPress={() => Alert.alert('Apple Pay', 'Add to Apple Pay')}
+              >
+                <View style={[styles.drawerItemIcon, { backgroundColor: '#000' }]}>
+                  <ThemedText style={styles.applePayText}>Pay</ThemedText>
+                </View>
+                <View style={styles.drawerItemContent}>
+                  <ThemedText style={styles.drawerItemTitle}>Apple Pay</ThemedText>
+                  <ThemedText style={[styles.drawerItemSubtitle, { color: mutedColor }]}>
+                    Card has been added
+                  </ThemedText>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color={mutedColor} />
+              </Pressable>
+
+              {/* Payment Method */}
+              <Pressable
+                style={({ pressed }) => [styles.drawerItem, pressed && styles.drawerItemPressed]}
+                onPress={() => Alert.alert('Payment Method', 'Change payment method')}
+              >
+                <View style={[styles.drawerItemIcon, { backgroundColor: `${primaryColor}20` }]}>
+                  <ThemedText style={[styles.solanaSymbol, { color: primaryColor }]}>◎</ThemedText>
+                </View>
+                <View style={styles.drawerItemContent}>
+                  <ThemedText style={styles.drawerItemTitle}>Payment Method</ThemedText>
+                  <View style={styles.paymentMethodRow}>
+                    <View style={[styles.tokenBadge, { backgroundColor: `${primaryColor}20` }]}>
+                      <ThemedText style={[styles.tokenBadgeText, { color: primaryColor }]}>T</ThemedText>
+                    </View>
+                    <ThemedText style={[styles.drawerItemSubtitle, { color: mutedColor }]}>
+                      {walletAddress ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}` : 'Not set'}
+                    </ThemedText>
+                  </View>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color={mutedColor} />
+              </Pressable>
+
+              {/* Card Design */}
+              <Pressable
+                style={({ pressed }) => [styles.drawerItem, pressed && styles.drawerItemPressed]}
+                onPress={() => Alert.alert('Card Design', 'Customize card design')}
+              >
+                <View style={[styles.drawerItemIcon, { backgroundColor: 'rgba(168, 85, 247, 0.2)' }]}>
+                  <Ionicons name="color-palette" size={18} color="#a855f7" />
+                </View>
+                <View style={styles.drawerItemContent}>
+                  <ThemedText style={styles.drawerItemTitle}>Card Design</ThemedText>
+                  <ThemedText style={[styles.drawerItemSubtitle, { color: mutedColor }]}>
+                    Light theme
+                  </ThemedText>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color={mutedColor} />
+              </Pressable>
+            </View>
+          </Animated.View>
+        </GestureDetector>
       )}
 
       {/* Backdrop Overlay */}
@@ -637,7 +728,7 @@ export default function CardScreen() {
         onPress={handleBackdropPress}
       />
 
-      {/* Command Bar - Sticky above keyboard */}
+      {/* Command Bar */}
       <KeyboardStickyView offset={{ closed: 0, opened: insets.bottom }} style={styles.stickyCommandBar}>
         <CommandBar
           onSend={handleSendMessage}
@@ -645,7 +736,6 @@ export default function CardScreen() {
           onMic={handleMic}
           onFocusChange={handleCommandBarFocusChange}
         />
-        {/* Safe area for bottom (home indicator) */}
         <View style={{ height: insets.bottom }} />
       </KeyboardStickyView>
     </ThemedView>
@@ -656,13 +746,17 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  scrollView: {
-    flex: 1,
+  ambientGradient: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: SCREEN_HEIGHT * 0.5,
+    pointerEvents: 'none',
   },
-  scrollContent: {
-    paddingHorizontal: 24,
-    paddingBottom: 100,
-    gap: 24,
+  mainContent: {
+    flex: 1,
+    paddingBottom: DRAWER_CLOSED_HEIGHT + 80,
   },
   backdrop: {
     ...StyleSheet.absoluteFillObject,
@@ -672,13 +766,38 @@ const styles = StyleSheet.create({
   stickyCommandBar: {
     zIndex: 20,
   },
-  // Card styles
+  
+  // Card Carousel
+  carouselContainer: {
+    paddingVertical: 16,
+    position: 'relative',
+  },
+  carouselContent: {
+    paddingHorizontal: (SCREEN_WIDTH - CARD_WIDTH) / 2 - CARD_MARGIN,
+  },
+  sidePeek: {
+    position: 'absolute',
+    top: '50%',
+    width: 4,
+    height: 80,
+    borderRadius: 2,
+    borderWidth: 1,
+    transform: [{ translateY: -40 }],
+    zIndex: 1,
+  },
+  sidePeekLeft: {
+    left: 8,
+  },
+  sidePeekRight: {
+    right: 8,
+  },
+  cardWrapper: {
+    width: CARD_WIDTH,
+  },
   cardContainer: {
-    minHeight: 200,
-    borderRadius: 24,
+    borderRadius: 20,
     overflow: 'hidden',
-    // Standard card aspect ratio is approximately 1.586:1
-    aspectRatio: 1.586,
+    aspectRatio: 1.6,
   },
   cardFrozen: {
     opacity: 0.6,
@@ -695,7 +814,23 @@ const styles = StyleSheet.create({
     width: 256,
     height: 256,
     borderRadius: 128,
+    backgroundColor: 'rgba(255,255,255,0.15)',
     opacity: 0.3,
+  },
+  watermarkContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    opacity: 0.05,
+  },
+  watermarkText: {
+    fontSize: 200,
+    fontWeight: 'bold',
+    color: '#000',
   },
   cardHeader: {
     flexDirection: 'row',
@@ -713,20 +848,22 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   brandCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.2)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  brandLetter: {
-    fontSize: 14,
+  brandSymbol: {
+    fontSize: 12,
     fontWeight: '700',
+    color: '#fff',
   },
-  brandName: {
-    fontSize: 14,
-    fontWeight: '600',
-    letterSpacing: 2,
+  cardAddressText: {
+    fontSize: 12,
+    fontFamily: 'monospace',
+    color: 'rgba(255,255,255,0.9)',
   },
   frozenBadge: {
     flexDirection: 'row',
@@ -737,6 +874,9 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#a855f7',
   },
+  contactlessIcon: {
+    padding: 4,
+  },
   cardBody: {
     flex: 1,
     justifyContent: 'center',
@@ -745,87 +885,72 @@ const styles = StyleSheet.create({
     fontSize: 18,
     letterSpacing: 3,
     fontFamily: 'monospace',
+    color: '#fff',
   },
-  eyeButton: {
-    padding: 8,
-  },
-  cardDetailsRow: {
-    flexDirection: 'row',
-    gap: 32,
-    marginTop: 12,
-  },
-  cardDetailValue: {
+  cardExpiry: {
     fontSize: 14,
-    fontWeight: '600',
-    letterSpacing: 1,
+    marginTop: 4,
+    color: 'rgba(255,255,255,0.8)',
+    fontFamily: 'monospace',
   },
   cardFooter: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-end',
   },
-  cardLabel: {
-    fontSize: 9,
-    letterSpacing: 1.5,
-    textTransform: 'uppercase',
-    marginBottom: 2,
-  },
-  cardHolder: {
-    fontSize: 12,
-    fontWeight: '600',
-    letterSpacing: 1,
-  },
   visaLogo: {
     fontSize: 28,
     fontWeight: '700',
     fontStyle: 'italic',
     letterSpacing: -1,
+    color: 'rgba(255,255,255,0.9)',
   },
-  cardAddressText: {
-    fontSize: 13,
-    fontFamily: 'monospace',
-  },
-  contactlessIcon: {
-    padding: 4,
-  },
-  cardExpiry: {
-    fontSize: 14,
-    marginTop: 4,
-  },
-  // Pagination dots
+
+  // Pagination
   paginationDots: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
     gap: 8,
-    marginTop: 12,
+    marginTop: 8,
     marginBottom: 16,
   },
   paginationDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: 'rgba(255,255,255,0.3)',
+    width: 6,
+    height: 6,
+    borderRadius: 3,
   },
   paginationDotActive: {
-    backgroundColor: '#fff',
+    width: 16,
+    borderRadius: 4,
   },
-  // Recent transaction
-  recentTransaction: {
+
+  // Transaction Stack
+  transactionStackContainer: {
+    paddingHorizontal: 24,
+    height: 120,
+    position: 'relative',
+  },
+  stackedTransaction: {
+    position: 'absolute',
+    left: 24,
+    right: 24,
+    borderRadius: 16,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  transactionRow: {
     flexDirection: 'row',
     alignItems: 'center',
     padding: 16,
-    borderRadius: 16,
-    marginBottom: 16,
+    gap: 12,
   },
-  transactionIcon: {
+  transactionIconCircle: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.1)',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 12,
   },
   transactionInfo: {
     flex: 1,
@@ -835,7 +960,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   transactionTime: {
-    fontSize: 12,
+    fontSize: 13,
     marginTop: 2,
   },
   transactionAmounts: {
@@ -846,38 +971,127 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   transactionFiat: {
-    fontSize: 12,
+    fontSize: 13,
     marginTop: 2,
   },
-  // Manage Card Section
-  manageCardSection: {
-    marginTop: 24,
+  expandedDetails: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderTopWidth: 1,
+  },
+  detailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  detailText: {
+    fontSize: 13,
+  },
+  emptyTransactions: {
+    marginHorizontal: 24,
+    padding: 24,
+    borderRadius: 16,
+    alignItems: 'center',
+    gap: 8,
+  },
+  emptyTransactionsText: {
+    fontSize: 14,
+  },
+  loadingTransactions: {
+    marginHorizontal: 24,
+    padding: 24,
+    borderRadius: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
     gap: 12,
   },
-  manageCardTitle: {
+  loadingText: {
+    fontSize: 14,
+  },
+
+  // Action Buttons
+  actionButtonsRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 32,
+    paddingVertical: 16,
+    marginTop: 8,
+  },
+  actionButton: {
+    alignItems: 'center',
+    gap: 8,
+  },
+  actionButtonCircle: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+  },
+  actionButtonLabel: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+
+  // Drawer
+  drawerGradient: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    height: 80,
+    pointerEvents: 'none',
+    zIndex: 5,
+  },
+  drawer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    borderTopWidth: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 10,
+    zIndex: 15,
+  },
+  drawerHandle: {
+    alignItems: 'center',
+    paddingVertical: 12,
+  },
+  drawerHandleBar: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    opacity: 0.3,
+  },
+  drawerContent: {
+    paddingHorizontal: 20,
+  },
+  drawerTitle: {
     fontSize: 16,
     fontWeight: '600',
-    marginBottom: 4,
+    marginBottom: 16,
   },
-  manageCardItem: {
+  drawerItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 16,
-    borderRadius: 14,
-  },
-  manageCardItemPressed: {
-    opacity: 0.7,
-  },
-  manageCardItemLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    paddingVertical: 12,
     gap: 12,
   },
-  manageCardItemIcon: {
+  drawerItemPressed: {
+    opacity: 0.7,
+  },
+  drawerItemIcon: {
     width: 36,
     height: 36,
-    borderRadius: 10,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -886,105 +1100,39 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#fff',
   },
-  manageCardItemTitle: {
+  solanaSymbol: {
+    fontSize: 18,
+  },
+  drawerItemContent: {
+    flex: 1,
+  },
+  drawerItemTitle: {
     fontSize: 15,
     fontWeight: '500',
   },
-  manageCardItemSubtitle: {
+  drawerItemSubtitle: {
     fontSize: 12,
     marginTop: 2,
   },
-  // Control buttons
-  controlsRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 32,
-    marginBottom: 8,
-  },
-  controlButton: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-  },
-  controlButtonPressed: {
-    opacity: 0.7,
-  },
-  controlText: {
-    fontSize: 12,
-    fontWeight: '500',
-  },
-  // Transactions
-  transactionsSection: {
-    gap: 12,
-  },
-  sectionTitle: {
-    fontSize: 10,
-    letterSpacing: 2,
-  },
-  transactionsList: {
-    gap: 8,
-  },
-  transactionCard: {
+  paymentMethodRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 16,
-    borderRadius: 12,
-  },
-  transactionLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  merchantName: {
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  transactionDate: {
-    fontSize: 12,
+    gap: 6,
     marginTop: 2,
   },
-  transactionAmount: {
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  transactionRight: {
-    alignItems: 'flex-end',
-  },
-  transactionStatus: {
-    fontSize: 10,
-    textTransform: 'uppercase',
-    marginTop: 2,
-  },
-  loadingContainer: {
-    flexDirection: 'row',
+  tokenBadge: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 12,
-    padding: 24,
   },
-  loadingText: {
-    fontSize: 14,
+  tokenBadgeText: {
+    fontSize: 8,
+    fontWeight: '700',
   },
-  emptyContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 32,
-    borderRadius: 12,
-    gap: 8,
-  },
-  emptyText: {
-    fontSize: 16,
-    fontWeight: '500',
-    marginTop: 8,
-  },
-  emptySubtext: {
-    fontSize: 13,
-    textAlign: 'center',
-  },
-  // Empty state overlay styles
+
+  // Empty State
   emptyStateOverlay: {
     flex: 1,
     justifyContent: 'center',
