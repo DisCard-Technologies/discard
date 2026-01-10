@@ -43,6 +43,12 @@ const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const CARD_WIDTH = SCREEN_WIDTH - 80;
 const CARD_MARGIN = 12;
 
+// Props for the content component when used in pager
+export interface CardScreenContentProps {
+  onNavigateToStrategy?: () => void;
+  onNavigateToHome?: () => void;
+}
+
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 // MCC code to category mapping
@@ -97,7 +103,7 @@ interface DisplayTransaction {
 const DRAWER_CLOSED_HEIGHT = 220;
 const DRAWER_OPEN_HEIGHT = 380;
 
-export default function CardScreen() {
+export function CardScreenContent({ onNavigateToStrategy, onNavigateToHome }: CardScreenContentProps) {
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
@@ -268,8 +274,9 @@ export default function CardScreen() {
   const hasCards = cardsState?.cards && cardsState.cards.length > 0;
   const isLoadingCards = cardsState?.isLoading;
 
-  const handlePortfolioTap = () => router.push('/strategy');
-  const handleCardTap = () => {};
+  // Navigation handlers for top bar - use callbacks if provided, otherwise use router
+  const handlePortfolioTap = onNavigateToStrategy || (() => router.push('/strategy'));
+  const handleCardTap = onNavigateToHome || (() => {});
 
   const walletAddress = user?.solanaAddress || '';
 
@@ -740,6 +747,10 @@ export default function CardScreen() {
       </KeyboardStickyView>
     </ThemedView>
   );
+}
+
+export default function CardScreen() {
+  return <CardScreenContent />;
 }
 
 const styles = StyleSheet.create({

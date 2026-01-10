@@ -18,6 +18,12 @@ import { useAuth, useCurrentUserId } from '@/stores/authConvex';
 import { useTokenHoldings } from '@/hooks/useTokenHoldings';
 import { positiveColor, negativeColor } from '@/constants/theme';
 
+// Props for the content component when used in pager
+export interface StrategyScreenContentProps {
+  onNavigateToHome?: () => void;
+  onNavigateToCard?: () => void;
+}
+
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -117,7 +123,7 @@ function PortfolioChart({ data, primaryColor }: { data: number[]; primaryColor: 
   );
 }
 
-export default function StrategyScreen() {
+export function StrategyScreenContent({ onNavigateToHome, onNavigateToCard }: StrategyScreenContentProps) {
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
@@ -181,14 +187,10 @@ export default function StrategyScreen() {
 
   const handleMic = () => {};
 
-  // Navigation handlers for TopBar
-  const handlePortfolioTap = () => {
-    // Already on portfolio screen
-  };
+  // Navigation handlers for TopBar - use callbacks if provided, otherwise use router
+  const handlePortfolioTap = onNavigateToHome || (() => {});
 
-  const handleCardTap = () => {
-    router.push('/card');
-  };
+  const handleCardTap = onNavigateToCard || (() => router.push('/card'));
 
   // Format date for display
   const formattedDate = new Date().toLocaleDateString('en-US', {
@@ -492,6 +494,10 @@ export default function StrategyScreen() {
       </KeyboardStickyView>
     </ThemedView>
   );
+}
+
+export default function StrategyScreen() {
+  return <StrategyScreenContent />;
 }
 
 const styles = StyleSheet.create({

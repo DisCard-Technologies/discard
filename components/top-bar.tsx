@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { StyleSheet, View, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 
@@ -66,14 +67,20 @@ export function TopBar({ walletAddress, onPortfolioTap, onCardTap }: TopBarProps
           pressed && styles.pressed,
         ]}
       >
-        <View style={[styles.connectionIcon, { backgroundColor: `${primaryColor}30` }]}>
-          <Ionicons name="wifi" size={12} color={primaryColor} />
-        </View>
+        <LinearGradient
+          colors={['#10b981', '#34d399']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.connectionIcon}
+        >
+          <Ionicons name="finger-print" size={16} color="#fff" />
+        </LinearGradient>
         <ThemedText style={styles.addressText}>{truncatedAddress}</ThemedText>
         <Ionicons
           name={copied ? 'checkmark' : 'copy-outline'}
           size={14}
           color={copied ? primaryColor : mutedColor}
+          style={styles.copyIcon}
         />
       </Pressable>
 
@@ -101,9 +108,9 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   iconButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
@@ -112,26 +119,28 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 22,
+    paddingHorizontal: 6,
+    paddingVertical: 6,
+    borderRadius: 24,
     borderWidth: 1,
-    minHeight: 44,
   },
   connectionIcon: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
   },
   addressText: {
-    fontSize: 13,
+    fontSize: 14,
     fontFamily: 'monospace',
-    opacity: 0.9,
+    fontWeight: '500',
+  },
+  copyIcon: {
+    marginRight: 4,
   },
   pressed: {
     opacity: 0.7,
-    transform: [{ scale: 0.96 }],
+    transform: [{ scale: 0.95 }],
   },
 });

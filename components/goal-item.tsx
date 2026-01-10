@@ -98,7 +98,7 @@ export function GoalsSection({ goals, onGoalPress, onAddGoal }: GoalsSectionProp
       {/* Goals List */}
       <View style={styles.goalsList}>
         {goals.map((goal) => (
-          <View key={goal.id} style={[styles.goalItemWrapper, { borderBottomColor: borderColor }]}>
+          <View key={goal.id} style={styles.goalItemWrapper}>
             <GoalItem goal={goal} onPress={onGoalPress} />
           </View>
         ))}
@@ -129,7 +129,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 4,
   },
   sectionTitle: {
     fontSize: 16,
@@ -137,8 +137,8 @@ const styles = StyleSheet.create({
   },
   addButton: {
     paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
+    paddingVertical: 6,
+    borderRadius: 16,
   },
   addButtonPressed: {
     opacity: 0.7,
@@ -149,7 +149,8 @@ const styles = StyleSheet.create({
   },
   goalsList: {},
   goalItemWrapper: {
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(128, 128, 128, 0.15)',
   },
   container: {
     flexDirection: 'row',
@@ -192,13 +193,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
     padding: 12,
-    borderRadius: 12,
+    borderRadius: 16,
     borderWidth: 1,
     backgroundColor: 'rgba(16, 185, 129, 0.1)',
-    marginTop: 12,
+    marginTop: 8,
   },
   createBannerPressed: {
-    opacity: 0.7,
+    opacity: 0.8,
   },
   createBannerText: {
     flex: 1,

@@ -1,10 +1,13 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { StyleSheet, View, Alert, Pressable, Keyboard } from 'react-native';
+import { StyleSheet, View, Alert, Pressable, Keyboard, Dimensions } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { KeyboardStickyView } from 'react-native-keyboard-controller';
+import { LinearGradient } from 'expo-linear-gradient';
 import Animated, { useSharedValue, useAnimatedStyle, withTiming } from 'react-native-reanimated';
+
+const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -27,30 +30,25 @@ const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 // Drawer dimensions
 const DRAWER_CLOSED_HEIGHT = 220;
-const DRAWER_OPEN_HEIGHT = 450;
+const DRAWER_OPEN_HEIGHT = 380;
 
-export default function HomeScreen() {
+// Props for the content component when used in pager
+export interface HomeScreenContentProps {
+  onNavigateToStrategy?: () => void;
+  onNavigateToCard?: () => void;
+}
+
+export function HomeScreenContent({ onNavigateToStrategy, onNavigateToCard }: HomeScreenContentProps) {
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme();
-
-  // Get chat session ID from navigation params (when coming from history)
-  const { chatSessionId } = useLocalSearchParams<{ chatSessionId?: string }>();
 
   // Chat history hook
   const {
     activeSession,
     createNewChat,
-    loadChat,
     updateMessages,
     clearActiveChat,
   } = useChatHistory();
-
-  // Load chat when navigated with session ID
-  useEffect(() => {
-    if (chatSessionId) {
-      loadChat(chatSessionId);
-    }
-  }, [chatSessionId, loadChat]);
 
   // Handle new session creation (when first message is sent without a session)
   const handleNewSession = useCallback((firstMessage: string) => {
@@ -143,9 +141,9 @@ export default function HomeScreen() {
   // Real wallet address from auth
   const walletAddress = user?.solanaAddress || '7F3a...8b2E';
 
-  // Navigation handlers for top bar
-  const handlePortfolioTap = () => router.push('/strategy');
-  const handleCardTap = () => router.push('/card');
+  // Navigation handlers for top bar - use callbacks if provided, otherwise use router
+  const handlePortfolioTap = onNavigateToStrategy || (() => router.push('/strategy'));
+  const handleCardTap = onNavigateToCard || (() => router.push('/card'));
 
   // Quick action handlers
   const handleSend = () => router.push('/send');
@@ -177,9 +175,23 @@ export default function HomeScreen() {
 
   const handleMic = () => {};
 
+  const isDark = colorScheme === 'dark';
+
   return (
     <ThemedView style={styles.container}>
-      <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
+      <StatusBar style={isDark ? 'light' : 'dark'} />
+
+      {/* Ambient gradient background */}
+      <View style={styles.ambientGradient}>
+        <LinearGradient
+          colors={isDark 
+            ? ['rgba(16, 185, 129, 0.08)', 'transparent'] 
+            : ['rgba(16, 185, 129, 0.05)', 'transparent']}
+          style={StyleSheet.absoluteFill}
+          start={{ x: 0.5, y: 0 }}
+          end={{ x: 0.5, y: 0.6 }}
+        />
+      </View>
       
       {/* Safe area for top (status bar) */}
       <View style={{ height: insets.top }} />
@@ -230,6 +242,13 @@ export default function HomeScreen() {
         />
       </View>
 
+      {/* Gradient overlay before drawer */}
+      <LinearGradient
+        colors={isDark ? ['transparent', '#0f1419'] : ['transparent', '#ffffff']}
+        style={[styles.drawerGradient, { bottom: DRAWER_CLOSED_HEIGHT - 40 }]}
+        pointerEvents="none"
+      />
+
       {/* Draggable Bottom Drawer with Goals */}
       <DraggableDrawer closedHeight={DRAWER_CLOSED_HEIGHT} openHeight={DRAWER_OPEN_HEIGHT}>
         <GoalsSection goals={goals} onGoalPress={handleGoalPress} onAddGoal={handleAddGoal} />
@@ -262,9 +281,34 @@ export default function HomeScreen() {
   );
 }
 
+export default function HomeScreen() {
+  const { chatSessionId } = useLocalSearchParams<{ chatSessionId?: string }>();
+  const { loadChat } = useChatHistory();
+
+  // Load chat when navigated with session ID
+  useEffect(() => {
+    if (chatSessionId) {
+      loadChat(chatSessionId);
+    }
+  }, [chatSessionId, loadChat]);
+
+  // Use SwipeableMainView for the main home screen with pager navigation
+  // This enables swiping between Card <-> Home <-> Strategy
+  const { SwipeableMainView } = require('@/components/swipeable-main-view');
+  return <SwipeableMainView />;
+}
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  ambientGradient: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: SCREEN_HEIGHT * 0.5,
+    pointerEvents: 'none',
   },
   content: {
     flex: 1,
@@ -277,10 +321,17 @@ const styles = StyleSheet.create({
   stickyCommandBar: {
     zIndex: 200,
   },
+  drawerGradient: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    height: 80,
+    zIndex: 5,
+  },
   heroSection: {
     alignItems: 'center',
-    paddingTop: 32,
-    paddingBottom: 16,
+    paddingTop: 40,
+    paddingBottom: 24,
   },
   balanceText: {
     fontSize: 56,
