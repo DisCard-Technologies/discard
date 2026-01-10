@@ -1,10 +1,17 @@
 import { useRef, useState, useCallback } from 'react';
 import { StyleSheet, View } from 'react-native';
-import PagerView from 'react-native-pager-view';
 
 import { HomeScreenContent } from '@/app/(tabs)/index';
 import { CardScreenContent } from '@/app/(tabs)/card';
 import { StrategyScreenContent } from '@/app/(tabs)/strategy';
+
+// Try to load PagerView - it's not available in Expo Go
+let PagerView: typeof import('react-native-pager-view').default | null = null;
+try {
+  PagerView = require('react-native-pager-view').default;
+} catch (e) {
+  console.log('[SwipeableMainView] PagerView not available (Expo Go mode)');
+}
 
 // Page indices
 const PAGE_CARD = 0;
@@ -12,7 +19,7 @@ const PAGE_HOME = 1;
 const PAGE_STRATEGY = 2;
 
 export function SwipeableMainView() {
-  const pagerRef = useRef<PagerView>(null);
+  const pagerRef = useRef<any>(null);
   const [currentPage, setCurrentPage] = useState(PAGE_HOME);
 
   // Navigation callbacks for child screens
@@ -31,6 +38,15 @@ export function SwipeableMainView() {
   const handlePageSelected = useCallback((e: { nativeEvent: { position: number } }) => {
     setCurrentPage(e.nativeEvent.position);
   }, []);
+
+  // Fallback for Expo Go - just render HomeScreenContent without swipe navigation
+  if (!PagerView) {
+    return (
+      <View style={styles.pager}>
+        <HomeScreenContent />
+      </View>
+    );
+  }
 
   return (
     <PagerView
