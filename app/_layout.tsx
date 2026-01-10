@@ -4,6 +4,7 @@ import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native
 import { router, Stack, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import 'react-native-reanimated';
 import * as SecureStore from 'expo-secure-store';
 
@@ -112,15 +113,16 @@ export default function RootLayout() {
 
   // Wrap with Convex provider if available
   const content = (
-    <KeyboardProvider>
-      <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-        <AuthProvider>
-          <CardsProvider>
-            <FundingProvider>
-              <WalletsProvider>
-                <CryptoProvider>
-                  <AuthGuard>
-                    <Stack>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <KeyboardProvider>
+        <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+          <AuthProvider>
+            <CardsProvider>
+              <FundingProvider>
+                <WalletsProvider>
+                  <CryptoProvider>
+                    <AuthGuard>
+                      <Stack>
                       <Stack.Screen name="onboarding" options={{ headerShown: false, animation: 'fade' }} />
                       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
                       <Stack.Screen name="auth" options={{ headerShown: false }} />
@@ -136,14 +138,15 @@ export default function RootLayout() {
                       <Stack.Screen name="transfer" options={{ headerShown: false, presentation: 'modal' }} />
                     </Stack>
                   </AuthGuard>
-                  <StatusBar style="auto" />
-                </CryptoProvider>
-              </WalletsProvider>
-            </FundingProvider>
-          </CardsProvider>
-        </AuthProvider>
-      </ThemeProvider>
-    </KeyboardProvider>
+                    <StatusBar style="auto" />
+                  </CryptoProvider>
+                </WalletsProvider>
+              </FundingProvider>
+            </CardsProvider>
+          </AuthProvider>
+        </ThemeProvider>
+      </KeyboardProvider>
+    </GestureHandlerRootView>
   );
 
   // Only wrap with ConvexProvider if URL is configured

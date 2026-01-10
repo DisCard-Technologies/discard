@@ -5,41 +5,56 @@
 
 import { Platform } from 'react-native';
 
-// Primary brand color - vibrant orange
-export const primaryColor = '#ff5800';
+// Primary brand color - teal/emerald (ambient design)
+export const primaryColor = '#10B981';
 export const accentColor = '#a855f7';
 
-const tintColorLight = '#0a7ea4';
-const tintColorDark = '#fff';
+// Semantic colors
+export const positiveColor = '#10B981';
+export const negativeColor = '#ef4444';
+export const warningColor = '#f59e0b';
+
+const tintColorLight = '#10B981';
+const tintColorDark = '#10B981';
 
 export const Colors = {
   light: {
     text: '#11181C',
-    background: '#fff',
+    textMuted: '#687076',
+    background: '#ffffff',
+    card: '#f4f4f5',
     tint: tintColorLight,
+    border: '#e4e4e7',
     icon: '#687076',
     tabIconDefault: '#687076',
     tabIconSelected: tintColorLight,
+    positive: positiveColor,
+    negative: negativeColor,
   },
   dark: {
     text: '#ECEDEE',
-    background: '#151718',
+    textMuted: '#9BA1A6',
+    background: '#0f1419',
+    card: '#1a1f25',
     tint: tintColorDark,
+    border: '#2d3640',
     icon: '#9BA1A6',
     tabIconDefault: '#9BA1A6',
     tabIconSelected: tintColorDark,
+    positive: positiveColor,
+    negative: negativeColor,
   },
 };
 
 export const Fonts = Platform.select({
   ios: {
-    /** iOS `UIFontDescriptorSystemDesignDefault` */
+    /** iOS \`UIFontDescriptorSystemDesignDefault\` */
     sans: 'system-ui',
-    /** iOS `UIFontDescriptorSystemDesignSerif` */
+    /** iOS \`UIFontDescriptorSystemDesignSerif\` */
     serif: 'ui-serif',
-    /** iOS `UIFontDescriptorSystemDesignRounded` */
+    /** iOS \`UIFontDescriptorSystemDesignRounded\` */
     rounded: 'ui-rounded',
-    /** iOS `UIFontDescriptorSystemDesignMonospaced` */
+    /** iOS \`UIFontDescriptorSystemDesignMonospaced\` */
     mono: 'ui-monospace',
   },
   default: {

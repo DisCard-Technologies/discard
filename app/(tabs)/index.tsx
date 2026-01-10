@@ -1,7 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { StyleSheet, View, Alert, Pressable, Keyboard } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { KeyboardStickyView } from 'react-native-keyboard-controller';
@@ -11,22 +10,24 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { TopBar } from '@/components/top-bar';
 import { CommandBar } from '@/components/command-bar';
-import { useThemeColor } from '@/hooks/use-theme-color';
+import { AnimatedCounter } from '@/components/animated-counter';
+import { TransactionStack, StackTransaction } from '@/components/transaction-stack';
+import { QuickActions } from '@/components/quick-actions';
+import { DraggableDrawer } from '@/components/draggable-drawer';
+import { GoalsSection, Goal } from '@/components/goal-item';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useAuth } from '@/stores/authConvex';
 import { useFunding } from '@/stores/fundingConvex';
 import { useTokenHoldings } from '@/hooks/useTokenHoldings';
 import { useChatHistory } from '@/hooks/useChatHistory';
+import { positiveColor, negativeColor } from '@/constants/theme';
 import type { ChatMessage } from '@/types/chat';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
-interface AmbientAction {
-  id: number;
-  action: string;
-  time: string;
-  type: 'yield' | 'rebalance' | 'optimization';
-}
+// Drawer dimensions
+const DRAWER_CLOSED_HEIGHT = 220;
+const DRAWER_OPEN_HEIGHT = 450;
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
@@ -75,22 +76,49 @@ export default function HomeScreen() {
   }, [clearActiveChat]);
 
   // Real data from stores
-  const { user, isAuthenticated } = useAuth();
+  const { user } = useAuth();
   const { state: fundingState } = useFunding();
-  const { totalValue: cryptoValue, isLoading: cryptoLoading } = useTokenHoldings(user?.solanaAddress || null);
+  const { totalValue: cryptoValue } = useTokenHoldings(user?.solanaAddress || null);
 
   // Calculate net worth from funding balance + crypto holdings
   const netWorth = useMemo(() => {
     const accountBalance = fundingState?.accountBalance?.availableBalance || 0;
     const cryptoTotal = cryptoValue || 0;
-    return (accountBalance / 100) + cryptoTotal; // accountBalance is in cents
+    return (accountBalance / 100) + cryptoTotal;
   }, [fundingState?.accountBalance, cryptoValue]);
 
-  const [dailyChange] = useState(4.96); // TODO: Calculate from historical data
+  // Daily change state (simulated for now)
+  const [dailyChange, setDailyChange] = useState(1.45);
+  const [dailyChangeAmount, setDailyChangeAmount] = useState(18.21);
   const isPositive = dailyChange >= 0;
 
-  const primaryColor = useThemeColor({}, 'tint');
-  const mutedColor = useThemeColor({ light: '#687076', dark: '#9BA1A6' }, 'icon');
+  // Simulate real-time changes
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (Math.random() > 0.8) {
+        setDailyChange((prev) => {
+          const newChange = prev + (Math.random() - 0.5) * 0.5;
+          return Math.round(newChange * 100) / 100;
+        });
+        setDailyChangeAmount((prev) => Math.abs(prev * (0.8 + Math.random() * 0.4)));
+      }
+    }, 8000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Sample transactions
+  const [transactions] = useState<StackTransaction[]>([
+    { id: '1', type: 'send', address: '0x487a...aeef', tokenAmount: '-10.02 USDT', fiatValue: '$10.02', fee: '$4.65', estimatedTime: '≈3-4m' },
+    { id: '2', type: 'receive', address: '0x912b...cf21', tokenAmount: '+0.05 ETH', fiatValue: '$156.32' },
+    { id: '3', type: 'swap', address: 'SOL → USDC', tokenAmount: '+250 USDC', fiatValue: '$250.00' },
+  ]);
+
+  // Sample goals
+  const [goals] = useState<Goal[]>([
+    { id: 'btc-stack', title: 'Stack 0.1 BTC', target: 0.1, current: 0.03478, icon: 'analytics-outline', color: '#f97316', deadline: 'Mar 2026' },
+    { id: 'emergency', title: 'Emergency Fund', target: 5000, current: 2840, icon: 'wallet-outline', color: '#10B981', deadline: 'Jun 2026' },
+    { id: 'eth-stake', title: 'Stake 1 ETH', target: 1, current: 0.45, icon: 'trending-up-outline', color: '#3b82f6' },
+  ]);
 
   // Backdrop overlay animation
   const backdropOpacity = useSharedValue(0);
@@ -113,53 +141,33 @@ export default function HomeScreen() {
   }));
 
   // Real wallet address from auth
-  const walletAddress = user?.solanaAddress || '0x742d...4438f44e';
+  const walletAddress = user?.solanaAddress || '7F3a...8b2E';
 
-  const [ambientActions, setAmbientActions] = useState<AmbientAction[]>([
-    { id: 1, action: 'Auto-rebalanced card to $200', time: 'Just now', type: 'rebalance' },
-    { id: 2, action: 'Yield optimized +$12.84', time: '2h ago', type: 'yield' },
-    { id: 3, action: 'Gas saved on 3 transactions', time: '4h ago', type: 'optimization' },
-  ]);
+  // Navigation handlers
+  const handleIdentityTap = () => router.push('/identity');
+  const handleHistoryTap = () => router.push('/history');
+  const handleSettingsTap = () => router.push('/settings');
 
-  // Simulate ambient actions happening in background
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setAmbientActions((prev) => [
-        {
-          id: Date.now(),
-          action: 'Yield compounded +$0.42',
-          time: 'Just now',
-          type: 'yield',
-        },
-        ...prev.slice(0, 4),
-      ]);
-    }, 30000);
-    return () => clearInterval(interval);
-  }, []);
+  // Quick action handlers
+  const handleSend = () => router.push('/send');
+  const handleReceive = () => router.push('/receive');
+  const handleSwap = () => Alert.alert('Swap', 'Swap functionality coming soon');
+  const handleScanQR = () => Alert.alert('Scan QR', 'QR Scanner coming soon');
+  const handleEditActions = () => Alert.alert('Edit Actions', 'Customize your quick actions');
 
-  const getIndicatorColor = (type: AmbientAction['type']) => {
-    switch (type) {
-      case 'yield':
-        return primaryColor;
-      case 'rebalance':
-        return '#a855f7'; // accent purple
-      case 'optimization':
-        return '#22c55e'; // green
-    }
+  const handleTransactionTap = (tx: StackTransaction) => {
+    Alert.alert('Transaction', `Tapped on ${tx.type}: ${tx.tokenAmount}`);
   };
 
-  const handleIdentityTap = () => {
-    router.push('/identity');
+  const handleGoalPress = (goal: Goal) => {
+    Alert.alert('Goal', `Viewing goal: ${goal.title}`);
   };
 
-  const handleHistoryTap = () => {
-    router.push('/history');
+  const handleAddGoal = () => {
+    Alert.alert('Add Goal', 'Create a new savings goal');
   };
 
-  const handleSettingsTap = () => {
-    router.push('/settings');
-  };
-
+  // Command bar handlers
   const handleSendMessage = (message: string) => {
     Alert.alert('Command', `You said: "${message}"`);
   };
@@ -168,9 +176,7 @@ export default function HomeScreen() {
     Alert.alert('Camera', 'Camera/scan coming soon');
   };
 
-  const handleMic = () => {
-    // Voice input feedback handled by CommandBar
-  };
+  const handleMic = () => {};
 
   return (
     <ThemedView style={styles.container}>
@@ -189,58 +195,47 @@ export default function HomeScreen() {
 
       {/* Main Content */}
       <View style={styles.content}>
-        {/* Net Worth - the only "dashboard" element */}
-        <View style={styles.netWorthContainer}>
-          <ThemedText style={styles.netWorthLabel}>NET WORTH</ThemedText>
-          <ThemedText style={styles.netWorthValue}>${netWorth.toLocaleString()}</ThemedText>
-          <View style={[styles.changeRow, { backgroundColor: isPositive ? '#22c55e20' : '#ef444420' }]}>
-            <Ionicons
-              name={isPositive ? 'trending-up' : 'trending-down'}
-              size={16}
-              color={isPositive ? '#22c55e' : '#ef4444'}
-            />
-            <ThemedText style={[styles.changeText, { color: isPositive ? '#22c55e' : '#ef4444' }]}>
-              {isPositive ? '+' : ''}
-              {dailyChange.toFixed(2)}% today
+        {/* Hero Section - Balance Display */}
+        <View style={styles.heroSection}>
+          <AnimatedCounter value={netWorth} prefix="$" style={styles.balanceText} />
+
+          {/* Daily Change Badge */}
+          <View style={styles.changeContainer}>
+            <View
+              style={[
+                styles.changeBadge,
+                { backgroundColor: isPositive ? `${positiveColor}30` : `${negativeColor}30` },
+              ]}
+            >
+              <ThemedText
+                style={[styles.changePercent, { color: isPositive ? positiveColor : negativeColor }]}
+              >
+                {isPositive ? '+' : ''}{dailyChange.toFixed(2)}%
+              </ThemedText>
+            </View>
+            <ThemedText style={styles.changeAmount}>
+              (${dailyChangeAmount.toFixed(2)}) Today
             </ThemedText>
           </View>
         </View>
 
-        {/* Ambient Activity Feed - what's happening in the background */}
-        <View style={styles.activitySection}>
-          <View style={styles.sectionHeader}>
-            <Ionicons name="flash" size={12} color={primaryColor} />
-            <ThemedText style={[styles.sectionLabel, { color: mutedColor }]}>BACKGROUND ACTIVITY</ThemedText>
-          </View>
-          {ambientActions.slice(0, 3).map((action) => (
-            <ThemedView key={action.id} style={styles.activityItem} lightColor="#f4f4f5" darkColor="#27272a">
-              <View style={styles.activityLeft}>
-                <View style={[styles.indicator, { backgroundColor: getIndicatorColor(action.type) }]} />
-                <ThemedText style={[styles.activityText, { color: mutedColor }]}>{action.action}</ThemedText>
-              </View>
-              <ThemedText style={[styles.timeText, { color: mutedColor, opacity: 0.6 }]}>{action.time}</ThemedText>
-            </ThemedView>
-          ))}
-        </View>
+        {/* Transaction Stack */}
+        <TransactionStack transactions={transactions} onTransactionTap={handleTransactionTap} />
 
-        {/* Declarative Goals - 2035 style */}
-        <ThemedView style={styles.goalsCard} lightColor="#f4f4f5" darkColor="#1c1c1e">
-          <View style={styles.goalsHeader}>
-            <Ionicons name="shield-checkmark" size={16} color={primaryColor} />
-            <ThemedText style={styles.goalsTitle}>Active Goals</ThemedText>
-          </View>
-          <View style={styles.goalsList}>
-            <View style={styles.goalItem}>
-              <ThemedText style={[styles.goalText, { color: mutedColor }]}>{'"Keep card at $200"'}</ThemedText>
-              <ThemedText style={[styles.goalStatus, { color: primaryColor }]}>Active</ThemedText>
-            </View>
-            <View style={styles.goalItem}>
-              <ThemedText style={[styles.goalText, { color: mutedColor }]}>{'"Maximize yield on idle USDC"'}</ThemedText>
-              <ThemedText style={[styles.goalStatus, { color: primaryColor }]}>+$847/mo</ThemedText>
-            </View>
-          </View>
-        </ThemedView>
+        {/* Quick Actions */}
+        <QuickActions
+          onSend={handleSend}
+          onReceive={handleReceive}
+          onSwap={handleSwap}
+          onScanQR={handleScanQR}
+          onEdit={handleEditActions}
+        />
       </View>
+
+      {/* Draggable Bottom Drawer with Goals */}
+      <DraggableDrawer closedHeight={DRAWER_CLOSED_HEIGHT} openHeight={DRAWER_OPEN_HEIGHT}>
+        <GoalsSection goals={goals} onGoalPress={handleGoalPress} onAddGoal={handleAddGoal} />
+      </DraggableDrawer>
 
       {/* Backdrop Overlay */}
       <AnimatedPressable
@@ -275,112 +270,42 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    paddingHorizontal: 24,
   },
   backdrop: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    zIndex: 10,
+    zIndex: 100,
   },
   stickyCommandBar: {
-    zIndex: 20,
+    zIndex: 200,
   },
-  netWorthContainer: {
-    flex: 1,
+  heroSection: {
     alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: -40,
+    paddingTop: 32,
+    paddingBottom: 16,
   },
-  netWorthLabel: {
-    fontSize: 10,
-    letterSpacing: 3,
-    opacity: 0.5,
-    marginBottom: 12,
+  balanceText: {
+    fontSize: 56,
+    fontWeight: '600',
+    letterSpacing: -2,
   },
-  netWorthValue: {
-    fontSize: 48,
-    lineHeight: 48,
-    fontWeight: '200',
-    letterSpacing: -1,
-    marginBottom: 12,
-  },
-  changeRow: {
+  changeContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 8,
+    marginTop: 12,
+  },
+  changeBadge: {
     paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: 20,
-  },
-  changeText: {
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  activitySection: {
-    gap: 8,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 4,
-  },
-  sectionLabel: {
-    fontSize: 10,
-    letterSpacing: 2,
-  },
-  activityItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: 12,
-  },
-  activityLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  indicator: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  activityText: {
-    fontSize: 12,
-  },
-  timeText: {
-    fontSize: 10,
-  },
-  goalsCard: {
-    marginTop: 16,
-    marginBottom: 16,
     borderRadius: 16,
-    padding: 16,
   },
-  goalsHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 12,
-  },
-  goalsTitle: {
-    fontSize: 12,
-    fontWeight: '500',
-  },
-  goalsList: {
-    gap: 8,
-  },
-  goalItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  goalText: {
+  changePercent: {
     fontSize: 14,
+    fontWeight: '600',
   },
-  goalStatus: {
-    fontSize: 12,
+  changeAmount: {
+    fontSize: 14,
+    fontWeight: '500',
   },
 });
