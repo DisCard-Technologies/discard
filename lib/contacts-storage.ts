@@ -6,7 +6,21 @@
  * and reduces server storage costs.
  */
 
-import AsyncStorage from "@react-native-async-storage/async-storage";
+// AsyncStorage may not be available in all environments (Expo Go sometimes)
+type AsyncStorageType = {
+  getItem: (key: string) => Promise<string | null>;
+  setItem: (key: string, value: string) => Promise<void>;
+  removeItem: (key: string) => Promise<void>;
+};
+
+let AsyncStorage: AsyncStorageType | null = null;
+
+try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  AsyncStorage = require("@react-native-async-storage/async-storage").default;
+} catch {
+  console.warn("[ContactsStorage] AsyncStorage not available");
+}
 
 // ============================================================================
 // Types
@@ -99,6 +113,10 @@ function generateAvatarColor(name: string): string {
 // ============================================================================
 
 async function loadContacts(): Promise<LocalContact[]> {
+  if (!AsyncStorage) {
+    console.warn("[ContactsStorage] AsyncStorage not available, returning empty contacts");
+    return [];
+  }
   try {
     const data = await AsyncStorage.getItem(STORAGE_KEY);
     if (!data) return [];
@@ -116,6 +134,10 @@ async function loadContacts(): Promise<LocalContact[]> {
 }
 
 async function saveContacts(contacts: LocalContact[]): Promise<void> {
+  if (!AsyncStorage) {
+    console.warn("[ContactsStorage] AsyncStorage not available, cannot save contacts");
+    return;
+  }
   try {
     const data: ContactsData = {
       version: CURRENT_VERSION,
@@ -489,6 +511,7 @@ export const ContactsStorage = {
    * Clear all contacts (for testing/reset)
    */
   async clearAll(): Promise<void> {
+    if (!AsyncStorage) return;
     await AsyncStorage.removeItem(STORAGE_KEY);
   },
 
