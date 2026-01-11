@@ -70,13 +70,21 @@ export const create = mutation({
       throw new Error("User not found");
     }
 
-    // Get user's wallet address
+    // Get user's wallet address - try Turnkey org first, then fall back to user's solanaAddress
+    let walletAddress: string | undefined;
+
     const turnkeyOrg = await ctx.db
       .query("turnkeyOrganizations")
       .withIndex("by_user", (q) => q.eq("userId", user._id))
       .first();
 
-    if (!turnkeyOrg) {
+    if (turnkeyOrg?.walletAddress) {
+      walletAddress = turnkeyOrg.walletAddress;
+    } else if (user.solanaAddress) {
+      walletAddress = user.solanaAddress;
+    }
+
+    if (!walletAddress) {
       throw new Error("No wallet found");
     }
 
@@ -87,7 +95,7 @@ export const create = mutation({
     const webLink = `${WEB_LINK_BASE}/${requestId}`;
 
     // Generate Solana Pay URI
-    let solanaPayUri = `solana:${turnkeyOrg.walletAddress}`;
+    let solanaPayUri = `solana:${walletAddress}`;
     const queryParams: string[] = [];
 
     if (args.amount > 0) {
@@ -123,7 +131,7 @@ export const create = mutation({
       tokenDecimals: args.tokenDecimals,
       amountUsd: args.amountUsd,
       memo: args.memo,
-      recipientAddress: turnkeyOrg.walletAddress,
+      recipientAddress: walletAddress,
       recipientName: args.recipientName || user.displayName,
       linkType: "web",
       linkUrl: webLink,
