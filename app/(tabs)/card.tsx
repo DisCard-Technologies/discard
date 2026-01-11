@@ -222,14 +222,17 @@ export function CardScreenContent({ onNavigateToStrategy, onNavigateToHome }: Ca
   }));
 
   const handleSendMessage = (message: string) => {
-    Alert.alert('Command', `You said: "${message}"`);
+    // Command bar handles this internally - just log
+    console.log('[Card] Command bar message:', message);
   };
 
   const handleCamera = () => {
-    Alert.alert('Camera', 'Camera/scan coming soon');
+    router.push('/transfer/scan');
   };
 
-  const handleMic = () => {};
+  const handleMic = () => {
+    // Voice input not yet implemented
+  };
 
   const copyCardNumber = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -550,7 +553,7 @@ export function CardScreenContent({ onNavigateToStrategy, onNavigateToHome }: Ca
                         <Ionicons name="arrow-up" size={18} color={mutedColor} />
                       </View>
                       <View style={styles.transactionInfo}>
-                        <ThemedText style={styles.transactionMerchant}>{tx.merchant}</ThemedText>
+                        <ThemedText style={styles.transactionMerchant} numberOfLines={1}>{tx.merchant}</ThemedText>
                         <ThemedText style={[styles.transactionTime, { color: mutedColor }]}>
                           {tx.date}
                         </ThemedText>
@@ -626,7 +629,7 @@ export function CardScreenContent({ onNavigateToStrategy, onNavigateToHome }: Ca
               </ThemedText>
             </Pressable>
 
-            <Pressable onPress={() => Alert.alert('Edit Card', 'Card settings coming soon')} style={styles.actionButton}>
+            <Pressable onPress={() => console.log('[Card] Edit card settings')} style={styles.actionButton}>
               <View style={[styles.actionButtonCircle, { backgroundColor: cardBg, borderColor }]}>
                 <Ionicons name="settings-outline" size={22} color={textColor} />
               </View>
@@ -671,25 +674,25 @@ export function CardScreenContent({ onNavigateToStrategy, onNavigateToHome }: Ca
 
               {/* Apple Pay */}
               <Pressable
-                style={({ pressed }) => [styles.drawerItem, pressed && styles.drawerItemPressed]}
-                onPress={() => Alert.alert('Apple Pay', 'Add to Apple Pay')}
+                style={({ pressed }) => [styles.drawerItem, styles.drawerItemDisabled, pressed && styles.drawerItemPressed]}
+                onPress={() => console.log('[Card] Apple Pay - coming soon')}
               >
-                <View style={[styles.drawerItemIcon, { backgroundColor: '#000' }]}>
+                <View style={[styles.drawerItemIcon, { backgroundColor: '#000', opacity: 0.5 }]}>
                   <ThemedText style={styles.applePayText}>Pay</ThemedText>
                 </View>
                 <View style={styles.drawerItemContent}>
-                  <ThemedText style={styles.drawerItemTitle}>Apple Pay</ThemedText>
+                  <ThemedText style={[styles.drawerItemTitle, { opacity: 0.5 }]}>Apple Pay</ThemedText>
                   <ThemedText style={[styles.drawerItemSubtitle, { color: mutedColor }]}>
-                    Card has been added
+                    Coming soon
                   </ThemedText>
                 </View>
-                <Ionicons name="chevron-forward" size={20} color={mutedColor} />
+                <Ionicons name="chevron-forward" size={20} color={mutedColor} style={{ opacity: 0.5 }} />
               </Pressable>
 
               {/* Payment Method */}
               <Pressable
                 style={({ pressed }) => [styles.drawerItem, pressed && styles.drawerItemPressed]}
-                onPress={() => Alert.alert('Payment Method', 'Change payment method')}
+                onPress={() => console.log('[Card] Payment method settings')}
               >
                 <View style={[styles.drawerItemIcon, { backgroundColor: `${primaryColor}20` }]}>
                   <ThemedText style={[styles.solanaSymbol, { color: primaryColor }]}>◎</ThemedText>
@@ -710,19 +713,19 @@ export function CardScreenContent({ onNavigateToStrategy, onNavigateToHome }: Ca
 
               {/* Card Design */}
               <Pressable
-                style={({ pressed }) => [styles.drawerItem, pressed && styles.drawerItemPressed]}
-                onPress={() => Alert.alert('Card Design', 'Customize card design')}
+                style={({ pressed }) => [styles.drawerItem, styles.drawerItemDisabled, pressed && styles.drawerItemPressed]}
+                onPress={() => console.log('[Card] Card design - coming soon')}
               >
-                <View style={[styles.drawerItemIcon, { backgroundColor: 'rgba(168, 85, 247, 0.2)' }]}>
+                <View style={[styles.drawerItemIcon, { backgroundColor: 'rgba(168, 85, 247, 0.2)', opacity: 0.5 }]}>
                   <Ionicons name="color-palette" size={18} color="#a855f7" />
                 </View>
                 <View style={styles.drawerItemContent}>
-                  <ThemedText style={styles.drawerItemTitle}>Card Design</ThemedText>
+                  <ThemedText style={[styles.drawerItemTitle, { opacity: 0.5 }]}>Card Design</ThemedText>
                   <ThemedText style={[styles.drawerItemSubtitle, { color: mutedColor }]}>
-                    Light theme
+                    Coming soon
                   </ThemedText>
                 </View>
-                <Ionicons name="chevron-forward" size={20} color={mutedColor} />
+                <Ionicons name="chevron-forward" size={20} color={mutedColor} style={{ opacity: 0.5 }} />
               </Pressable>
             </View>
           </Animated.View>
@@ -1098,6 +1101,9 @@ const styles = StyleSheet.create({
   },
   drawerItemPressed: {
     opacity: 0.7,
+  },
+  drawerItemDisabled: {
+    opacity: 0.6,
   },
   drawerItemIcon: {
     width: 36,

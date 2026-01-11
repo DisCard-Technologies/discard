@@ -1,0 +1,290 @@
+/**
+ * DisCard 2035 - Goals Mutations & Queries
+ *
+ * CRUD operations for user savings goals and strategies.
+ * Integrates with AI intent system for natural language goal creation.
+ */
+
+import { v } from "convex/values";
+import { mutation, query, internalQuery } from "../_generated/server";
+import type { Doc, Id } from "../_generated/dataModel";
+
+// ============================================================================
+// Types
+// ============================================================================
+
+type GoalType = "savings" | "accumulate" | "yield" | "custom";
+type GoalStatus = "active" | "completed" | "cancelled";
+
+// ============================================================================
+// Mutations
+// ============================================================================
+
+/**
+ * Create a new goal
+ */
+export const create = mutation({
+  args: {
+    title: v.string(),
+    type: v.union(
+      v.literal("savings"),
+      v.literal("accumulate"),
+      v.literal("yield"),
+      v.literal("custom")
+    ),
+    targetAmount: v.number(),
+    targetToken: v.optional(v.string()),
+    currentAmount: v.optional(v.number()),
+    deadline: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Not authenticated");
+    }
+
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_credential", (q) =>
+        q.eq("credentialId", identity.subject)
+      )
+      .first();
+
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    const goalId = await ctx.db.insert("goals", {
+      userId: user._id,
+      title: args.title,
+      type: args.type,
+      targetAmount: args.targetAmount,
+      targetToken: args.targetToken,
+      currentAmount: args.currentAmount ?? 0,
+      deadline: args.deadline,
+      status: "active",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+
+    return goalId;
+  },
+});
+
+/**
+ * Update goal progress
+ */
+export const updateProgress = mutation({
+  args: {
+    goalId: v.id("goals"),
+    currentAmount: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Not authenticated");
+    }
+
+    const goal = await ctx.db.get(args.goalId);
+    if (!goal) {
+      throw new Error("Goal not found");
+    }
+
+    // Check if goal is now complete
+    const isComplete = args.currentAmount >= goal.targetAmount;
+
+    await ctx.db.patch(args.goalId, {
+      currentAmount: args.currentAmount,
+      status: isComplete ? "completed" : "active",
+      updatedAt: Date.now(),
+    });
+
+    return { completed: isComplete };
+  },
+});
+
+/**
+ * Update goal details
+ */
+export const update = mutation({
+  args: {
+    goalId: v.id("goals"),
+    title: v.optional(v.string()),
+    targetAmount: v.optional(v.number()),
+    targetToken: v.optional(v.string()),
+    deadline: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Not authenticated");
+    }
+
+    const goal = await ctx.db.get(args.goalId);
+    if (!goal) {
+      throw new Error("Goal not found");
+    }
+
+    const updates: Partial<Doc<"goals">> = {
+      updatedAt: Date.now(),
+    };
+
+    if (args.title !== undefined) updates.title = args.title;
+    if (args.targetAmount !== undefined) updates.targetAmount = args.targetAmount;
+    if (args.targetToken !== undefined) updates.targetToken = args.targetToken;
+    if (args.deadline !== undefined) updates.deadline = args.deadline;
+
+    await ctx.db.patch(args.goalId, updates);
+  },
+});
+
+/**
+ * Mark goal as completed
+ */
+export const complete = mutation({
+  args: {
+    goalId: v.id("goals"),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Not authenticated");
+    }
+
+    const goal = await ctx.db.get(args.goalId);
+    if (!goal) {
+      throw new Error("Goal not found");
+    }
+
+    await ctx.db.patch(args.goalId, {
+      status: "completed",
+      currentAmount: goal.targetAmount,
+      updatedAt: Date.now(),
+    });
+  },
+});
+
+/**
+ * Cancel a goal
+ */
+export const cancel = mutation({
+  args: {
+    goalId: v.id("goals"),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Not authenticated");
+    }
+
+    const goal = await ctx.db.get(args.goalId);
+    if (!goal) {
+      throw new Error("Goal not found");
+    }
+
+    await ctx.db.patch(args.goalId, {
+      status: "cancelled",
+      updatedAt: Date.now(),
+    });
+  },
+});
+
+/**
+ * Delete a goal
+ */
+export const remove = mutation({
+  args: {
+    goalId: v.id("goals"),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Not authenticated");
+    }
+
+    const goal = await ctx.db.get(args.goalId);
+    if (!goal) {
+      throw new Error("Goal not found");
+    }
+
+    await ctx.db.delete(args.goalId);
+  },
+});
+
+// ============================================================================
+// Queries
+// ============================================================================
+
+/**
+ * Get all active goals for the current user
+ */
+export const list = query({
+  args: {
+    includeCompleted: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      return [];
+    }
+
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_credential", (q) =>
+        q.eq("credentialId", identity.subject)
+      )
+      .first();
+
+    if (!user) {
+      return [];
+    }
+
+    let goals = await ctx.db
+      .query("goals")
+      .withIndex("by_user", (q) => q.eq("userId", user._id))
+      .collect();
+
+    // Filter out completed/cancelled unless requested
+    if (!args.includeCompleted) {
+      goals = goals.filter((g) => g.status === "active");
+    }
+
+    // Sort by creation date (newest first)
+    return goals.sort((a, b) => b.createdAt - a.createdAt);
+  },
+});
+
+/**
+ * Get a single goal by ID
+ */
+export const get = query({
+  args: {
+    goalId: v.id("goals"),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db.get(args.goalId);
+  },
+});
+
+// ============================================================================
+// Internal Queries (for AI solver)
+// ============================================================================
+
+/**
+ * Get all goals for a user by userId (internal use for AI context)
+ */
+export const listByUserId = internalQuery({
+  args: {
+    userId: v.id("users"),
+  },
+  handler: async (ctx, args) => {
+    const goals = await ctx.db
+      .query("goals")
+      .withIndex("by_user_status", (q) =>
+        q.eq("userId", args.userId).eq("status", "active")
+      )
+      .collect();
+
+    return goals.sort((a, b) => b.createdAt - a.createdAt);
+  },
+});

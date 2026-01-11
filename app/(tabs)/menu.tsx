@@ -19,6 +19,7 @@ interface MenuItem {
   description?: string;
   route?: string;
   onPress?: () => void;
+  disabled?: boolean;
 }
 
 const menuItems: MenuItem[] = [
@@ -26,10 +27,10 @@ const menuItems: MenuItem[] = [
   { id: 'history', icon: 'time-outline', label: 'History', description: 'Transaction history', route: '/history' },
   { id: 'identity', icon: 'person-outline', label: 'Identity', description: 'KYC & verification', route: '/identity' },
   { id: 'cards', icon: 'card-outline', label: 'Cards', description: 'Manage cards', route: '/card' },
-  { id: 'security', icon: 'shield-outline', label: 'Security', description: 'Privacy & security', route: '/settings' },
-  { id: 'notifications', icon: 'notifications-outline', label: 'Notifications', description: 'Alert preferences', route: '/settings' },
-  { id: 'support', icon: 'help-circle-outline', label: 'Support', description: 'Get help', route: '/settings' },
-  { id: 'about', icon: 'information-circle-outline', label: 'About', description: 'App info', route: '/settings' },
+  { id: 'security', icon: 'shield-outline', label: 'Security', description: 'Coming soon', disabled: true },
+  { id: 'notifications', icon: 'notifications-outline', label: 'Notifications', description: 'Coming soon', disabled: true },
+  { id: 'support', icon: 'help-circle-outline', label: 'Support', description: 'Coming soon', disabled: true },
+  { id: 'about', icon: 'information-circle-outline', label: 'About', description: 'Coming soon', disabled: true },
 ];
 
 export default function MenuScreen() {
@@ -43,6 +44,11 @@ export default function MenuScreen() {
   const borderColor = useThemeColor({ light: 'rgba(0,0,0,0.08)', dark: 'rgba(255,255,255,0.1)' }, 'background');
 
   const handleMenuItemPress = (item: MenuItem) => {
+    if (item.disabled) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      console.log('[Menu] Coming soon:', item.label);
+      return;
+    }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (item.onPress) {
       item.onPress();
@@ -75,13 +81,20 @@ export default function MenuScreen() {
               style={({ pressed }) => [
                 styles.menuItem,
                 { backgroundColor: cardBg, borderColor },
-                pressed && styles.menuItemPressed,
+                pressed && !item.disabled && styles.menuItemPressed,
+                item.disabled && styles.menuItemDisabled,
               ]}
             >
-              <View style={[styles.iconContainer, { backgroundColor: `${primaryColor}15` }]}>
-                <Ionicons name={item.icon} size={24} color={primaryColor} />
+              <View style={[
+                styles.iconContainer,
+                { backgroundColor: `${primaryColor}15` },
+                item.disabled && { opacity: 0.5 }
+              ]}>
+                <Ionicons name={item.icon} size={24} color={item.disabled ? mutedColor : primaryColor} />
               </View>
-              <ThemedText style={styles.menuLabel}>{item.label}</ThemedText>
+              <ThemedText style={[styles.menuLabel, item.disabled && { opacity: 0.5 }]}>
+                {item.label}
+              </ThemedText>
               {item.description && (
                 <ThemedText style={[styles.menuDescription, { color: mutedColor }]}>
                   {item.description}
@@ -136,6 +149,9 @@ const styles = StyleSheet.create({
   menuItemPressed: {
     opacity: 0.7,
     transform: [{ scale: 0.98 }],
+  },
+  menuItemDisabled: {
+    opacity: 0.6,
   },
   iconContainer: {
     width: 48,

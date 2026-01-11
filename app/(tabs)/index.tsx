@@ -1,11 +1,14 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { StyleSheet, View, Alert, Pressable, Keyboard, Dimensions } from 'react-native';
+import { StyleSheet, View, Pressable, Keyboard, Dimensions } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { KeyboardStickyView } from 'react-native-keyboard-controller';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, { useSharedValue, useAnimatedStyle, withTiming } from 'react-native-reanimated';
+import { useQuery } from 'convex/react';
+import { api } from '@/convex/_generated/api';
+import type { Ionicons } from '@expo/vector-icons';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -104,19 +107,50 @@ export function HomeScreenContent({ onNavigateToStrategy, onNavigateToCard }: Ho
     return () => clearInterval(interval);
   }, []);
 
-  // Sample transactions
+  // Sample transactions (TODO: Replace with real transaction history)
   const [transactions] = useState<StackTransaction[]>([
     { id: '1', type: 'send', address: '0x487a...aeef', tokenAmount: '-10.02 USDT', fiatValue: '$10.02', fee: '$4.65', estimatedTime: '≈3-4m' },
     { id: '2', type: 'receive', address: '0x912b...cf21', tokenAmount: '+0.05 ETH', fiatValue: '$156.32' },
     { id: '3', type: 'swap', address: 'SOL → USDC', tokenAmount: '+250 USDC', fiatValue: '$250.00' },
   ]);
 
-  // Sample goals
-  const [goals] = useState<Goal[]>([
-    { id: 'btc-stack', title: 'Stack 0.1 BTC', target: 0.1, current: 0.03478, icon: 'analytics-outline', color: '#f97316', deadline: 'Mar 2026' },
-    { id: 'emergency', title: 'Emergency Fund', target: 5000, current: 2840, icon: 'wallet-outline', color: '#10B981', deadline: 'Jun 2026' },
-    { id: 'eth-stake', title: 'Stake 1 ETH', target: 1, current: 0.45, icon: 'trending-up-outline', color: '#3b82f6' },
-  ]);
+  // Real goals from Convex
+  const convexGoals = useQuery(api.goals.goals.list, {});
+
+  // Transform Convex goals to Goal format for UI
+  const goals = useMemo((): Goal[] => {
+    if (!convexGoals || convexGoals.length === 0) {
+      return [];
+    }
+
+    // Map goal type to icon
+    const typeToIcon: Record<string, keyof typeof Ionicons.glyphMap> = {
+      savings: 'wallet-outline',
+      accumulate: 'analytics-outline',
+      yield: 'trending-up-outline',
+      custom: 'star-outline',
+    };
+
+    // Map goal type to color
+    const typeToColor: Record<string, string> = {
+      savings: '#10B981', // green
+      accumulate: '#f97316', // orange
+      yield: '#3b82f6', // blue
+      custom: '#8b5cf6', // purple
+    };
+
+    return convexGoals.map((g) => ({
+      id: g._id,
+      title: g.title,
+      target: g.targetAmount / 100, // Convert cents to dollars
+      current: g.currentAmount / 100, // Convert cents to dollars
+      icon: typeToIcon[g.type] || 'star-outline',
+      color: typeToColor[g.type] || '#8b5cf6',
+      deadline: g.deadline
+        ? new Date(g.deadline).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+        : undefined,
+    }));
+  }, [convexGoals]);
 
   // Backdrop overlay animation
   const backdropOpacity = useSharedValue(0);
@@ -148,32 +182,40 @@ export function HomeScreenContent({ onNavigateToStrategy, onNavigateToCard }: Ho
   // Quick action handlers
   const handleSend = () => router.push('/send');
   const handleReceive = () => router.push('/receive');
-  const handleSwap = () => Alert.alert('Swap', 'Swap functionality coming soon');
-  const handleScanQR = () => Alert.alert('Scan QR', 'QR Scanner coming soon');
-  const handleEditActions = () => Alert.alert('Edit Actions', 'Customize your quick actions');
+  const handleSwap = () => {
+    // Swap functionality - navigate to transfer tab for now (swap coming soon)
+    router.push('/(tabs)/transfer');
+  };
+  const handleScanQR = () => router.push('/transfer/scan');
 
   const handleTransactionTap = (tx: StackTransaction) => {
-    Alert.alert('Transaction', `Tapped on ${tx.type}: ${tx.tokenAmount}`);
+    // Transaction details - could navigate to explorer or detail page
+    console.log('[Home] Transaction tapped:', tx.id, tx.type);
   };
 
   const handleGoalPress = (goal: Goal) => {
-    Alert.alert('Goal', `Viewing goal: ${goal.title}`);
+    // Goal detail - could show goal progress or edit modal
+    console.log('[Home] Goal tapped:', goal.id, goal.title);
   };
 
   const handleAddGoal = () => {
-    Alert.alert('Add Goal', 'Create a new savings goal');
+    // Focus command bar with goal creation suggestion
+    // The command bar handles the actual goal creation via AI
   };
 
   // Command bar handlers
   const handleSendMessage = (message: string) => {
-    Alert.alert('Command', `You said: "${message}"`);
+    // Command bar handles this internally - this is just a fallback
+    console.log('[Home] Command bar message:', message);
   };
 
   const handleCamera = () => {
-    Alert.alert('Camera', 'Camera/scan coming soon');
+    router.push('/transfer/scan');
   };
 
-  const handleMic = () => {};
+  const handleMic = () => {
+    // Voice input not yet implemented
+  };
 
   const isDark = colorScheme === 'dark';
 
@@ -238,7 +280,6 @@ export function HomeScreenContent({ onNavigateToStrategy, onNavigateToCard }: Ho
           onReceive={handleReceive}
           onSwap={handleSwap}
           onScanQR={handleScanQR}
-          onEdit={handleEditActions}
         />
       </View>
 

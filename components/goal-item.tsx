@@ -46,7 +46,7 @@ export function GoalItem({ goal, onPress }: GoalItemProps) {
       </View>
 
       <View style={styles.info}>
-        <ThemedText style={styles.title}>{goal.title}</ThemedText>
+        <ThemedText style={styles.title} numberOfLines={1}>{goal.title}</ThemedText>
         <ThemedText style={[styles.subtitle, { color: mutedColor }]}>
           {goal.deadline ? `Target: ${goal.deadline}` : `${Math.round(progress)}% complete`}
         </ThemedText>

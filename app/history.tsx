@@ -27,35 +27,7 @@ interface Transaction {
 
 // ChatMessage type from useChatHistory hook
 
-const mockTransactions: Transaction[] = [
-  {
-    id: 'mock-1',
-    type: 'swap',
-    label: 'Swapped USDC → SOL',
-    amount: '100 USDC → 0.82 SOL',
-    value: '$100.00',
-    time: 'Yesterday',
-    status: 'completed',
-  },
-  {
-    id: 'mock-2',
-    type: 'auto',
-    label: 'Auto-Rebalance',
-    amount: 'Card topped up',
-    value: '+$200.00',
-    time: 'Yesterday',
-    status: 'ambient',
-  },
-  {
-    id: 'mock-3',
-    type: 'receive',
-    label: 'Yield Earned',
-    amount: '+12.45 USDC',
-    value: '+$12.45',
-    time: '2 days ago',
-    status: 'ambient',
-  },
-];
+// No mock transactions - use real data only
 
 // Helper to format relative time
 const formatRelativeTime = (timestamp: number): string => {
@@ -185,17 +157,16 @@ export default function HistoryScreen() {
   const transfersQuery = useQuery(api.transfers.transfers.getByUser, { limit: 50 });
   const isLoadingTransfers = transfersQuery === undefined;
 
-  // Combine real transfers with mock data
+  // Get real transfers only
   const allTransactions = useMemo(() => {
     const realTransfers: Transaction[] = (transfersQuery ?? []).map(transferToTransaction);
 
     // Filter by contact if specified in params
-    const filteredTransfers = params.contact
-      ? realTransfers.filter(t => t.label.toLowerCase().includes(params.contact!.toLowerCase()))
-      : realTransfers;
+    if (params.contact) {
+      return realTransfers.filter(t => t.label.toLowerCase().includes(params.contact!.toLowerCase()));
+    }
 
-    // Combine real transfers (first) with mock transactions
-    return [...filteredTransfers, ...mockTransactions];
+    return realTransfers;
   }, [transfersQuery, params.contact]);
 
   const filteredTransactions = useMemo(() => {

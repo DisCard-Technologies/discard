@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { StyleSheet, View, Pressable, ScrollView, Dimensions, Keyboard, Alert, ActivityIndicator } from 'react-native';
+import { StyleSheet, View, Pressable, ScrollView, Dimensions, Keyboard, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
@@ -152,12 +152,23 @@ export function StrategyScreenContent({ onNavigateToHome, onNavigateToCard }: St
 
   // Calculate portfolio values
   const walletsValue = tokenTotal || 0;
-  const defiStrategyValue = 867.09; // Mock DeFi strategy value
+  const defiStrategyValue = 0; // No DeFi positions yet
   const totalPortfolioValue = walletsValue + defiStrategyValue;
-  
-  // Daily change (simulated)
-  const dailyChange = 0.25;
-  const dailyChangeAmount = 7.39;
+
+  // Calculate real daily change from token holdings
+  const dailyChange = useMemo(() => {
+    if (!tokenHoldings || tokenHoldings.length === 0) return 0;
+    // Calculate weighted average change
+    let totalChange = 0;
+    tokenHoldings.forEach(token => {
+      if (token.valueUsd > 0 && token.change24h) {
+        totalChange += (token.change24h * token.valueUsd) / (walletsValue || 1);
+      }
+    });
+    return totalChange;
+  }, [tokenHoldings, walletsValue]);
+
+  const dailyChangeAmount = Math.abs(dailyChange * walletsValue / 100);
   const isPositive = dailyChange >= 0;
 
   // Command bar state
@@ -178,14 +189,17 @@ export function StrategyScreenContent({ onNavigateToHome, onNavigateToCard }: St
   }));
 
   const handleSendMessage = (message: string) => {
-    Alert.alert('Command', `You said: "${message}"`);
+    // Command bar handles this internally - just log
+    console.log('[Strategy] Command bar message:', message);
   };
 
   const handleCamera = () => {
-    Alert.alert('Camera', 'Camera/scan coming soon');
+    router.push('/transfer/scan');
   };
 
-  const handleMic = () => {};
+  const handleMic = () => {
+    // Voice input not yet implemented
+  };
 
   // Navigation handlers for TopBar - use callbacks if provided, otherwise use router
   const handlePortfolioTap = onNavigateToHome || (() => {});
@@ -357,8 +371,8 @@ export function StrategyScreenContent({ onNavigateToHome, onNavigateToCard }: St
           <ThemedText style={styles.walletValueAmount}>
             $ {walletsValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </ThemedText>
-          <ThemedText style={[styles.walletValueDate, { color: negativeColor }]}>
-            -0.48% {formattedDate}
+          <ThemedText style={[styles.walletValueDate, { color: isPositive ? positiveColor : negativeColor }]}>
+            {isPositive ? '+' : ''}{dailyChange.toFixed(2)}% {formattedDate}
           </ThemedText>
         </View>
 
@@ -434,42 +448,25 @@ export function StrategyScreenContent({ onNavigateToHome, onNavigateToCard }: St
             <ThemedText style={[styles.sectionTitle, { color: mutedColor }]}>
               ACTIVE STRATEGIES
             </ThemedText>
-            
-            <ThemedView style={styles.strategyCard} lightColor="#f4f4f5" darkColor="#1c1c1e">
-              <View style={styles.strategyCardHeader}>
-                <View style={[styles.strategyIcon, { backgroundColor: `${primaryColor}20` }]}>
-                  <Ionicons name="trending-up" size={20} color={primaryColor} />
-                </View>
-                <View style={styles.strategyCardInfo}>
-                  <ThemedText style={styles.strategyName}>Yield Optimizer</ThemedText>
-                  <ThemedText style={[styles.strategyDescription, { color: mutedColor }]}>
-                    Auto-compound yields across DeFi protocols
-                  </ThemedText>
-                </View>
+
+            {/* Empty State for DeFi */}
+            <View style={styles.emptyState}>
+              <View style={[styles.emptyStateIcon, { backgroundColor: `${primaryColor}10` }]}>
+                <Ionicons name="flash-outline" size={32} color={primaryColor} />
               </View>
-              <View style={styles.strategyCardFooter}>
-                <View>
-                  <ThemedText style={[styles.strategyStatLabel, { color: mutedColor }]}>APY</ThemedText>
-                  <ThemedText style={[styles.strategyStatValue, { color: positiveColor }]}>+12.4%</ThemedText>
-                </View>
-                <View>
-                  <ThemedText style={[styles.strategyStatLabel, { color: mutedColor }]}>Deposited</ThemedText>
-                  <ThemedText style={styles.strategyStatValue}>$867.09</ThemedText>
-                </View>
-                <View>
-                  <ThemedText style={[styles.strategyStatLabel, { color: mutedColor }]}>Earned</ThemedText>
-                  <ThemedText style={[styles.strategyStatValue, { color: positiveColor }]}>+$42.15</ThemedText>
-                </View>
-              </View>
-            </ThemedView>
+              <ThemedText style={styles.emptyStateTitle}>No active strategies</ThemedText>
+              <ThemedText style={[styles.emptyStateText, { color: mutedColor }]}>
+                DeFi strategies let you earn yield on your crypto. This feature is coming soon.
+              </ThemedText>
+            </View>
 
             <Pressable
-              style={[styles.addStrategyButton, { borderColor: primaryColor }]}
-              onPress={() => Alert.alert('Add Strategy', 'Explore DeFi strategies')}
+              style={[styles.addStrategyButton, { borderColor: primaryColor, opacity: 0.6 }]}
+              onPress={() => console.log('[Strategy] Explore strategies - coming soon')}
             >
               <Ionicons name="add" size={20} color={primaryColor} />
               <ThemedText style={[styles.addStrategyText, { color: primaryColor }]}>
-                Explore Strategies
+                Coming Soon
               </ThemedText>
             </Pressable>
           </View>
