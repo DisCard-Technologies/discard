@@ -256,6 +256,34 @@ export default function TransferConfirmationScreen() {
         if (!localKeypair) {
           throw new Error("No signing key available. Please re-authenticate.");
         }
+
+        // Verify local keypair matches the wallet address used in transaction
+        const localPubkey = localKeypair.publicKey;
+        if (!localPubkey.equals(fromPubkey)) {
+          console.warn("[Confirmation] Local keypair mismatch, rebuilding transaction");
+          console.log("[Confirmation] Expected:", fromPubkey.toBase58());
+          console.log("[Confirmation] Local keypair:", localPubkey.toBase58());
+
+          // Rebuild transaction with local keypair's address
+          if (token.mint === "native" || token.mint === NATIVE_MINT.toBase58()) {
+            txResult = await buildSOLTransfer(
+              connection,
+              localPubkey,
+              toPubkey,
+              amountBaseUnits
+            );
+          } else {
+            txResult = await buildSPLTokenTransfer(
+              connection,
+              localPubkey,
+              toPubkey,
+              amountBaseUnits,
+              new PublicKey(token.mint)
+            );
+          }
+          signedTransaction = txResult.transaction;
+        }
+
         // Sign transaction with local keypair
         signedTransaction.sign(localKeypair);
       }
