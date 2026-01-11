@@ -26,7 +26,7 @@ import { ThemedView } from "@/components/themed-view";
 import { useThemeColor } from "@/hooks/use-theme-color";
 import { useColorScheme } from "@/hooks/use-color-scheme";
 import { TransferSummary } from "@/components/transfer";
-import { useAuth, useCurrentCredentialId } from "@/stores/authConvex";
+import { useAuth, useCurrentCredentialId, getLocalSolanaKeypair } from "@/stores/authConvex";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Connection, PublicKey } from "@solana/web3.js";
@@ -229,7 +229,7 @@ export default function TransferConfirmationScreen() {
         credentialId: credentialId || undefined,
       });
 
-      // Step 5: Sign with Turnkey
+      // Step 5: Sign transaction (Turnkey TEE or local keypair)
       setExecutionPhase("signing");
 
       await updateTransferStatus({
@@ -238,7 +238,27 @@ export default function TransferConfirmationScreen() {
         credentialId: credentialId || undefined,
       });
 
-      const { signedTransaction } = await turnkey.signTransaction(txResult.transaction);
+      let signedTransaction = txResult.transaction;
+
+      // Check if user has Turnkey sub-organization for TEE signing
+      if (turnkey.subOrg) {
+        console.log("[Confirmation] Signing with Turnkey TEE");
+        const signResult = await turnkey.signTransaction(txResult.transaction);
+        // Add Turnkey signature to transaction
+        signedTransaction.addSignature(
+          fromPubkey,
+          Buffer.from(signResult.signature)
+        );
+      } else {
+        // Fall back to local keypair signing (biometric auth users)
+        console.log("[Confirmation] Signing with local keypair (no Turnkey sub-org)");
+        const localKeypair = await getLocalSolanaKeypair();
+        if (!localKeypair) {
+          throw new Error("No signing key available. Please re-authenticate.");
+        }
+        // Sign transaction with local keypair
+        signedTransaction.sign(localKeypair);
+      }
 
       // Step 6: Submit to Firedancer
       setExecutionPhase("submitting");

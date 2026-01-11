@@ -129,7 +129,7 @@ async function generateAndStoreSolanaWallet(): Promise<{ publicKey: string; secr
 }
 
 // Retrieve stored Solana wallet
-async function getStoredSolanaWallet(): Promise<{ publicKey: string; secretKey: Uint8Array } | null> {
+export async function getStoredSolanaWallet(): Promise<{ publicKey: string; secretKey: Uint8Array } | null> {
   try {
     const secretKeyBase58 = await SecureStore.getItemAsync(SOLANA_SECRET_KEY);
     if (!secretKeyBase58) return null;
@@ -145,6 +145,13 @@ async function getStoredSolanaWallet(): Promise<{ publicKey: string; secretKey: 
     console.error("[Auth] Failed to retrieve Solana wallet:", e);
     return null;
   }
+}
+
+// Get Solana Keypair for local signing (biometric auth users without Turnkey)
+export async function getLocalSolanaKeypair(): Promise<Keypair | null> {
+  const wallet = await getStoredSolanaWallet();
+  if (!wallet) return null;
+  return Keypair.fromSecretKey(wallet.secretKey);
 }
 
 // Generate a unique credential ID for this device
