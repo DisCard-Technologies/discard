@@ -367,6 +367,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setState((prev) => ({
             ...prev,
             userId: userId as Id<"users">,
+            credentialId: credentialId || null,
             user: {
               id: userId,
               displayName: displayName || "DisCard User",
@@ -392,6 +393,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setState((prev) => ({
               ...prev,
               userId: stored.userId as Id<"users">,
+              credentialId: stored.credentialId || null,
               user: {
                 id: stored.userId!,
                 displayName: "DisCard User",
@@ -443,6 +445,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setState((prev) => ({
             ...prev,
             userId: result.userId as Id<"users">,
+            credentialId: authResult.id,
             isAuthenticated: true,
             error: null,
           }));
@@ -660,6 +663,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setState((prev) => ({
             ...prev,
             userId: userId as Id<"users">,
+            credentialId,
             user: {
               id: userId,
               displayName: displayName,
@@ -698,6 +702,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setState((prev) => ({
             ...prev,
             userId: userId as Id<"users">,
+            credentialId,
             user: {
               id: userId,
               displayName: displayName,
@@ -775,6 +780,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setState((prev) => ({
           ...prev,
           userId: result.userId as Id<"users">,
+          credentialId: registrationResult.id,
           isAuthenticated: true,
           error: null,
         }));
