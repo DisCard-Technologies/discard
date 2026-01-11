@@ -246,7 +246,7 @@ export const send = action({
       smsText += `They're sending you $${invitation.pendingAmount} ${invitation.pendingToken}! `;
     }
 
-    smsText += `Download now: https://discard.app/invite/${invitation.inviteCode}`;
+    smsText += `Download now: https://www.discard.tech/claim/${invitation.inviteCode}`;
 
     // Send via Vonage
     const VONAGE_API_KEY = process.env.VONAGE_API_KEY;

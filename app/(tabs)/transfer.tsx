@@ -306,9 +306,25 @@ export default function TransferScreen() {
       return;
     }
 
-    // If no contact selected, open contact search
+    // If no contact selected, go to send screen for recipient selection
     if (!selectedContact) {
-      router.push('/contacts' as any);
+      (router.push as any)({
+        pathname: '/transfer/send',
+        params: {
+          amount: JSON.stringify({
+            amount: parseFloat(amount),
+            amountUsd: parseFloat(amount),
+            amountBaseUnits: paymentAmountBaseUnits || (parseFloat(amount) * 1e6).toString(),
+          }),
+          token: JSON.stringify({
+            symbol: selectedToken,
+            mint: selectedPaymentToken?.mint || 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+            decimals: selectedPaymentToken?.decimals || 6,
+            balance: 0,
+            balanceUsd: 0,
+          }),
+        },
+      });
       return;
     }
 

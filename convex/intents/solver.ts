@@ -294,6 +294,7 @@ async function gatherUserContext(ctx: any, userId: Id<"users">): Promise<{
   cards: Array<{ id: string; last4: string; balance: number; status: string; nickname?: string; createdAt: number }>;
   wallets: Array<{ id: string; network: string; type: string; balance?: number; nickname?: string }>;
   defiPositions: Array<{ id: string; protocol: string; available: number; yield: number }>;
+  contacts: Array<{ id: string; name: string; identifier: string; type: string; address: string }>;
 }> {
   // Query user's cards
   const cards = await ctx.runQuery(internal.cards.cards.listByUserId, { userId });
@@ -303,6 +304,9 @@ async function gatherUserContext(ctx: any, userId: Id<"users">): Promise<{
 
   // Query user's DeFi positions
   const defiPositions = await ctx.runQuery(internal.wallets.defi.listByUserId, { userId });
+
+  // Query user's contacts for name resolution
+  const contacts = await ctx.runQuery(internal.transfers.contacts.listByUserId, { userId });
 
   return {
     // Sort cards by createdAt (oldest first) so AI knows order
@@ -329,6 +333,13 @@ async function gatherUserContext(ctx: any, userId: Id<"users">): Promise<{
       available: d.availableForFunding,
       yield: d.currentYieldApy,
     })),
+    contacts: (contacts || []).map((c: Doc<"contacts">) => ({
+      id: c._id,
+      name: c.name,
+      identifier: c.identifier,
+      type: c.identifierType,
+      address: c.resolvedAddress,
+    })),
   };
 }
 
@@ -339,6 +350,7 @@ function buildSystemPrompt(userContext: {
   cards: Array<{ id: string; last4: string; balance: number; status: string; nickname?: string }>;
   wallets: Array<{ id: string; network: string; type: string; balance?: number; nickname?: string }>;
   defiPositions: Array<{ id: string; protocol: string; available: number; yield: number }>;
+  contacts: Array<{ id: string; name: string; identifier: string; type: string; address: string }>;
 }): string {
   return `You are DisCard AI, a friendly and helpful assistant for DisCard - a privacy-first virtual card platform built on Solana.
 
@@ -381,6 +393,26 @@ ${userContext.defiPositions.length > 0
       yield_apy_bps: d.yield,
     })), null, 2)
   : "No DeFi positions yet."}
+
+### Contacts (for transfer recipient resolution)
+${userContext.contacts.length > 0
+  ? JSON.stringify(userContext.contacts.map(c => ({
+      id: c.id,
+      name: c.name,
+      identifier: c.identifier,
+      type: c.type,
+      address: c.address,
+    })), null, 2)
+  : "No saved contacts yet."}
+
+## Contact Resolution Rules
+
+When a user mentions a name like "Send $25 to Maria":
+1. Search contacts by name (case-insensitive, partial match OK)
+2. If exactly ONE match is found, use that contact's address as targetId
+3. If MULTIPLE matches exist, ask for clarification (e.g., "Which Maria? I found Maria Chen and Maria Garcia")
+4. If NO matches, ask for clarification (e.g., "I don't have Maria in your contacts. Please provide their phone number, email, or Solana address.")
+5. Include the matched contact name in metadata.recipientName for display
 
 ## Output Format
 
