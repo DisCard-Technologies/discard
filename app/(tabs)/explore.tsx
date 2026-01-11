@@ -11,16 +11,15 @@ import { ThemedView } from '@/components/themed-view';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useTrendingTokens } from '@/hooks/useTrendingTokens';
+import { useOpenMarkets } from '@/hooks/useOpenMarkets';
 import { positiveColor, negativeColor } from '@/constants/theme';
 
-type ChainFilter = 'all' | 'solana' | 'ethereum' | 'polygon' | 'binance';
+type CategoryFilter = 'tokens' | 'markets' | 'rwa';
 
-const chainFilters: { id: ChainFilter; label: string; icon?: string }[] = [
-  { id: 'all', label: 'All' },
-  { id: 'solana', label: 'Solana' },
-  { id: 'ethereum', label: 'Ethereum' },
-  { id: 'polygon', label: 'Polygon' },
-  { id: 'binance', label: 'BNB' },
+const categoryFilters: { id: CategoryFilter; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
+  { id: 'tokens', label: 'Tokens', icon: 'diamond-outline' },
+  { id: 'markets', label: 'Markets', icon: 'stats-chart-outline' },
+  { id: 'rwa', label: 'RWA', icon: 'business-outline' },
 ];
 
 // Format price with appropriate decimals
@@ -36,7 +35,7 @@ export default function ExploreScreen() {
   const isDark = colorScheme === 'dark';
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeChain, setActiveChain] = useState<ChainFilter>('all');
+  const [activeCategory, setActiveCategory] = useState<CategoryFilter>('tokens');
 
   const primaryColor = useThemeColor({}, 'tint');
   const mutedColor = useThemeColor({ light: '#687076', dark: '#9BA1A6' }, 'icon');
@@ -46,19 +45,36 @@ export default function ExploreScreen() {
   const inputBg = useThemeColor({ light: 'rgba(0,0,0,0.05)', dark: 'rgba(255,255,255,0.08)' }, 'background');
 
   // Fetch trending tokens
-  const { tokens, isLoading, error } = useTrendingTokens();
+  const { tokens, isLoading: tokensLoading, error: tokensError } = useTrendingTokens();
 
-  // Filter tokens by search and chain
+  // Fetch prediction markets
+  const { markets, isLoading: marketsLoading, error: marketsError } = useOpenMarkets();
+
+  // Filter tokens by search
   const filteredTokens = useMemo(() => {
+    if (activeCategory !== 'tokens') return [];
     return tokens.filter((token) => {
       const matchesSearch =
         token.symbol.toLowerCase().includes(searchQuery.toLowerCase()) ||
         token.name.toLowerCase().includes(searchQuery.toLowerCase());
-      // For now, show all tokens regardless of chain since our data is Solana-based
-      const matchesChain = activeChain === 'all' || activeChain === 'solana';
-      return matchesSearch && matchesChain;
+      return matchesSearch;
     });
-  }, [tokens, searchQuery, activeChain]);
+  }, [tokens, searchQuery, activeCategory]);
+
+  // Filter markets by search
+  const filteredMarkets = useMemo(() => {
+    if (activeCategory !== 'markets') return [];
+    return markets.filter((market) => {
+      const matchesSearch =
+        market.question.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        market.ticker.toLowerCase().includes(searchQuery.toLowerCase());
+      return matchesSearch;
+    });
+  }, [markets, searchQuery, activeCategory]);
+
+  // Loading and error states based on active category
+  const isLoading = activeCategory === 'tokens' ? tokensLoading : activeCategory === 'markets' ? marketsLoading : false;
+  const error = activeCategory === 'tokens' ? tokensError : activeCategory === 'markets' ? marketsError : null;
 
   const handleTokenPress = (token: typeof tokens[0]) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -80,15 +96,42 @@ export default function ExploreScreen() {
     router.push('/buy-crypto?currency=usdc&mode=deposit');
   };
 
-  const handleChainSelect = (chain: ChainFilter) => {
+  const handleCategorySelect = (category: CategoryFilter) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setActiveChain(chain);
+    setActiveCategory(category);
+  };
+
+  const handleMarketPress = (market: typeof markets[0]) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    router.push({
+      pathname: '/market-detail',
+      params: {
+        marketId: market.marketId,
+        ticker: market.ticker,
+        question: market.question,
+        yesPrice: market.yesPrice.toString(),
+        noPrice: market.noPrice.toString(),
+      },
+    });
   };
 
   return (
     <ThemedView style={styles.container}>
       <StatusBar style={isDark ? 'light' : 'dark'} />
       <View style={{ height: insets.top }} />
+
+      {/* Deposit Button */}
+      <Pressable
+        onPress={handleDeposit}
+        style={({ pressed }) => [
+          styles.depositButton,
+          { backgroundColor: primaryColor },
+          pressed && styles.depositButtonPressed,
+        ]}
+      >
+        <Ionicons name="add" size={20} color="#fff" />
+        <ThemedText style={styles.depositButtonText}>Deposit / Buy Crypto</ThemedText>
+      </Pressable>
 
       {/* Header with Search */}
       <View style={styles.header}>
@@ -117,35 +160,36 @@ export default function ExploreScreen() {
         </Pressable>
       </View>
 
-      {/* Chain Filter Pills */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.chainFilters}
-      >
-        {chainFilters.map((chain) => (
+      {/* Category Filter Pills */}
+      <View style={styles.categoryFilters}>
+        {categoryFilters.map((category) => (
           <Pressable
-            key={chain.id}
-            onPress={() => handleChainSelect(chain.id)}
+            key={category.id}
+            onPress={() => handleCategorySelect(category.id)}
             style={[
-              styles.chainPill,
+              styles.categoryPill,
               { borderColor },
-              activeChain === chain.id && { backgroundColor: primaryColor, borderColor: primaryColor },
+              activeCategory === category.id && { backgroundColor: primaryColor, borderColor: primaryColor },
             ]}
           >
+            <Ionicons
+              name={category.icon}
+              size={14}
+              color={activeCategory === category.id ? '#fff' : mutedColor}
+            />
             <ThemedText
               style={[
-                styles.chainPillText,
-                { color: activeChain === chain.id ? '#fff' : mutedColor },
+                styles.categoryPillText,
+                { color: activeCategory === category.id ? '#fff' : mutedColor },
               ]}
             >
-              {chain.label}
+              {category.label}
             </ThemedText>
           </Pressable>
         ))}
-      </ScrollView>
+      </View>
 
-      {/* Token List */}
+      {/* Content List */}
       <ScrollView
         style={styles.tokenList}
         contentContainerStyle={styles.tokenListContent}
@@ -155,86 +199,143 @@ export default function ExploreScreen() {
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color={primaryColor} />
             <ThemedText style={[styles.loadingText, { color: mutedColor }]}>
-              Loading tokens...
+              Loading {activeCategory === 'tokens' ? 'tokens' : activeCategory === 'markets' ? 'markets' : 'assets'}...
             </ThemedText>
           </View>
         ) : error ? (
           <View style={styles.errorContainer}>
             <Ionicons name="alert-circle-outline" size={48} color={mutedColor} />
             <ThemedText style={[styles.errorText, { color: mutedColor }]}>
-              Failed to load tokens
+              Failed to load {activeCategory}
             </ThemedText>
           </View>
-        ) : filteredTokens.length === 0 ? (
-          <View style={styles.emptyContainer}>
-            <Ionicons name="search-outline" size={48} color={mutedColor} />
-            <ThemedText style={[styles.emptyText, { color: mutedColor }]}>
-              No tokens found
-            </ThemedText>
-          </View>
-        ) : (
-          filteredTokens.map((token, index) => (
-            <Pressable
-              key={token.symbol + index}
-              onPress={() => handleTokenPress(token)}
-              style={({ pressed }) => [
-                styles.tokenRow,
-                { borderBottomColor: borderColor },
-                pressed && styles.tokenRowPressed,
-              ]}
-            >
-              {/* Token Icon */}
-              <View style={[styles.tokenIcon, { backgroundColor: cardBg }]}>
-                {token.logoUri ? (
-                  <Image source={{ uri: token.logoUri }} style={styles.tokenIconImage} />
-                ) : (
-                  <ThemedText style={styles.tokenIconFallback}>
-                    {token.symbol.slice(0, 2)}
-                  </ThemedText>
-                )}
-              </View>
+        ) : activeCategory === 'tokens' ? (
+          // Tokens List
+          filteredTokens.length === 0 ? (
+            <View style={styles.emptyContainer}>
+              <Ionicons name="search-outline" size={48} color={mutedColor} />
+              <ThemedText style={[styles.emptyText, { color: mutedColor }]}>
+                No tokens found
+              </ThemedText>
+            </View>
+          ) : (
+            filteredTokens.map((token, index) => (
+              <Pressable
+                key={token.symbol + index}
+                onPress={() => handleTokenPress(token)}
+                style={({ pressed }) => [
+                  styles.tokenRow,
+                  { borderBottomColor: borderColor },
+                  pressed && styles.tokenRowPressed,
+                ]}
+              >
+                {/* Token Icon */}
+                <View style={[styles.tokenIcon, { backgroundColor: cardBg }]}>
+                  {token.logoUri ? (
+                    <Image source={{ uri: token.logoUri }} style={styles.tokenIconImage} />
+                  ) : (
+                    <ThemedText style={styles.tokenIconFallback}>
+                      {token.symbol.slice(0, 2)}
+                    </ThemedText>
+                  )}
+                </View>
 
-              {/* Token Info */}
-              <View style={styles.tokenInfo}>
-                <ThemedText style={styles.tokenName}>{token.name}</ThemedText>
-                <View style={styles.tokenMeta}>
-                  <ThemedText style={[styles.tokenPrice, { color: mutedColor }]}>
-                    {formatPrice(token.priceUsd)}
+                {/* Token Info */}
+                <View style={styles.tokenInfo}>
+                  <ThemedText style={styles.tokenName}>{token.name}</ThemedText>
+                  <View style={styles.tokenMeta}>
+                    <ThemedText style={[styles.tokenPrice, { color: mutedColor }]}>
+                      {formatPrice(token.priceUsd)}
+                    </ThemedText>
+                  </View>
+                </View>
+
+                {/* Price Change */}
+                <View style={styles.tokenChange}>
+                  <ThemedText style={styles.tokenSymbol}>{token.symbol}</ThemedText>
+                  <ThemedText
+                    style={[
+                      styles.tokenChangePercent,
+                      { color: token.change24h >= 0 ? positiveColor : negativeColor },
+                    ]}
+                  >
+                    {token.change24h >= 0 ? '+' : ''}{token.change24h.toFixed(2)}%
                   </ThemedText>
                 </View>
-              </View>
+              </Pressable>
+            ))
+          )
+        ) : activeCategory === 'markets' ? (
+          // Markets List
+          filteredMarkets.length === 0 ? (
+            <View style={styles.emptyContainer}>
+              <Ionicons name="stats-chart-outline" size={48} color={mutedColor} />
+              <ThemedText style={[styles.emptyText, { color: mutedColor }]}>
+                No markets found
+              </ThemedText>
+            </View>
+          ) : (
+            filteredMarkets.map((market, index) => (
+              <Pressable
+                key={market.marketId + index}
+                onPress={() => handleMarketPress(market)}
+                style={({ pressed }) => [
+                  styles.marketRow,
+                  { borderBottomColor: borderColor },
+                  pressed && styles.tokenRowPressed,
+                ]}
+              >
+                {/* Market Icon */}
+                <View style={[styles.marketIcon, { backgroundColor: `${primaryColor}20` }]}>
+                  <Ionicons name="stats-chart" size={20} color={primaryColor} />
+                </View>
 
-              {/* Price Change */}
-              <View style={styles.tokenChange}>
-                <ThemedText style={styles.tokenSymbol}>{token.symbol}</ThemedText>
-                <ThemedText
-                  style={[
-                    styles.tokenChangePercent,
-                    { color: token.change24h >= 0 ? positiveColor : negativeColor },
-                  ]}
-                >
-                  {token.change24h >= 0 ? '+' : ''}{token.change24h.toFixed(2)}%
-                </ThemedText>
-              </View>
-            </Pressable>
-          ))
+                {/* Market Info */}
+                <View style={styles.marketInfo}>
+                  <ThemedText style={styles.marketQuestion} numberOfLines={2}>
+                    {market.question}
+                  </ThemedText>
+                  <View style={styles.marketMeta}>
+                    <ThemedText style={[styles.marketTicker, { color: mutedColor }]}>
+                      {market.ticker}
+                    </ThemedText>
+                    <ThemedText style={[styles.marketCategory, { color: mutedColor }]}>
+                      • {market.category}
+                    </ThemedText>
+                  </View>
+                </View>
+
+                {/* Market Prices */}
+                <View style={styles.marketPrices}>
+                  <View style={styles.marketPriceRow}>
+                    <ThemedText style={[styles.marketPriceLabel, { color: positiveColor }]}>Yes</ThemedText>
+                    <ThemedText style={[styles.marketPriceValue, { color: positiveColor }]}>
+                      {(market.yesPrice * 100).toFixed(0)}¢
+                    </ThemedText>
+                  </View>
+                  <View style={styles.marketPriceRow}>
+                    <ThemedText style={[styles.marketPriceLabel, { color: negativeColor }]}>No</ThemedText>
+                    <ThemedText style={[styles.marketPriceValue, { color: negativeColor }]}>
+                      {(market.noPrice * 100).toFixed(0)}¢
+                    </ThemedText>
+                  </View>
+                </View>
+              </Pressable>
+            ))
+          )
+        ) : (
+          // RWA Coming Soon
+          <View style={styles.comingSoonContainer}>
+            <View style={[styles.comingSoonIcon, { backgroundColor: `${primaryColor}20` }]}>
+              <Ionicons name="business-outline" size={48} color={primaryColor} />
+            </View>
+            <ThemedText style={styles.comingSoonTitle}>Real World Assets</ThemedText>
+            <ThemedText style={[styles.comingSoonText, { color: mutedColor }]}>
+              Tokenized treasuries, money market funds, and yield-bearing stablecoins coming soon.
+            </ThemedText>
+          </View>
         )}
       </ScrollView>
-
-      {/* Deposit Button */}
-      <View style={[styles.depositButtonContainer, { paddingBottom: insets.bottom + 80 }]}>
-        <Pressable
-          onPress={handleDeposit}
-          style={({ pressed }) => [
-            styles.depositButton,
-            { backgroundColor: primaryColor },
-            pressed && styles.depositButtonPressed,
-          ]}
-        >
-          <Ionicons name="add" size={20} color="#fff" />
-          <ThemedText style={styles.depositButtonText}>Deposit / Buy Crypto</ThemedText>
-        </Pressable>
-      </View>
     </ThemedView>
   );
 }
@@ -271,20 +372,25 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  chainFilters: {
+  categoryFilters: {
+    flexDirection: 'row',
     paddingHorizontal: 16,
     paddingBottom: 12,
     gap: 8,
   },
-  chainPill: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
+  categoryPill: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    borderRadius: 12,
     borderWidth: 1,
+    gap: 6,
   },
-  chainPillText: {
+  categoryPillText: {
     fontSize: 13,
-    fontWeight: '500',
+    fontWeight: '600',
   },
   tokenList: {
     flex: 1,
@@ -376,18 +482,90 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 14,
   },
-  depositButtonContainer: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    paddingHorizontal: 16,
-    paddingTop: 12,
+  // Market rows
+  marketRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    gap: 12,
+  },
+  marketIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  marketInfo: {
+    flex: 1,
+  },
+  marketQuestion: {
+    fontSize: 14,
+    fontWeight: '500',
+    lineHeight: 20,
+  },
+  marketMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 4,
+  },
+  marketTicker: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  marketCategory: {
+    fontSize: 12,
+  },
+  marketPrices: {
+    alignItems: 'flex-end',
+    gap: 2,
+  },
+  marketPriceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  marketPriceLabel: {
+    fontSize: 11,
+    fontWeight: '500',
+  },
+  marketPriceValue: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  // Coming soon
+  comingSoonContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: 80,
+    paddingHorizontal: 32,
+  },
+  comingSoonIcon: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 24,
+  },
+  comingSoonTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    marginBottom: 12,
+  },
+  comingSoonText: {
+    fontSize: 14,
+    textAlign: 'center',
+    lineHeight: 20,
   },
   depositButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    marginHorizontal: 16,
+    marginBottom: 12,
     paddingVertical: 14,
     borderRadius: 12,
     gap: 8,

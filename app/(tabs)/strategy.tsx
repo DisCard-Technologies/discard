@@ -265,17 +265,17 @@ export function StrategyScreenContent({ onNavigateToHome, onNavigateToCard }: St
 
         {/* Summary Cards Row */}
         <View style={styles.summaryCardsRow}>
-          {/* All Wallets Card */}
+          {/* Net Worth Card */}
           <Pressable
             style={[styles.summaryCard, { backgroundColor: cardBg }]}
             onPress={() => setViewMode('wallets')}
           >
             <View style={styles.summaryCardHeader}>
               <View style={[styles.summaryCardIcon, { backgroundColor: `${borderColor}` }]}>
-                <Ionicons name="wallet-outline" size={16} color={mutedColor} />
+                <Ionicons name="diamond-outline" size={16} color={mutedColor} />
               </View>
               <ThemedText style={[styles.summaryCardLabel, { color: mutedColor }]}>
-                All Wallets
+                Net Worth
               </ThemedText>
             </View>
             <ThemedText style={styles.summaryCardValue}>
@@ -317,7 +317,7 @@ export function StrategyScreenContent({ onNavigateToHome, onNavigateToCard }: St
                 { color: viewMode === 'wallets' ? textColor : mutedColor },
               ]}
             >
-              Wallets
+              Holdings
             </ThemedText>
           </Pressable>
           <Pressable
@@ -431,7 +431,7 @@ export function StrategyScreenContent({ onNavigateToHome, onNavigateToCard }: St
             ) : (
               <View style={styles.emptyState}>
                 <View style={[styles.emptyStateIcon, { backgroundColor: `${primaryColor}10` }]}>
-                  <Ionicons name="wallet-outline" size={32} color={primaryColor} />
+                  <Ionicons name="diamond-outline" size={32} color={primaryColor} />
                 </View>
                 <ThemedText style={styles.emptyStateTitle}>No holdings yet</ThemedText>
                 <ThemedText style={[styles.emptyStateText, { color: mutedColor }]}>

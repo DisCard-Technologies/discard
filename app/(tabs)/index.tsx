@@ -223,12 +223,9 @@ export function HomeScreenContent({ onNavigateToStrategy, onNavigateToCard }: Ho
   const handleCardTap = onNavigateToCard || (() => router.push('/card'));
 
   // Quick action handlers
-  const handleSend = () => router.push('/send');
+  const handleSend = () => router.push('/(tabs)/transfer');
   const handleReceive = () => router.push('/receive');
-  const handleSwap = () => {
-    // Swap functionality - navigate to transfer tab for now (swap coming soon)
-    router.push('/(tabs)/transfer');
-  };
+  const handleSwap = () => router.push('/swap');
   const handleScanQR = () => router.push('/transfer/scan');
 
   const handleTransactionTap = (tx: StackTransaction) => {

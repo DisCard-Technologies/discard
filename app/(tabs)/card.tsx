@@ -275,7 +275,8 @@ export function CardScreenContent({ onNavigateToStrategy, onNavigateToHome }: Ca
   };
 
   const hasCards = cardsState?.cards && cardsState.cards.length > 0;
-  const isLoadingCards = cardsState?.isLoading;
+  // Only show loading if cardsState exists and isLoading is explicitly true
+  const isLoadingCards = cardsState?.isLoading === true;
 
   // Navigation handlers for top bar - use callbacks if provided, otherwise use router
   const handlePortfolioTap = onNavigateToStrategy || (() => router.push('/strategy'));
@@ -454,7 +455,17 @@ export function CardScreenContent({ onNavigateToStrategy, onNavigateToHome }: Ca
         onCardTap={handleCardTap}
       />
 
-      {/* Empty State */}
+      {/* Loading State */}
+      {isLoadingCards && (
+        <View style={styles.emptyStateOverlay}>
+          <ActivityIndicator size="large" color={primaryColor} />
+          <ThemedText style={[styles.loadingCardsText, { color: mutedColor }]}>
+            Loading cards...
+          </ThemedText>
+        </View>
+      )}
+
+      {/* Empty State - No Cards */}
       {!hasCards && !isLoadingCards ? (
         <View style={styles.emptyStateOverlay}>
           <View style={styles.emptyStateContent}>
@@ -486,7 +497,7 @@ export function CardScreenContent({ onNavigateToStrategy, onNavigateToHome }: Ca
             </Pressable>
           </View>
         </View>
-      ) : (
+      ) : !isLoadingCards && (
         <View style={styles.mainContent}>
           {/* Card Carousel */}
           <View style={styles.carouselContainer}>
@@ -1179,6 +1190,10 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     textAlign: 'center',
     marginBottom: 32,
+  },
+  loadingCardsText: {
+    fontSize: 15,
+    marginTop: 16,
   },
   createCardButton: {
     flexDirection: 'row',
