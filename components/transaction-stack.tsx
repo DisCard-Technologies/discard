@@ -47,7 +47,16 @@ export function TransactionStack({
   const [isExpanded, setIsExpanded] = useState(false);
 
   if (transactions.length === 0) {
-    return null;
+    return (
+      <View style={styles.emptyContainer}>
+        <View style={[styles.emptyIconContainer, { borderColor }]}>
+          <Ionicons name="receipt-outline" size={24} color={mutedColor} />
+        </View>
+        <ThemedText style={[styles.emptyText, { color: mutedColor }]}>
+          No recent transactions
+        </ThemedText>
+      </View>
+    );
   }
 
   const getTransactionIcon = (type: TransactionType): keyof typeof Ionicons.glyphMap => {
@@ -185,6 +194,26 @@ const styles = StyleSheet.create({
   container: {
     paddingHorizontal: 16,
     height: 100,
+  },
+  emptyContainer: {
+    paddingHorizontal: 16,
+    height: 100,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 12,
+  },
+  emptyIconContainer: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyText: {
+    fontSize: 15,
+    fontWeight: '500',
   },
   cardWrapper: {
     position: 'absolute',

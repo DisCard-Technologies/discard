@@ -17,7 +17,6 @@ interface QuickActionsProps {
   onReceive?: () => void;
   onSwap?: () => void;
   onScanQR?: () => void;
-  onEdit?: () => void;
 }
 
 export function QuickActions({
@@ -25,7 +24,6 @@ export function QuickActions({
   onReceive,
   onSwap,
   onScanQR,
-  onEdit,
 }: QuickActionsProps) {
   const borderColor = useThemeColor({}, 'border');
   const textColor = useThemeColor({}, 'text');
@@ -55,13 +53,6 @@ export function QuickActions({
       icon: 'qr-code-outline',
       label: 'Scan QR',
       onPress: onScanQR || (() => {}),
-    },
-    {
-      id: 'edit',
-      icon: 'add-outline',
-      label: 'Edit',
-      dashed: true,
-      onPress: onEdit || (() => {}),
     },
   ];
 
@@ -106,9 +97,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    gap: 32,
+    gap: 24,
     paddingVertical: 16,
-    paddingHorizontal: 24,
+    paddingHorizontal: 32,
   },
   actionButton: {
     alignItems: 'center',

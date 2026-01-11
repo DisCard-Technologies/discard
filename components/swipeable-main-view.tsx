@@ -14,9 +14,9 @@ try {
 }
 
 // Page indices
-const PAGE_CARD = 0;
+const PAGE_STRATEGY = 0;
 const PAGE_HOME = 1;
-const PAGE_STRATEGY = 2;
+const PAGE_CARD = 2;
 
 export function SwipeableMainView() {
   const pagerRef = useRef<any>(null);
@@ -56,11 +56,11 @@ export function SwipeableMainView() {
       onPageSelected={handlePageSelected}
       overdrag
     >
-      {/* Page 0: Card Screen */}
-      <View key="card" style={styles.page}>
-        <CardScreenContent
-          onNavigateToStrategy={navigateToStrategy}
+      {/* Page 0: Strategy Screen (swipe right from home) */}
+      <View key="strategy" style={styles.page}>
+        <StrategyScreenContent
           onNavigateToHome={navigateToHome}
+          onNavigateToCard={navigateToCard}
         />
       </View>
 
@@ -72,11 +72,11 @@ export function SwipeableMainView() {
         />
       </View>
 
-      {/* Page 2: Strategy Screen */}
-      <View key="strategy" style={styles.page}>
-        <StrategyScreenContent
+      {/* Page 2: Card Screen (swipe left from home) */}
+      <View key="card" style={styles.page}>
+        <CardScreenContent
+          onNavigateToStrategy={navigateToStrategy}
           onNavigateToHome={navigateToHome}
-          onNavigateToCard={navigateToCard}
         />
       </View>
     </PagerView>

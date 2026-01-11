@@ -16,6 +16,7 @@ interface DraggableDrawerProps {
   children: ReactNode;
   closedHeight?: number;
   openHeight?: number;
+  initiallyOpen?: boolean;
   onOpenChange?: (isOpen: boolean) => void;
 }
 
@@ -29,16 +30,17 @@ export function DraggableDrawer({
   children,
   closedHeight = 200,
   openHeight = 500,
+  initiallyOpen = false,
   onOpenChange,
 }: DraggableDrawerProps) {
   const backgroundColor = useThemeColor({}, 'card');
   const borderColor = useThemeColor({}, 'border');
   const handleColor = useThemeColor({ light: '#d1d5db', dark: '#4b5563' }, 'icon');
 
-  const translateY = useSharedValue(0);
-  const startY = useSharedValue(0);
   const maxTranslate = -(openHeight - closedHeight);
-  const [isOpen, setIsOpen] = useState(false);
+  const translateY = useSharedValue(initiallyOpen ? maxTranslate : 0);
+  const startY = useSharedValue(0);
+  const [isOpen, setIsOpen] = useState(initiallyOpen);
 
   const triggerHaptic = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);

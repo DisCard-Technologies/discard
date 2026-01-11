@@ -88,31 +88,74 @@ export function HomeScreenContent({ onNavigateToStrategy, onNavigateToCard }: Ho
     return (accountBalance / 100) + cryptoTotal;
   }, [fundingState?.accountBalance, cryptoValue]);
 
-  // Daily change state (simulated for now)
-  const [dailyChange, setDailyChange] = useState(1.45);
-  const [dailyChangeAmount, setDailyChangeAmount] = useState(18.21);
+  // Get token holdings for daily change calculation
+  const { holdings } = useTokenHoldings(user?.solanaAddress || null);
+
+  // Calculate daily change from holdings (weighted by value)
+  const { dailyChange, dailyChangeAmount } = useMemo(() => {
+    if (!holdings || holdings.length === 0 || netWorth === 0) {
+      return { dailyChange: 0, dailyChangeAmount: 0 };
+    }
+
+    // Calculate weighted average of 24h change
+    let totalWeightedChange = 0;
+    let totalValue = 0;
+
+    holdings.forEach((h) => {
+      if (h.valueUsd > 0 && typeof h.change24h === 'number') {
+        totalWeightedChange += h.change24h * h.valueUsd;
+        totalValue += h.valueUsd;
+      }
+    });
+
+    const avgChange = totalValue > 0 ? totalWeightedChange / totalValue : 0;
+    const changeAmount = (avgChange / 100) * netWorth;
+
+    return {
+      dailyChange: Math.round(avgChange * 100) / 100,
+      dailyChangeAmount: Math.abs(Math.round(changeAmount * 100) / 100),
+    };
+  }, [holdings, netWorth]);
+
   const isPositive = dailyChange >= 0;
 
-  // Simulate real-time changes
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (Math.random() > 0.8) {
-        setDailyChange((prev) => {
-          const newChange = prev + (Math.random() - 0.5) * 0.5;
-          return Math.round(newChange * 100) / 100;
-        });
-        setDailyChangeAmount((prev) => Math.abs(prev * (0.8 + Math.random() * 0.4)));
-      }
-    }, 8000);
-    return () => clearInterval(interval);
-  }, []);
+  // Real transaction data from Convex
+  const recentTransfers = useQuery(api.transfers.transfers.getRecent, { limit: 5 });
 
-  // Sample transactions (TODO: Replace with real transaction history)
-  const [transactions] = useState<StackTransaction[]>([
-    { id: '1', type: 'send', address: '0x487a...aeef', tokenAmount: '-10.02 USDT', fiatValue: '$10.02', fee: '$4.65', estimatedTime: '≈3-4m' },
-    { id: '2', type: 'receive', address: '0x912b...cf21', tokenAmount: '+0.05 ETH', fiatValue: '$156.32' },
-    { id: '3', type: 'swap', address: 'SOL → USDC', tokenAmount: '+250 USDC', fiatValue: '$250.00' },
-  ]);
+  // Transform transfers to StackTransaction format
+  const transactions: StackTransaction[] = useMemo(() => {
+    if (!recentTransfers || recentTransfers.length === 0) {
+      return [];
+    }
+
+    return recentTransfers.map((transfer) => {
+      // Format address for display
+      const addr = transfer.recipientAddress;
+      const shortAddr = addr.length > 10 
+        ? `${addr.slice(0, 6)}...${addr.slice(-4)}`
+        : addr;
+
+      // Format amount
+      const amount = transfer.amount / Math.pow(10, transfer.tokenDecimals);
+      const formattedAmount = amount.toLocaleString(undefined, {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: transfer.tokenDecimals > 2 ? 4 : 2,
+      });
+
+      // Calculate total fee
+      const totalFee = transfer.networkFee + transfer.platformFee + (transfer.priorityFee || 0);
+      const feeFormatted = totalFee > 0 ? `$${(totalFee / 100).toFixed(2)}` : undefined;
+
+      return {
+        id: transfer._id,
+        type: 'send' as const,
+        address: transfer.recipientDisplayName || shortAddr,
+        tokenAmount: `-${formattedAmount} ${transfer.token}`,
+        fiatValue: `$${(transfer.amountUsd / 100).toFixed(2)}`,
+        fee: feeFormatted,
+      };
+    });
+  }, [recentTransfers]);
 
   // Real goals from Convex
   const convexGoals = useQuery(api.goals.goals.list, {});
@@ -291,7 +334,7 @@ export function HomeScreenContent({ onNavigateToStrategy, onNavigateToCard }: Ho
       />
 
       {/* Draggable Bottom Drawer with Goals */}
-      <DraggableDrawer closedHeight={DRAWER_CLOSED_HEIGHT} openHeight={DRAWER_OPEN_HEIGHT}>
+      <DraggableDrawer closedHeight={DRAWER_CLOSED_HEIGHT} openHeight={DRAWER_OPEN_HEIGHT} initiallyOpen>
         <GoalsSection goals={goals} onGoalPress={handleGoalPress} onAddGoal={handleAddGoal} />
       </DraggableDrawer>
 
