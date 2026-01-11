@@ -346,34 +346,62 @@ export const updateCache = internalMutation({
   handler: async (ctx, args) => {
     const now = Date.now();
 
-    // Clear old holdings for this wallet
+    // Get existing holdings for this wallet
     const existing = await ctx.db
       .query("tokenHoldings")
       .withIndex("by_wallet", (q) => q.eq("walletAddress", args.walletAddress))
       .collect();
 
-    for (const h of existing) {
-      await ctx.db.delete(h._id);
+    // Create a map of existing holdings by mint for upsert logic
+    const existingByMint = new Map(existing.map((h) => [h.mint, h]));
+    const newMints = new Set(args.holdings.map((h) => h.mint));
+
+    // Upsert holdings: update existing or insert new
+    for (const holding of args.holdings) {
+      const existingHolding = existingByMint.get(holding.mint);
+
+      if (existingHolding) {
+        // Update existing holding
+        await ctx.db.patch(existingHolding._id, {
+          symbol: holding.symbol,
+          name: holding.name,
+          decimals: holding.decimals,
+          balance: holding.balance,
+          balanceFormatted: holding.balanceFormatted,
+          valueUsd: holding.valueUsd,
+          priceUsd: holding.priceUsd,
+          change24h: holding.change24h,
+          logoUri: holding.logoUri,
+          isRwa: holding.isRwa,
+          rwaMetadata: holding.rwaMetadata,
+          updatedAt: now,
+        });
+      } else {
+        // Insert new holding
+        await ctx.db.insert("tokenHoldings", {
+          walletAddress: args.walletAddress,
+          mint: holding.mint,
+          symbol: holding.symbol,
+          name: holding.name,
+          decimals: holding.decimals,
+          balance: holding.balance,
+          balanceFormatted: holding.balanceFormatted,
+          valueUsd: holding.valueUsd,
+          priceUsd: holding.priceUsd,
+          change24h: holding.change24h,
+          logoUri: holding.logoUri,
+          isRwa: holding.isRwa,
+          rwaMetadata: holding.rwaMetadata,
+          updatedAt: now,
+        });
+      }
     }
 
-    // Insert new holdings
-    for (const holding of args.holdings) {
-      await ctx.db.insert("tokenHoldings", {
-        walletAddress: args.walletAddress,
-        mint: holding.mint,
-        symbol: holding.symbol,
-        name: holding.name,
-        decimals: holding.decimals,
-        balance: holding.balance,
-        balanceFormatted: holding.balanceFormatted,
-        valueUsd: holding.valueUsd,
-        priceUsd: holding.priceUsd,
-        change24h: holding.change24h,
-        logoUri: holding.logoUri,
-        isRwa: holding.isRwa,
-        rwaMetadata: holding.rwaMetadata,
-        updatedAt: now,
-      });
+    // Delete holdings that no longer exist
+    for (const h of existing) {
+      if (!newMints.has(h.mint)) {
+        await ctx.db.delete(h._id);
+      }
     }
   },
 });
