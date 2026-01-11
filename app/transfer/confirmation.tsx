@@ -179,6 +179,7 @@ export default function TransferConfirmationScreen() {
       // Step 2: Build transaction
       setExecutionPhase("building");
 
+      console.log("[Confirmation] Using RPC:", SOLANA_RPC_URL);
       const connection = new Connection(SOLANA_RPC_URL, "confirmed");
       const fromPubkey = new PublicKey(walletAddress);
       const toPubkey = new PublicKey(recipient.address);
