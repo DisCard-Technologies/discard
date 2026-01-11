@@ -139,7 +139,6 @@ export const create = mutation({
       status: "pending",
       expiresAt: Date.now() + expiryMs,
       createdAt: Date.now(),
-      updatedAt: Date.now(),
     });
 
     return {
