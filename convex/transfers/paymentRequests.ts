@@ -133,7 +133,7 @@ export const create = mutation({
       memo: args.memo,
       recipientAddress: walletAddress,
       recipientName: args.recipientName || user.displayName,
-      linkType: "web",
+      linkType: "web_link",
       linkUrl: webLink,
       qrData: solanaPayUri,
       status: "pending",
