@@ -26,7 +26,7 @@ import { ThemedView } from "@/components/themed-view";
 import { useThemeColor } from "@/hooks/use-theme-color";
 import { useColorScheme } from "@/hooks/use-color-scheme";
 import { TransferSummary } from "@/components/transfer";
-import { useAuth } from "@/stores/authConvex";
+import { useAuth, useCurrentCredentialId } from "@/stores/authConvex";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Connection, PublicKey } from "@solana/web3.js";
@@ -83,6 +83,7 @@ export default function TransferConfirmationScreen() {
 
   // Auth and Turnkey
   const { user, userId } = useAuth();
+  const credentialId = useCurrentCredentialId();
   const turnkey = useTurnkey(userId, {
     organizationId: TURNKEY_ORG_ID,
     rpId: TURNKEY_RP_ID,
@@ -225,6 +226,7 @@ export default function TransferConfirmationScreen() {
         networkFee: fees.networkFeeUsd,
         platformFee: fees.platformFee,
         priorityFee: fees.priorityFee * 150, // Convert SOL to USD estimate
+        credentialId: credentialId || undefined,
       });
 
       // Step 5: Sign with Turnkey
@@ -233,6 +235,7 @@ export default function TransferConfirmationScreen() {
       await updateTransferStatus({
         transferId,
         status: "signing",
+        credentialId: credentialId || undefined,
       });
 
       const { signedTransaction } = await turnkey.signTransaction(txResult.transaction);
@@ -260,6 +263,7 @@ export default function TransferConfirmationScreen() {
         transferId,
         status: "submitted",
         solanaSignature: signature,
+        credentialId: credentialId || undefined,
       });
 
       // Step 7: Wait for confirmation
@@ -273,6 +277,7 @@ export default function TransferConfirmationScreen() {
           transferId,
           status: "failed",
           errorMessage: confirmation.error || "Confirmation failed",
+          credentialId: credentialId || undefined,
         });
         throw new Error(confirmation.error || "Transaction failed to confirm on the network");
       }
@@ -282,6 +287,7 @@ export default function TransferConfirmationScreen() {
         transferId,
         status: "confirmed",
         confirmationTimeMs,
+        credentialId: credentialId || undefined,
       });
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -316,6 +322,7 @@ export default function TransferConfirmationScreen() {
             transferId,
             status: "failed",
             errorMessage: err instanceof Error ? err.message : "Unknown error",
+            credentialId: credentialId || undefined,
           });
         } catch (updateErr) {
           console.error("[Confirmation] Failed to update status:", updateErr);
@@ -344,7 +351,7 @@ export default function TransferConfirmationScreen() {
       setIsConfirming(false);
       setExecutionPhase("idle");
     }
-  }, [recipient, token, amount, fees, userId, walletAddress, turnkey, params, createTransfer, updateTransferStatus]);
+  }, [recipient, token, amount, fees, userId, walletAddress, turnkey, params, createTransfer, updateTransferStatus, credentialId]);
 
   // Show error if params missing
   if (!recipient || !token || !amount || !fees) {
