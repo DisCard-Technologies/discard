@@ -35,10 +35,15 @@ export const create = mutation({
     priorityFee: v.optional(v.number()),
     memo: v.optional(v.string()),
     idempotencyKey: v.optional(v.string()),
+    // Fallback for custom auth when ctx.auth is not configured
+    credentialId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    // Try Convex auth first, fall back to credentialId parameter
     const identity = await ctx.auth.getUserIdentity();
-    if (!identity) {
+    const credentialId = identity?.subject ?? args.credentialId;
+
+    if (!credentialId) {
       throw new Error("Not authenticated");
     }
 
@@ -46,7 +51,7 @@ export const create = mutation({
     const user = await ctx.db
       .query("users")
       .withIndex("by_credential", (q) =>
-        q.eq("credentialId", identity.subject)
+        q.eq("credentialId", credentialId)
       )
       .first();
 
@@ -110,10 +115,15 @@ export const updateStatus = mutation({
     solanaSignature: v.optional(v.string()),
     errorMessage: v.optional(v.string()),
     confirmationTimeMs: v.optional(v.number()),
+    // Fallback for custom auth when ctx.auth is not configured
+    credentialId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    // Try Convex auth first, fall back to credentialId parameter
     const identity = await ctx.auth.getUserIdentity();
-    if (!identity) {
+    const credentialId = identity?.subject ?? args.credentialId;
+
+    if (!credentialId) {
       throw new Error("Not authenticated");
     }
 
@@ -228,17 +238,22 @@ export const get = query({
 export const getByUser = query({
   args: {
     limit: v.optional(v.number()),
+    // Fallback for custom auth when ctx.auth is not configured
+    credentialId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    // Try Convex auth first, fall back to credentialId parameter
     const identity = await ctx.auth.getUserIdentity();
-    if (!identity) {
+    const credentialId = identity?.subject ?? args.credentialId;
+
+    if (!credentialId) {
       return [];
     }
 
     const user = await ctx.db
       .query("users")
       .withIndex("by_credential", (q) =>
-        q.eq("credentialId", identity.subject)
+        q.eq("credentialId", credentialId)
       )
       .first();
 
@@ -263,17 +278,22 @@ export const getByContact = query({
   args: {
     recipientAddress: v.string(),
     limit: v.optional(v.number()),
+    // Fallback for custom auth when ctx.auth is not configured
+    credentialId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    // Try Convex auth first, fall back to credentialId parameter
     const identity = await ctx.auth.getUserIdentity();
-    if (!identity) {
+    const credentialId = identity?.subject ?? args.credentialId;
+
+    if (!credentialId) {
       return [];
     }
 
     const user = await ctx.db
       .query("users")
       .withIndex("by_credential", (q) =>
-        q.eq("credentialId", identity.subject)
+        q.eq("credentialId", credentialId)
       )
       .first();
 
@@ -299,17 +319,22 @@ export const getByContact = query({
 export const getRecent = query({
   args: {
     limit: v.optional(v.number()),
+    // Fallback for custom auth when ctx.auth is not configured
+    credentialId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    // Try Convex auth first, fall back to credentialId parameter
     const identity = await ctx.auth.getUserIdentity();
-    if (!identity) {
+    const credentialId = identity?.subject ?? args.credentialId;
+
+    if (!credentialId) {
       return [];
     }
 
     const user = await ctx.db
       .query("users")
       .withIndex("by_credential", (q) =>
-        q.eq("credentialId", identity.subject)
+        q.eq("credentialId", credentialId)
       )
       .first();
 
@@ -353,17 +378,23 @@ export const getBySignature = query({
  * Get transfer statistics for the current user
  */
 export const getStats = query({
-  args: {},
-  handler: async (ctx) => {
+  args: {
+    // Fallback for custom auth when ctx.auth is not configured
+    credentialId: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    // Try Convex auth first, fall back to credentialId parameter
     const identity = await ctx.auth.getUserIdentity();
-    if (!identity) {
+    const credentialId = identity?.subject ?? args.credentialId;
+
+    if (!credentialId) {
       return null;
     }
 
     const user = await ctx.db
       .query("users")
       .withIndex("by_credential", (q) =>
-        q.eq("credentialId", identity.subject)
+        q.eq("credentialId", credentialId)
       )
       .first();
 

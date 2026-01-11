@@ -14,6 +14,7 @@ import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { PublicKey, Connection } from "@solana/web3.js";
+import { useCurrentCredentialId } from "@/stores/authConvex";
 import {
   buildTransfer,
   buildSOLTransfer,
@@ -209,6 +210,9 @@ export function useTransfer(options: UseTransferOptions): UseTransferReturn {
 
   // Turnkey hook
   const turnkey = useTurnkey(userId, turnkeyConfig);
+
+  // Auth - get credentialId for custom auth fallback
+  const credentialId = useCurrentCredentialId();
 
   // Convex mutations
   const createTransfer = useMutation(api.transfers.transfers.create);
@@ -492,6 +496,8 @@ export function useTransfer(options: UseTransferOptions): UseTransferReturn {
         platformFee: fees.platformFee,
         priorityFee: fees.priorityFee * solPrice,
         idempotencyKey: idempotencyKeyRef.current || undefined,
+        // Pass credentialId for custom auth fallback
+        credentialId: credentialId || undefined,
       });
 
       transferIdRef.current = transferId;
@@ -502,6 +508,7 @@ export function useTransfer(options: UseTransferOptions): UseTransferReturn {
       await updateTransferStatus({
         transferId,
         status: "signing",
+        credentialId: credentialId || undefined,
       });
 
       // 5. Submit to Firedancer
@@ -516,6 +523,7 @@ export function useTransfer(options: UseTransferOptions): UseTransferReturn {
         transferId,
         status: "submitted",
         solanaSignature: signature,
+        credentialId: credentialId || undefined,
       });
 
       // 6. Wait for confirmation
@@ -529,6 +537,7 @@ export function useTransfer(options: UseTransferOptions): UseTransferReturn {
           transferId,
           status: "failed",
           errorMessage: confirmation.error || "Confirmation failed",
+          credentialId: credentialId || undefined,
         });
 
         setErrorState({
@@ -545,6 +554,7 @@ export function useTransfer(options: UseTransferOptions): UseTransferReturn {
         transferId,
         status: "confirmed",
         confirmationTimeMs,
+        credentialId: credentialId || undefined,
       });
 
       // Update contact usage if applicable
@@ -575,6 +585,7 @@ export function useTransfer(options: UseTransferOptions): UseTransferReturn {
           transferId: transferIdRef.current,
           status: "failed",
           errorMessage: err instanceof Error ? err.message : "Unknown error",
+          credentialId: credentialId || undefined,
         });
       }
 
@@ -602,6 +613,7 @@ export function useTransfer(options: UseTransferOptions): UseTransferReturn {
     createTransfer,
     updateTransferStatus,
     markContactUsed,
+    credentialId,
     onSuccess,
     onError,
   ]);
