@@ -1,13 +1,14 @@
 /**
  * Jupiter Ultra API Client
  *
- * Wraps the Jupiter Ultra API for fetching user token holdings.
+ * Full-featured client for Jupiter Ultra Swap API including:
+ * - Token holdings and balances (~70ms latency)
+ * - Token security/shield data (~150ms latency)
+ * - Order creation with best-price routing (~300ms latency)
+ * - Transaction execution via Jupiter's proprietary engine (~700ms-2s)
+ * - Token search functionality (~15ms latency)
  *
- * Endpoints:
- * - GET /holdings/{address} - Token balances (~70ms latency)
- * - GET /shield - Token security data (~150ms latency)
- *
- * Base URL: https://ultra-api.jup.ag/v1
+ * Base URL: https://api.jup.ag/ultra/v1
  *
  * @see https://dev.jup.ag/docs/ultra
  */
@@ -23,6 +24,66 @@ const JUPITER_ULTRA_BASE_URL = "https://api.jup.ag/ultra/v1";
 export interface JupiterUltraConfig {
   apiKey?: string;
   timeout?: number;
+}
+
+// ============================================================================
+// Swap Types
+// ============================================================================
+
+export interface UltraOrderRequest {
+  inputMint: string;
+  outputMint: string;
+  amount: string;
+  taker: string;
+  referralAccount?: string;
+  referralFee?: number;
+}
+
+export interface UltraOrderResponse {
+  requestId: string;
+  inputMint: string;
+  outputMint: string;
+  inAmount: string;
+  outAmount: string;
+  otherAmountThreshold: string;
+  swapMode: string;
+  slippageBps: number;
+  priceImpactPct: string;
+  routePlan: Array<{
+    swapInfo: {
+      ammKey: string;
+      label: string;
+      inputMint: string;
+      outputMint: string;
+      inAmount: string;
+      outAmount: string;
+      feeAmount: string;
+      feeMint: string;
+    };
+    percent: number;
+  }>;
+  feeMint?: string;
+  feeBps?: number;
+  transaction: string;
+  expiresAt?: number;
+}
+
+export interface UltraExecuteResponse {
+  status: "Success" | "Failed";
+  signature?: string;
+  errorCode?: string;
+  error?: string;
+  inputAmount?: string;
+  outputAmount?: string;
+}
+
+export interface TokenSearchResult {
+  mint: string;
+  symbol: string;
+  name: string;
+  decimals: number;
+  logoUri?: string;
+  verified: boolean;
 }
 
 interface RawJupiterHolding {
@@ -98,6 +159,96 @@ export class JupiterUltraClient {
     return this.fetch(
       `/order?inputMint=${inputMint}&outputMint=${outputMint}&amount=${amount}`
     );
+  }
+
+  // ==========================================================================
+  // Swap Execution
+  // ==========================================================================
+
+  /**
+   * Get a swap order with quote and transaction
+   * Latency: ~300ms
+   *
+   * @param request - Order parameters
+   * @returns Order with base64 encoded transaction to sign
+   */
+  async getOrder(request: UltraOrderRequest): Promise<UltraOrderResponse> {
+    const params = new URLSearchParams({
+      inputMint: request.inputMint,
+      outputMint: request.outputMint,
+      amount: request.amount,
+      taker: request.taker,
+    });
+
+    if (request.referralAccount) {
+      params.append("referralAccount", request.referralAccount);
+    }
+    if (request.referralFee) {
+      params.append("referralFee", request.referralFee.toString());
+    }
+
+    return this.fetch<UltraOrderResponse>(`/order?${params.toString()}`);
+  }
+
+  /**
+   * Execute a signed swap transaction
+   * Latency: ~700ms (Iris) to ~2s (JupiterZ)
+   *
+   * Jupiter handles transaction landing, priority fees, and retries
+   *
+   * @param signedTransaction - Base64 encoded signed transaction
+   * @param requestId - Request ID from getOrder response
+   * @returns Execution result with signature
+   */
+  async executeOrder(
+    signedTransaction: string,
+    requestId: string
+  ): Promise<UltraExecuteResponse> {
+    const response = await fetch(`${this.baseUrl}/execute`, {
+      method: "POST",
+      headers: this.headers,
+      body: JSON.stringify({
+        signedTransaction,
+        requestId,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => "Unknown error");
+      return {
+        status: "Failed",
+        error: `Execute failed: ${response.status} - ${errorText}`,
+      };
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Search for tokens by symbol, name, or mint address
+   * Latency: ~15ms
+   */
+  async searchTokens(query: string): Promise<TokenSearchResult[]> {
+    try {
+      const response = await this.fetch<{ tokens: TokenSearchResult[] }>(
+        `/search?query=${encodeURIComponent(query)}`
+      );
+      return response.tokens || [];
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Get available routing engines
+   */
+  async getRouters(): Promise<string[]> {
+    try {
+      const response = await this.fetch<{ routers: string[] }>("/routers");
+      return response.routers || [];
+    } catch {
+      return [];
+    }
   }
 
   private async fetch<T>(endpoint: string, options?: RequestInit): Promise<T> {
