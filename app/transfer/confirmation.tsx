@@ -14,6 +14,7 @@ import {
   SafeAreaView,
   Pressable,
   ActivityIndicator,
+  Switch,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -27,6 +28,7 @@ import { useThemeColor } from "@/hooks/use-theme-color";
 import { useColorScheme } from "@/hooks/use-color-scheme";
 import { TransferSummary } from "@/components/transfer";
 import { useAuth, useCurrentCredentialId, getLocalSolanaKeypair } from "@/stores/authConvex";
+import { usePrivateTransfer } from "@/hooks/usePrivateTransfer";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Connection, PublicKey } from "@solana/web3.js";
@@ -80,6 +82,19 @@ export default function TransferConfirmationScreen() {
   const [isConfirming, setIsConfirming] = useState(false);
   const [executionPhase, setExecutionPhase] = useState<ExecutionPhase>("idle");
   const [error, setError] = useState<string | null>(null);
+  const [privateMode, setPrivateMode] = useState(false);
+  const [complianceChecked, setComplianceChecked] = useState(false);
+
+  // Privacy transfer hook
+  const {
+    state: privacyState,
+    isLoading: isCheckingPrivacy,
+    checkTransferCompliance,
+    executePrivateTransfer,
+    isComplianceAvailable,
+    isPrivateTransferAvailable,
+    reset: resetPrivacy,
+  } = usePrivateTransfer();
 
   // Auth and Turnkey
   const { user, userId } = useAuth();
@@ -462,6 +477,94 @@ export default function TransferConfirmationScreen() {
             />
           </Animated.View>
 
+          {/* Privacy Toggle */}
+          {(isComplianceAvailable || isPrivateTransferAvailable) && (
+            <Animated.View
+              entering={FadeInUp.delay(150).duration(300)}
+              style={styles.privacySection}
+            >
+              <View style={[styles.privacyCard, { backgroundColor: isDark ? "rgba(16, 185, 129, 0.1)" : "rgba(16, 185, 129, 0.05)" }]}>
+                <View style={styles.privacyHeader}>
+                  <View style={styles.privacyIconContainer}>
+                    <Ionicons name="shield-checkmark" size={20} color={primaryColor} />
+                  </View>
+                  <View style={styles.privacyTextContainer}>
+                    <ThemedText style={styles.privacyTitle}>Private Transfer</ThemedText>
+                    <ThemedText style={[styles.privacyDescription, { color: mutedColor }]}>
+                      Shield your transaction with ShadowWire
+                    </ThemedText>
+                  </View>
+                  <Switch
+                    value={privateMode}
+                    onValueChange={(value) => {
+                      setPrivateMode(value);
+                      if (value && !complianceChecked && recipient && walletAddress && amount) {
+                        // Run compliance check when enabling privacy
+                        checkTransferCompliance(
+                          walletAddress,
+                          recipient.address,
+                          amount.amountUsd || 0
+                        ).then(() => setComplianceChecked(true));
+                      }
+                      if (!value) {
+                        resetPrivacy();
+                        setComplianceChecked(false);
+                      }
+                    }}
+                    disabled={isCheckingPrivacy || isConfirming}
+                    trackColor={{ false: mutedColor, true: `${primaryColor}80` }}
+                    thumbColor={privateMode ? primaryColor : "#f4f3f4"}
+                  />
+                </View>
+
+                {/* Compliance Status */}
+                {privateMode && privacyState.privacyCheck && (
+                  <View style={styles.complianceStatus}>
+                    {privacyState.privacyCheck.compliant ? (
+                      <View style={styles.complianceRow}>
+                        <Ionicons name="checkmark-circle" size={16} color="#10B981" />
+                        <ThemedText style={[styles.complianceText, { color: "#10B981" }]}>
+                          Compliance check passed
+                        </ThemedText>
+                      </View>
+                    ) : (
+                      <View style={styles.complianceRow}>
+                        <Ionicons name="warning" size={16} color="#F59E0B" />
+                        <ThemedText style={[styles.complianceText, { color: "#F59E0B" }]}>
+                          {privacyState.privacyCheck.error || "Review required"}
+                        </ThemedText>
+                      </View>
+                    )}
+                    {privacyState.privacyCheck.warnings?.map((warning, idx) => (
+                      <View key={idx} style={styles.complianceWarning}>
+                        <Ionicons name="information-circle" size={14} color="#F59E0B" />
+                        <ThemedText style={[styles.complianceWarningText, { color: mutedColor }]}>
+                          {warning}
+                        </ThemedText>
+                      </View>
+                    ))}
+                  </View>
+                )}
+
+                {/* Loading state */}
+                {isCheckingPrivacy && (
+                  <View style={styles.complianceStatus}>
+                    <ActivityIndicator size="small" color={primaryColor} />
+                    <ThemedText style={[styles.complianceText, { color: mutedColor, marginLeft: 8 }]}>
+                      Checking compliance...
+                    </ThemedText>
+                  </View>
+                )}
+              </View>
+
+              {privateMode && (
+                <ThemedText style={[styles.privacyNote, { color: mutedColor }]}>
+                  <Ionicons name="eye-off" size={12} color={mutedColor} /> Transaction details will be hidden from public explorers
+                </ThemedText>
+              )}
+            </Animated.View>
+          )}
+
           {/* Error Message with Retry */}
           {error && (
             <Animated.View
@@ -699,5 +802,71 @@ const styles = StyleSheet.create({
   securityText: {
     fontSize: 12,
     textAlign: "center",
+  },
+  // Privacy Toggle Styles
+  privacySection: {
+    marginTop: 16,
+  },
+  privacyCard: {
+    borderRadius: 14,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: "rgba(16, 185, 129, 0.2)",
+  },
+  privacyHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  privacyIconContainer: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: "rgba(16, 185, 129, 0.15)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12,
+  },
+  privacyTextContainer: {
+    flex: 1,
+  },
+  privacyTitle: {
+    fontSize: 15,
+    fontWeight: "600",
+  },
+  privacyDescription: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  complianceStatus: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(16, 185, 129, 0.15)",
+  },
+  complianceRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  complianceText: {
+    fontSize: 13,
+    fontWeight: "500",
+  },
+  complianceWarning: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    marginTop: 6,
+  },
+  complianceWarningText: {
+    fontSize: 12,
+    flex: 1,
+  },
+  privacyNote: {
+    fontSize: 11,
+    textAlign: "center",
+    marginTop: 8,
   },
 });
