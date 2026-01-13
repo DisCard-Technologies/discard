@@ -62,7 +62,7 @@ const SOLANA_RPC_URL =
 const TURNKEY_RP_ID = process.env.EXPO_PUBLIC_TURNKEY_RP_ID || "www.discard.tech";
 const TURNKEY_ORG_ID = process.env.EXPO_PUBLIC_TURNKEY_ORG_ID || "";
 
-type ExecutionPhase = "idle" | "building" | "signing" | "submitting" | "confirming";
+type ExecutionPhase = "idle" | "building" | "signing" | "shielding" | "submitting" | "confirming";
 
 // ============================================================================
 // Component
@@ -89,6 +89,8 @@ export default function TransferConfirmationScreen() {
     isLoading: isCheckingPrivacy,
     checkTransferCompliance,
     executePrivateTransfer,
+    generateStealthAddress,
+    isPrivateTransferAvailable,
   } = usePrivateTransfer();
 
   // Auto-run compliance check on mount
@@ -197,7 +199,112 @@ export default function TransferConfirmationScreen() {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
 
-      // Step 2: Build transaction
+      // Step 2: Privacy-first transfer via ShadowWire
+      // Check compliance status - block if not compliant
+      if (privacyState.privacyCheck && !privacyState.privacyCheck.compliant) {
+        setError(privacyState.privacyCheck.error || "Transfer blocked by compliance check");
+        setIsConfirming(false);
+        setExecutionPhase("idle");
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        return;
+      }
+
+      // Use ShadowWire private transfer when available
+      if (isPrivateTransferAvailable) {
+        console.log("[Confirmation] Executing shielded transfer via ShadowWire");
+        setExecutionPhase("shielding");
+
+        // Generate stealth address for recipient
+        const stealthAddress = await generateStealthAddress(recipient.address);
+        if (!stealthAddress) {
+          console.warn("[Confirmation] Stealth address generation failed, falling back to regular transfer");
+          // Fall through to regular transfer
+        } else {
+          // Create Convex transfer record for private transfer
+          transferId = await createTransfer({
+            recipientType: recipient.type,
+            recipientIdentifier: recipient.input,
+            recipientAddress: stealthAddress.stealthAddress, // Use stealth address
+            recipientDisplayName: recipient.displayName,
+            amount: amount.amount,
+            token: token.symbol,
+            tokenMint: token.mint,
+            tokenDecimals: token.decimals,
+            amountUsd: amount.amountUsd,
+            networkFee: fees.networkFeeUsd,
+            platformFee: fees.platformFee,
+            priorityFee: fees.priorityFee * 150,
+            credentialId: credentialId || undefined,
+          });
+
+          await updateTransferStatus({
+            transferId,
+            status: "signing",
+            credentialId: credentialId || undefined,
+          });
+
+          // Execute private transfer
+          const privateResult = await executePrivateTransfer(
+            walletAddress,
+            stealthAddress.stealthAddress,
+            Number(amount.amount),
+            token.mint === "native" ? undefined : token.mint
+          );
+
+          if (privateResult.success && privateResult.signature) {
+            const confirmationTimeMs = Date.now() - startTime;
+
+            await updateTransferStatus({
+              transferId,
+              status: "confirmed",
+              solanaSignature: privateResult.signature,
+              confirmationTimeMs,
+              credentialId: credentialId || undefined,
+            });
+
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+            // Navigate to success screen
+            const result: TransferResult = {
+              signature: privateResult.signature,
+              confirmationTimeMs,
+              withinTarget: confirmationTimeMs < 200,
+              transferId,
+              explorerUrl: `https://solscan.io/tx/${privateResult.signature}`,
+            };
+
+            router.push({
+              pathname: "/transfer/success",
+              params: {
+                result: JSON.stringify(result),
+                recipient: params.recipient,
+                amountDisplay: amount.amount.toString(),
+                amountUsd: amount.amountUsd.toString(),
+                tokenSymbol: token.symbol,
+                feesPaid: fees.totalFeesUsd.toString(),
+                shielded: "true", // Mark as shielded transfer
+              },
+            });
+            return; // Exit early - transfer complete
+          } else {
+            // Private transfer failed - update record and fall through to regular transfer
+            console.warn("[Confirmation] Private transfer failed:", privateResult.error);
+            await updateTransferStatus({
+              transferId,
+              status: "failed",
+              errorMessage: privateResult.error || "Private transfer failed",
+              credentialId: credentialId || undefined,
+            });
+            // Reset transferId so regular flow creates new record
+            transferId = null;
+          }
+        }
+      }
+
+      // Fallback: Regular transaction flow (when ShadowWire unavailable)
+      console.log("[Confirmation] Using regular transfer flow");
+
+      // Step 2b: Build transaction
       setExecutionPhase("building");
 
       console.log("[Confirmation] Using RPC:", SOLANA_RPC_URL);
@@ -422,7 +529,7 @@ export default function TransferConfirmationScreen() {
       setIsConfirming(false);
       setExecutionPhase("idle");
     }
-  }, [recipient, token, amount, fees, userId, walletAddress, turnkey, params, createTransfer, updateTransferStatus, credentialId]);
+  }, [recipient, token, amount, fees, userId, walletAddress, turnkey, params, createTransfer, updateTransferStatus, credentialId, privacyState, isPrivateTransferAvailable, generateStealthAddress, executePrivateTransfer]);
 
   // Show error if params missing
   if (!recipient || !token || !amount || !fees) {
@@ -607,6 +714,7 @@ export default function TransferConfirmationScreen() {
                 <ThemedText style={[styles.confirmButtonText, { color: confirmButtonTextColor }]}>
                   {executionPhase === "building" && "Building transaction..."}
                   {executionPhase === "signing" && "Signing..."}
+                  {executionPhase === "shielding" && "Shielding transfer..."}
                   {executionPhase === "submitting" && "Submitting..."}
                   {executionPhase === "confirming" && "Confirming..."}
                   {executionPhase === "idle" && "Processing..."}
