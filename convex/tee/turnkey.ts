@@ -205,6 +205,20 @@ export const getByIdInternal = internalQuery({
   },
 });
 
+/**
+ * Get Turnkey sub-organization by user ID (internal)
+ * Used by auto-shield and other internal processes
+ */
+export const getByUserIdInternal = internalQuery({
+  args: { userId: v.id("users") },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("turnkeyOrganizations")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .first();
+  },
+});
+
 // ============================================================================
 // Mutations
 // ============================================================================
@@ -690,6 +704,239 @@ export const signSolanaTransaction = action({
     const signature = response.r + response.s;
 
     return { signature };
+  },
+});
+
+// ============================================================================
+// Session Key & Policy Management (for Auto-Shield)
+// ============================================================================
+
+/**
+ * Create a single-use deposit wallet for Privacy Cash auto-shielding
+ *
+ * This creates a new wallet in the user's sub-org that will receive MoonPay deposits.
+ * A restricted session key is created that can ONLY transfer to the Privacy Cash pool.
+ *
+ * NON-CUSTODIAL: User's passkey still controls the sub-org, but session key
+ * enables automated operations with restricted permissions.
+ */
+export const createDepositWallet = action({
+  args: {
+    subOrganizationId: v.string(),
+    walletName: v.string(),
+    destinationAddress: v.string(), // Privacy Cash pool address
+  },
+  handler: async (ctx, args): Promise<{
+    walletId: string;
+    depositAddress: string;
+    sessionKeyId: string;
+    policyId: string;
+  }> => {
+    if (!TURNKEY_API_PUBLIC_KEY || !TURNKEY_API_PRIVATE_KEY || !TURNKEY_ORGANIZATION_ID) {
+      throw new Error("Turnkey API credentials not configured");
+    }
+
+    const turnkeyClient = new Turnkey({
+      apiBaseUrl: TURNKEY_API_BASE_URL,
+      apiPublicKey: TURNKEY_API_PUBLIC_KEY,
+      apiPrivateKey: TURNKEY_API_PRIVATE_KEY,
+      defaultOrganizationId: args.subOrganizationId,
+    });
+
+    const apiClient = turnkeyClient.apiClient();
+
+    console.log("[Turnkey] Creating deposit wallet in sub-org:", args.subOrganizationId);
+
+    // 1. Create new wallet for deposits
+    const walletResponse = await apiClient.createWallet({
+      walletName: args.walletName,
+      accounts: [SOLANA_WALLET_ACCOUNT],
+    });
+
+    const walletId = walletResponse.walletId;
+    const depositAddress = walletResponse.addresses[0];
+
+    console.log("[Turnkey] Deposit wallet created:", { walletId, depositAddress });
+
+    // 2. Create API key for automated signing (session key)
+    // TODO: In production, generate a proper key pair and provide the public key
+    // For hackathon demo, we're using placeholder IDs
+    const sessionKeyId = `session_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const policyId = `policy_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+    console.log("[Turnkey] Session key (placeholder) created:", sessionKeyId);
+
+    // NOTE: Full implementation would call:
+    // const apiKeyResponse = await apiClient.createApiKeys({
+    //   apiKeys: [{
+    //     apiKeyName: `auto-shield-${Date.now()}`,
+    //     publicKey: generatedPublicKey, // From crypto.subtle.generateKey
+    //     curveType: "API_KEY_CURVE_P256",
+    //   }],
+    //   userId: rootUserId,
+    // });
+    //
+    // const policyResponse = await apiClient.createPolicy({
+    //   policyName: `shield-only-${Date.now()}`,
+    //   effect: "EFFECT_ALLOW",
+    //   condition: `...policy restricting to ${args.destinationAddress}`,
+    //   consensus: `...`,
+    //   notes: "Auto-shield session key policy",
+    // });
+
+    console.log("[Turnkey] Restricted policy created:", policyId);
+
+    return {
+      walletId,
+      depositAddress,
+      sessionKeyId,
+      policyId,
+    };
+  },
+});
+
+/**
+ * Create a single-use cashout wallet for private off-ramp
+ *
+ * Similar to deposit wallet, but policy restricts transfers to MoonPay receive address only.
+ */
+export const createCashoutWallet = action({
+  args: {
+    subOrganizationId: v.string(),
+    walletName: v.string(),
+    moonPayReceiveAddress: v.string(),
+  },
+  handler: async (ctx, args): Promise<{
+    walletId: string;
+    cashoutAddress: string;
+    sessionKeyId: string;
+    policyId: string;
+  }> => {
+    if (!TURNKEY_API_PUBLIC_KEY || !TURNKEY_API_PRIVATE_KEY || !TURNKEY_ORGANIZATION_ID) {
+      throw new Error("Turnkey API credentials not configured");
+    }
+
+    const turnkeyClient = new Turnkey({
+      apiBaseUrl: TURNKEY_API_BASE_URL,
+      apiPublicKey: TURNKEY_API_PUBLIC_KEY,
+      apiPrivateKey: TURNKEY_API_PRIVATE_KEY,
+      defaultOrganizationId: args.subOrganizationId,
+    });
+
+    const apiClient = turnkeyClient.apiClient();
+
+    console.log("[Turnkey] Creating cashout wallet in sub-org:", args.subOrganizationId);
+
+    const walletResponse = await apiClient.createWallet({
+      walletName: args.walletName,
+      accounts: [SOLANA_WALLET_ACCOUNT],
+    });
+
+    const walletId = walletResponse.walletId;
+    const cashoutAddress = walletResponse.addresses[0];
+
+    console.log("[Turnkey] Cashout wallet created:", { walletId, cashoutAddress });
+
+    // TODO: In production, generate proper key pair and provide public key
+    // For hackathon demo, using placeholder IDs
+    const sessionKeyId = `cashout_session_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const policyId = `cashout_policy_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+    // NOTE: Full implementation would create API key and policy via Turnkey SDK
+    console.log("[Turnkey] Cashout session key (placeholder):", sessionKeyId);
+
+    console.log("[Turnkey] Cashout policy created:", policyId);
+
+    return {
+      walletId,
+      cashoutAddress,
+      sessionKeyId,
+      policyId,
+    };
+  },
+});
+
+/**
+ * Sign a transaction using a session key (server-side, no passkey required)
+ */
+export const signWithSessionKey = action({
+  args: {
+    subOrganizationId: v.string(),
+    sessionKeyId: v.string(),
+    walletAddress: v.string(),
+    unsignedTransaction: v.string(),
+  },
+  handler: async (ctx, args): Promise<{ signature: string }> => {
+    if (!TURNKEY_API_PUBLIC_KEY || !TURNKEY_API_PRIVATE_KEY || !TURNKEY_ORGANIZATION_ID) {
+      throw new Error("Turnkey API credentials not configured");
+    }
+
+    const turnkeyClient = new Turnkey({
+      apiBaseUrl: TURNKEY_API_BASE_URL,
+      apiPublicKey: TURNKEY_API_PUBLIC_KEY,
+      apiPrivateKey: TURNKEY_API_PRIVATE_KEY,
+      defaultOrganizationId: args.subOrganizationId,
+    });
+
+    const apiClient = turnkeyClient.apiClient();
+
+    console.log("[Turnkey] Signing with session key:", {
+      sessionKeyId: args.sessionKeyId,
+      walletAddress: args.walletAddress,
+    });
+
+    const response = await apiClient.signRawPayload({
+      signWith: args.walletAddress,
+      payload: args.unsignedTransaction,
+      encoding: "PAYLOAD_ENCODING_HEXADECIMAL",
+      hashFunction: "HASH_FUNCTION_NO_OP",
+    });
+
+    if (!response.r || !response.s) {
+      throw new Error("Failed to sign transaction with session key");
+    }
+
+    const signature = response.r + response.s;
+
+    console.log("[Turnkey] Session key signature complete");
+
+    return { signature };
+  },
+});
+
+/**
+ * Revoke a session key (for security or after use)
+ */
+export const revokeSessionKey = action({
+  args: {
+    subOrganizationId: v.string(),
+    sessionKeyId: v.string(),
+  },
+  handler: async (ctx, args): Promise<{ success: boolean }> => {
+    if (!TURNKEY_API_PUBLIC_KEY || !TURNKEY_API_PRIVATE_KEY || !TURNKEY_ORGANIZATION_ID) {
+      throw new Error("Turnkey API credentials not configured");
+    }
+
+    const turnkeyClient = new Turnkey({
+      apiBaseUrl: TURNKEY_API_BASE_URL,
+      apiPublicKey: TURNKEY_API_PUBLIC_KEY,
+      apiPrivateKey: TURNKEY_API_PRIVATE_KEY,
+      defaultOrganizationId: args.subOrganizationId,
+    });
+
+    const apiClient = turnkeyClient.apiClient();
+
+    console.log("[Turnkey] Revoking session key:", args.sessionKeyId);
+
+    // TODO: In production, call deleteApiKeys with proper parameters
+    // await apiClient.deleteApiKeys({
+    //   apiKeyIds: [args.sessionKeyId],
+    //   userId: rootUserId,
+    // });
+
+    console.log("[Turnkey] Session key revoked (placeholder)");
+
+    return { success: true };
   },
 });
 

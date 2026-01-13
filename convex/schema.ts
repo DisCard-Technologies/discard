@@ -1615,4 +1615,62 @@ export default defineSchema({
   })
     .index("by_user", ["userId"])
     .index("by_user_status", ["userId", "status"]),
+
+  // ============================================================================
+  // DEPOSIT ADDRESSES - Single-use addresses for Privacy Cash auto-shield
+  // ============================================================================
+  depositAddresses: defineTable({
+    userId: v.id("users"),
+
+    // Address details
+    address: v.string(),                 // Solana deposit address
+    walletId: v.string(),                // Turnkey wallet ID
+
+    // Session key for auto-shield (restricted to Privacy Cash pool only)
+    sessionKeyId: v.string(),            // Turnkey API key ID
+    policyId: v.string(),                // Turnkey policy ID
+
+    // Status
+    status: v.union(
+      v.literal("pending"),              // Awaiting deposit
+      v.literal("funded"),               // Deposit received
+      v.literal("shielded"),             // Funds moved to shielded pool
+      v.literal("expired")               // Address expired unused
+    ),
+
+    // Timestamps
+    expiresAt: v.number(),               // 30-minute expiry
+    createdAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_address", ["address"])
+    .index("by_status", ["status"]),
+
+  // ============================================================================
+  // SHIELDED COMMITMENTS - Privacy Cash shielded balance tracking
+  // ============================================================================
+  shieldedCommitments: defineTable({
+    userId: v.id("users"),
+
+    // Commitment details
+    amount: v.number(),                  // Amount in base units (e.g., USDC)
+    sourceType: v.string(),              // "moonpay", "transfer", etc.
+    sourceId: v.string(),                // Source transaction ID
+
+    // Blockchain reference
+    shieldTxSignature: v.optional(v.string()), // Shield transaction signature
+
+    // Status
+    status: v.union(
+      v.literal("shielded"),             // Funds in shielded pool
+      v.literal("unshielding"),          // Withdrawal in progress
+      v.literal("unshielded")            // Funds withdrawn
+    ),
+
+    // Timestamps
+    createdAt: v.number(),
+    unshieldedAt: v.optional(v.number()),
+  })
+    .index("by_user", ["userId"])
+    .index("by_user_status", ["userId", "status"]),
 });
