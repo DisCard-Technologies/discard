@@ -7,7 +7,7 @@
  * - Biometric confirm button
  */
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import {
   StyleSheet,
   View,
@@ -82,7 +82,7 @@ export default function TransferConfirmationScreen() {
   const [isConfirming, setIsConfirming] = useState(false);
   const [executionPhase, setExecutionPhase] = useState<ExecutionPhase>("idle");
   const [error, setError] = useState<string | null>(null);
-  const [privateMode, setPrivateMode] = useState(false);
+  const [privateMode, setPrivateMode] = useState(true); // Privacy ON by default
   const [complianceChecked, setComplianceChecked] = useState(false);
 
   // Privacy transfer hook
@@ -95,6 +95,17 @@ export default function TransferConfirmationScreen() {
     isPrivateTransferAvailable,
     reset: resetPrivacy,
   } = usePrivateTransfer();
+
+  // Auto-run compliance check on mount (privacy is default)
+  useEffect(() => {
+    if (privateMode && !complianceChecked && recipient && walletAddress && amount) {
+      checkTransferCompliance(
+        walletAddress,
+        recipient.address,
+        amount.amountUsd || 0
+      ).then(() => setComplianceChecked(true));
+    }
+  }, [privateMode, complianceChecked, recipient, walletAddress, amount, checkTransferCompliance]);
 
   // Auth and Turnkey
   const { user, userId } = useAuth();
@@ -477,93 +488,110 @@ export default function TransferConfirmationScreen() {
             />
           </Animated.View>
 
-          {/* Privacy Toggle */}
-          {(isComplianceAvailable || isPrivateTransferAvailable) && (
-            <Animated.View
-              entering={FadeInUp.delay(150).duration(300)}
-              style={styles.privacySection}
-            >
-              <View style={[styles.privacyCard, { backgroundColor: isDark ? "rgba(16, 185, 129, 0.1)" : "rgba(16, 185, 129, 0.05)" }]}>
-                <View style={styles.privacyHeader}>
-                  <View style={styles.privacyIconContainer}>
-                    <Ionicons name="shield-checkmark" size={20} color={primaryColor} />
-                  </View>
-                  <View style={styles.privacyTextContainer}>
-                    <ThemedText style={styles.privacyTitle}>Private Transfer</ThemedText>
-                    <ThemedText style={[styles.privacyDescription, { color: mutedColor }]}>
-                      Shield your transaction with ShadowWire
-                    </ThemedText>
-                  </View>
-                  <Switch
-                    value={privateMode}
-                    onValueChange={(value) => {
-                      setPrivateMode(value);
-                      if (value && !complianceChecked && recipient && walletAddress && amount) {
-                        // Run compliance check when enabling privacy
+          {/* Privacy Status - Privacy ON by default */}
+          <Animated.View
+            entering={FadeInUp.delay(150).duration(300)}
+            style={styles.privacySection}
+          >
+            <View style={[styles.privacyCard, { backgroundColor: isDark ? "rgba(16, 185, 129, 0.1)" : "rgba(16, 185, 129, 0.05)" }]}>
+              <View style={styles.privacyHeader}>
+                <View style={styles.privacyIconContainer}>
+                  <Ionicons
+                    name={privateMode ? "shield-checkmark" : "eye"}
+                    size={20}
+                    color={privateMode ? primaryColor : mutedColor}
+                  />
+                </View>
+                <View style={styles.privacyTextContainer}>
+                  <ThemedText style={styles.privacyTitle}>
+                    {privateMode ? "Shielded Transfer" : "Public Transfer"}
+                  </ThemedText>
+                  <ThemedText style={[styles.privacyDescription, { color: mutedColor }]}>
+                    {privateMode
+                      ? "Protected by ShadowWire + Range Compliance"
+                      : "Visible on public explorers"}
+                  </ThemedText>
+                </View>
+                <Pressable
+                  onPress={() => {
+                    if (privateMode) {
+                      // Switching to public
+                      setPrivateMode(false);
+                      resetPrivacy();
+                      setComplianceChecked(false);
+                    } else {
+                      // Switching to private
+                      setPrivateMode(true);
+                      if (!complianceChecked && recipient && walletAddress && amount) {
                         checkTransferCompliance(
                           walletAddress,
                           recipient.address,
                           amount.amountUsd || 0
                         ).then(() => setComplianceChecked(true));
                       }
-                      if (!value) {
-                        resetPrivacy();
-                        setComplianceChecked(false);
-                      }
-                    }}
-                    disabled={isCheckingPrivacy || isConfirming}
-                    trackColor={{ false: mutedColor, true: `${primaryColor}80` }}
-                    thumbColor={privateMode ? primaryColor : "#f4f3f4"}
-                  />
-                </View>
-
-                {/* Compliance Status */}
-                {privateMode && privacyState.privacyCheck && (
-                  <View style={styles.complianceStatus}>
-                    {privacyState.privacyCheck.compliant ? (
-                      <View style={styles.complianceRow}>
-                        <Ionicons name="checkmark-circle" size={16} color="#10B981" />
-                        <ThemedText style={[styles.complianceText, { color: "#10B981" }]}>
-                          Compliance check passed
-                        </ThemedText>
-                      </View>
-                    ) : (
-                      <View style={styles.complianceRow}>
-                        <Ionicons name="warning" size={16} color="#F59E0B" />
-                        <ThemedText style={[styles.complianceText, { color: "#F59E0B" }]}>
-                          {privacyState.privacyCheck.error || "Review required"}
-                        </ThemedText>
-                      </View>
-                    )}
-                    {privacyState.privacyCheck.warnings?.map((warning, idx) => (
-                      <View key={idx} style={styles.complianceWarning}>
-                        <Ionicons name="information-circle" size={14} color="#F59E0B" />
-                        <ThemedText style={[styles.complianceWarningText, { color: mutedColor }]}>
-                          {warning}
-                        </ThemedText>
-                      </View>
-                    ))}
-                  </View>
-                )}
-
-                {/* Loading state */}
-                {isCheckingPrivacy && (
-                  <View style={styles.complianceStatus}>
-                    <ActivityIndicator size="small" color={primaryColor} />
-                    <ThemedText style={[styles.complianceText, { color: mutedColor, marginLeft: 8 }]}>
-                      Checking compliance...
-                    </ThemedText>
-                  </View>
-                )}
+                    }
+                  }}
+                  disabled={isCheckingPrivacy || isConfirming}
+                  style={[
+                    styles.visibilityButton,
+                    { borderColor: privateMode ? primaryColor : mutedColor },
+                  ]}
+                >
+                  <ThemedText style={[
+                    styles.visibilityButtonText,
+                    { color: privateMode ? primaryColor : mutedColor }
+                  ]}>
+                    {privateMode ? "Make visible" : "Shield it"}
+                  </ThemedText>
+                </Pressable>
               </View>
 
-              {privateMode && (
-                <ThemedText style={[styles.privacyNote, { color: mutedColor }]}>
-                  <Ionicons name="eye-off" size={12} color={mutedColor} /> Transaction details will be hidden from public explorers
-                </ThemedText>
+              {/* Compliance Status */}
+              {privateMode && privacyState.privacyCheck && (
+                <View style={styles.complianceStatus}>
+                  {privacyState.privacyCheck.compliant ? (
+                    <View style={styles.complianceRow}>
+                      <Ionicons name="checkmark-circle" size={16} color="#10B981" />
+                      <ThemedText style={[styles.complianceText, { color: "#10B981" }]}>
+                        Compliance verified
+                      </ThemedText>
+                    </View>
+                  ) : (
+                    <View style={styles.complianceRow}>
+                      <Ionicons name="warning" size={16} color="#F59E0B" />
+                      <ThemedText style={[styles.complianceText, { color: "#F59E0B" }]}>
+                        {privacyState.privacyCheck.error || "Review required"}
+                      </ThemedText>
+                    </View>
+                  )}
+                  {privacyState.privacyCheck.warnings?.map((warning, idx) => (
+                    <View key={idx} style={styles.complianceWarning}>
+                      <Ionicons name="information-circle" size={14} color="#F59E0B" />
+                      <ThemedText style={[styles.complianceWarningText, { color: mutedColor }]}>
+                        {warning}
+                      </ThemedText>
+                    </View>
+                  ))}
+                </View>
               )}
-            </Animated.View>
-          )}
+
+              {/* Loading state */}
+              {privateMode && isCheckingPrivacy && (
+                <View style={styles.complianceStatus}>
+                  <ActivityIndicator size="small" color={primaryColor} />
+                  <ThemedText style={[styles.complianceText, { color: mutedColor, marginLeft: 8 }]}>
+                    Verifying compliance...
+                  </ThemedText>
+                </View>
+              )}
+            </View>
+
+            {privateMode && (
+              <ThemedText style={[styles.privacyNote, { color: mutedColor }]}>
+                🛡️ Your transaction is shielded from public view
+              </ThemedText>
+            )}
+          </Animated.View>
 
           {/* Error Message with Retry */}
           {error && (
@@ -868,5 +896,15 @@ const styles = StyleSheet.create({
     fontSize: 11,
     textAlign: "center",
     marginTop: 8,
+  },
+  visibilityButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  visibilityButtonText: {
+    fontSize: 12,
+    fontWeight: "500",
   },
 });
