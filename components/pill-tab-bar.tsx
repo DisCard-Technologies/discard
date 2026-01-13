@@ -21,18 +21,21 @@ const tabConfig: Record<string, TabConfig> = {
   menu: { icon: 'grid', label: 'Menu' },
 };
 
+// Tab bar colors
+const TAB_BUTTON_BG = '#2a2a2e';
+const ACTIVE_COLOR = '#10B981';
+const INACTIVE_ICON_COLOR = '#9BA1A6';
+
 export function PillTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
-  const primaryColor = useThemeColor({}, 'tint');
-  const mutedColor = useThemeColor({ light: '#687076', dark: '#9BA1A6' }, 'icon');
-  const bgColor = useThemeColor({}, 'card');
+  const cardColor = useThemeColor({}, 'card');
 
   // Filter routes to only include those with tab config (excludes hidden screens)
   const visibleRoutes = state.routes.filter((route) => tabConfig[route.name]);
 
   return (
-    <View style={[styles.container, { paddingBottom: Math.max(insets.bottom, 12), backgroundColor: bgColor }]}>
-      <View style={styles.nav}>
+    <View style={[styles.container, { paddingBottom: Math.max(insets.bottom, 12), backgroundColor: cardColor }]}>
+      <View style={styles.navContainer}>
         {visibleRoutes.map((route) => {
           const { options } = descriptors[route.key];
           const routeIndex = state.routes.findIndex((r) => r.key === route.key);
@@ -71,17 +74,22 @@ export function PillTabBar({ state, descriptors, navigation }: BottomTabBarProps
               onLongPress={onLongPress}
               style={({ pressed }) => [
                 styles.tab,
-                isFocused && [styles.tabActive, { backgroundColor: `${primaryColor}15` }],
+                isFocused ? styles.tabActive : styles.tabInactive,
                 pressed && styles.tabPressed,
               ]}
             >
-              <Ionicons
-                name={config.icon}
-                size={18}
-                color={isFocused ? primaryColor : mutedColor}
-              />
+              <View style={[
+                styles.iconContainer,
+                isFocused && styles.iconContainerActive,
+              ]}>
+                <Ionicons
+                  name={config.icon}
+                  size={20}
+                  color={isFocused ? '#FFFFFF' : INACTIVE_ICON_COLOR}
+                />
+              </View>
               {isFocused && (
-                <ThemedText style={[styles.label, { color: primaryColor }]}>
+                <ThemedText style={styles.label}>
                   {config.label}
                 </ThemedText>
               )}
@@ -97,7 +105,7 @@ const styles = StyleSheet.create({
   container: {
     paddingHorizontal: 16,
   },
-  nav: {
+  navContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -106,19 +114,36 @@ const styles = StyleSheet.create({
   tab: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 24,
+  },
+  tabInactive: {
+    // Inactive tabs are just the circular icon button
   },
   tabActive: {
-    paddingHorizontal: 16,
+    backgroundColor: TAB_BUTTON_BG,
+    borderRadius: 26,
+    paddingRight: 16,
+    paddingLeft: 4,
+    paddingVertical: 4,
+    gap: 8,
   },
   tabPressed: {
     opacity: 0.7,
+    transform: [{ scale: 0.96 }],
+  },
+  iconContainer: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: TAB_BUTTON_BG,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  iconContainerActive: {
+    backgroundColor: ACTIVE_COLOR,
   },
   label: {
-    fontSize: 12,
-    fontWeight: '500',
+    fontSize: 14,
+    fontWeight: '600',
+    color: INACTIVE_ICON_COLOR,
   },
 });
