@@ -26,7 +26,7 @@ import { ThemedView } from "@/components/themed-view";
 import { useThemeColor } from "@/hooks/use-theme-color";
 import { useColorScheme } from "@/hooks/use-color-scheme";
 import { TransferSummary } from "@/components/transfer";
-import { useAuth } from "@/stores/authConvex";
+import { useAuth, useCurrentCredentialId, getLocalSolanaKeypair } from "@/stores/authConvex";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Connection, PublicKey } from "@solana/web3.js";
@@ -83,6 +83,7 @@ export default function TransferConfirmationScreen() {
 
   // Auth and Turnkey
   const { user, userId } = useAuth();
+  const credentialId = useCurrentCredentialId();
   const turnkey = useTurnkey(userId, {
     organizationId: TURNKEY_ORG_ID,
     rpId: TURNKEY_RP_ID,
@@ -178,6 +179,7 @@ export default function TransferConfirmationScreen() {
       // Step 2: Build transaction
       setExecutionPhase("building");
 
+      console.log("[Confirmation] Using RPC:", SOLANA_RPC_URL);
       const connection = new Connection(SOLANA_RPC_URL, "confirmed");
       const fromPubkey = new PublicKey(walletAddress);
       const toPubkey = new PublicKey(recipient.address);
@@ -225,17 +227,68 @@ export default function TransferConfirmationScreen() {
         networkFee: fees.networkFeeUsd,
         platformFee: fees.platformFee,
         priorityFee: fees.priorityFee * 150, // Convert SOL to USD estimate
+        credentialId: credentialId || undefined,
       });
 
-      // Step 5: Sign with Turnkey
+      // Step 5: Sign transaction (Turnkey TEE or local keypair)
       setExecutionPhase("signing");
 
       await updateTransferStatus({
         transferId,
         status: "signing",
+        credentialId: credentialId || undefined,
       });
 
-      const { signedTransaction } = await turnkey.signTransaction(txResult.transaction);
+      let signedTransaction = txResult.transaction;
+
+      // Check if user has Turnkey sub-organization for TEE signing
+      if (turnkey.subOrg) {
+        console.log("[Confirmation] Signing with Turnkey TEE");
+        const signResult = await turnkey.signTransaction(txResult.transaction);
+        // Add Turnkey signature to transaction
+        signedTransaction.addSignature(
+          fromPubkey,
+          Buffer.from(signResult.signature)
+        );
+      } else {
+        // Fall back to local keypair signing (biometric auth users)
+        console.log("[Confirmation] Signing with local keypair (no Turnkey sub-org)");
+        const localKeypair = await getLocalSolanaKeypair();
+        if (!localKeypair) {
+          throw new Error("No signing key available. Please re-authenticate.");
+        }
+
+        // For local signing, we must rebuild the transaction:
+        // 1. Use the local keypair's address as sender
+        // 2. Disable gas subsidization (we don't have the gas authority's key)
+        const localPubkey = localKeypair.publicKey;
+        console.log("[Confirmation] Using local keypair:", localPubkey.toBase58());
+        console.log("[Confirmation] Rebuilding transaction without gas subsidization");
+
+        // Rebuild transaction with local keypair's address and no gas subsidy
+        if (token.mint === "native" || token.mint === NATIVE_MINT.toBase58()) {
+          txResult = await buildSOLTransfer(
+            connection,
+            localPubkey,
+            toPubkey,
+            amountBaseUnits,
+            false // subsidizeGas = false, user pays their own fees
+          );
+        } else {
+          txResult = await buildSPLTokenTransfer(
+            connection,
+            localPubkey,
+            toPubkey,
+            amountBaseUnits,
+            new PublicKey(token.mint),
+            false // subsidizeGas = false, user pays their own fees
+          );
+        }
+        signedTransaction = txResult.transaction;
+
+        // Sign transaction with local keypair
+        signedTransaction.sign(localKeypair);
+      }
 
       // Step 6: Submit to Firedancer
       setExecutionPhase("submitting");
@@ -260,6 +313,7 @@ export default function TransferConfirmationScreen() {
         transferId,
         status: "submitted",
         solanaSignature: signature,
+        credentialId: credentialId || undefined,
       });
 
       // Step 7: Wait for confirmation
@@ -273,6 +327,7 @@ export default function TransferConfirmationScreen() {
           transferId,
           status: "failed",
           errorMessage: confirmation.error || "Confirmation failed",
+          credentialId: credentialId || undefined,
         });
         throw new Error(confirmation.error || "Transaction failed to confirm on the network");
       }
@@ -282,6 +337,7 @@ export default function TransferConfirmationScreen() {
         transferId,
         status: "confirmed",
         confirmationTimeMs,
+        credentialId: credentialId || undefined,
       });
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -316,6 +372,7 @@ export default function TransferConfirmationScreen() {
             transferId,
             status: "failed",
             errorMessage: err instanceof Error ? err.message : "Unknown error",
+            credentialId: credentialId || undefined,
           });
         } catch (updateErr) {
           console.error("[Confirmation] Failed to update status:", updateErr);
@@ -344,7 +401,7 @@ export default function TransferConfirmationScreen() {
       setIsConfirming(false);
       setExecutionPhase("idle");
     }
-  }, [recipient, token, amount, fees, userId, walletAddress, turnkey, params, createTransfer, updateTransferStatus]);
+  }, [recipient, token, amount, fees, userId, walletAddress, turnkey, params, createTransfer, updateTransferStatus, credentialId]);
 
   // Show error if params missing
   if (!recipient || !token || !amount || !fees) {

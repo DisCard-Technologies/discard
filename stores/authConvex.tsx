@@ -129,7 +129,7 @@ async function generateAndStoreSolanaWallet(): Promise<{ publicKey: string; secr
 }
 
 // Retrieve stored Solana wallet
-async function getStoredSolanaWallet(): Promise<{ publicKey: string; secretKey: Uint8Array } | null> {
+export async function getStoredSolanaWallet(): Promise<{ publicKey: string; secretKey: Uint8Array } | null> {
   try {
     const secretKeyBase58 = await SecureStore.getItemAsync(SOLANA_SECRET_KEY);
     if (!secretKeyBase58) return null;
@@ -145,6 +145,13 @@ async function getStoredSolanaWallet(): Promise<{ publicKey: string; secretKey: 
     console.error("[Auth] Failed to retrieve Solana wallet:", e);
     return null;
   }
+}
+
+// Get Solana Keypair for local signing (biometric auth users without Turnkey)
+export async function getLocalSolanaKeypair(): Promise<Keypair | null> {
+  const wallet = await getStoredSolanaWallet();
+  if (!wallet) return null;
+  return Keypair.fromSecretKey(wallet.secretKey);
 }
 
 // Generate a unique credential ID for this device
@@ -360,6 +367,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setState((prev) => ({
             ...prev,
             userId: userId as Id<"users">,
+            credentialId: credentialId || null,
             user: {
               id: userId,
               displayName: displayName || "DisCard User",
@@ -385,6 +393,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setState((prev) => ({
               ...prev,
               userId: stored.userId as Id<"users">,
+              credentialId: stored.credentialId || null,
               user: {
                 id: stored.userId!,
                 displayName: "DisCard User",
@@ -436,6 +445,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setState((prev) => ({
             ...prev,
             userId: result.userId as Id<"users">,
+            credentialId: authResult.id,
             isAuthenticated: true,
             error: null,
           }));
@@ -653,6 +663,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setState((prev) => ({
             ...prev,
             userId: userId as Id<"users">,
+            credentialId,
             user: {
               id: userId,
               displayName: displayName,
@@ -691,6 +702,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setState((prev) => ({
             ...prev,
             userId: userId as Id<"users">,
+            credentialId,
             user: {
               id: userId,
               displayName: displayName,
@@ -768,6 +780,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setState((prev) => ({
           ...prev,
           userId: result.userId as Id<"users">,
+          credentialId: registrationResult.id,
           isAuthenticated: true,
           error: null,
         }));

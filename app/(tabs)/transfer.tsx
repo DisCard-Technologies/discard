@@ -9,9 +9,25 @@ import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import { router } from 'expo-router';
 import QRCode from 'react-native-qrcode-svg';
-import { CameraView, useCameraPermissions } from 'expo-camera';
 
 import { ThemedText } from '@/components/themed-text';
+
+// expo-camera is optional - may not be available in Expo Go
+type CameraViewType = React.ComponentType<any>;
+type PermissionStatus = { granted: boolean; canAskAgain: boolean };
+
+let CameraView: CameraViewType | null = null;
+let useCameraPermissionsHook: (() => [PermissionStatus | null, () => Promise<PermissionStatus>]) | null = null;
+
+try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const expoCamera = require('expo-camera');
+  CameraView = expoCamera.CameraView;
+  useCameraPermissionsHook = expoCamera.useCameraPermissions;
+} catch {
+  console.warn('[Transfer] expo-camera not available');
+}
+
 import { ThemedView } from '@/components/themed-view';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { useColorScheme } from '@/hooks/use-color-scheme';
@@ -45,8 +61,8 @@ interface NumpadProps {
 }
 
 function Numpad({ onPress, disabled }: NumpadProps) {
-  const mutedColor = 'rgba(0,229,255,0.6)';
-  const textColor = '#fff';
+  const mutedColor = 'rgba(16, 185, 129, 0.6)';
+  const textColor = '#ECEDEE';
 
   const keys = [
     ['1', '2', '3'],
@@ -151,12 +167,12 @@ export default function TransferScreen() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
 
-  // CashApp green color
-  const cashAppGreen = '#00D632';
+  // App primary color (teal/emerald)
   const primaryColor = useThemeColor({}, 'tint');
   const mutedColor = useThemeColor({ light: '#687076', dark: '#9BA1A6' }, 'icon');
   const textColor = useThemeColor({}, 'text');
-  const bgColor = isDark ? '#000' : '#fff';
+  const bgColor = useThemeColor({}, 'background');
+  const cardColor = useThemeColor({}, 'card');
 
   // Auth and wallet
   const { user } = useAuth();
@@ -215,8 +231,10 @@ export default function TransferScreen() {
   const [copied, setCopied] = useState(false);
   const [showTokenSelector, setShowTokenSelector] = useState(false);
 
-  // Camera permissions for QR scan
-  const [permission, requestPermission] = useCameraPermissions();
+  // Camera permissions for QR scan (conditional - may not be available in Expo Go)
+  const cameraPermissions = useCameraPermissionsHook ? useCameraPermissionsHook() : null;
+  const permission = cameraPermissions?.[0] ?? null;
+  const requestPermission = cameraPermissions?.[1] ?? (async () => ({ granted: false, canAskAgain: false }));
 
   // Get selected token details
   const selectedPaymentToken = useMemo(() => {
@@ -288,9 +306,25 @@ export default function TransferScreen() {
       return;
     }
 
-    // If no contact selected, open contact search
+    // If no contact selected, go to send screen for recipient selection
     if (!selectedContact) {
-      router.push('/contacts' as any);
+      (router.push as any)({
+        pathname: '/transfer/send',
+        params: {
+          amount: JSON.stringify({
+            amount: parseFloat(amount),
+            amountUsd: parseFloat(amount),
+            amountBaseUnits: paymentAmountBaseUnits || (parseFloat(amount) * 1e6).toString(),
+          }),
+          token: JSON.stringify({
+            symbol: selectedToken,
+            mint: selectedPaymentToken?.mint || 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+            decimals: selectedPaymentToken?.decimals || 6,
+            balance: 0,
+            balanceUsd: 0,
+          }),
+        },
+      });
       return;
     }
 
@@ -403,12 +437,16 @@ export default function TransferScreen() {
   // ============================================================================
 
   const renderMainView = () => (
-    <LinearGradient
-      colors={['#2A2E35', '#1F2228', '#2A2E35']}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 1 }}
-      style={styles.mainContainer}
-    >
+    <View style={[styles.mainContainer, { backgroundColor: bgColor }]}>
+      {/* Ambient gradient */}
+      <LinearGradient
+        colors={isDark 
+          ? ['rgba(16, 185, 129, 0.08)', 'transparent'] 
+          : ['rgba(16, 185, 129, 0.05)', 'transparent']}
+        style={styles.ambientGradient}
+        start={{ x: 0.5, y: 0 }}
+        end={{ x: 0.5, y: 0.6 }}
+      />
       {/* Header with QR button */}
       <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
         <Pressable
@@ -462,49 +500,41 @@ export default function TransferScreen() {
         <View style={styles.actionRow}>
           <Pressable
             onPress={handleRequest}
-            style={styles.actionButton}
+            style={({ pressed }) => [
+              styles.actionButton,
+              styles.requestButtonStyle,
+              { borderColor: primaryColor },
+              pressed && { opacity: 0.8 },
+            ]}
           >
-            {({ pressed }) => (
-              <LinearGradient
-                colors={pressed ? ['#00E5FF', '#7B61FF'] : ['#2A2E35', '#1A4D5C', '#3D2680']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.actionButtonGradient}
-              >
-                <ThemedText style={styles.actionButtonText}>Request</ThemedText>
-              </LinearGradient>
-            )}
+            <ThemedText style={[styles.actionButtonText, { color: primaryColor }]}>Request</ThemedText>
           </Pressable>
           <Pressable
             onPress={handlePay}
-            style={styles.actionButton}
+            style={({ pressed }) => [
+              styles.actionButton,
+              styles.payButtonStyle,
+              { backgroundColor: primaryColor },
+              pressed && { opacity: 0.8 },
+            ]}
           >
-            {({ pressed }) => (
-              <LinearGradient
-                colors={pressed ? ['#00E5FF', '#7B61FF'] : ['#2A2E35', '#00464D', '#1A0F33']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.actionButtonGradient}
-              >
-                <ThemedText style={styles.actionButtonText}>Pay</ThemedText>
-              </LinearGradient>
-            )}
+            <ThemedText style={[styles.actionButtonText, { color: '#fff' }]}>Pay</ThemedText>
           </Pressable>
         </View>
 
         {/* Selected contact indicator */}
         {selectedContact && (
-          <Animated.View entering={FadeIn.duration(200)} style={styles.selectedContactBar}>
+          <Animated.View entering={FadeIn.duration(200)} style={[styles.selectedContactBar, { borderColor: primaryColor, backgroundColor: `${primaryColor}15` }]}>
             <View style={styles.selectedContactInfo}>
-              <View style={[styles.selectedContactAvatar, { backgroundColor: '#fff' }]}>
-                <ThemedText style={[styles.selectedContactAvatarText, { color: cashAppGreen }]}>
+              <View style={[styles.selectedContactAvatar, { backgroundColor: primaryColor }]}>
+                <ThemedText style={[styles.selectedContactAvatarText, { color: '#fff' }]}>
                   {selectedContact.avatar}
                 </ThemedText>
               </View>
-              <ThemedText style={styles.selectedContactName}>{selectedContact.name}</ThemedText>
+              <ThemedText style={[styles.selectedContactName, { color: textColor }]}>{selectedContact.name}</ThemedText>
             </View>
             <Pressable onPress={() => setSelectedContact(null)}>
-              <Ionicons name="close-circle" size={24} color="rgba(255,255,255,0.6)" />
+              <Ionicons name="close-circle" size={24} color={mutedColor} />
             </Pressable>
           </Animated.View>
         )}
@@ -528,7 +558,7 @@ export default function TransferScreen() {
         >
           <Animated.View
             entering={FadeIn.duration(200)}
-            style={[styles.tokenModal, { backgroundColor: isDark ? '#1c1c1e' : '#fff' }]}
+            style={[styles.tokenModal, { backgroundColor: cardColor }]}
           >
             <ThemedText style={styles.tokenModalTitle}>Select Token</ThemedText>
             <ScrollView style={styles.tokenList}>
@@ -555,7 +585,7 @@ export default function TransferScreen() {
           </Animated.View>
         </Pressable>
       )}
-    </LinearGradient>
+    </View>
   );
 
   // ============================================================================
@@ -583,56 +613,28 @@ export default function TransferScreen() {
       </View>
 
       {/* QR Mode Tabs */}
-      <View style={[styles.qrTabs, { backgroundColor: isDark ? '#1c1c1e' : '#f4f4f5' }]}>
+      <View style={[styles.qrTabs, { backgroundColor: cardColor }]}>
         <Pressable
           onPress={() => setQrMode('scan')}
-          style={styles.qrTab}
+          style={[
+            styles.qrTab,
+            qrMode === 'scan' && { backgroundColor: primaryColor },
+          ]}
         >
-          {({ pressed }) => (
-            qrMode === 'scan' || pressed ? (
-              <LinearGradient
-                colors={pressed ? ['#00E5FF', '#7B61FF'] : ['#2A2E35', '#1A4D5C', '#3D2680']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.qrTabGradient}
-              >
-                <ThemedText style={[styles.qrTabText, { color: '#fff' }]}>
-                  Scan
-                </ThemedText>
-              </LinearGradient>
-            ) : (
-              <View style={styles.qrTabGradient}>
-                <ThemedText style={[styles.qrTabText, { color: mutedColor }]}>
-                  Scan
-                </ThemedText>
-              </View>
-            )
-          )}
+          <ThemedText style={[styles.qrTabText, { color: qrMode === 'scan' ? '#fff' : mutedColor }]}>
+            Scan
+          </ThemedText>
         </Pressable>
         <Pressable
           onPress={() => setQrMode('mycode')}
-          style={styles.qrTab}
+          style={[
+            styles.qrTab,
+            qrMode === 'mycode' && { backgroundColor: primaryColor },
+          ]}
         >
-          {({ pressed }) => (
-            qrMode === 'mycode' || pressed ? (
-              <LinearGradient
-                colors={pressed ? ['#00E5FF', '#7B61FF'] : ['#2A2E35', '#1A4D5C', '#3D2680']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.qrTabGradient}
-              >
-                <ThemedText style={[styles.qrTabText, { color: '#fff' }]}>
-                  My Code
-                </ThemedText>
-              </LinearGradient>
-            ) : (
-              <View style={styles.qrTabGradient}>
-                <ThemedText style={[styles.qrTabText, { color: mutedColor }]}>
-                  My Code
-                </ThemedText>
-              </View>
-            )
-          )}
+          <ThemedText style={[styles.qrTabText, { color: qrMode === 'mycode' ? '#fff' : mutedColor }]}>
+            My Code
+          </ThemedText>
         </Pressable>
       </View>
 
@@ -641,7 +643,18 @@ export default function TransferScreen() {
         {qrMode === 'scan' ? (
           // Camera Scanner
           <View style={styles.scannerContainer}>
-            {permission?.granted ? (
+            {!CameraView ? (
+              // Camera not available (Expo Go limitation)
+              <View style={styles.permissionContainer}>
+                <Ionicons name="camera-off-outline" size={48} color={mutedColor} />
+                <ThemedText style={[styles.permissionText, { color: mutedColor }]}>
+                  Camera not available
+                </ThemedText>
+                <ThemedText style={[styles.permissionSubtext, { color: mutedColor }]}>
+                  Build a development client to use QR scanning
+                </ThemedText>
+              </View>
+            ) : permission?.granted ? (
               <>
                 <CameraView
                   style={styles.camera}
@@ -649,7 +662,7 @@ export default function TransferScreen() {
                   barcodeScannerSettings={{
                     barcodeTypes: ['qr'],
                   }}
-                  onBarcodeScanned={(result) => handleQRScanned(result.data)}
+                  onBarcodeScanned={(result: { data: string }) => handleQRScanned(result.data)}
                 />
                 <View style={styles.scannerOverlay}>
                   <View style={styles.scannerFrame} />
@@ -700,14 +713,14 @@ export default function TransferScreen() {
             </View>
             <Pressable
               onPress={handleCopy}
-              style={[styles.copyButton, { backgroundColor: isDark ? '#333' : '#f4f4f5' }]}
+              style={[styles.copyButton, { backgroundColor: cardColor }]}
             >
               <Ionicons
                 name={copied ? 'checkmark' : 'copy-outline'}
                 size={18}
-                color={copied ? cashAppGreen : mutedColor}
+                color={copied ? primaryColor : mutedColor}
               />
-              <ThemedText style={[styles.copyButtonText, copied && { color: cashAppGreen }]}>
+              <ThemedText style={[styles.copyButtonText, copied && { color: primaryColor }]}>
                 {copied ? 'Copied!' : 'Copy Address'}
               </ThemedText>
             </Pressable>
@@ -739,6 +752,14 @@ const styles = StyleSheet.create({
   },
   mainContainer: {
     flex: 1,
+  },
+  ambientGradient: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: '50%',
+    pointerEvents: 'none',
   },
   header: {
     flexDirection: 'row',
@@ -792,19 +813,19 @@ const styles = StyleSheet.create({
   amountCurrency: {
     fontSize: 48,
     fontWeight: '700',
-    color: '#00E5FF',
+    color: '#10B981',
     marginRight: 4,
     marginTop: 8,
   },
   amountValue: {
     fontSize: 72,
     fontWeight: '700',
-    color: '#fff',
+    color: '#ECEDEE',
   },
   amountTokenLabel: {
     fontSize: 24,
     fontWeight: '500',
-    color: 'rgba(0,229,255,0.7)',
+    color: 'rgba(16, 185, 129, 0.7)',
     marginTop: 4,
   },
   balanceButton: {
@@ -815,13 +836,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 16,
-    backgroundColor: 'rgba(0,229,255,0.15)',
+    backgroundColor: 'rgba(16, 185, 129, 0.15)',
     borderWidth: 1,
-    borderColor: 'rgba(0,229,255,0.3)',
+    borderColor: 'rgba(16, 185, 129, 0.3)',
   },
   balanceText: {
     fontSize: 14,
-    color: 'rgba(255,255,255,0.7)',
   },
   numpadContainer: {
     paddingHorizontal: 24,
@@ -842,7 +862,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   numpadKeyPressed: {
-    backgroundColor: 'rgba(0,229,255,0.2)',
+    backgroundColor: 'rgba(16, 185, 129, 0.2)',
   },
   numpadKeyDisabled: {
     opacity: 0.5,
@@ -863,35 +883,29 @@ const styles = StyleSheet.create({
   },
   actionButton: {
     flex: 1,
-    borderRadius: 28,
-    overflow: 'hidden',
-  },
-  actionButtonGradient: {
     height: 56,
-    borderRadius: 28,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  requestButton: {
-    backgroundColor: 'rgba(0,0,0,0.15)',
+  requestButtonStyle: {
+    borderWidth: 1,
+    backgroundColor: 'transparent',
   },
-  payButton: {
-    backgroundColor: '#000',
+  payButtonStyle: {
+    // backgroundColor set dynamically
   },
   actionButtonText: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#fff',
   },
   selectedContactBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: 'rgba(0,229,255,0.1)',
     borderRadius: 16,
     padding: 12,
     borderWidth: 1,
-    borderColor: 'rgba(0,229,255,0.3)',
   },
   selectedContactInfo: {
     flexDirection: 'row',
@@ -912,7 +926,6 @@ const styles = StyleSheet.create({
   selectedContactName: {
     fontSize: 16,
     fontWeight: '500',
-    color: '#fff',
   },
   contactsScrollContent: {
     paddingHorizontal: 8,
@@ -931,9 +944,9 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   addContactAvatar: {
-    backgroundColor: 'rgba(42,46,53,0.6)',
+    backgroundColor: 'rgba(16, 185, 129, 0.1)',
     borderWidth: 2,
-    borderColor: 'rgba(0,229,255,0.4)',
+    borderColor: 'rgba(16, 185, 129, 0.4)',
     borderStyle: 'dashed',
   },
   contactAvatarText: {
@@ -944,7 +957,6 @@ const styles = StyleSheet.create({
   contactName: {
     fontSize: 12,
     textAlign: 'center',
-    color: 'rgba(255,255,255,0.7)',
   },
   pressed: {
     opacity: 0.7,
@@ -1020,10 +1032,6 @@ const styles = StyleSheet.create({
   },
   qrTab: {
     flex: 1,
-    borderRadius: 8,
-    overflow: 'hidden',
-  },
-  qrTabGradient: {
     paddingVertical: 10,
     borderRadius: 8,
     alignItems: 'center',
@@ -1031,7 +1039,7 @@ const styles = StyleSheet.create({
   },
   qrTabText: {
     fontSize: 15,
-    fontWeight: '500',
+    fontWeight: '600',
   },
   qrContent: {
     flex: 1,
@@ -1079,6 +1087,11 @@ const styles = StyleSheet.create({
   permissionText: {
     fontSize: 16,
     textAlign: 'center',
+  },
+  permissionSubtext: {
+    fontSize: 14,
+    textAlign: 'center',
+    marginTop: 8,
   },
   permissionButton: {
     paddingHorizontal: 24,

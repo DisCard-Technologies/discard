@@ -5,7 +5,7 @@
  */
 
 import { v } from "convex/values";
-import { mutation, query } from "../_generated/server";
+import { mutation, query, internalQuery } from "../_generated/server";
 
 // ============================================================================
 // Helper Functions
@@ -539,6 +539,27 @@ export const getFavorites = query({
       .slice(0, args.limit ?? 20);
 
     return favoriteContacts;
+  },
+});
+
+// ============================================================================
+// Internal Queries (for use by other Convex functions)
+// ============================================================================
+
+/**
+ * Get all contacts for a user by userId (internal use)
+ */
+export const listByUserId = internalQuery({
+  args: {
+    userId: v.id("users"),
+  },
+  handler: async (ctx, args) => {
+    const contacts = await ctx.db
+      .query("contacts")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .collect();
+
+    return contacts.sort((a, b) => a.name.localeCompare(b.name));
   },
 });
 

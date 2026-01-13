@@ -361,7 +361,7 @@ export default function MerchantPaymentScreen() {
                 </View>
               )}
               <View style={styles.merchantDetails}>
-                <ThemedText style={styles.merchantName}>
+                <ThemedText style={styles.merchantName} numberOfLines={1}>
                   {merchantPayment.merchantName || "Merchant"}
                 </ThemedText>
                 <ThemedText style={[styles.merchantAddress, { color: mutedColor }]}>

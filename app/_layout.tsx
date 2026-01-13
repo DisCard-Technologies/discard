@@ -4,6 +4,8 @@ import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native
 import { router, Stack, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import 'react-native-reanimated';
 import * as SecureStore from 'expo-secure-store';
 
@@ -112,38 +114,45 @@ export default function RootLayout() {
 
   // Wrap with Convex provider if available
   const content = (
-    <KeyboardProvider>
-      <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-        <AuthProvider>
-          <CardsProvider>
-            <FundingProvider>
-              <WalletsProvider>
-                <CryptoProvider>
-                  <AuthGuard>
-                    <Stack>
-                      <Stack.Screen name="onboarding" options={{ headerShown: false, animation: 'fade' }} />
-                      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-                      <Stack.Screen name="auth" options={{ headerShown: false }} />
-                      <Stack.Screen name="identity" options={{ presentation: 'modal', headerShown: false }} />
-                      <Stack.Screen name="settings" options={{ presentation: 'modal', headerShown: false }} />
-                      <Stack.Screen name="history" options={{ presentation: 'modal', headerShown: false }} />
-                      <Stack.Screen name="buy-crypto" options={{ headerShown: false }} />
-                      <Stack.Screen name="sell-crypto" options={{ headerShown: false }} />
-                      <Stack.Screen name="token-detail" options={{ headerShown: false }} />
-                      <Stack.Screen name="asset-detail" options={{ headerShown: false }} />
-                      <Stack.Screen name="market-detail" options={{ headerShown: false }} />
-                      <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
-                      <Stack.Screen name="transfer" options={{ headerShown: false, presentation: 'modal' }} />
-                    </Stack>
-                  </AuthGuard>
-                  <StatusBar style="auto" />
-                </CryptoProvider>
-              </WalletsProvider>
-            </FundingProvider>
-          </CardsProvider>
-        </AuthProvider>
-      </ThemeProvider>
-    </KeyboardProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaProvider>
+        <KeyboardProvider>
+          <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+            <AuthProvider>
+              <CardsProvider>
+                <FundingProvider>
+                  <WalletsProvider>
+                    <CryptoProvider>
+                      <AuthGuard>
+                        <Stack>
+                          <Stack.Screen name="onboarding" options={{ headerShown: false, animation: 'fade' }} />
+                          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+                          <Stack.Screen name="auth" options={{ headerShown: false }} />
+                          <Stack.Screen name="identity" options={{ presentation: 'modal', headerShown: false }} />
+                          <Stack.Screen name="settings" options={{ presentation: 'modal', headerShown: false }} />
+                          <Stack.Screen name="history" options={{ presentation: 'modal', headerShown: false }} />
+                          <Stack.Screen name="buy-crypto" options={{ headerShown: false }} />
+                          <Stack.Screen name="sell-crypto" options={{ headerShown: false }} />
+                          <Stack.Screen name="token-detail" options={{ headerShown: false }} />
+                          <Stack.Screen name="asset-detail" options={{ headerShown: false }} />
+                          <Stack.Screen name="market-detail" options={{ headerShown: false }} />
+                          <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
+                          <Stack.Screen name="transfer" options={{ headerShown: false, presentation: 'modal' }} />
+                          <Stack.Screen name="receive" options={{ headerShown: false, presentation: 'modal' }} />
+                          <Stack.Screen name="swap" options={{ headerShown: false, presentation: 'modal' }} />
+                          <Stack.Screen name="claim/[code]" options={{ headerShown: false }} />
+                        </Stack>
+                      </AuthGuard>
+                      <StatusBar style="auto" />
+                    </CryptoProvider>
+                  </WalletsProvider>
+                </FundingProvider>
+              </CardsProvider>
+            </AuthProvider>
+          </ThemeProvider>
+        </KeyboardProvider>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 
   // Only wrap with ConvexProvider if URL is configured

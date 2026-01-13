@@ -47,17 +47,22 @@ export const create = mutation({
     memo: v.optional(v.string()),
     recipientName: v.optional(v.string()),
     expiryMs: v.optional(v.number()),
+    // Fallback for custom auth when ctx.auth is not configured
+    credentialId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    // Try Convex auth first, fall back to credentialId parameter
     const identity = await ctx.auth.getUserIdentity();
-    if (!identity) {
+    const credentialId = identity?.subject ?? args.credentialId;
+
+    if (!credentialId) {
       throw new Error("Not authenticated");
     }
 
     const user = await ctx.db
       .query("users")
       .withIndex("by_credential", (q) =>
-        q.eq("credentialId", identity.subject)
+        q.eq("credentialId", credentialId)
       )
       .first();
 
@@ -65,13 +70,21 @@ export const create = mutation({
       throw new Error("User not found");
     }
 
-    // Get user's wallet address
+    // Get user's wallet address - try Turnkey org first, then fall back to user's solanaAddress
+    let walletAddress: string | undefined;
+
     const turnkeyOrg = await ctx.db
       .query("turnkeyOrganizations")
       .withIndex("by_user", (q) => q.eq("userId", user._id))
       .first();
 
-    if (!turnkeyOrg) {
+    if (turnkeyOrg?.walletAddress) {
+      walletAddress = turnkeyOrg.walletAddress;
+    } else if (user.solanaAddress) {
+      walletAddress = user.solanaAddress;
+    }
+
+    if (!walletAddress) {
       throw new Error("No wallet found");
     }
 
@@ -82,7 +95,7 @@ export const create = mutation({
     const webLink = `${WEB_LINK_BASE}/${requestId}`;
 
     // Generate Solana Pay URI
-    let solanaPayUri = `solana:${turnkeyOrg.walletAddress}`;
+    let solanaPayUri = `solana:${walletAddress}`;
     const queryParams: string[] = [];
 
     if (args.amount > 0) {
@@ -118,15 +131,14 @@ export const create = mutation({
       tokenDecimals: args.tokenDecimals,
       amountUsd: args.amountUsd,
       memo: args.memo,
-      recipientAddress: turnkeyOrg.walletAddress,
+      recipientAddress: walletAddress,
       recipientName: args.recipientName || user.displayName,
-      linkType: "web",
+      linkType: "web_link",
       linkUrl: webLink,
       qrData: solanaPayUri,
       status: "pending",
       expiresAt: Date.now() + expiryMs,
       createdAt: Date.now(),
-      updatedAt: Date.now(),
     });
 
     return {
@@ -175,17 +187,22 @@ export const getByRequestId = query({
 export const getByUser = query({
   args: {
     limit: v.optional(v.number()),
+    // Fallback for custom auth when ctx.auth is not configured
+    credentialId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    // Try Convex auth first, fall back to credentialId parameter
     const identity = await ctx.auth.getUserIdentity();
-    if (!identity) {
+    const credentialId = identity?.subject ?? args.credentialId;
+
+    if (!credentialId) {
       return [];
     }
 
     const user = await ctx.db
       .query("users")
       .withIndex("by_credential", (q) =>
-        q.eq("credentialId", identity.subject)
+        q.eq("credentialId", credentialId)
       )
       .first();
 
@@ -244,10 +261,15 @@ export const markPaid = mutation({
 export const cancel = mutation({
   args: {
     requestId: v.string(),
+    // Fallback for custom auth when ctx.auth is not configured
+    credentialId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    // Try Convex auth first, fall back to credentialId parameter
     const identity = await ctx.auth.getUserIdentity();
-    if (!identity) {
+    const credentialId = identity?.subject ?? args.credentialId;
+
+    if (!credentialId) {
       throw new Error("Not authenticated");
     }
 
@@ -264,7 +286,7 @@ export const cancel = mutation({
     const user = await ctx.db
       .query("users")
       .withIndex("by_credential", (q) =>
-        q.eq("credentialId", identity.subject)
+        q.eq("credentialId", credentialId)
       )
       .first();
 
@@ -289,10 +311,15 @@ export const cancel = mutation({
 export const remove = mutation({
   args: {
     requestId: v.string(),
+    // Fallback for custom auth when ctx.auth is not configured
+    credentialId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    // Try Convex auth first, fall back to credentialId parameter
     const identity = await ctx.auth.getUserIdentity();
-    if (!identity) {
+    const credentialId = identity?.subject ?? args.credentialId;
+
+    if (!credentialId) {
       throw new Error("Not authenticated");
     }
 
@@ -309,7 +336,7 @@ export const remove = mutation({
     const user = await ctx.db
       .query("users")
       .withIndex("by_credential", (q) =>
-        q.eq("credentialId", identity.subject)
+        q.eq("credentialId", credentialId)
       )
       .first();
 

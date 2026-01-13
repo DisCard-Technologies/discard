@@ -75,7 +75,10 @@ export default defineSchema({
         v.literal("create_card"),
         v.literal("freeze_card"),
         v.literal("pay_bill"),
-        v.literal("merchant_payment")  // Cross-currency payment to merchant
+        v.literal("merchant_payment"),  // Cross-currency payment to merchant
+        v.literal("create_goal"),       // Create a savings/accumulation goal
+        v.literal("update_goal"),       // Update goal progress
+        v.literal("cancel_goal")        // Cancel a goal
       ),
       sourceType: v.union(
         v.literal("wallet"),
@@ -1575,4 +1578,41 @@ export default defineSchema({
     .index("by_user", ["userId"])
     .index("by_phone", ["phoneNumber"])
     .index("by_expires", ["expiresAt"]),
+
+  // ============================================================================
+  // GOALS - User savings goals and strategies
+  // ============================================================================
+  goals: defineTable({
+    userId: v.id("users"),
+
+    // Goal details
+    title: v.string(),                   // "Stack 0.1 BTC", "Emergency Fund"
+    type: v.union(
+      v.literal("savings"),              // Save X USD amount
+      v.literal("accumulate"),           // Stack X of a specific token
+      v.literal("yield"),                // Earn X% yield
+      v.literal("custom")                // Custom goal
+    ),
+
+    // Target and progress
+    targetAmount: v.number(),            // Target value (USD cents for savings, token units for accumulate)
+    targetToken: v.optional(v.string()), // Token symbol (BTC, ETH, SOL, etc.)
+    currentAmount: v.number(),           // Current progress
+
+    // Optional deadline
+    deadline: v.optional(v.number()),    // Timestamp for deadline
+
+    // Status
+    status: v.union(
+      v.literal("active"),
+      v.literal("completed"),
+      v.literal("cancelled")
+    ),
+
+    // Timestamps
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_user_status", ["userId", "status"]),
 });

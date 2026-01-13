@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { StyleSheet, View, Pressable, TextInput, Keyboard, Alert, ScrollView, Dimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
 
 import { ThemedText } from '@/components/themed-text';
 import { useThemeColor } from '@/hooks/use-theme-color';
@@ -186,6 +187,49 @@ export function CommandBar({
       }]);
     }
   }, [activeIntent?.status, activeIntent?.clarificationQuestion, activeIntent?._id, activeIntent?.parsedIntent, activeIntent?.error, activeIntent?.responseText]);
+
+  // Auto-navigate to transfer confirmation when a transfer intent is approved
+  useEffect(() => {
+    if (!activeIntent) return;
+    if (activeIntent.status !== 'approved' && activeIntent.status !== 'executing') return;
+    if (activeIntent.parsedIntent?.action !== 'transfer') return;
+    if (!activeIntent.parsedIntent?.targetId) return;
+
+    // Navigate to transfer confirmation with pre-filled data from intent
+    const parsedIntent = activeIntent.parsedIntent;
+    (router.push as any)({
+      pathname: '/transfer/confirmation',
+      params: {
+        recipient: JSON.stringify({
+          address: parsedIntent.targetId,
+          displayName: parsedIntent.metadata?.recipientName || parsedIntent.targetId?.slice(0, 8),
+          type: 'address',
+        }),
+        amount: JSON.stringify({
+          amount: (parsedIntent.amount || 0) / 100, // Convert cents to dollars
+          amountUsd: (parsedIntent.amount || 0) / 100,
+          amountBaseUnits: ((parsedIntent.amount || 0) * 10000).toString(), // USDC has 6 decimals
+        }),
+        token: JSON.stringify({
+          symbol: parsedIntent.currency || 'USDC',
+          mint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', // USDC mint
+          decimals: 6,
+          balance: 0,
+          balanceUsd: 0,
+        }),
+        fees: JSON.stringify({
+          networkFee: 0.00001,
+          networkFeeUsd: 0.001,
+          platformFee: 0,
+          priorityFee: 0.00001,
+          ataRent: 0,
+          totalFeesUsd: 0.001,
+          totalCostUsd: ((parsedIntent.amount || 0) / 100) + 0.001,
+        }),
+        fromIntent: 'true', // Flag to indicate this came from AI intent
+      },
+    });
+  }, [activeIntent?.status, activeIntent?.parsedIntent?.action]);
 
   // Expand ONLY when we have messages to show
   const isExpanded = chatMessages.length > 0 || showLoading;

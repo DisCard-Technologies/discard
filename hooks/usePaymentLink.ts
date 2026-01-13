@@ -11,6 +11,7 @@ import * as Haptics from "expo-haptics";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Doc, Id } from "@/convex/_generated/dataModel";
+import { useCurrentCredentialId } from "@/stores/authConvex";
 
 import {
   generatePaymentLinks,
@@ -83,11 +84,16 @@ export function usePaymentLink(): UsePaymentLinkReturn {
   const [error, setError] = useState<string | null>(null);
   const [currentRequest, setCurrentRequest] = useState<PaymentRequest | null>(null);
 
+  // Auth - get credentialId for custom auth fallback
+  const credentialId = useCurrentCredentialId();
+
   // Convex
   const createMutation = useMutation(api.transfers.paymentRequests.create);
   const cancelMutation = useMutation(api.transfers.paymentRequests.cancel);
   const myRequestsQuery = useQuery(api.transfers.paymentRequests.getByUser, {
     limit: 10,
+    // Pass credentialId for custom auth fallback
+    credentialId: credentialId || undefined,
   });
 
   // Create payment link
@@ -105,6 +111,8 @@ export function usePaymentLink(): UsePaymentLinkReturn {
           amountUsd: params.amountUsd,
           memo: params.memo,
           recipientName: params.recipientName,
+          // Pass credentialId for custom auth fallback
+          credentialId: credentialId || undefined,
         });
 
         const request: PaymentRequest = {
@@ -134,7 +142,7 @@ export function usePaymentLink(): UsePaymentLinkReturn {
         setIsCreating(false);
       }
     },
-    [createMutation]
+    [createMutation, credentialId]
   );
 
   // Copy to clipboard
@@ -180,7 +188,11 @@ export function usePaymentLink(): UsePaymentLinkReturn {
   const cancelRequest = useCallback(
     async (requestId: string): Promise<void> => {
       try {
-        await cancelMutation({ requestId });
+        await cancelMutation({
+          requestId,
+          // Pass credentialId for custom auth fallback
+          credentialId: credentialId || undefined,
+        });
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
         if (currentRequest?.requestId === requestId) {
@@ -192,7 +204,7 @@ export function usePaymentLink(): UsePaymentLinkReturn {
         throw new Error(message);
       }
     },
-    [cancelMutation, currentRequest]
+    [cancelMutation, currentRequest, credentialId]
   );
 
   // Parse link

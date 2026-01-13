@@ -135,7 +135,10 @@ export function CardsProvider({ children }: { children: ReactNode }) {
       }))
     : [];
 
-  const isLoading = cardsData === undefined;
+  // Only show loading if we're authenticated and waiting for data
+  // If query is skipped (no userId/credentialId), don't show loading
+  const queryIsSkipped = !userId || !credentialId;
+  const isLoading = !queryIsSkipped && cardsData === undefined;
 
   // Build state object
   const state: CardsState = {

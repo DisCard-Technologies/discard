@@ -29,10 +29,14 @@ type IntentAction =
   | "create_card"
   | "freeze_card"
   | "delete_card"
-  | "pay_bill";
+  | "pay_bill"
+  | "create_goal"
+  | "update_goal"
+  | "cancel_goal";
 
 const VALID_ACTIONS: IntentAction[] = [
-  "fund_card", "swap", "transfer", "withdraw_defi", "create_card", "freeze_card", "delete_card", "pay_bill"
+  "fund_card", "swap", "transfer", "withdraw_defi", "create_card", "freeze_card", "delete_card", "pay_bill",
+  "create_goal", "update_goal", "cancel_goal"
 ];
 
 type SourceType = "wallet" | "defi_position" | "card" | "external";
@@ -294,6 +298,8 @@ async function gatherUserContext(ctx: any, userId: Id<"users">): Promise<{
   cards: Array<{ id: string; last4: string; balance: number; status: string; nickname?: string; createdAt: number }>;
   wallets: Array<{ id: string; network: string; type: string; balance?: number; nickname?: string }>;
   defiPositions: Array<{ id: string; protocol: string; available: number; yield: number }>;
+  contacts: Array<{ id: string; name: string; identifier: string; type: string; address: string }>;
+  goals: Array<{ id: string; title: string; type: string; targetAmount: number; currentAmount: number; targetToken?: string }>;
 }> {
   // Query user's cards
   const cards = await ctx.runQuery(internal.cards.cards.listByUserId, { userId });
@@ -303,6 +309,12 @@ async function gatherUserContext(ctx: any, userId: Id<"users">): Promise<{
 
   // Query user's DeFi positions
   const defiPositions = await ctx.runQuery(internal.wallets.defi.listByUserId, { userId });
+
+  // Query user's contacts for name resolution
+  const contacts = await ctx.runQuery(internal.transfers.contacts.listByUserId, { userId });
+
+  // Query user's goals
+  const goals = await ctx.runQuery(internal.goals.goals.listByUserId, { userId });
 
   return {
     // Sort cards by createdAt (oldest first) so AI knows order
@@ -329,6 +341,21 @@ async function gatherUserContext(ctx: any, userId: Id<"users">): Promise<{
       available: d.availableForFunding,
       yield: d.currentYieldApy,
     })),
+    contacts: (contacts || []).map((c: Doc<"contacts">) => ({
+      id: c._id,
+      name: c.name,
+      identifier: c.identifier,
+      type: c.identifierType,
+      address: c.resolvedAddress,
+    })),
+    goals: (goals || []).map((g: Doc<"goals">) => ({
+      id: g._id,
+      title: g.title,
+      type: g.type,
+      targetAmount: g.targetAmount,
+      currentAmount: g.currentAmount,
+      targetToken: g.targetToken,
+    })),
   };
 }
 
@@ -339,6 +366,8 @@ function buildSystemPrompt(userContext: {
   cards: Array<{ id: string; last4: string; balance: number; status: string; nickname?: string }>;
   wallets: Array<{ id: string; network: string; type: string; balance?: number; nickname?: string }>;
   defiPositions: Array<{ id: string; protocol: string; available: number; yield: number }>;
+  contacts: Array<{ id: string; name: string; identifier: string; type: string; address: string }>;
+  goals: Array<{ id: string; title: string; type: string; targetAmount: number; currentAmount: number; targetToken?: string }>;
 }): string {
   return `You are DisCard AI, a friendly and helpful assistant for DisCard - a privacy-first virtual card platform built on Solana.
 
@@ -382,6 +411,60 @@ ${userContext.defiPositions.length > 0
     })), null, 2)
   : "No DeFi positions yet."}
 
+### Contacts (for transfer recipient resolution)
+${userContext.contacts.length > 0
+  ? JSON.stringify(userContext.contacts.map(c => ({
+      id: c.id,
+      name: c.name,
+      identifier: c.identifier,
+      type: c.type,
+      address: c.address,
+    })), null, 2)
+  : "No saved contacts yet."}
+
+### Savings Goals
+${userContext.goals.length > 0
+  ? JSON.stringify(userContext.goals.map(g => ({
+      id: g.id,
+      title: g.title,
+      type: g.type,
+      target_cents: g.targetAmount,
+      current_cents: g.currentAmount,
+      target_token: g.targetToken,
+      progress_percent: Math.round((g.currentAmount / g.targetAmount) * 100),
+    })), null, 2)
+  : "No savings goals yet."}
+
+## Contact Resolution Rules
+
+When a user mentions a name like "Send $25 to Maria":
+1. Search contacts by name (case-insensitive, partial match OK)
+2. If exactly ONE match is found, use that contact's address as targetId
+3. If MULTIPLE matches exist, ask for clarification (e.g., "Which Maria? I found Maria Chen and Maria Garcia")
+4. If NO matches, ask for clarification (e.g., "I don't have Maria in your contacts. Please provide their phone number, email, or Solana address.")
+5. Include the matched contact name in metadata.recipientName for display
+
+## Goal Management Rules
+
+Users can create, update, and manage savings goals:
+
+Goal types:
+- "savings" - Save a specific USD amount (e.g., "Save $5000 for vacation")
+- "accumulate" - Stack a specific amount of a token (e.g., "Stack 0.1 BTC")
+- "yield" - Earn yield on deposits (e.g., "Earn 5% on my USDC")
+- "custom" - Any other goal type
+
+For goal actions:
+- create_goal: Include metadata with {title, type, targetAmount (in cents), targetToken (optional)}
+- update_goal: Use targetId for the goal ID, include metadata with updates
+- cancel_goal: Use targetId for the goal ID
+
+Examples:
+- "Set a goal to save $5000" → create_goal with type=savings, targetAmount=500000
+- "I want to stack 0.1 BTC" → create_goal with type=accumulate, targetAmount=10000000 (satoshi cents), targetToken="BTC"
+- "Update my emergency fund to $3000" → update_goal, find matching goal by title
+- "Cancel my vacation goal" → cancel_goal, find matching goal by title
+
 ## Output Format
 
 ALWAYS respond with a JSON object. Choose ONE of these response types:
@@ -399,7 +482,7 @@ ALWAYS respond with a JSON object. Choose ONE of these response types:
   "isConversational": false,
   "responseText": "I'll create a new virtual card for you.",
   "parsedIntent": {
-    "action": "fund_card" | "swap" | "transfer" | "withdraw_defi" | "create_card" | "freeze_card" | "delete_card" | "pay_bill",
+    "action": "fund_card" | "swap" | "transfer" | "withdraw_defi" | "create_card" | "freeze_card" | "delete_card" | "pay_bill" | "create_goal" | "update_goal" | "cancel_goal",
     "sourceType": "wallet" | "defi_position" | "card" | "external",
     "sourceId": "<id or null>",
     "targetType": "card" | "wallet" | "external",
@@ -527,6 +610,53 @@ Response: {
   },
   "needsClarification": false,
   "confidence": 0.95
+}
+
+User: "Set a goal to save $5000 for vacation"
+Response: {
+  "isConversational": false,
+  "responseText": "I'll create a savings goal for your vacation!",
+  "parsedIntent": {
+    "action": "create_goal",
+    "sourceType": "wallet",
+    "targetType": "wallet",
+    "metadata": {
+      "title": "Vacation Fund",
+      "type": "savings",
+      "targetAmount": 500000
+    }
+  },
+  "needsClarification": false,
+  "confidence": 0.95
+}
+
+User: "I want to stack 0.1 BTC"
+Response: {
+  "isConversational": false,
+  "responseText": "I'll set up a goal to accumulate 0.1 BTC!",
+  "parsedIntent": {
+    "action": "create_goal",
+    "sourceType": "wallet",
+    "targetType": "wallet",
+    "metadata": {
+      "title": "Stack 0.1 BTC",
+      "type": "accumulate",
+      "targetAmount": 10000000,
+      "targetToken": "BTC"
+    }
+  },
+  "needsClarification": false,
+  "confidence": 0.95
+}
+
+User: "Show my goals"
+Response: {
+  "isConversational": true,
+  "responseText": "${userContext.goals.length > 0
+    ? `You have ${userContext.goals.length} active goal(s). Check the Strategy tab to see your progress.`
+    : "You don't have any goals yet. Would you like to set one? Try saying 'Set a goal to save $5000'."}",
+  "needsClarification": false,
+  "confidence": 1.0
 }
 
 ## Card Selection Rules

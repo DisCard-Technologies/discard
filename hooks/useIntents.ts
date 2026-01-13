@@ -72,10 +72,10 @@ export function useIntents(userId: Id<"users"> | null): UseIntentsReturn {
 
   // Real-time subscription to user's intents
   // Skip for mock auth since Convex won't recognize the user
-  // Pass userId for apps without Convex auth configured
+  // Don't pass userId - the server gets it from the auth context
   const intents = useQuery(
     api.intents.intents.list,
-    userId && !isMockAuth ? { userId } : "skip"
+    userId && !isMockAuth ? {} : "skip"
   );
 
   // Get active intent
