@@ -14,7 +14,6 @@ import {
   SafeAreaView,
   Pressable,
   ActivityIndicator,
-  Switch,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -82,30 +81,26 @@ export default function TransferConfirmationScreen() {
   const [isConfirming, setIsConfirming] = useState(false);
   const [executionPhase, setExecutionPhase] = useState<ExecutionPhase>("idle");
   const [error, setError] = useState<string | null>(null);
-  const [privateMode, setPrivateMode] = useState(true); // Privacy ON by default
   const [complianceChecked, setComplianceChecked] = useState(false);
 
-  // Privacy transfer hook
+  // Privacy transfer hook - always enabled
   const {
     state: privacyState,
     isLoading: isCheckingPrivacy,
     checkTransferCompliance,
     executePrivateTransfer,
-    isComplianceAvailable,
-    isPrivateTransferAvailable,
-    reset: resetPrivacy,
   } = usePrivateTransfer();
 
-  // Auto-run compliance check on mount (privacy is default)
+  // Auto-run compliance check on mount
   useEffect(() => {
-    if (privateMode && !complianceChecked && recipient && walletAddress && amount) {
+    if (!complianceChecked && recipient && walletAddress && amount) {
       checkTransferCompliance(
         walletAddress,
         recipient.address,
         amount.amountUsd || 0
       ).then(() => setComplianceChecked(true));
     }
-  }, [privateMode, complianceChecked, recipient, walletAddress, amount, checkTransferCompliance]);
+  }, [complianceChecked, recipient, walletAddress, amount, checkTransferCompliance]);
 
   // Auth and Turnkey
   const { user, userId } = useAuth();
@@ -488,7 +483,7 @@ export default function TransferConfirmationScreen() {
             />
           </Animated.View>
 
-          {/* Privacy Status - Privacy ON by default */}
+          {/* Privacy Badge - Always shielded */}
           <Animated.View
             entering={FadeInUp.delay(150).duration(300)}
             style={styles.privacySection}
@@ -496,58 +491,18 @@ export default function TransferConfirmationScreen() {
             <View style={[styles.privacyCard, { backgroundColor: isDark ? "rgba(16, 185, 129, 0.1)" : "rgba(16, 185, 129, 0.05)" }]}>
               <View style={styles.privacyHeader}>
                 <View style={styles.privacyIconContainer}>
-                  <Ionicons
-                    name={privateMode ? "shield-checkmark" : "eye"}
-                    size={20}
-                    color={privateMode ? primaryColor : mutedColor}
-                  />
+                  <Ionicons name="shield-checkmark" size={20} color={primaryColor} />
                 </View>
                 <View style={styles.privacyTextContainer}>
-                  <ThemedText style={styles.privacyTitle}>
-                    {privateMode ? "Shielded Transfer" : "Public Transfer"}
-                  </ThemedText>
+                  <ThemedText style={styles.privacyTitle}>Shielded Transfer</ThemedText>
                   <ThemedText style={[styles.privacyDescription, { color: mutedColor }]}>
-                    {privateMode
-                      ? "Protected by ShadowWire + Range Compliance"
-                      : "Visible on public explorers"}
+                    Protected by ShadowWire + Range Compliance
                   </ThemedText>
                 </View>
-                <Pressable
-                  onPress={() => {
-                    if (privateMode) {
-                      // Switching to public
-                      setPrivateMode(false);
-                      resetPrivacy();
-                      setComplianceChecked(false);
-                    } else {
-                      // Switching to private
-                      setPrivateMode(true);
-                      if (!complianceChecked && recipient && walletAddress && amount) {
-                        checkTransferCompliance(
-                          walletAddress,
-                          recipient.address,
-                          amount.amountUsd || 0
-                        ).then(() => setComplianceChecked(true));
-                      }
-                    }
-                  }}
-                  disabled={isCheckingPrivacy || isConfirming}
-                  style={[
-                    styles.visibilityButton,
-                    { borderColor: privateMode ? primaryColor : mutedColor },
-                  ]}
-                >
-                  <ThemedText style={[
-                    styles.visibilityButtonText,
-                    { color: privateMode ? primaryColor : mutedColor }
-                  ]}>
-                    {privateMode ? "Make visible" : "Shield it"}
-                  </ThemedText>
-                </Pressable>
               </View>
 
               {/* Compliance Status */}
-              {privateMode && privacyState.privacyCheck && (
+              {privacyState.privacyCheck && (
                 <View style={styles.complianceStatus}>
                   {privacyState.privacyCheck.compliant ? (
                     <View style={styles.complianceRow}>
@@ -576,7 +531,7 @@ export default function TransferConfirmationScreen() {
               )}
 
               {/* Loading state */}
-              {privateMode && isCheckingPrivacy && (
+              {isCheckingPrivacy && (
                 <View style={styles.complianceStatus}>
                   <ActivityIndicator size="small" color={primaryColor} />
                   <ThemedText style={[styles.complianceText, { color: mutedColor, marginLeft: 8 }]}>
@@ -585,12 +540,6 @@ export default function TransferConfirmationScreen() {
                 </View>
               )}
             </View>
-
-            {privateMode && (
-              <ThemedText style={[styles.privacyNote, { color: mutedColor }]}>
-                🛡️ Your transaction is shielded from public view
-              </ThemedText>
-            )}
           </Animated.View>
 
           {/* Error Message with Retry */}
@@ -892,19 +841,4 @@ const styles = StyleSheet.create({
     fontSize: 12,
     flex: 1,
   },
-  privacyNote: {
-    fontSize: 11,
-    textAlign: "center",
-    marginTop: 8,
-  },
-  visibilityButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-    borderWidth: 1,
-  },
-  visibilityButtonText: {
-    fontSize: 12,
-    fontWeight: "500",
-  },
-});
+  });
