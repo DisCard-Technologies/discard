@@ -14,6 +14,7 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useAuth } from '@/stores/authConvex';
 import { useTokenHoldings } from '@/hooks/useTokenHoldings';
 import { useCrossCurrencyTransfer } from '@/hooks/useCrossCurrencyTransfer';
+import { useAnoncoinSwap } from '@/hooks/useAnoncoinSwap';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -57,6 +58,16 @@ export default function SwapScreen() {
   const [showFromSelector, setShowFromSelector] = useState(false);
   const [showToSelector, setShowToSelector] = useState(false);
   const [slippage, setSlippage] = useState(3.0); // 3%
+  const [usePrivateMode, setUsePrivateMode] = useState(true); // Privacy by default
+
+  // Confidential swap hook
+  const {
+    state: anonSwapState,
+    isLoading: anonSwapLoading,
+    isConfidentialAvailable,
+    quickSwap: executeConfidentialSwap,
+    getPrivacyLevel,
+  } = useAnoncoinSwap();
 
   // Available tokens for selection
   const availableTokens = useMemo((): DisplayToken[] => {
@@ -187,25 +198,67 @@ export default function SwapScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   }, []);
 
-  const handleContinue = useCallback(() => {
-    if (!fromToken || !toToken || !fromAmount || parseFloat(fromAmount) <= 0) {
+  const handleContinue = useCallback(async () => {
+    if (!fromToken || !toToken || !fromAmount || parseFloat(fromAmount) <= 0 || !walletAddress) {
       return;
     }
 
-    // Navigate to confirmation or execute swap
-    // For now, just log and show success
-    console.log('[Swap] Executing swap:', {
-      from: fromToken.symbol,
-      to: toToken.symbol,
-      amount: fromAmount,
-      quote: swapQuote,
-    });
+    try {
+      // Use confidential swap if available and private mode enabled
+      if (usePrivateMode && isConfidentialAvailable) {
+        console.log('[Swap] Executing confidential swap:', {
+          from: fromToken.symbol,
+          to: toToken.symbol,
+          amount: fromAmount,
+          privateMode: true,
+        });
 
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    router.back();
-  }, [fromToken, toToken, fromAmount, swapQuote]);
+        // Convert to base units
+        const amountBaseUnits = BigInt(Math.floor(parseFloat(fromAmount) * Math.pow(10, fromToken.decimals)));
 
-  const canContinue = fromToken && toToken && fromAmount && parseFloat(fromAmount) > 0 && !isLoadingQuote && swapQuote;
+        // Mock private key for demo (in production, this would come from Turnkey)
+        const mockPrivateKey = new Uint8Array(32);
+
+        const result = await executeConfidentialSwap(
+          fromToken.mint,
+          toToken.mint,
+          amountBaseUnits,
+          walletAddress,
+          mockPrivateKey,
+          true // useStealthOutput
+        );
+
+        if (result?.success) {
+          const privacyLevel = getPrivacyLevel(result);
+          console.log('[Swap] Confidential swap completed:', {
+            signature: result.signature,
+            privacyLevel,
+            metrics: result.privacyMetrics,
+          });
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        } else {
+          console.error('[Swap] Confidential swap failed:', result?.error);
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        }
+      } else {
+        // Standard swap (less private)
+        console.log('[Swap] Executing standard swap:', {
+          from: fromToken.symbol,
+          to: toToken.symbol,
+          amount: fromAmount,
+          quote: swapQuote,
+        });
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+
+      router.back();
+    } catch (error) {
+      console.error('[Swap] Swap failed:', error);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    }
+  }, [fromToken, toToken, fromAmount, swapQuote, walletAddress, usePrivateMode, isConfidentialAvailable, executeConfidentialSwap, getPrivacyLevel]);
+
+  const canContinue = fromToken && toToken && fromAmount && parseFloat(fromAmount) > 0 && !isLoadingQuote && !anonSwapLoading && (swapQuote || (usePrivateMode && isConfidentialAvailable));
 
   // Estimated network fee (simplified)
   const networkFee = useMemo(() => {
@@ -434,6 +487,41 @@ export default function SwapScreen() {
           </View>
         )}
 
+        {/* Privacy Mode Toggle */}
+        {isConfidentialAvailable && (
+          <Pressable
+            onPress={() => setUsePrivateMode(!usePrivateMode)}
+            style={[styles.infoRow, { borderColor }]}
+          >
+            <View style={styles.infoLabel}>
+              <Ionicons
+                name={usePrivateMode ? 'shield-checkmark' : 'shield-outline'}
+                size={16}
+                color={usePrivateMode ? '#22c55e' : mutedColor}
+              />
+              <ThemedText style={[
+                styles.infoLabelText,
+                { color: usePrivateMode ? '#22c55e' : mutedColor }
+              ]}>
+                {usePrivateMode ? 'Confidential Swap' : 'Standard Swap'}
+              </ThemedText>
+            </View>
+            <View style={styles.infoValue}>
+              <View style={[
+                styles.providerBadge,
+                { backgroundColor: usePrivateMode ? 'rgba(34,197,94,0.2)' : `${mutedColor}20` }
+              ]}>
+                <ThemedText style={[
+                  styles.providerText,
+                  { color: usePrivateMode ? '#22c55e' : mutedColor }
+                ]}>
+                  {usePrivateMode ? 'Amount Hidden' : 'Visible'}
+                </ThemedText>
+              </View>
+            </View>
+          </Pressable>
+        )}
+
         {/* Provider */}
         <View style={[styles.infoRow, { borderColor }]}>
           <View style={styles.infoLabel}>
@@ -442,9 +530,11 @@ export default function SwapScreen() {
           </View>
           <View style={styles.infoValue}>
             <View style={[styles.providerBadge, { backgroundColor: `${primaryColor}20` }]}>
-              <ThemedText style={[styles.providerText, { color: primaryColor }]}>Jupiter</ThemedText>
+              <ThemedText style={[styles.providerText, { color: primaryColor }]}>
+                {usePrivateMode && isConfidentialAvailable ? 'Anoncoin' : 'Jupiter'}
+              </ThemedText>
             </View>
-            <ThemedText style={[styles.providerPlus, { color: mutedColor }]}>+2</ThemedText>
+            {!usePrivateMode && <ThemedText style={[styles.providerPlus, { color: mutedColor }]}>+2</ThemedText>}
           </View>
         </View>
 

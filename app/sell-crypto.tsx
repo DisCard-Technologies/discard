@@ -16,6 +16,7 @@ import { useThemeColor } from '@/hooks/use-theme-color';
 import { useAuth } from '@/stores/authConvex';
 import { useMoonPay } from '@/hooks/useMoonPay';
 import { useTokenHoldings } from '@/hooks/useTokenHoldings';
+import { usePrivateCashout } from '@/hooks/usePrivateCashout';
 
 // Supported currencies for selling (mapped to token symbols)
 // Network suffix: _sol = Solana, no suffix = Ethereum
@@ -55,12 +56,33 @@ export default function SellCryptoScreen() {
   );
 
   // User wallet addresses (both Solana and Ethereum)
-  const { user } = useAuth();
+  const { user, userId } = useAuth();
   const solanaAddress = user?.solanaAddress || null;
   const ethereumAddress = user?.ethereumAddress || null;
+  const subOrgId = user?.turnkeySubOrgId || undefined;
 
   // Get real token holdings (Solana-based for now)
   const { holdings, isLoading: holdingsLoading } = useTokenHoldings(solanaAddress);
+
+  // Private cashout for privacy-preserving withdrawals
+  const {
+    state: cashoutState,
+    isLoading: cashoutLoading,
+    shieldedBalance,
+    fetchShieldedBalance,
+    quickCashout,
+    isAvailable: isPrivateCashoutAvailable,
+  } = usePrivateCashout(userId || undefined, subOrgId);
+
+  // Track if using private mode
+  const [usePrivateMode, setUsePrivateMode] = useState(true);
+
+  // Fetch shielded balance on mount
+  useEffect(() => {
+    if (userId && isPrivateCashoutAvailable) {
+      fetchShieldedBalance();
+    }
+  }, [userId, isPrivateCashoutAvailable, fetchShieldedBalance]);
 
   // Build available currencies with real balances
   const availableCurrencies = useMemo(() => {
@@ -111,14 +133,58 @@ export default function SellCryptoScreen() {
     }
 
     try {
-      await openSell({
-        currencyCode: selectedCurrency.code,
-        quoteCurrencyAmount: numericAmount,
-      });
+      // Use private cashout if available and enabled
+      if (usePrivateMode && isPrivateCashoutAvailable && shieldedBalance) {
+        console.log('[SellCrypto] Using private cashout flow');
+
+        // Convert to base units (USDC has 6 decimals)
+        const amountBaseUnits = Math.floor(numericAmount * 1_000_000);
+
+        // Get the user's commitment (first available)
+        const userCommitment = shieldedBalance.commitments[0]?.commitment;
+        if (!userCommitment) {
+          console.error('[SellCrypto] No shielded commitment available');
+          // Fall back to regular MoonPay
+          await openSell({
+            currencyCode: selectedCurrency.code,
+            quoteCurrencyAmount: numericAmount,
+          });
+          return;
+        }
+
+        // Execute private cashout flow
+        const { result, moonPayUrl } = await quickCashout(
+          amountBaseUnits,
+          'USD',
+          userCommitment
+        );
+
+        if (result?.success && moonPayUrl) {
+          // MoonPay will be opened by the hook or we navigate to it
+          console.log('[SellCrypto] Private cashout initiated:', {
+            sessionId: result.sessionId,
+            privacyInfo: result.privacyInfo,
+          });
+          // The MoonPay widget should open automatically via the hook
+        } else {
+          console.error('[SellCrypto] Private cashout failed:', result?.error);
+          // Fall back to regular MoonPay
+          await openSell({
+            currencyCode: selectedCurrency.code,
+            quoteCurrencyAmount: numericAmount,
+          });
+        }
+      } else {
+        // Regular MoonPay flow (less private)
+        await openSell({
+          currencyCode: selectedCurrency.code,
+          quoteCurrencyAmount: numericAmount,
+        });
+      }
     } catch (err) {
       console.error('Sell failed:', err);
     }
-  }, [openSell, selectedCurrency, numericAmount]);
+  }, [openSell, selectedCurrency, numericAmount, usePrivateMode, isPrivateCashoutAvailable, shieldedBalance, quickCashout]);
 
   // Set quick percentage of balance
   const handleQuickPercentage = (percentage: number) => {
@@ -262,6 +328,58 @@ export default function SellCryptoScreen() {
                 );
               })}
             </View>
+
+            {/* Privacy Mode Indicator */}
+            {isPrivateCashoutAvailable && (
+              <Pressable
+                onPress={() => setUsePrivateMode(!usePrivateMode)}
+                style={[
+                  styles.privacyToggle,
+                  {
+                    backgroundColor: usePrivateMode ? 'rgba(34,197,94,0.1)' : cardBg,
+                    borderColor: usePrivateMode ? 'rgba(34,197,94,0.3)' : borderColor,
+                  },
+                ]}
+              >
+                <View style={[
+                  styles.privacyIcon,
+                  { backgroundColor: usePrivateMode ? 'rgba(34,197,94,0.2)' : borderColor }
+                ]}>
+                  <Ionicons
+                    name={usePrivateMode ? 'shield-checkmark' : 'shield-outline'}
+                    size={20}
+                    color={usePrivateMode ? '#22c55e' : mutedColor}
+                  />
+                </View>
+                <View style={styles.privacyText}>
+                  <ThemedText style={[
+                    styles.privacyTitle,
+                    usePrivateMode && { color: '#22c55e' }
+                  ]}>
+                    {usePrivateMode ? 'Private Cashout' : 'Standard Cashout'}
+                  </ThemedText>
+                  <ThemedText style={[styles.privacyDesc, { color: mutedColor }]}>
+                    {usePrivateMode
+                      ? 'Your wallet history stays hidden from MoonPay'
+                      : 'MoonPay can see your wallet address'}
+                  </ThemedText>
+                </View>
+                <View style={[
+                  styles.privacyStatus,
+                  { backgroundColor: usePrivateMode ? '#22c55e' : mutedColor }
+                ]} />
+              </Pressable>
+            )}
+
+            {/* Shielded Balance (if available) */}
+            {usePrivateMode && shieldedBalance && shieldedBalance.totalBalance > 0 && (
+              <View style={[styles.shieldedBalanceCard, { backgroundColor: 'rgba(34,197,94,0.1)', borderColor: 'rgba(34,197,94,0.2)' }]}>
+                <Ionicons name="lock-closed" size={16} color="#22c55e" />
+                <ThemedText style={[styles.shieldedBalanceLabel, { color: '#22c55e' }]}>
+                  Shielded Balance: ${(shieldedBalance.totalBalance / 1_000_000).toFixed(2)} USDC
+                </ThemedText>
+              </View>
+            )}
 
             {/* Payout Info */}
             <View style={[styles.payoutInfo, { backgroundColor: cardBg }]}>
@@ -565,5 +683,50 @@ const styles = StyleSheet.create({
     fontSize: 12,
     textAlign: 'center',
     marginTop: 12,
+  },
+  privacyToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 16,
+    borderWidth: 1,
+    gap: 12,
+  },
+  privacyIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  privacyText: {
+    flex: 1,
+  },
+  privacyTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  privacyDesc: {
+    fontSize: 12,
+  },
+  privacyStatus: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  shieldedBalanceCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    padding: 12,
+    borderRadius: 10,
+    marginBottom: 16,
+    borderWidth: 1,
+  },
+  shieldedBalanceLabel: {
+    fontSize: 13,
+    fontWeight: '500',
   },
 });

@@ -1,5 +1,5 @@
-import { useState, useMemo, useCallback } from 'react';
-import { StyleSheet, View, Pressable, ScrollView } from 'react-native';
+import { useState, useMemo, useCallback, useEffect } from 'react';
+import { StyleSheet, View, Pressable, ScrollView, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -12,6 +12,8 @@ import { ThemedView } from '@/components/themed-view';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { useAuth, useAuthOperations } from '@/stores/authConvex';
 import { ProfileField, PhoneVerificationModal } from '@/components/identity';
+import { usePrivateIdentity } from '@/hooks/usePrivateIdentity';
+import type { ZkProofType } from '@/services/privateIdentityClient';
 
 const credentials = [
   { name: 'Proof of Humanity', issuer: 'WorldID', verified: true, icon: 'finger-print' as const },
@@ -30,8 +32,27 @@ export default function IdentityScreen() {
   const [showQR, setShowQR] = useState(false);
   const [copied, setCopied] = useState(false);
   const [showPhoneModal, setShowPhoneModal] = useState(false);
+  const [selectedProofType, setSelectedProofType] = useState<ZkProofType | null>(null);
+  const [isGeneratingProof, setIsGeneratingProof] = useState(false);
 
   const primaryColor = useThemeColor({}, 'tint');
+
+  // Mock private key for demo (in production, comes from Turnkey)
+  const mockPrivateKey = useMemo(() => new Uint8Array(32), []);
+
+  // Private identity hook for encrypted vault and ZK proofs
+  const {
+    state: identityState,
+    isLoading: identityLoading,
+    credentials: storedCredentials,
+    recentProofs,
+    availableProofTypes,
+    quickProof,
+    canProve,
+    formatProofType,
+    getCredentialStatusColor,
+    isAvailable: isPrivateIdentityAvailable,
+  } = usePrivateIdentity(mockPrivateKey);
   const mutedColor = useThemeColor({ light: '#687076', dark: '#9BA1A6' }, 'icon');
   const cardBg = useThemeColor({ light: 'rgba(0,0,0,0.03)', dark: 'rgba(255,255,255,0.06)' }, 'background');
   const borderColor = useThemeColor({ light: 'rgba(0,0,0,0.06)', dark: 'rgba(255,255,255,0.08)' }, 'background');
@@ -73,6 +94,31 @@ export default function IdentityScreen() {
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
+
+  // Handle generating a ZK proof
+  const handleGenerateProof = useCallback(async (proofType: ZkProofType) => {
+    setIsGeneratingProof(true);
+    setSelectedProofType(proofType);
+
+    try {
+      const proof = await quickProof(proofType, {}, {
+        purpose: 'Identity verification',
+        verifier: 'DisCard App',
+      });
+
+      if (proof) {
+        console.log('[Identity] ZK proof generated:', {
+          id: proof.id,
+          claim: proof.publicInputs.claim,
+        });
+      }
+    } catch (error) {
+      console.error('[Identity] Proof generation failed:', error);
+    }
+
+    setIsGeneratingProof(false);
+    setSelectedProofType(null);
+  }, [quickProof]);
 
   const handleBack = () => {
     if (router.canGoBack()) {
@@ -237,6 +283,74 @@ export default function IdentityScreen() {
           </View>
           <View style={[styles.pulseDot, { backgroundColor: primaryColor }]} />
         </ThemedView>
+
+        {/* ZK Proofs Section */}
+        {isPrivateIdentityAvailable && (
+          <View style={styles.section}>
+            <ThemedText style={[styles.sectionTitle, { color: mutedColor }]}>
+              ZERO-KNOWLEDGE PROOFS
+            </ThemedText>
+            <ThemedText style={[styles.sectionDesc, { color: mutedColor }]}>
+              Prove claims without revealing data
+            </ThemedText>
+
+            <View style={styles.proofGrid}>
+              {(['age_minimum', 'kyc_level', 'aml_cleared', 'sanctions_cleared'] as ZkProofType[]).map((proofType) => {
+                const isAvailable = canProve(proofType);
+                const isLoading = isGeneratingProof && selectedProofType === proofType;
+
+                return (
+                  <Pressable
+                    key={proofType}
+                    onPress={() => isAvailable && handleGenerateProof(proofType)}
+                    disabled={!isAvailable || isGeneratingProof}
+                    style={({ pressed }) => [
+                      styles.proofButton,
+                      {
+                        backgroundColor: isAvailable ? 'rgba(34,197,94,0.1)' : cardBg,
+                        borderColor: isAvailable ? 'rgba(34,197,94,0.3)' : borderColor,
+                        opacity: !isAvailable ? 0.5 : pressed ? 0.7 : 1,
+                      },
+                    ]}
+                  >
+                    {isLoading ? (
+                      <ActivityIndicator size="small" color="#22c55e" />
+                    ) : (
+                      <Ionicons
+                        name={isAvailable ? 'shield-checkmark' : 'shield-outline'}
+                        size={20}
+                        color={isAvailable ? '#22c55e' : mutedColor}
+                      />
+                    )}
+                    <ThemedText style={[
+                      styles.proofButtonText,
+                      { color: isAvailable ? '#22c55e' : mutedColor }
+                    ]}>
+                      {formatProofType(proofType)}
+                    </ThemedText>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            {/* Recent Proofs */}
+            {recentProofs.length > 0 && (
+              <View style={[styles.recentProofsCard, { backgroundColor: cardBg, borderColor }]}>
+                <ThemedText style={[styles.recentProofsTitle, { color: mutedColor }]}>
+                  Recent Proofs
+                </ThemedText>
+                {recentProofs.slice(0, 3).map((proof, i) => (
+                  <View key={proof.id} style={styles.recentProofItem}>
+                    <Ionicons name="checkmark-circle" size={16} color="#22c55e" />
+                    <ThemedText style={styles.recentProofText}>
+                      {proof.publicInputs.claim}
+                    </ThemedText>
+                  </View>
+                ))}
+              </View>
+            )}
+          </View>
+        )}
 
         {/* Verifiable Credentials */}
         <View style={styles.section}>
@@ -585,6 +699,49 @@ const styles = StyleSheet.create({
   pressed: {
     opacity: 0.7,
     transform: [{ scale: 0.98 }],
+  },
+  sectionDesc: {
+    fontSize: 12,
+    marginBottom: 12,
+  },
+  proofGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  proofButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  proofButtonText: {
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  recentProofsCard: {
+    marginTop: 16,
+    padding: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    gap: 10,
+  },
+  recentProofsTitle: {
+    fontSize: 11,
+    fontWeight: '500',
+    letterSpacing: 1,
+    marginBottom: 4,
+  },
+  recentProofItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  recentProofText: {
+    fontSize: 13,
   },
 });
 

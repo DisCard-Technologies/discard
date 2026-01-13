@@ -1,6 +1,9 @@
-import { useEffect } from 'react';
+import { useEffect, useCallback, useState } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
+import { Alert } from 'react-native';
 import { MarketDetailScreen } from '@/components/market-detail-screen';
+import { usePrivatePrediction } from '@/hooks/usePrivatePrediction';
+import { useAuth } from '@/stores/authConvex';
 
 // Helper to calculate time remaining from end date
 const getTimeRemaining = (endDate: string): string => {
@@ -34,6 +37,20 @@ export default function MarketDetailRoute() {
     resolutionSource?: string;
   }>();
 
+  // Auth and user info
+  const { user, userId } = useAuth();
+  const walletAddress = user?.solanaAddress || undefined;
+
+  // Private prediction hook for encrypted betting
+  const {
+    state: predictionState,
+    isLoading: predictionLoading,
+    quickBet,
+    isAvailable: isPrivateBettingAvailable,
+  } = usePrivatePrediction(walletAddress, userId || undefined);
+
+  const [isBetting, setIsBetting] = useState(false);
+
   // Build market data from route params (real API data)
   const marketData = params.question ? {
     marketId: params.id,
@@ -47,6 +64,58 @@ export default function MarketDetailRoute() {
     resolutionSource: params.resolutionSource,
     traders: 0, // Would come from API
   } : null;
+
+  // Handle private bet placement
+  const handlePlaceBet = useCallback(async (side: 'yes' | 'no') => {
+    if (!marketData?.marketId || !walletAddress || !userId) {
+      Alert.alert('Error', 'Please connect your wallet first');
+      return;
+    }
+
+    setIsBetting(true);
+
+    try {
+      // Default bet amount of $10 (1000 cents) for demo
+      const betAmount = 1000;
+
+      // Mock private key for demo (in production, comes from Turnkey)
+      const mockPrivateKey = new Uint8Array(32);
+
+      if (isPrivateBettingAvailable) {
+        console.log('[MarketDetail] Placing private bet:', {
+          marketId: marketData.marketId,
+          side,
+          amount: betAmount,
+          privateMode: true,
+        });
+
+        const result = await quickBet(
+          marketData.marketId,
+          side,
+          betAmount,
+          mockPrivateKey
+        );
+
+        if (result?.success) {
+          Alert.alert(
+            'Bet Placed!',
+            `Your private ${side.toUpperCase()} bet has been placed.\n\nBet amount is hidden on-chain.`,
+            [{ text: 'OK', onPress: () => router.back() }]
+          );
+        } else {
+          Alert.alert('Error', result?.error || 'Failed to place bet');
+        }
+      } else {
+        // Fallback to standard bet (would integrate with DFlow directly)
+        Alert.alert('Info', 'Standard betting coming soon');
+      }
+    } catch (error) {
+      console.error('[MarketDetail] Bet failed:', error);
+      Alert.alert('Error', 'Failed to place bet');
+    }
+
+    setIsBetting(false);
+  }, [marketData, walletAddress, userId, isPrivateBettingAvailable, quickBet]);
 
   useEffect(() => {
     if (!marketData) {
@@ -62,17 +131,11 @@ export default function MarketDetailRoute() {
     <MarketDetailScreen
       market={marketData}
       onBack={() => router.back()}
-      onBuyYes={() => {
-        // TODO: Navigate to DFlow buy YES flow
-        router.back();
-      }}
-      onBuyNo={() => {
-        // TODO: Navigate to DFlow buy NO flow
-        router.back();
-      }}
+      onBuyYes={() => handlePlaceBet('yes')}
+      onBuyNo={() => handlePlaceBet('no')}
       onSell={() => {
-        // TODO: Navigate to DFlow sell flow
-        router.back();
+        // TODO: Navigate to sell/settle flow
+        Alert.alert('Sell', 'Position selling coming soon');
       }}
     />
   );
