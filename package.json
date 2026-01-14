@@ -31,6 +31,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@arcium-hq/client": "^0.6.1",
     "@bonfida/spl-name-service": "^3.0.16",
     "@civic/solana-gateway-ts": "^0.13.0",
     "@expo/metro-runtime": "~6.1.2",
