@@ -224,7 +224,7 @@ export default function TransferConfirmationScreen() {
           transferId = await createTransfer({
             recipientType: recipient.type,
             recipientIdentifier: recipient.input,
-            recipientAddress: stealthAddress.stealthAddress, // Use stealth address
+            recipientAddress: stealthAddress.publicAddress, // Use stealth address
             recipientDisplayName: recipient.displayName,
             amount: amount.amount,
             token: token.symbol,
@@ -246,18 +246,18 @@ export default function TransferConfirmationScreen() {
           // Execute private transfer
           const privateResult = await executePrivateTransfer(
             walletAddress,
-            stealthAddress.stealthAddress,
+            stealthAddress.publicAddress,
             Number(amount.amount),
             token.mint === "native" ? undefined : token.mint
           );
 
-          if (privateResult.success && privateResult.signature) {
+          if (privateResult.success && privateResult.txSignature) {
             const confirmationTimeMs = Date.now() - startTime;
 
             await updateTransferStatus({
               transferId,
               status: "confirmed",
-              solanaSignature: privateResult.signature,
+              solanaSignature: privateResult.txSignature,
               confirmationTimeMs,
               credentialId: credentialId || undefined,
             });
@@ -266,11 +266,11 @@ export default function TransferConfirmationScreen() {
 
             // Navigate to success screen
             const result: TransferResult = {
-              signature: privateResult.signature,
+              signature: privateResult.txSignature,
               confirmationTimeMs,
               withinTarget: confirmationTimeMs < 200,
               transferId,
-              explorerUrl: `https://solscan.io/tx/${privateResult.signature}`,
+              explorerUrl: `https://solscan.io/tx/${privateResult.txSignature}`,
             };
 
             router.push({
