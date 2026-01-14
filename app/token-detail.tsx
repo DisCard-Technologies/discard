@@ -58,16 +58,13 @@ export default function TokenDetailRoute() {
         router.push(`/buy-crypto?currency=${tokenData.symbol.toLowerCase()}&mint=${params.id}`);
       }}
       onSend={() => {
-        // TODO: Navigate to send flow with mint address
-        router.back();
+        router.push('/transfer/send');
       }}
       onReceive={() => {
-        // TODO: Navigate to receive flow
-        router.back();
+        router.push('/receive');
       }}
       onSwap={() => {
-        // TODO: Navigate to Jupiter swap with this token
-        router.back();
+        router.push('/swap');
       }}
     />
   );

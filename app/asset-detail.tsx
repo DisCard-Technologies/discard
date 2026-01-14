@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { Alert } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { AssetDetailScreen } from '@/components/asset-detail-screen';
 import type { RwaType } from '@/types/holdings.types';
@@ -49,20 +50,16 @@ export default function AssetDetailRoute() {
       owned={isOwned}
       onBack={() => router.back()}
       onBuy={() => {
-        // TODO: Navigate to buy flow for RWA token
-        router.back();
+        router.push(`/buy-crypto?currency=${asset.name.toLowerCase()}&mint=${params.id}`);
       }}
       onSell={() => {
-        // TODO: Navigate to sell flow
-        router.back();
+        router.push(`/sell-crypto?currency=${asset.name.toLowerCase()}`);
       }}
       onSend={() => {
-        // TODO: Navigate to Solana send flow with mint address
-        router.back();
+        router.push('/transfer/send');
       }}
       onList={() => {
-        // TODO: Navigate to list on marketplace
-        router.back();
+        Alert.alert('Coming Soon', 'Marketplace listing will be available soon.');
       }}
     />
   );
