@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
-import { StyleSheet, View, Pressable, ScrollView, Dimensions, Keyboard, ActivityIndicator } from 'react-native';
+import { StyleSheet, View, Pressable, ScrollView, Dimensions, Keyboard, ActivityIndicator, TextInput, Alert } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
@@ -16,7 +17,9 @@ import { useThemeColor } from '@/hooks/use-theme-color';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useAuth, useCurrentUserId } from '@/stores/authConvex';
 import { useTokenHoldings } from '@/hooks/useTokenHoldings';
+import { useArciumYield } from '@/hooks/useArciumYield';
 import { positiveColor, negativeColor } from '@/constants/theme';
+import type { YieldVault, PrivateVaultPosition } from '@/services/arciumYieldClient';
 
 // Props for the content component when used in pager
 export interface StrategyScreenContentProps {
@@ -145,15 +148,55 @@ export function StrategyScreenContent({ onNavigateToHome, onNavigateToCard }: St
     isLoading: tokensLoading
   } = useTokenHoldings(walletAddress);
 
+  // Yield vault hook
+  const {
+    vaults,
+    positions,
+    isLoading: yieldLoading,
+    state: yieldState,
+    activePositionsCount,
+    getDepositQuote,
+    deposit,
+    getWithdrawQuote,
+    withdraw,
+    formatApy,
+    formatTvl,
+    getRiskColor,
+    isAvailable: isYieldAvailable,
+  } = useArciumYield(walletAddress || undefined);
+
   // State
   const [viewMode, setViewMode] = useState<ViewMode>('wallets');
   const [selectedWallet, setSelectedWallet] = useState('all');
   const [chartData] = useState(() => generateChartData());
 
+  // Yield vault state
+  const [selectedVault, setSelectedVault] = useState<YieldVault | null>(null);
+  const [depositAmount, setDepositAmount] = useState('');
+  const [riskFilter, setRiskFilter] = useState<'all' | 'low' | 'medium' | 'high'>('all');
+
   // Calculate portfolio values
   const walletsValue = tokenTotal || 0;
-  const defiStrategyValue = 0; // No DeFi positions yet
+  // Estimate DeFi value from active positions (encrypted, so we show count-based estimate)
+  const defiStrategyValue = activePositionsCount * 500; // Placeholder - real value is private
   const totalPortfolioValue = walletsValue + defiStrategyValue;
+
+  // Filter vaults by risk level
+  const filteredVaults = useMemo(() => {
+    if (riskFilter === 'all') return vaults;
+    return vaults.filter(v => v.riskLevel === riskFilter);
+  }, [vaults, riskFilter]);
+
+  // Validate deposit amount
+  const isValidDeposit = useMemo(() => {
+    if (!selectedVault || !depositAmount) return false;
+    const amount = parseFloat(depositAmount);
+    if (isNaN(amount) || amount <= 0) return false;
+    const amountBaseUnits = BigInt(Math.floor(amount * 1_000_000));
+    if (amountBaseUnits < selectedVault.minDeposit) return false;
+    if (selectedVault.maxDeposit > 0n && amountBaseUnits > selectedVault.maxDeposit) return false;
+    return true;
+  }, [selectedVault, depositAmount]);
 
   // Calculate real daily change from token holdings
   const dailyChange = useMemo(() => {
@@ -199,6 +242,85 @@ export function StrategyScreenContent({ onNavigateToHome, onNavigateToCard }: St
 
   const handleMic = () => {
     // Voice input not yet implemented
+  };
+
+  // Yield vault handlers
+  const handleSelectVault = (vault: YieldVault) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setSelectedVault(vault);
+    setDepositAmount('');
+  };
+
+  const handleDeposit = async () => {
+    if (!selectedVault || !depositAmount || !walletAddress) return;
+
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+    try {
+      const amountBaseUnits = BigInt(Math.floor(parseFloat(depositAmount) * 1_000_000));
+      const quote = await getDepositQuote(selectedVault.id, amountBaseUnits);
+
+      if (!quote) {
+        Alert.alert('Error', 'Failed to get deposit quote. Please try again.');
+        return;
+      }
+
+      // In production, get from Turnkey
+      const mockPrivateKey = new Uint8Array(32);
+      const result = await deposit(quote, mockPrivateKey);
+
+      if (result?.success) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        Alert.alert(
+          'Deposit Complete!',
+          `Your deposit to ${selectedVault.name} is now earning yield privately.\n\nAmount is hidden on-chain.`,
+          [{ text: 'OK', onPress: () => { setSelectedVault(null); setDepositAmount(''); } }]
+        );
+      } else {
+        Alert.alert('Error', result?.error || 'Deposit failed. Please try again.');
+      }
+    } catch (error) {
+      console.error('[Strategy] Deposit error:', error);
+      Alert.alert('Error', 'Something went wrong. Please try again.');
+    }
+  };
+
+  const handleWithdraw = async (position: PrivateVaultPosition) => {
+    if (!walletAddress) return;
+
+    Alert.alert(
+      'Withdraw Position',
+      'Withdraw your principal + yield to a stealth address?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Withdraw',
+          onPress: async () => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            try {
+              const quote = await getWithdrawQuote(position.id);
+              if (!quote) {
+                Alert.alert('Error', 'Failed to get withdrawal quote.');
+                return;
+              }
+
+              const mockPrivateKey = new Uint8Array(32);
+              const result = await withdraw(quote, mockPrivateKey);
+
+              if (result?.success) {
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                Alert.alert('Withdrawal Complete', 'Funds sent to your stealth address.');
+              } else {
+                Alert.alert('Error', result?.error || 'Withdrawal failed.');
+              }
+            } catch (error) {
+              console.error('[Strategy] Withdraw error:', error);
+              Alert.alert('Error', 'Something went wrong.');
+            }
+          },
+        },
+      ]
+    );
   };
 
   // Navigation handlers for TopBar - use callbacks if provided, otherwise use router
@@ -442,33 +564,231 @@ export function StrategyScreenContent({ onNavigateToHome, onNavigateToCard }: St
           </View>
         )}
 
-        {/* Strategy View */}
+        {/* Strategy View - Yield Vaults */}
         {viewMode === 'strategy' && (
           <View style={styles.strategySection}>
-            <ThemedText style={[styles.sectionTitle, { color: mutedColor }]}>
-              ACTIVE STRATEGIES
+            {/* Privacy Info Banner */}
+            {isYieldAvailable && (
+              <View style={[styles.privacyBanner, { backgroundColor: 'rgba(34,197,94,0.1)', borderColor: 'rgba(34,197,94,0.2)' }]}>
+                <Ionicons name="shield-checkmark" size={20} color="#22c55e" />
+                <View style={styles.privacyBannerText}>
+                  <ThemedText style={[styles.privacyBannerTitle, { color: '#22c55e' }]}>
+                    Private Yield Earning
+                  </ThemedText>
+                  <ThemedText style={[styles.privacyBannerDesc, { color: mutedColor }]}>
+                    Deposit amounts hidden on-chain via Arcium MPC
+                  </ThemedText>
+                </View>
+              </View>
+            )}
+
+            {/* User Positions Section */}
+            {positions.length > 0 && (
+              <>
+                <ThemedText style={[styles.sectionTitle, { color: mutedColor }]}>
+                  YOUR POSITIONS
+                </ThemedText>
+                {positions.map((position) => {
+                  const vault = vaults.find(v => v.id === position.vaultId);
+                  if (!vault) return null;
+                  const isLocked = position.lockExpiresAt > 0 && Date.now() < position.lockExpiresAt;
+
+                  return (
+                    <View
+                      key={position.id}
+                      style={[styles.positionCard, { backgroundColor: cardBg, borderColor: position.status === 'active' ? `${primaryColor}40` : borderColor }]}
+                    >
+                      <View style={styles.positionHeader}>
+                        <View style={[styles.vaultIcon, { backgroundColor: `${getRiskColor(vault.riskLevel)}20` }]}>
+                          <ThemedText style={[styles.vaultIconText, { color: getRiskColor(vault.riskLevel) }]}>
+                            {vault.assetSymbol.charAt(0)}
+                          </ThemedText>
+                        </View>
+                        <View style={styles.positionInfo}>
+                          <ThemedText style={styles.positionVaultName}>{vault.name}</ThemedText>
+                          <ThemedText style={[styles.positionDate, { color: mutedColor }]}>
+                            Earning {formatApy(vault.apy)}
+                          </ThemedText>
+                        </View>
+                        <View style={[styles.statusBadge, { backgroundColor: position.status === 'active' ? 'rgba(34,197,94,0.1)' : 'rgba(107,114,128,0.1)' }]}>
+                          <ThemedText style={[styles.statusBadgeText, { color: position.status === 'active' ? '#22c55e' : mutedColor }]}>
+                            {position.status === 'active' ? 'Active' : position.status}
+                          </ThemedText>
+                        </View>
+                      </View>
+
+                      <View style={styles.positionDetails}>
+                        <View style={styles.positionDetailRow}>
+                          <ThemedText style={[styles.positionLabel, { color: mutedColor }]}>Amount</ThemedText>
+                          <View style={styles.privateValue}>
+                            <Ionicons name="eye-off" size={12} color={mutedColor} />
+                            <ThemedText style={[styles.privateValueText, { color: mutedColor }]}>Private</ThemedText>
+                          </View>
+                        </View>
+                        <View style={styles.positionDetailRow}>
+                          <ThemedText style={[styles.positionLabel, { color: mutedColor }]}>Yield</ThemedText>
+                          <View style={styles.privateValue}>
+                            <Ionicons name="eye-off" size={12} color="#22c55e" />
+                            <ThemedText style={[styles.privateValueText, { color: '#22c55e' }]}>Accruing</ThemedText>
+                          </View>
+                        </View>
+                      </View>
+
+                      {position.status === 'active' && !isLocked && (
+                        <Pressable
+                          onPress={() => handleWithdraw(position)}
+                          style={[styles.withdrawButton, { borderColor: primaryColor }]}
+                        >
+                          <ThemedText style={[styles.withdrawButtonText, { color: primaryColor }]}>Withdraw</ThemedText>
+                        </Pressable>
+                      )}
+                      {isLocked && (
+                        <View style={styles.lockInfo}>
+                          <Ionicons name="lock-closed" size={12} color={mutedColor} />
+                          <ThemedText style={[styles.lockInfoText, { color: mutedColor }]}>
+                            Locked for {Math.ceil((position.lockExpiresAt - Date.now()) / 1000 / 60)} min
+                          </ThemedText>
+                        </View>
+                      )}
+                    </View>
+                  );
+                })}
+              </>
+            )}
+
+            {/* Yield Vaults Section */}
+            <ThemedText style={[styles.sectionTitle, { color: mutedColor, marginTop: positions.length > 0 ? 24 : 0 }]}>
+              YIELD VAULTS
             </ThemedText>
 
-            {/* Empty State for DeFi */}
-            <View style={styles.emptyState}>
-              <View style={[styles.emptyStateIcon, { backgroundColor: `${primaryColor}10` }]}>
-                <Ionicons name="flash-outline" size={32} color={primaryColor} />
-              </View>
-              <ThemedText style={styles.emptyStateTitle}>No active strategies</ThemedText>
-              <ThemedText style={[styles.emptyStateText, { color: mutedColor }]}>
-                DeFi strategies let you earn yield on your crypto. This feature is coming soon.
-              </ThemedText>
-            </View>
+            {/* Risk Filter Chips */}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.riskFilters}>
+              {(['all', 'low', 'medium', 'high'] as const).map((risk) => {
+                const isActive = riskFilter === risk;
+                const labels = { all: 'All', low: 'Low Risk', medium: 'Medium', high: 'High Yield' };
+                const colors = { all: primaryColor, low: '#22c55e', medium: '#f59e0b', high: '#ef4444' };
+                return (
+                  <Pressable
+                    key={risk}
+                    onPress={() => setRiskFilter(risk)}
+                    style={[styles.riskChip, { backgroundColor: isActive ? colors[risk] : cardBg, borderColor: isActive ? colors[risk] : borderColor }]}
+                  >
+                    <ThemedText style={[styles.riskChipText, { color: isActive ? '#fff' : textColor }]}>
+                      {labels[risk]}
+                    </ThemedText>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
 
-            <Pressable
-              style={[styles.addStrategyButton, { borderColor: primaryColor, opacity: 0.6 }]}
-              onPress={() => console.log('[Strategy] Explore strategies - coming soon')}
-            >
-              <Ionicons name="add" size={20} color={primaryColor} />
-              <ThemedText style={[styles.addStrategyText, { color: primaryColor }]}>
-                Coming Soon
-              </ThemedText>
-            </Pressable>
+            {/* Vault Cards */}
+            {yieldLoading ? (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color={primaryColor} />
+                <ThemedText style={[styles.loadingText, { color: mutedColor }]}>Loading vaults...</ThemedText>
+              </View>
+            ) : filteredVaults.length > 0 ? (
+              filteredVaults.map((vault) => {
+                const isSelected = selectedVault?.id === vault.id;
+                const riskColor = getRiskColor(vault.riskLevel);
+                return (
+                  <Pressable
+                    key={vault.id}
+                    onPress={() => handleSelectVault(vault)}
+                    style={[styles.vaultCard, { backgroundColor: isSelected ? `${riskColor}15` : cardBg, borderColor: isSelected ? riskColor : borderColor }]}
+                  >
+                    <View style={[styles.vaultIcon, { backgroundColor: `${riskColor}20` }]}>
+                      <ThemedText style={[styles.vaultIconText, { color: riskColor }]}>
+                        {vault.assetSymbol.charAt(0)}
+                      </ThemedText>
+                    </View>
+                    <View style={styles.vaultInfo}>
+                      <ThemedText style={styles.vaultName}>{vault.name}</ThemedText>
+                      <ThemedText style={[styles.vaultTvl, { color: mutedColor }]}>
+                        TVL: {formatTvl(vault.tvl)} {vault.lockPeriod > 0 && `• ${Math.floor(vault.lockPeriod / 3600)}h lock`}
+                      </ThemedText>
+                    </View>
+                    <View style={styles.vaultApy}>
+                      <ThemedText style={[styles.vaultApyValue, { color: riskColor }]}>{formatApy(vault.apy)}</ThemedText>
+                      <ThemedText style={[styles.vaultApyLabel, { color: mutedColor }]}>APY</ThemedText>
+                    </View>
+                    {isSelected && <Ionicons name="checkmark-circle" size={24} color={riskColor} />}
+                  </Pressable>
+                );
+              })
+            ) : (
+              <View style={styles.emptyState}>
+                <ThemedText style={[styles.emptyStateText, { color: mutedColor }]}>No vaults match your filter</ThemedText>
+              </View>
+            )}
+
+            {/* Deposit Flow */}
+            {selectedVault && (
+              <View style={[styles.depositSection, { backgroundColor: cardBg, borderColor }]}>
+                <ThemedText style={styles.depositTitle}>Deposit to {selectedVault.name}</ThemedText>
+                <ThemedText style={[styles.depositDesc, { color: mutedColor }]}>{selectedVault.description}</ThemedText>
+
+                {/* Quick Amount Buttons */}
+                <View style={styles.quickAmounts}>
+                  {[100, 500, 1000, 5000].map((amt) => (
+                    <Pressable
+                      key={amt}
+                      onPress={() => setDepositAmount(amt.toString())}
+                      style={[styles.quickAmountBtn, { backgroundColor: depositAmount === amt.toString() ? `${primaryColor}20` : 'transparent', borderColor: depositAmount === amt.toString() ? primaryColor : borderColor }]}
+                    >
+                      <ThemedText style={[styles.quickAmountText, depositAmount === amt.toString() && { color: primaryColor }]}>
+                        {amt}
+                      </ThemedText>
+                    </Pressable>
+                  ))}
+                </View>
+
+                {/* Amount Input */}
+                <View style={[styles.amountInputContainer, { borderColor }]}>
+                  <TextInput
+                    style={[styles.amountInput, { color: textColor }]}
+                    value={depositAmount}
+                    onChangeText={setDepositAmount}
+                    placeholder="Enter amount"
+                    placeholderTextColor={mutedColor}
+                    keyboardType="decimal-pad"
+                  />
+                  <ThemedText style={[styles.amountSymbol, { color: mutedColor }]}>{selectedVault.assetSymbol}</ThemedText>
+                </View>
+
+                {/* Estimated Yield */}
+                {depositAmount && parseFloat(depositAmount) > 0 && (
+                  <View style={[styles.yieldEstimate, { backgroundColor: 'rgba(34,197,94,0.1)' }]}>
+                    <Ionicons name="trending-up" size={16} color="#22c55e" />
+                    <ThemedText style={[styles.yieldEstimateText, { color: '#22c55e' }]}>
+                      Est. yield: +{(parseFloat(depositAmount) * selectedVault.apy / 100).toFixed(2)} {selectedVault.assetSymbol}/year
+                    </ThemedText>
+                  </View>
+                )}
+
+                {/* Privacy Badge */}
+                <View style={[styles.privacyBadge, { backgroundColor: 'rgba(34,197,94,0.1)' }]}>
+                  <Ionicons name="shield-checkmark" size={14} color="#22c55e" />
+                  <ThemedText style={[styles.privacyBadgeText, { color: '#22c55e' }]}>Amount Hidden On-Chain</ThemedText>
+                </View>
+
+                {/* Deposit Button */}
+                <Pressable
+                  onPress={handleDeposit}
+                  disabled={!isValidDeposit || yieldLoading}
+                  style={[styles.depositButton, { backgroundColor: isValidDeposit ? primaryColor : `${mutedColor}50` }]}
+                >
+                  {yieldState.phase === 'depositing' ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <>
+                      <Ionicons name="lock-closed" size={18} color="#fff" />
+                      <ThemedText style={styles.depositButtonText}>Deposit Privately</ThemedText>
+                    </>
+                  )}
+                </Pressable>
+              </View>
+            )}
           </View>
         )}
       </ScrollView>
@@ -802,5 +1122,257 @@ const styles = StyleSheet.create({
   emptyStateText: {
     fontSize: 14,
     textAlign: 'center',
+  },
+
+  // Privacy Banner
+  privacyBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    marginBottom: 16,
+  },
+  privacyBannerText: {
+    flex: 1,
+  },
+  privacyBannerTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  privacyBannerDesc: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+
+  // Risk Filters
+  riskFilters: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingVertical: 8,
+    marginBottom: 8,
+  },
+  riskChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  riskChipText: {
+    fontSize: 13,
+    fontWeight: '500',
+  },
+
+  // Vault Card
+  vaultCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    marginBottom: 8,
+    gap: 12,
+  },
+  vaultIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  vaultIconText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  vaultInfo: {
+    flex: 1,
+  },
+  vaultName: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  vaultTvl: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  vaultApy: {
+    alignItems: 'flex-end',
+    marginRight: 8,
+  },
+  vaultApyValue: {
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  vaultApyLabel: {
+    fontSize: 10,
+    marginTop: 1,
+  },
+
+  // Position Card
+  positionCard: {
+    padding: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    marginBottom: 8,
+  },
+  positionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  positionInfo: {
+    flex: 1,
+  },
+  positionVaultName: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  positionDate: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  statusBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 10,
+  },
+  statusBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  positionDetails: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.1)',
+    gap: 8,
+  },
+  positionDetailRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  positionLabel: {
+    fontSize: 12,
+  },
+  privateValue: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  privateValueText: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  withdrawButton: {
+    marginTop: 12,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    alignItems: 'center',
+  },
+  withdrawButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  lockInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginTop: 12,
+  },
+  lockInfoText: {
+    fontSize: 12,
+  },
+
+  // Deposit Section
+  depositSection: {
+    marginTop: 16,
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+  },
+  depositTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  depositDesc: {
+    fontSize: 12,
+    marginBottom: 16,
+  },
+  quickAmounts: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 12,
+  },
+  quickAmountBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    alignItems: 'center',
+  },
+  quickAmountText: {
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  amountInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    marginBottom: 12,
+  },
+  amountInput: {
+    flex: 1,
+    fontSize: 18,
+    fontWeight: '500',
+    paddingVertical: 14,
+  },
+  amountSymbol: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  yieldEstimate: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    padding: 12,
+    borderRadius: 10,
+    marginBottom: 12,
+  },
+  yieldEstimateText: {
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  privacyBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    padding: 10,
+    borderRadius: 10,
+    marginBottom: 12,
+  },
+  privacyBadgeText: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  depositButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 16,
+    borderRadius: 14,
+  },
+  depositButtonText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '600',
   },
 });
