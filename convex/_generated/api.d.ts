@@ -53,6 +53,7 @@ import type * as transfers_crossCurrency from "../transfers/crossCurrency.js";
 import type * as transfers_invitations from "../transfers/invitations.js";
 import type * as transfers_lookup from "../transfers/lookup.js";
 import type * as transfers_merchantPayment from "../transfers/merchantPayment.js";
+import type * as transfers_oneTimePayments from "../transfers/oneTimePayments.js";
 import type * as transfers_paymentRequests from "../transfers/paymentRequests.js";
 import type * as transfers_transfers from "../transfers/transfers.js";
 import type * as wallets_defi from "../wallets/defi.js";
@@ -113,6 +114,7 @@ declare const fullApi: ApiFromModules<{
   "transfers/invitations": typeof transfers_invitations;
   "transfers/lookup": typeof transfers_lookup;
   "transfers/merchantPayment": typeof transfers_merchantPayment;
+  "transfers/oneTimePayments": typeof transfers_oneTimePayments;
   "transfers/paymentRequests": typeof transfers_paymentRequests;
   "transfers/transfers": typeof transfers_transfers;
   "wallets/defi": typeof wallets_defi;

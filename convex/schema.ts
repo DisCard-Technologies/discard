@@ -1223,6 +1223,7 @@ export default defineSchema({
         priceUsd: v.number(),
         change24h: v.number(),
         volume24h: v.number(),
+        marketCap: v.optional(v.number()),
         logoUri: v.optional(v.string()),
         verified: v.boolean(),
         organicScore: v.optional(v.number()),

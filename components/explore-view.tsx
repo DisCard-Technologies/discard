@@ -21,6 +21,24 @@ const formatVolume = (volume: number): string => {
   return `$${volume.toFixed(0)}`;
 };
 
+// Helper to format market cap
+const formatMarketCap = (marketCap?: number): string => {
+  if (!marketCap) return '-';
+  if (marketCap >= 1_000_000_000_000) return `$${(marketCap / 1_000_000_000_000).toFixed(0)}T`;
+  if (marketCap >= 1_000_000_000) return `$${(marketCap / 1_000_000_000).toFixed(0)}B`;
+  if (marketCap >= 1_000_000) return `$${(marketCap / 1_000_000).toFixed(0)}M`;
+  if (marketCap >= 1_000) return `$${(marketCap / 1_000).toFixed(0)}K`;
+  return `$${marketCap.toFixed(0)}`;
+};
+
+// Helper to format price
+const formatPrice = (price: number): string => {
+  if (price >= 1000) return `$${price.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+  if (price >= 1) return `$${price.toFixed(2)}`;
+  if (price >= 0.01) return `$${price.toFixed(4)}`;
+  return `$${price.toFixed(6)}`;
+};
+
 // Helper to calculate time remaining from end date
 const getTimeRemaining = (endDate: string): string => {
   const end = new Date(endDate);
@@ -184,6 +202,7 @@ export function ExploreView() {
               <ThemedText style={[styles.headerText, { color: mutedColor }]}>ASSET</ThemedText>
               <ThemedText style={[styles.headerText, styles.headerPrice, { color: mutedColor }]}>PRICE</ThemedText>
               <ThemedText style={[styles.headerText, styles.headerChange, { color: mutedColor }]}>24H</ThemedText>
+              <ThemedText style={[styles.headerText, styles.headerMcap, { color: mutedColor }]}>MCAP</ThemedText>
             </View>
 
             {tokensLoading ? (
@@ -214,6 +233,7 @@ export function ExploreView() {
                       price: token.priceUsd.toString(),
                       change24h: token.change24h.toString(),
                       volume24h: token.volume24h.toString(),
+                      marketCap: token.marketCap?.toString() || '',
                       logoUri: token.logoUri || '',
                     },
                   })}
@@ -227,27 +247,23 @@ export function ExploreView() {
                         <ThemedText style={styles.tokenIconText}>{token.symbol.slice(0, 2)}</ThemedText>
                       )}
                     </View>
-                    <View>
+                    <View style={styles.tokenDetails}>
                       <View style={styles.tokenNameRow}>
                         <ThemedText style={styles.tokenSymbol}>{token.symbol}</ThemedText>
-                        {token.verified && <Ionicons name="checkmark-circle" size={12} color={primaryColor} />}
+                        {token.verified && <Ionicons name="flash" size={10} color="#f59e0b" />}
                       </View>
-                      <ThemedText style={[styles.tokenName, { color: mutedColor }]}>{token.name}</ThemedText>
+                      <ThemedText style={[styles.tokenName, { color: mutedColor }]} numberOfLines={1}>{token.name}</ThemedText>
                     </View>
                   </View>
                   <ThemedText style={styles.tokenPrice}>
-                    ${token.priceUsd.toLocaleString(undefined, { maximumFractionDigits: token.priceUsd < 1 ? 6 : 2 })}
+                    {formatPrice(token.priceUsd)}
                   </ThemedText>
-                  <View style={[styles.changeContainer, { backgroundColor: token.change24h >= 0 ? `${primaryColor}15` : 'rgba(239,68,68,0.15)' }]}>
-                    <Ionicons
-                      name={token.change24h >= 0 ? 'trending-up' : 'trending-down'}
-                      size={12}
-                      color={token.change24h >= 0 ? primaryColor : '#ef4444'}
-                    />
-                    <ThemedText style={[styles.changeText, { color: token.change24h >= 0 ? primaryColor : '#ef4444' }]}>
-                      {Math.abs(token.change24h).toFixed(1)}%
-                    </ThemedText>
-                  </View>
+                  <ThemedText style={[styles.changeText, { color: token.change24h >= 0 ? '#10b981' : '#ef4444' }]}>
+                    {token.change24h >= 0 ? '↑' : '↓'}{Math.abs(token.change24h).toFixed(2)}%
+                  </ThemedText>
+                  <ThemedText style={[styles.mcapText, { color: mutedColor }]}>
+                    {formatMarketCap(token.marketCap)}
+                  </ThemedText>
                 </Pressable>
               ))
             )}
@@ -500,12 +516,17 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   headerPrice: {
-    width: 80,
+    width: 90,
     textAlign: 'right',
     flex: 0,
   },
   headerChange: {
-    width: 70,
+    width: 72,
+    textAlign: 'right',
+    flex: 0,
+  },
+  headerMcap: {
+    width: 60,
     textAlign: 'right',
     flex: 0,
   },
@@ -564,26 +585,26 @@ const styles = StyleSheet.create({
     fontSize: 10,
     marginTop: 2,
   },
-  tokenPrice: {
-    width: 80,
-    textAlign: 'right',
-    fontSize: 14,
-    fontWeight: '500',
+  tokenDetails: {
+    flex: 1,
+    minWidth: 0,
   },
-  changeContainer: {
-    width: 70,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-    marginLeft: 8,
+  tokenPrice: {
+    width: 90,
+    textAlign: 'right',
+    fontSize: 13,
+    fontWeight: '500',
   },
   changeText: {
+    width: 72,
+    textAlign: 'right',
     fontSize: 12,
     fontWeight: '500',
+  },
+  mcapText: {
+    width: 60,
+    textAlign: 'right',
+    fontSize: 12,
   },
   suggestionCard: {
     marginTop: 16,

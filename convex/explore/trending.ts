@@ -214,6 +214,8 @@ export const refreshTrendingTokens = action({
         name: string;
         icon?: string;
         usdPrice?: number;
+        marketCap?: number;
+        fdv?: number; // fully diluted valuation (fallback for marketCap)
         isVerified?: boolean;
         organicScore?: number;
         tags?: string[];
@@ -229,6 +231,7 @@ export const refreshTrendingTokens = action({
         priceUsd: token.usdPrice ?? 0,
         change24h: token.stats24h?.priceChange ?? 0,
         volume24h: (token.stats24h?.buyVolume ?? 0) + (token.stats24h?.sellVolume ?? 0),
+        marketCap: token.marketCap ?? token.fdv,
         logoUri: token.icon,
         verified: token.isVerified ?? token.tags?.includes("verified") ?? false,
         organicScore: token.organicScore,
@@ -374,6 +377,7 @@ export const updateTrendingCache = internalMutation({
         priceUsd: v.number(),
         change24h: v.number(),
         volume24h: v.number(),
+        marketCap: v.optional(v.number()),
         logoUri: v.optional(v.string()),
         verified: v.boolean(),
         organicScore: v.optional(v.number()),

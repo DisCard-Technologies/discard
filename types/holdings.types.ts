@@ -227,6 +227,7 @@ export interface TrendingToken {
   priceUsd: number;
   change24h: number;
   volume24h: number;
+  marketCap?: number;
   logoUri?: string;
   verified: boolean;
   organicScore?: number;
