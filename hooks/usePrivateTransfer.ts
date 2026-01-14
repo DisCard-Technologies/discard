@@ -10,8 +10,15 @@
  */
 
 import { useState, useCallback } from "react";
+import { PublicKey } from "@solana/web3.js";
 import { getRangeComplianceService, type TransferComplianceCheck } from "@/services/rangeComplianceClient";
-import { getShadowWireService, type PrivateTransferResult, type StealthAddress } from "@/services/shadowWireClient";
+import {
+  getShadowWireService,
+  type PrivateTransferResult,
+  type StealthAddress,
+  type CompressedStealthAddress,
+  type ZkPrivateTransferResult,
+} from "@/services/shadowWireClient";
 
 // ============================================================================
 // Types
@@ -173,6 +180,88 @@ export function usePrivateTransfer() {
   }, [shadowWireService]);
 
   /**
+   * Generate a ZK-compressed stealth address using Light Protocol
+   *
+   * This method creates a stealth address with optional ZK proof attachment.
+   * When ZK compression is available, it provides validity proofs for the address.
+   */
+  const generateZkCompressedStealthAddress = useCallback(async (
+    recipientPubkey: string,
+    payer?: string
+  ): Promise<CompressedStealthAddress | StealthAddress | null> => {
+    console.log("[PrivateTransfer] Generating ZK-compressed stealth address...");
+    try {
+      const payerPubkey = payer ? new PublicKey(payer) : undefined;
+      const result = await shadowWireService.generateCompressedStealthAddress(
+        recipientPubkey,
+        payerPubkey
+      );
+      console.log("[PrivateTransfer] ZK stealth address generated:",
+        'compressed' in result ? "(with ZK)" : "(standard)"
+      );
+      return result;
+    } catch (error) {
+      console.error("[PrivateTransfer] ZK stealth address generation failed:", error);
+      // Fall back to regular stealth address
+      return shadowWireService.generateStealthAddress(recipientPubkey);
+    }
+  }, [shadowWireService]);
+
+  /**
+   * Execute a ZK-compressed private transfer using Light Protocol
+   *
+   * This method uses Light Protocol's ZK compression for:
+   * - Reduced rent costs (1000x)
+   * - ZK validity proofs
+   * - Compressed state storage
+   */
+  const executeZkPrivateTransfer = useCallback(async (
+    senderAddress: string,
+    recipientStealthAddress: string,
+    amount: number,
+    tokenMint?: string
+  ): Promise<ZkPrivateTransferResult> => {
+    console.log("[PrivateTransfer] Executing ZK-compressed private transfer...");
+    setIsLoading(true);
+    setState({ status: "transferring" });
+
+    try {
+      const payerPubkey = new PublicKey(senderAddress);
+      const result = await shadowWireService.createZkPrivateTransfer(
+        {
+          senderAddress,
+          recipientStealthAddress,
+          amount,
+          tokenMint,
+        },
+        payerPubkey
+      );
+
+      setState({
+        status: result.success ? "success" : "error",
+        transferResult: result,
+        error: result.error,
+      });
+
+      setIsLoading(false);
+      console.log("[PrivateTransfer] ZK transfer complete:",
+        result.zkProof ? "(with ZK proof)" : "(standard)"
+      );
+      return result;
+    } catch (error) {
+      console.error("[PrivateTransfer] ZK transfer failed:", error);
+      // Fall back to regular private transfer
+      const fallbackResult = await executePrivateTransfer(
+        senderAddress,
+        recipientStealthAddress,
+        amount,
+        tokenMint
+      );
+      return fallbackResult;
+    }
+  }, [shadowWireService, executePrivateTransfer]);
+
+  /**
    * Scan for incoming private transfers
    */
   const scanIncomingTransfers = useCallback(async (
@@ -189,12 +278,51 @@ export function usePrivateTransfer() {
   }, [shadowWireService]);
 
   /**
+   * Check if user has initialized compressed account for ZK transfers
+   */
+  const hasCompressedAccount = useCallback(async (
+    ownerAddress: string
+  ): Promise<boolean> => {
+    try {
+      const ownerPubkey = new PublicKey(ownerAddress);
+      return await shadowWireService.hasCompressedAccount(ownerPubkey);
+    } catch {
+      return false;
+    }
+  }, [shadowWireService]);
+
+  /**
+   * Initialize compressed account for first-time ZK users
+   *
+   * This is called automatically on first ZK transfer, but can be
+   * called manually to pre-initialize during onboarding.
+   */
+  const initializeZkAccount = useCallback(async (
+    ownerAddress: string
+  ) => {
+    console.log("[PrivateTransfer] Initializing ZK account...");
+    try {
+      const ownerPubkey = new PublicKey(ownerAddress);
+      return await shadowWireService.initializeCompressedAccount(ownerPubkey);
+    } catch (error) {
+      console.error("[PrivateTransfer] ZK account initialization failed:", error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Initialization failed",
+      };
+    }
+  }, [shadowWireService]);
+
+  /**
    * Reset state
    */
   const reset = useCallback(() => {
     setState({ status: "idle" });
     setIsLoading(false);
   }, []);
+
+  // Get ShadowWire status for ZK compression info
+  const shadowWireStatus = shadowWireService.getStatus();
 
   return {
     // State
@@ -208,9 +336,19 @@ export function usePrivateTransfer() {
     scanIncomingTransfers,
     reset,
 
+    // ZK-compressed actions (Light Protocol integration)
+    generateZkCompressedStealthAddress,
+    executeZkPrivateTransfer,
+    hasCompressedAccount,
+    initializeZkAccount,
+
     // Service availability
     isComplianceAvailable: complianceService.isConfigured(),
     isPrivateTransferAvailable: shadowWireService.isAvailable(),
+    isZkCompressionAvailable: shadowWireStatus.zkCompressionEnabled,
+
+    // Feature status
+    shadowWireStatus,
   };
 }
 

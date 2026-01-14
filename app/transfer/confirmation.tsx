@@ -91,6 +91,11 @@ export default function TransferConfirmationScreen() {
     executePrivateTransfer,
     generateStealthAddress,
     isPrivateTransferAvailable,
+    // ZK-compressed methods (Light Protocol)
+    generateZkCompressedStealthAddress,
+    executeZkPrivateTransfer,
+    isZkCompressionAvailable,
+    shadowWireStatus,
   } = usePrivateTransfer();
 
   // Auto-run compliance check on mount
@@ -211,11 +216,16 @@ export default function TransferConfirmationScreen() {
 
       // Use ShadowWire private transfer when available
       if (isPrivateTransferAvailable) {
-        console.log("[Confirmation] Executing shielded transfer via ShadowWire");
+        console.log("[Confirmation] Executing shielded transfer via ShadowWire", {
+          zkCompression: isZkCompressionAvailable,
+          features: shadowWireStatus?.features,
+        });
         setExecutionPhase("shielding");
 
-        // Generate stealth address for recipient
-        const stealthAddress = await generateStealthAddress(recipient.address);
+        // Generate stealth address for recipient - use ZK compressed when available
+        const stealthAddress = isZkCompressionAvailable
+          ? await generateZkCompressedStealthAddress(recipient.address, walletAddress)
+          : await generateStealthAddress(recipient.address);
         if (!stealthAddress) {
           console.warn("[Confirmation] Stealth address generation failed, falling back to regular transfer");
           // Fall through to regular transfer
@@ -243,13 +253,20 @@ export default function TransferConfirmationScreen() {
             credentialId: credentialId || undefined,
           });
 
-          // Execute private transfer
-          const privateResult = await executePrivateTransfer(
-            walletAddress,
-            stealthAddress.publicAddress,
-            Number(amount.amount),
-            token.mint === "native" ? undefined : token.mint
-          );
+          // Execute private transfer - use ZK compressed when available
+          const privateResult = isZkCompressionAvailable
+            ? await executeZkPrivateTransfer(
+                walletAddress,
+                stealthAddress.publicAddress,
+                Number(amount.amount),
+                token.mint === "native" ? undefined : token.mint
+              )
+            : await executePrivateTransfer(
+                walletAddress,
+                stealthAddress.publicAddress,
+                Number(amount.amount),
+                token.mint === "native" ? undefined : token.mint
+              );
 
           if (privateResult.success && privateResult.txSignature) {
             const confirmationTimeMs = Date.now() - startTime;
