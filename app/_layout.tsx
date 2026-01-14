@@ -6,6 +6,7 @@ import { StatusBar } from 'expo-status-bar';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { useFonts } from 'expo-font';
 import 'react-native-reanimated';
 import * as SecureStore from 'expo-secure-store';
 
@@ -95,6 +96,14 @@ export default function RootLayout() {
   const colorScheme = useColorScheme();
   const [isReady, setIsReady] = useState(false);
 
+  // Load custom fonts
+  const [fontsLoaded] = useFonts({
+    'InstrumentSans-ExtraLight': require('../assets/fonts/InstrumentSans-ExtraLight.ttf'),
+    'InstrumentSans-Regular': require('../assets/fonts/InstrumentSans-Regular.ttf'),
+    'InstrumentSans-Medium': require('../assets/fonts/InstrumentSans-Medium.ttf'),
+    'JetBrainsMono-Regular': require('../assets/fonts/JetBrainsMono-Regular.ttf'),
+  });
+
   // Run credential cleanup before mounting providers
   useEffect(() => {
     cleanupCorruptedCredentials().then(() => {
@@ -102,8 +111,8 @@ export default function RootLayout() {
     });
   }, []);
 
-  // Show loading screen while cleanup runs
-  if (!isReady) {
+  // Show loading screen while cleanup runs or fonts load
+  if (!isReady || !fontsLoaded) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#0A0A0A' }}>
         <Text style={{ fontSize: 64, marginBottom: 16 }}>💳</Text>

@@ -7,6 +7,7 @@ import * as Haptics from 'expo-haptics';
 
 import { ThemedText } from '@/components/themed-text';
 import { useThemeColor } from '@/hooks/use-theme-color';
+import { Fonts } from '@/constants/theme';
 
 interface TopBarProps {
   walletAddress: string;
@@ -133,8 +134,7 @@ const styles = StyleSheet.create({
   },
   addressText: {
     fontSize: 14,
-    fontFamily: 'monospace',
-    fontWeight: '500',
+    fontFamily: Fonts.mono,
   },
   copyIcon: {
     marginRight: 4,

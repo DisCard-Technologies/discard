@@ -7,7 +7,7 @@ import * as Haptics from 'expo-haptics';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { useThemeColor } from '@/hooks/use-theme-color';
-import { primaryColor } from '@/constants/theme';
+import { primaryColor, Fonts } from '@/constants/theme';
 
 export type TransactionType = 'send' | 'receive' | 'swap' | 'deposit' | 'withdrawal';
 
@@ -521,6 +521,7 @@ const styles = StyleSheet.create({
   },
   transactionAddress: {
     fontSize: 14,
+    fontFamily: Fonts.mono,
   },
   transactionAmountContainer: {
     alignItems: 'flex-end',

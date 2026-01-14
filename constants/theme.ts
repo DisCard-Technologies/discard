@@ -3,7 +3,6 @@
  * There are many other ways to style your app. For example, [Nativewind](https://www.nativewind.dev/), [Tamagui](https://tamagui.dev/), [unistyles](https://reactnativeunistyles.vercel.app), etc.
  */
 
-import { Platform } from 'react-native';
 
 // Primary brand color - teal/emerald (ambient design)
 export const primaryColor = '#10B981';
@@ -46,27 +45,14 @@ export const Colors = {
   },
 };
 
-export const Fonts = Platform.select({
-  ios: {
-    /** iOS \`UIFontDescriptorSystemDesignDefault\` */
-    sans: 'system-ui',
-    /** iOS \`UIFontDescriptorSystemDesignSerif\` */
-    serif: 'ui-serif',
-    /** iOS \`UIFontDescriptorSystemDesignRounded\` */
-    rounded: 'ui-rounded',
-    /** iOS \`UIFontDescriptorSystemDesignMonospaced\` */
-    mono: 'ui-monospace',
-  },
-  default: {
-    sans: 'normal',
-    serif: 'serif',
-    rounded: 'normal',
-    mono: 'monospace',
-  },
-  web: {
-    sans: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
-    serif: "Georgia, 'Times New Roman', serif",
-    rounded: "'SF Pro Rounded', 'Hiragino Maru Gothic ProN', Meiryo, 'MS PGothic', sans-serif",
-    mono: "SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
-  },
-});
+// Custom font families
+export const Fonts = {
+  // Primary UI font (weight 400)
+  sans: 'InstrumentSans-Regular',
+  // Medium weight for semi-bold UI elements (weight 500)
+  sansMedium: 'InstrumentSans-Medium',
+  // Hero/display font - ultra-light for net worth display (weight 200)
+  hero: 'InstrumentSans-ExtraLight',
+  // Monospace for addresses and code
+  mono: 'JetBrainsMono-Regular',
+};

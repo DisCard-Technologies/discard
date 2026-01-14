@@ -14,6 +14,7 @@ import { useThemeColor } from '@/hooks/use-theme-color';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useAuth } from '@/stores/authConvex';
 import { useTokenHoldings } from '@/hooks/useTokenHoldings';
+import { Fonts } from '@/constants/theme';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -324,7 +325,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: 'center',
     lineHeight: 22,
-    fontFamily: 'monospace',
+    fontFamily: Fonts.mono,
   },
   balanceContainer: {
     alignItems: 'center',
