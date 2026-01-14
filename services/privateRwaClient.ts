@@ -372,7 +372,7 @@ export class PrivateRwaService {
         purchaseId,
         signature: `rwa_tx_${purchaseId}`,
         deliveryInfo: {
-          deliveryAddress: quote.deliveryAddress.stealthAddress,
+          deliveryAddress: quote.deliveryAddress.publicAddress,
           encryptedCode,
           expiresAt: quote.product.type === "gift_card" ? undefined : Date.now() + 365 * 24 * 60 * 60 * 1000,
         },
@@ -401,7 +401,7 @@ export class PrivateRwaService {
       console.log("[PrivateRWA] Purchase complete:", {
         purchaseId,
         brand: quote.product.brand,
-        deliveredTo: quote.deliveryAddress.stealthAddress.slice(0, 8) + "...",
+        deliveredTo: quote.deliveryAddress.publicAddress.slice(0, 8) + "...",
       });
 
       return result;

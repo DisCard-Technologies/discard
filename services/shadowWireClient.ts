@@ -101,6 +101,8 @@ export interface IncomingTransfer {
   timestamp: number;
   /** Decrypted memo (if any) */
   memo?: string;
+  /** Stealth address the funds were sent to (if available) */
+  stealthAddress?: string;
 }
 
 export interface PrivateNote {

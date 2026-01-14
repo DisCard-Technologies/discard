@@ -244,12 +244,14 @@ export class AnoncoinSwapService {
         outputMint: "",
         status: "executing",
         timestamp: Date.now(),
-        outputAddress: quote.stealthAddress?.stealthAddress || "",
+        outputAddress: quote.stealthAddress?.publicAddress || "",
       });
 
       // Wait for MPC execution (would poll Arcium for completion)
       const status = await this.arcium.awaitComputationFinalization(
         computationId,
+        undefined, // no provider
+        "confirmed",
         30000 // 30 second timeout
       );
 
@@ -264,7 +266,7 @@ export class AnoncoinSwapService {
           success: true,
           signature: `anoncoin_tx_${computationId}`,
           computationId,
-          outputAddress: quote.stealthAddress?.stealthAddress,
+          outputAddress: quote.stealthAddress?.publicAddress,
           privacyMetrics: {
             amountHidden: true,
             addressesUnlinkable: !!quote.stealthAddress,
@@ -358,10 +360,9 @@ export class AnoncoinSwapService {
         };
       }
 
-      // Create claim transaction
-      const claimResult = await this.shadowWire.claimStealthFunds(
-        stealthAddress,
-        viewingKey,
+      // Create claim transaction using the found transfer
+      const claimResult = await this.shadowWire.claimTransfer(
+        transfer,
         destinationAddress
       );
 

@@ -306,7 +306,7 @@ export class PnpPredictionService {
         question: quote.market.question,
         category: quote.market.category,
         side: quote.side,
-        encryptedAmount: Buffer.from(quote.encryptedAmount.ciphertext).toString("base64"),
+        encryptedAmount: Buffer.from(quote.encryptedAmount.ciphertext.flat()).toString("base64"),
         amount: 0, // Will be set by caller who knows the plaintext
         entryPrice: quote.price,
         currentPrice: quote.price,
@@ -516,7 +516,7 @@ export class PnpPredictionService {
           positionId,
           outcome: "won",
           payoutAmount,
-          payoutAddress: stealthAddress?.stealthAddress,
+          payoutAddress: stealthAddress?.publicAddress,
           signature: `settle_${positionId}_${Date.now()}`,
         };
       } else {

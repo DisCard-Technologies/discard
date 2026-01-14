@@ -570,13 +570,13 @@ export class ArciumYieldService {
       const result: WithdrawResult = {
         success: true,
         signature: `yield_wth_${quote.quoteId}`,
-        destinationAddress: quote.destinationAddress.stealthAddress,
+        destinationAddress: quote.destinationAddress.publicAddress,
         privacyPreserved: true,
       };
 
       console.log("[ArciumYield] Withdrawal complete:", {
         positionId: quote.position.id,
-        destination: quote.destinationAddress.stealthAddress.slice(0, 8) + "...",
+        destination: quote.destinationAddress.publicAddress.slice(0, 8) + "...",
       });
 
       return result;
