@@ -724,6 +724,20 @@ export default function TransferScreen() {
                 {copied ? 'Copied!' : 'Copy Address'}
               </ThemedText>
             </Pressable>
+
+            {/* Private Link Button */}
+            <Pressable
+              onPress={() => router.push('/transfer/one-time-link' as any)}
+              style={[styles.privateLinkButton, { backgroundColor: '#7C3AED' }]}
+            >
+              <Ionicons name="shield-checkmark" size={18} color="#fff" />
+              <ThemedText style={styles.privateLinkButtonText}>
+                Create Private Link
+              </ThemedText>
+            </Pressable>
+            <ThemedText style={[styles.privateLinkHint, { color: mutedColor }]}>
+              One-time use, expires in 15 min
+            </ThemedText>
           </View>
         )}
       </View>
@@ -1146,5 +1160,23 @@ const styles = StyleSheet.create({
   copyButtonText: {
     fontSize: 15,
     fontWeight: '500',
+  },
+  privateLinkButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 16,
+    paddingHorizontal: 24,
+    paddingVertical: 14,
+    borderRadius: 24,
+  },
+  privateLinkButtonText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  privateLinkHint: {
+    fontSize: 12,
+    marginTop: 8,
   },
 });

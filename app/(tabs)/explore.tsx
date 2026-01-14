@@ -24,9 +24,20 @@ const categoryFilters: { id: CategoryFilter; label: string; icon: keyof typeof I
 
 // Format price with appropriate decimals
 const formatPrice = (price: number): string => {
-  if (price < 0.01) return `$${price.toFixed(6)}`;
-  if (price < 1) return `$${price.toFixed(4)}`;
-  return `$${price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  if (price >= 1000) return `$${price.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+  if (price >= 1) return `$${price.toFixed(2)}`;
+  if (price >= 0.01) return `$${price.toFixed(4)}`;
+  return `$${price.toFixed(6)}`;
+};
+
+// Format market cap
+const formatMarketCap = (marketCap?: number): string => {
+  if (!marketCap) return '-';
+  if (marketCap >= 1_000_000_000_000) return `$${(marketCap / 1_000_000_000_000).toFixed(0)}T`;
+  if (marketCap >= 1_000_000_000) return `$${(marketCap / 1_000_000_000).toFixed(0)}B`;
+  if (marketCap >= 1_000_000) return `$${(marketCap / 1_000_000).toFixed(0)}M`;
+  if (marketCap >= 1_000) return `$${(marketCap / 1_000).toFixed(0)}K`;
+  return `$${marketCap.toFixed(0)}`;
 };
 
 export default function ExploreScreen() {
@@ -85,6 +96,7 @@ export default function ExploreScreen() {
         name: token.name,
         price: token.priceUsd.toString(),
         change: token.change24h.toString(),
+        marketCap: token.marketCap?.toString() || '',
         logoUri: token.logoUri || '',
         mint: token.mint || '',
       },
@@ -219,51 +231,68 @@ export default function ExploreScreen() {
               </ThemedText>
             </View>
           ) : (
-            filteredTokens.map((token, index) => (
-              <Pressable
-                key={token.symbol + index}
-                onPress={() => handleTokenPress(token)}
-                style={({ pressed }) => [
-                  styles.tokenRow,
-                  { borderBottomColor: borderColor },
-                  pressed && styles.tokenRowPressed,
-                ]}
-              >
-                {/* Token Icon */}
-                <View style={[styles.tokenIcon, { backgroundColor: cardBg }]}>
-                  {token.logoUri ? (
-                    <Image source={{ uri: token.logoUri }} style={styles.tokenIconImage} />
-                  ) : (
-                    <ThemedText style={styles.tokenIconFallback}>
-                      {token.symbol.slice(0, 2)}
-                    </ThemedText>
-                  )}
-                </View>
+            <>
+              {/* Table Header */}
+              <View style={[styles.tableHeader, { borderBottomColor: borderColor }]}>
+                <ThemedText style={[styles.tableHeaderText, { color: mutedColor }]}>ASSET</ThemedText>
+                <ThemedText style={[styles.tableHeaderText, styles.headerPrice, { color: mutedColor }]}>PRICE</ThemedText>
+                <ThemedText style={[styles.tableHeaderText, styles.headerChange, { color: mutedColor }]}>24H</ThemedText>
+                <ThemedText style={[styles.tableHeaderText, styles.headerMcap, { color: mutedColor }]}>MCAP</ThemedText>
+              </View>
+              {filteredTokens.map((token, index) => (
+                <Pressable
+                  key={token.symbol + index}
+                  onPress={() => handleTokenPress(token)}
+                  style={({ pressed }) => [
+                    styles.tokenRow,
+                    { borderBottomColor: borderColor },
+                    pressed && styles.tokenRowPressed,
+                  ]}
+                >
+                  {/* Token Icon */}
+                  <View style={[styles.tokenIcon, { backgroundColor: cardBg }]}>
+                    {token.logoUri ? (
+                      <Image source={{ uri: token.logoUri }} style={styles.tokenIconImage} />
+                    ) : (
+                      <ThemedText style={styles.tokenIconFallback}>
+                        {token.symbol.slice(0, 2)}
+                      </ThemedText>
+                    )}
+                  </View>
 
-                {/* Token Info */}
-                <View style={styles.tokenInfo}>
-                  <ThemedText style={styles.tokenName}>{token.name}</ThemedText>
-                  <View style={styles.tokenMeta}>
-                    <ThemedText style={[styles.tokenPrice, { color: mutedColor }]}>
-                      {formatPrice(token.priceUsd)}
+                  {/* Token Info */}
+                  <View style={styles.tokenInfo}>
+                    <View style={styles.tokenNameRow}>
+                      <ThemedText style={styles.tokenSymbolMain}>{token.symbol}</ThemedText>
+                      {token.verified && <Ionicons name="flash" size={10} color="#f59e0b" />}
+                    </View>
+                    <ThemedText style={[styles.tokenName, { color: mutedColor }]} numberOfLines={1}>
+                      {token.name}
                     </ThemedText>
                   </View>
-                </View>
 
-                {/* Price Change */}
-                <View style={styles.tokenChange}>
-                  <ThemedText style={styles.tokenSymbol}>{token.symbol}</ThemedText>
+                  {/* Price */}
+                  <ThemedText style={styles.tokenPrice}>
+                    {formatPrice(token.priceUsd)}
+                  </ThemedText>
+
+                  {/* 24H Change */}
                   <ThemedText
                     style={[
                       styles.tokenChangePercent,
                       { color: token.change24h >= 0 ? positiveColor : negativeColor },
                     ]}
                   >
-                    {token.change24h >= 0 ? '+' : ''}{token.change24h.toFixed(2)}%
+                    {token.change24h >= 0 ? '↑' : '↓'}{Math.abs(token.change24h).toFixed(2)}%
                   </ThemedText>
-                </View>
-              </Pressable>
-            ))
+
+                  {/* Market Cap */}
+                  <ThemedText style={[styles.tokenMcap, { color: mutedColor }]}>
+                    {formatMarketCap(token.marketCap)}
+                  </ThemedText>
+                </Pressable>
+              ))}
+            </>
           )
         ) : activeCategory === 'markets' ? (
           // Markets List
@@ -324,15 +353,113 @@ export default function ExploreScreen() {
             ))
           )
         ) : (
-          // RWA Coming Soon
-          <View style={styles.comingSoonContainer}>
-            <View style={[styles.comingSoonIcon, { backgroundColor: `${primaryColor}20` }]}>
-              <Ionicons name="business-outline" size={48} color={primaryColor} />
+          // RWA Shop
+          <View style={styles.rwaContainer}>
+            {/* Privacy Banner */}
+            <View style={[styles.privacyBanner, { backgroundColor: '#7C3AED15', borderColor: '#7C3AED30' }]}>
+              <Ionicons name="shield-checkmark" size={20} color="#7C3AED" />
+              <View style={styles.privacyBannerContent}>
+                <ThemedText style={[styles.privacyBannerTitle, { color: '#7C3AED' }]}>
+                  Private RWA Purchases
+                </ThemedText>
+                <ThemedText style={[styles.privacyBannerText, { color: mutedColor }]}>
+                  Buy gift cards & vouchers with hidden amounts via Arcium MPC
+                </ThemedText>
+              </View>
             </View>
-            <ThemedText style={styles.comingSoonTitle}>Real World Assets</ThemedText>
-            <ThemedText style={[styles.comingSoonText, { color: mutedColor }]}>
-              Tokenized treasuries, money market funds, and yield-bearing stablecoins coming soon.
-            </ThemedText>
+
+            {/* RWA Categories */}
+            <Pressable
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                router.push('/rwa-purchase' as any);
+              }}
+              style={({ pressed }) => [
+                styles.rwaCard,
+                { backgroundColor: cardBg, borderColor },
+                pressed && styles.tokenRowPressed,
+              ]}
+            >
+              <View style={[styles.rwaIcon, { backgroundColor: `${primaryColor}20` }]}>
+                <Ionicons name="gift-outline" size={28} color={primaryColor} />
+              </View>
+              <View style={styles.rwaCardContent}>
+                <ThemedText style={styles.rwaCardTitle}>Gift Cards</ThemedText>
+                <ThemedText style={[styles.rwaCardSubtitle, { color: mutedColor }]}>
+                  Amazon, Apple, Google Play & more
+                </ThemedText>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color={mutedColor} />
+            </Pressable>
+
+            <Pressable
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                router.push('/rwa-purchase?category=entertainment' as any);
+              }}
+              style={({ pressed }) => [
+                styles.rwaCard,
+                { backgroundColor: cardBg, borderColor },
+                pressed && styles.tokenRowPressed,
+              ]}
+            >
+              <View style={[styles.rwaIcon, { backgroundColor: '#FF634720' }]}>
+                <Ionicons name="game-controller-outline" size={28} color="#FF6347" />
+              </View>
+              <View style={styles.rwaCardContent}>
+                <ThemedText style={styles.rwaCardTitle}>Gaming & Entertainment</ThemedText>
+                <ThemedText style={[styles.rwaCardSubtitle, { color: mutedColor }]}>
+                  Steam, PlayStation, Xbox, Netflix
+                </ThemedText>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color={mutedColor} />
+            </Pressable>
+
+            <Pressable
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                router.push('/rwa-purchase?category=food' as any);
+              }}
+              style={({ pressed }) => [
+                styles.rwaCard,
+                { backgroundColor: cardBg, borderColor },
+                pressed && styles.tokenRowPressed,
+              ]}
+            >
+              <View style={[styles.rwaIcon, { backgroundColor: '#FFA50020' }]}>
+                <Ionicons name="fast-food-outline" size={28} color="#FFA500" />
+              </View>
+              <View style={styles.rwaCardContent}>
+                <ThemedText style={styles.rwaCardTitle}>Food & Dining</ThemedText>
+                <ThemedText style={[styles.rwaCardSubtitle, { color: mutedColor }]}>
+                  DoorDash, Uber Eats, Starbucks
+                </ThemedText>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color={mutedColor} />
+            </Pressable>
+
+            <Pressable
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                router.push('/redemptions' as any);
+              }}
+              style={({ pressed }) => [
+                styles.rwaCard,
+                { backgroundColor: cardBg, borderColor },
+                pressed && styles.tokenRowPressed,
+              ]}
+            >
+              <View style={[styles.rwaIcon, { backgroundColor: '#4CAF5020' }]}>
+                <Ionicons name="receipt-outline" size={28} color="#4CAF50" />
+              </View>
+              <View style={styles.rwaCardContent}>
+                <ThemedText style={styles.rwaCardTitle}>My Redemptions</ThemedText>
+                <ThemedText style={[styles.rwaCardSubtitle, { color: mutedColor }]}>
+                  View purchased codes & vouchers
+                </ThemedText>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color={mutedColor} />
+            </Pressable>
           </View>
         )}
       </ScrollView>
@@ -398,20 +525,49 @@ const styles = StyleSheet.create({
   tokenListContent: {
     paddingHorizontal: 16,
   },
+  tableHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 4,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    marginBottom: 4,
+  },
+  tableHeaderText: {
+    fontSize: 10,
+    fontWeight: '600',
+    letterSpacing: 0.5,
+    flex: 1,
+  },
+  headerPrice: {
+    width: 85,
+    textAlign: 'right',
+    flex: 0,
+  },
+  headerChange: {
+    width: 70,
+    textAlign: 'right',
+    flex: 0,
+  },
+  headerMcap: {
+    width: 55,
+    textAlign: 'right',
+    flex: 0,
+  },
   tokenRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 14,
+    paddingVertical: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    gap: 12,
+    gap: 10,
   },
   tokenRowPressed: {
     opacity: 0.7,
   },
   tokenIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
@@ -421,36 +577,42 @@ const styles = StyleSheet.create({
     height: '100%',
   },
   tokenIconFallback: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '600',
   },
   tokenInfo: {
     flex: 1,
+    minWidth: 0,
   },
-  tokenName: {
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  tokenMeta: {
+  tokenNameRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    marginTop: 2,
+    gap: 4,
   },
-  tokenPrice: {
-    fontSize: 13,
-  },
-  tokenChange: {
-    alignItems: 'flex-end',
-  },
-  tokenSymbol: {
+  tokenSymbolMain: {
     fontSize: 14,
     fontWeight: '600',
   },
-  tokenChangePercent: {
+  tokenName: {
+    fontSize: 11,
+    marginTop: 2,
+  },
+  tokenPrice: {
+    width: 85,
+    textAlign: 'right',
     fontSize: 13,
     fontWeight: '500',
-    marginTop: 2,
+  },
+  tokenChangePercent: {
+    width: 70,
+    textAlign: 'right',
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  tokenMcap: {
+    width: 55,
+    textAlign: 'right',
+    fontSize: 11,
   },
   loadingContainer: {
     flex: 1,
@@ -577,5 +739,56 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  // RWA Shop styles
+  rwaContainer: {
+    paddingTop: 8,
+  },
+  privacyBanner: {
+    flexDirection: 'row',
+    padding: 16,
+    borderRadius: 14,
+    borderWidth: 1,
+    gap: 12,
+    marginBottom: 20,
+  },
+  privacyBannerContent: {
+    flex: 1,
+  },
+  privacyBannerTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  privacyBannerText: {
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  rwaCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 14,
+    borderWidth: 1,
+    marginBottom: 12,
+    gap: 14,
+  },
+  rwaIcon: {
+    width: 52,
+    height: 52,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rwaCardContent: {
+    flex: 1,
+  },
+  rwaCardTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  rwaCardSubtitle: {
+    fontSize: 13,
   },
 });
