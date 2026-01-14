@@ -266,9 +266,6 @@ export default function ExploreScreen() {
                       <ThemedText style={styles.tokenSymbolMain}>{token.symbol}</ThemedText>
                       {token.verified && <Ionicons name="flash" size={10} color="#f59e0b" />}
                     </View>
-                    <ThemedText style={[styles.tokenName, { color: mutedColor }]} numberOfLines={1}>
-                      {token.name}
-                    </ThemedText>
                   </View>
 
                   {/* Price */}

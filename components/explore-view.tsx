@@ -252,7 +252,6 @@ export function ExploreView() {
                         <ThemedText style={styles.tokenSymbol}>{token.symbol}</ThemedText>
                         {token.verified && <Ionicons name="flash" size={10} color="#f59e0b" />}
                       </View>
-                      <ThemedText style={[styles.tokenName, { color: mutedColor }]} numberOfLines={1}>{token.name}</ThemedText>
                     </View>
                   </View>
                   <ThemedText style={styles.tokenPrice}>
