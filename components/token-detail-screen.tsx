@@ -1,13 +1,23 @@
-import { useState, useMemo } from 'react';
-import { StyleSheet, View, Pressable, ScrollView } from 'react-native';
+import { useState } from 'react';
+import { StyleSheet, View, Pressable, ScrollView, Image } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import Svg, { Path, Defs, LinearGradient, Stop, Circle } from 'react-native-svg';
-import * as Clipboard from 'expo-clipboard';
+import * as Haptics from 'expo-haptics';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { useThemeColor } from '@/hooks/use-theme-color';
+import { primaryColor } from '@/constants/theme';
+
+export type TransactionType = 'send' | 'receive' | 'swap' | 'deposit' | 'withdrawal';
+
+export interface RecentTransaction {
+  id: string;
+  type: TransactionType;
+  address: string;
+  tokenAmount: string;
+  fiatValue: string;
+}
 
 interface TokenDetailProps {
   token: {
@@ -19,8 +29,9 @@ interface TokenDetailProps {
     marketCap?: string;
     volume24h?: string;
     supply?: string;
+    totalSupply?: string;
     rank?: number;
-    mint?: string; // Solana mint address
+    mint?: string;
     logoUri?: string;
   };
   owned?: {
@@ -32,6 +43,7 @@ interface TokenDetailProps {
     allocation?: number;
     isAmbientManaged?: boolean;
   };
+  recentTransaction?: RecentTransaction;
   onBack: () => void;
   onBuy?: () => void;
   onSell?: () => void;
@@ -39,97 +51,30 @@ interface TokenDetailProps {
   onReceive?: () => void;
   onSwap?: () => void;
   onSetGoal?: () => void;
+  onTransactionPress?: (transaction: RecentTransaction) => void;
 }
-
-type TimeframeType = '1H' | '1D' | '1W' | '1M' | '1Y' | 'ALL';
 
 export function TokenDetailScreen({
   token,
   owned,
+  recentTransaction,
   onBack,
   onBuy,
-  onSell,
   onSend,
   onReceive,
   onSwap,
-  onSetGoal,
+  onTransactionPress,
 }: TokenDetailProps) {
   const insets = useSafeAreaInsets();
-  const [timeframe, setTimeframe] = useState<TimeframeType>('1D');
   const [isWatchlisted, setIsWatchlisted] = useState(false);
-  const [copied, setCopied] = useState(false);
-  const isOwned = !!owned;
 
-  const primaryColor = useThemeColor({}, 'tint');
   const mutedColor = useThemeColor({ light: '#687076', dark: '#9BA1A6' }, 'icon');
   const textColor = useThemeColor({}, 'text');
-  const cardBg = useThemeColor({ light: '#f4f4f5', dark: '#1c1c1e' }, 'background');
-
-  // Generate mock chart data
-  const chartPoints = useMemo(() => {
-    const points: number[] = [];
-    const numPoints = 50;
-    let base = token.price * 0.95;
-    for (let i = 0; i < numPoints; i++) {
-      const variance = (Math.random() - 0.5) * token.price * 0.08;
-      base = Math.max(base + variance, token.price * 0.85);
-      points.push(base);
-    }
-    points[points.length - 1] = token.price;
-    return points;
-  }, [token.price, timeframe]);
-
-  const minPrice = Math.min(...chartPoints);
-  const maxPrice = Math.max(...chartPoints);
-  const priceRange = maxPrice - minPrice || 1;
-
-  // Generate SVG path
-  const generatePath = () => {
-    const width = 320;
-    const height = 120;
-    const padding = 10;
-
-    return chartPoints
-      .map((price, i) => {
-        const x = padding + (i / (chartPoints.length - 1)) * (width - 2 * padding);
-        const y = height - padding - ((price - minPrice) / priceRange) * (height - 2 * padding);
-        return `${i === 0 ? 'M' : 'L'} ${x} ${y}`;
-      })
-      .join(' ');
-  };
-
-  const handleCopyAddress = async () => {
-    if (token.mint) {
-      await Clipboard.setStringAsync(token.mint);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }
-  };
-
-  // Format Solana address for display (first 4...last 4)
-  const formatAddress = (address?: string) => {
-    if (!address) return 'N/A';
-    return `${address.slice(0, 4)}...${address.slice(-4)}`;
-  };
-
-  // Open Solscan explorer
-  const handleOpenExplorer = () => {
-    if (token.mint) {
-      // Would use Linking.openURL in real implementation
-      console.log(`Opening Solscan: https://solscan.io/token/${token.mint}`);
-    }
-  };
-
-  // Format volume for display
-  const formatVolume = (volume?: string | number): string => {
-    if (!volume) return 'N/A';
-    const num = typeof volume === 'string' ? parseFloat(volume) : volume;
-    if (isNaN(num)) return 'N/A';
-    if (num >= 1_000_000_000) return `$${(num / 1_000_000_000).toFixed(2)}B`;
-    if (num >= 1_000_000) return `$${(num / 1_000_000).toFixed(2)}M`;
-    if (num >= 1_000) return `$${(num / 1_000).toFixed(2)}K`;
-    return `$${num.toFixed(2)}`;
-  };
+  const cardBg = useThemeColor({ light: '#f4f4f5', dark: '#1a1f25' }, 'background');
+  const borderColor = useThemeColor(
+    { light: 'rgba(0,0,0,0.08)', dark: 'rgba(255,255,255,0.1)' },
+    'background'
+  );
 
   // Format price for display
   const formatPrice = (price: number): string => {
@@ -139,32 +84,81 @@ export function TokenDetailScreen({
     return price.toFixed(6);
   };
 
+  // Format large numbers for display
+  const formatLargeNumber = (value?: string | number): string => {
+    if (!value) return 'N/A';
+    const num = typeof value === 'string' ? parseFloat(value.replace(/[^0-9.]/g, '')) : value;
+    if (isNaN(num)) return typeof value === 'string' ? value : 'N/A';
+    if (num >= 1_000_000_000_000) return `$${(num / 1_000_000_000_000).toFixed(1)}T`;
+    if (num >= 1_000_000_000) return `$${(num / 1_000_000_000).toFixed(1)}B`;
+    if (num >= 1_000_000) return `$${(num / 1_000_000).toFixed(1)}M`;
+    if (num >= 1_000) return `$${(num / 1_000).toFixed(1)}K`;
+    return `$${num.toFixed(2)}`;
+  };
+
+  // Format supply for display (without $ prefix)
+  const formatSupply = (value?: string): string => {
+    if (!value) return 'N/A';
+    return value;
+  };
+
+  const getTransactionIcon = (type: TransactionType): keyof typeof Ionicons.glyphMap => {
+    switch (type) {
+      case 'send':
+        return 'arrow-up';
+      case 'receive':
+        return 'arrow-down';
+      case 'swap':
+        return 'swap-horizontal';
+      case 'deposit':
+        return 'arrow-down';
+      case 'withdrawal':
+        return 'arrow-up';
+      default:
+        return 'ellipsis-horizontal';
+    }
+  };
+
+  const handleActionPress = (action: () => void | undefined) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    action?.();
+  };
+
   const isPositive = token.change24h >= 0;
-  const chartColor = isPositive ? '#22c55e' : '#ef4444';
-  const buyButtonColor = '#22c55e'; // Consistent green for buy button
+  const changeColor = isPositive ? '#22c55e' : '#ef4444';
+
+  // Action buttons configuration
+  const actions = [
+    { id: 'send', icon: 'arrow-up' as const, label: 'Send', onPress: onSend },
+    { id: 'receive', icon: 'arrow-down' as const, label: 'Receive', onPress: onReceive },
+    { id: 'swap', icon: 'swap-horizontal' as const, label: 'Swap', onPress: onSwap },
+    { id: 'buy', icon: 'cart' as const, label: 'Buy', onPress: onBuy },
+  ];
 
   return (
     <ThemedView style={styles.container}>
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
-        <Pressable onPress={onBack} style={styles.backButton}>
-          <Ionicons name="arrow-back" size={20} color={textColor} />
+        <Pressable 
+          onPress={onBack} 
+          style={({ pressed }) => [styles.headerButton, pressed && styles.pressed]}
+        >
+          <Ionicons name="chevron-back" size={24} color={textColor} />
         </Pressable>
-        <View style={styles.tokenHeader}>
-          <View style={[styles.tokenIcon, { backgroundColor: cardBg }]}>
-            <ThemedText style={styles.tokenIconText}>
-              {token.icon || token.symbol.slice(0, 2)}
-            </ThemedText>
-          </View>
-          <View>
-            <ThemedText style={styles.tokenName}>{token.name}</ThemedText>
-            <ThemedText style={[styles.tokenSymbol, { color: mutedColor }]}>{token.symbol}</ThemedText>
-          </View>
+        <View style={styles.headerCenter}>
+          <ThemedText style={styles.headerTitle}>{token.name}</ThemedText>
+          <ThemedText style={[styles.headerSubtitle, { color: mutedColor }]}>{token.name}</ThemedText>
         </View>
-        <Pressable onPress={() => setIsWatchlisted(!isWatchlisted)} style={styles.watchlistButton}>
+        <Pressable 
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            setIsWatchlisted(!isWatchlisted);
+          }} 
+          style={({ pressed }) => [styles.headerButton, pressed && styles.pressed]}
+        >
           <Ionicons
             name={isWatchlisted ? 'star' : 'star-outline'}
-            size={20}
+            size={22}
             color={isWatchlisted ? '#f59e0b' : mutedColor}
           />
         </Pressable>
@@ -172,240 +166,220 @@ export function TokenDetailScreen({
 
       <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 20 }]}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 100 }]}
         showsVerticalScrollIndicator={false}
       >
-        {/* Price Section */}
-        <View style={styles.priceSection}>
-          <ThemedText style={styles.priceValue}>
-            ${formatPrice(token.price)}
-          </ThemedText>
-          <View style={styles.changeRow}>
-            <Ionicons
-              name={isPositive ? 'trending-up' : 'trending-down'}
-              size={16}
-              color={chartColor}
-            />
-            <ThemedText style={[styles.changeText, { color: chartColor }]}>
-              {isPositive ? '+' : ''}{token.change24h.toFixed(2)}% today
-            </ThemedText>
+        {/* Token Icon */}
+        <View style={styles.tokenIconSection}>
+          <View style={[styles.tokenIconContainer, { backgroundColor: cardBg }]}>
+            {token.logoUri ? (
+              <Image source={{ uri: token.logoUri }} style={styles.tokenIconImage} />
+            ) : (
+              <ThemedText style={styles.tokenIconText}>
+                {token.icon || token.symbol.slice(0, 2)}
+              </ThemedText>
+            )}
           </View>
         </View>
 
-        {/* Chart */}
-        <ThemedView style={styles.chartCard} lightColor="#f4f4f5" darkColor="#1c1c1e">
-          <Svg width="100%" height={120} viewBox="0 0 320 120">
-            <Defs>
-              <LinearGradient id="chartGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                <Stop offset="0%" stopColor={chartColor} stopOpacity={0.3} />
-                <Stop offset="100%" stopColor={chartColor} stopOpacity={0} />
-              </LinearGradient>
-            </Defs>
-            <Path d={`${generatePath()} L 310 110 L 10 110 Z`} fill="url(#chartGradient)" />
-            <Path d={generatePath()} fill="none" stroke={chartColor} strokeWidth={2} />
-            <Circle cx={310} cy={10} r={4} fill={chartColor} />
-          </Svg>
+        {/* Balance/Price Display - Different for owned vs non-owned */}
+        {owned ? (
+          // Owned token: Show balance
+          <View style={styles.balanceSection}>
+            <ThemedText style={styles.balanceAmount}>
+              {owned.balance} {token.symbol}
+            </ThemedText>
+            <ThemedText style={[styles.balanceValue, { color: mutedColor }]}>
+              ≈ ${owned.value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </ThemedText>
+          </View>
+        ) : (
+          // Non-owned token: Show price prominently
+          <View style={styles.balanceSection}>
+            <ThemedText style={styles.balanceAmount}>
+              ${formatPrice(token.price)}
+            </ThemedText>
+            <View style={styles.priceChangeRow}>
+              <ThemedText style={[styles.priceChangeText, { color: changeColor }]}>
+                {isPositive ? '+' : ''}{token.change24h.toFixed(2)}%
+              </ThemedText>
+              <ThemedText style={[styles.balanceValue, { color: mutedColor }]}>
+                24h
+              </ThemedText>
+            </View>
+          </View>
+        )}
 
-          {/* Timeframe Selector */}
-          <View style={styles.timeframeRow}>
-            {(['1H', '1D', '1W', '1M', '1Y', 'ALL'] as TimeframeType[]).map((tf) => (
+        {/* Recent Transaction Card - Only for owned tokens */}
+        {owned && recentTransaction && (
+          <Pressable
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              onTransactionPress?.(recentTransaction);
+            }}
+            style={({ pressed }) => [pressed && styles.pressed]}
+          >
+            <ThemedView
+              style={[styles.transactionCard, { borderColor }]}
+              lightColor="#f4f4f5"
+              darkColor="#1a1f25"
+            >
+              <View style={[styles.transactionIcon, { borderColor }]}>
+                <Ionicons
+                  name={getTransactionIcon(recentTransaction.type)}
+                  size={18}
+                  color={textColor}
+                />
+              </View>
+              <View style={styles.transactionInfo}>
+                <ThemedText style={styles.transactionType}>
+                  {recentTransaction.type.charAt(0).toUpperCase() + recentTransaction.type.slice(1)}
+                </ThemedText>
+                <View style={styles.transactionAddressRow}>
+                  <View style={styles.addressDot}>
+                    <ThemedText style={[styles.diamond, { color: primaryColor }]}>◆</ThemedText>
+                  </View>
+                  <ThemedText style={[styles.transactionAddress, { color: mutedColor }]}>
+                    {recentTransaction.address}
+                  </ThemedText>
+                </View>
+              </View>
+              <View style={styles.transactionAmountContainer}>
+                <ThemedText style={styles.transactionAmount}>
+                  {recentTransaction.tokenAmount}
+                </ThemedText>
+                <ThemedText style={[styles.transactionFiat, { color: mutedColor }]}>
+                  {recentTransaction.fiatValue}
+                </ThemedText>
+              </View>
+            </ThemedView>
+          </Pressable>
+        )}
+
+        {/* Action Buttons - Different for owned vs non-owned */}
+        {owned ? (
+          // Owned token: Show Send, Receive, Swap, Buy circular buttons
+          <View style={styles.actionsContainer}>
+            {actions.map((action) => (
               <Pressable
-                key={tf}
-                onPress={() => setTimeframe(tf)}
-                style={[
-                  styles.timeframeButton,
-                  timeframe === tf && { backgroundColor: `${primaryColor}20` },
-                ]}
+                key={action.id}
+                onPress={() => handleActionPress(action.onPress!)}
+                style={({ pressed }) => [styles.actionButton, pressed && styles.pressed]}
               >
-                <ThemedText
-                  style={[
-                    styles.timeframeText,
-                    { color: timeframe === tf ? primaryColor : mutedColor },
-                  ]}
-                >
-                  {tf}
+                <View style={[styles.actionIconContainer, { borderColor }]}>
+                  <Ionicons name={action.icon} size={20} color={textColor} />
+                </View>
+                <ThemedText style={[styles.actionLabel, { color: mutedColor }]}>
+                  {action.label}
                 </ThemedText>
               </Pressable>
             ))}
           </View>
-        </ThemedView>
-
-        {/* Holdings Summary (if owned) */}
-        {isOwned && owned && (
-          <ThemedView style={styles.holdingsCard} lightColor="#f4f4f5" darkColor="#1c1c1e">
-            <View style={styles.holdingsHeader}>
-              <ThemedText style={[styles.sectionTitle, { color: mutedColor }]}>Your Holdings</ThemedText>
-              {owned.isAmbientManaged && (
-                <View style={[styles.autoBadge, { backgroundColor: `${primaryColor}15` }]}>
-                  <Ionicons name="flash" size={10} color={primaryColor} />
-                  <ThemedText style={[styles.autoBadgeText, { color: primaryColor }]}>AUTO-MANAGED</ThemedText>
-                </View>
-              )}
-            </View>
-
-            <View style={styles.holdingsGrid}>
-              <View style={styles.holdingItem}>
-                <ThemedText style={[styles.holdingLabel, { color: mutedColor }]}>Balance</ThemedText>
-                <ThemedText style={styles.holdingValue}>
-                  {owned.balance} {token.symbol}
-                </ThemedText>
-              </View>
-              <View style={styles.holdingItem}>
-                <ThemedText style={[styles.holdingLabel, { color: mutedColor }]}>Value</ThemedText>
-                <ThemedText style={styles.holdingValue}>${owned.value.toLocaleString()}</ThemedText>
-              </View>
-              {owned.avgCost !== undefined && (
-                <View style={styles.holdingItem}>
-                  <ThemedText style={[styles.holdingLabel, { color: mutedColor }]}>Avg Cost</ThemedText>
-                  <ThemedText style={styles.holdingValueSmall}>${owned.avgCost.toFixed(2)}</ThemedText>
-                </View>
-              )}
-              {owned.pnl !== undefined && (
-                <View style={styles.holdingItem}>
-                  <ThemedText style={[styles.holdingLabel, { color: mutedColor }]}>P&L</ThemedText>
-                  <ThemedText
-                    style={[styles.holdingValueSmall, { color: owned.pnl >= 0 ? '#22c55e' : '#ef4444' }]}
-                  >
-                    {owned.pnl >= 0 ? '+' : ''}${owned.pnl.toLocaleString()} ({owned.pnlPercent?.toFixed(1)}%)
-                  </ThemedText>
-                </View>
-              )}
-              {owned.allocation !== undefined && (
-                <View style={styles.holdingItem}>
-                  <ThemedText style={[styles.holdingLabel, { color: mutedColor }]}>Allocation</ThemedText>
-                  <ThemedText style={styles.holdingValueSmall}>{owned.allocation}%</ThemedText>
-                </View>
-              )}
-            </View>
-          </ThemedView>
+        ) : (
+          // Non-owned token: Show Buy button and Add to Watchlist
+          <View style={styles.nonOwnedActions}>
+            <Pressable
+              onPress={() => handleActionPress(onBuy!)}
+              style={({ pressed }) => [
+                styles.buyButton,
+                { backgroundColor: primaryColor },
+                pressed && styles.pressed,
+              ]}
+            >
+              <Ionicons name="add" size={20} color="#fff" />
+              <ThemedText style={styles.buyButtonText}>Buy {token.symbol}</ThemedText>
+            </Pressable>
+            <Pressable
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setIsWatchlisted(!isWatchlisted);
+              }}
+              style={({ pressed }) => [
+                styles.watchlistButton,
+                { 
+                  backgroundColor: isWatchlisted ? 'rgba(245,158,11,0.15)' : cardBg,
+                  borderColor: isWatchlisted ? 'rgba(245,158,11,0.3)' : borderColor,
+                },
+                pressed && styles.pressed,
+              ]}
+            >
+              <Ionicons
+                name={isWatchlisted ? 'star' : 'star-outline'}
+                size={20}
+                color={isWatchlisted ? '#f59e0b' : textColor}
+              />
+              <ThemedText style={[styles.watchlistButtonText, isWatchlisted && { color: '#f59e0b' }]}>
+                {isWatchlisted ? 'Watching' : 'Add to Watchlist'}
+              </ThemedText>
+            </Pressable>
+          </View>
         )}
 
-        {/* Action Buttons */}
-        <View style={styles.actionsSection}>
-          {isOwned ? (
-            <>
-              {/* Primary Actions Row */}
-              <View style={styles.actionGrid4}>
-                <Pressable
-                  onPress={onBuy}
-                  style={[styles.actionButton, { backgroundColor: 'rgba(34,197,94,0.15)', borderColor: 'rgba(34,197,94,0.3)', borderWidth: 1 }]}
-                >
-                  <Ionicons name="add" size={20} color="#22c55e" />
-                  <ThemedText style={[styles.actionButtonText, { color: '#22c55e' }]}>Buy</ThemedText>
-                </Pressable>
-                <Pressable
-                  onPress={onSell}
-                  style={[styles.actionButton, { backgroundColor: 'rgba(239,68,68,0.15)', borderColor: 'rgba(239,68,68,0.3)', borderWidth: 1 }]}
-                >
-                  <Ionicons name="remove" size={20} color="#ef4444" />
-                  <ThemedText style={[styles.actionButtonText, { color: '#ef4444' }]}>Sell</ThemedText>
-                </Pressable>
-                <Pressable onPress={onSend} style={[styles.actionButton, { backgroundColor: cardBg }]}>
-                  <Ionicons name="send" size={20} color={textColor} />
-                  <ThemedText style={styles.actionButtonText}>Send</ThemedText>
-                </Pressable>
-                <Pressable onPress={onReceive} style={[styles.actionButton, { backgroundColor: cardBg }]}>
-                  <Ionicons name="download" size={20} color={textColor} />
-                  <ThemedText style={styles.actionButtonText}>Receive</ThemedText>
-                </Pressable>
+        {/* Stats Section */}
+        <ThemedView style={styles.statsCard} lightColor="#f4f4f5" darkColor="#1a1f25">
+          <ThemedText style={styles.statsTitle}>Stats</ThemedText>
+          <View style={styles.statsGrid}>
+            {/* Market Cap */}
+            <View style={styles.statItem}>
+              <View style={styles.statHeader}>
+                <ThemedText style={[styles.statLabel, { color: mutedColor }]}>Market Cap</ThemedText>
+                <Ionicons name="logo-usd" size={14} color={mutedColor} />
               </View>
-
-              {/* Secondary Actions */}
-              <View style={styles.secondaryActions}>
-                <Pressable onPress={onSwap} style={[styles.secondaryButton, { backgroundColor: cardBg }]}>
-                  <Ionicons name="swap-horizontal" size={16} color={textColor} />
-                  <ThemedText style={styles.secondaryButtonText}>Swap</ThemedText>
-                </Pressable>
-                <Pressable
-                  onPress={onSetGoal}
-                  style={[styles.secondaryButton, { backgroundColor: `${primaryColor}15`, borderColor: `${primaryColor}30`, borderWidth: 1 }]}
-                >
-                  <Ionicons name="flag" size={16} color={primaryColor} />
-                  <ThemedText style={[styles.secondaryButtonText, { color: primaryColor }]}>Set Goal</ThemedText>
-                </Pressable>
-              </View>
-            </>
-          ) : (
-            <View style={styles.buyRow}>
-              <Pressable onPress={onBuy} style={[styles.buyButton, { backgroundColor: buyButtonColor }]}>
-                <Ionicons name="add" size={20} color="#fff" />
-                <ThemedText style={[styles.buyButtonText, { color: '#fff' }]}>Buy {token.symbol}</ThemedText>
-              </Pressable>
-              <Pressable
-                onPress={() => setIsWatchlisted(!isWatchlisted)}
-                style={[
-                  styles.watchlistActionButton,
-                  isWatchlisted
-                    ? { backgroundColor: 'rgba(245,158,11,0.2)', borderColor: 'rgba(245,158,11,0.3)' }
-                    : { backgroundColor: cardBg },
-                ]}
-              >
-                <Ionicons
-                  name={isWatchlisted ? 'star' : 'star-outline'}
-                  size={20}
-                  color={isWatchlisted ? '#f59e0b' : textColor}
-                />
-                <ThemedText style={[styles.watchlistActionText, isWatchlisted && { color: '#f59e0b' }]}>
-                  {isWatchlisted ? 'Watching' : 'Add to Watchlist'}
-                </ThemedText>
-              </Pressable>
+              <ThemedText style={styles.statValue}>
+                {formatLargeNumber(token.marketCap)}
+              </ThemedText>
             </View>
-          )}
-        </View>
 
-        {/* Market Data */}
-        <ThemedView style={styles.marketCard} lightColor="#f4f4f5" darkColor="#1c1c1e">
-          <ThemedText style={[styles.sectionTitle, { color: mutedColor }]}>Market Data</ThemedText>
-          <View style={styles.marketList}>
-            {token.marketCap && (
-              <View style={styles.marketRow}>
-                <ThemedText style={[styles.marketLabel, { color: mutedColor }]}>Market Cap</ThemedText>
-                <ThemedText style={styles.marketValue}>{token.marketCap}</ThemedText>
+            {/* Volume 24h */}
+            <View style={styles.statItem}>
+              <View style={styles.statHeader}>
+                <ThemedText style={[styles.statLabel, { color: mutedColor }]}>Volume (24h)</ThemedText>
+                <Ionicons name="trending-up" size={14} color={mutedColor} />
               </View>
-            )}
-            {token.volume24h && (
-              <View style={styles.marketRow}>
-                <ThemedText style={[styles.marketLabel, { color: mutedColor }]}>24h Volume</ThemedText>
-                <ThemedText style={styles.marketValue}>{formatVolume(token.volume24h)}</ThemedText>
+              <ThemedText style={styles.statValue}>
+                {formatLargeNumber(token.volume24h)}
+              </ThemedText>
+            </View>
+
+            {/* Circulating Supply */}
+            <View style={styles.statItem}>
+              <View style={styles.statHeader}>
+                <ThemedText style={[styles.statLabel, { color: mutedColor }]}>Circulating Supply</ThemedText>
+                <Ionicons name="time-outline" size={14} color={mutedColor} />
               </View>
-            )}
-            {token.supply && (
-              <View style={styles.marketRow}>
-                <ThemedText style={[styles.marketLabel, { color: mutedColor }]}>Circulating Supply</ThemedText>
-                <ThemedText style={styles.marketValue}>{token.supply}</ThemedText>
+              <ThemedText style={styles.statValue}>
+                {formatSupply(token.supply)}
+              </ThemedText>
+            </View>
+
+            {/* Total Supply */}
+            <View style={styles.statItem}>
+              <View style={styles.statHeader}>
+                <ThemedText style={[styles.statLabel, { color: mutedColor }]}>Total Supply</ThemedText>
+                <Ionicons name="layers-outline" size={14} color={mutedColor} />
               </View>
-            )}
-            {token.rank !== undefined && (
-              <View style={styles.marketRow}>
-                <ThemedText style={[styles.marketLabel, { color: mutedColor }]}>Rank</ThemedText>
-                <ThemedText style={styles.marketValue}>#{token.rank}</ThemedText>
-              </View>
-            )}
+              <ThemedText style={styles.statValue}>
+                {formatSupply(token.totalSupply || token.supply)}
+              </ThemedText>
+            </View>
           </View>
         </ThemedView>
 
-        {/* Contract Info - Solana */}
-        {token.mint && (
-          <ThemedView style={styles.contractCard} lightColor="#f4f4f5" darkColor="#1c1c1e">
-            <ThemedText style={[styles.sectionTitle, { color: mutedColor }]}>Solana Contract</ThemedText>
-            <View style={styles.contractRow}>
-              <ThemedText style={[styles.contractAddress, { color: mutedColor }]}>
-                {formatAddress(token.mint)}
+        {/* Current Price Section - Only for owned tokens */}
+        {owned && (
+          <View style={styles.currentPriceSection}>
+            <ThemedText style={[styles.currentPriceLabel, { color: primaryColor }]}>
+              Current {token.symbol} price
+            </ThemedText>
+            <View style={styles.currentPriceRow}>
+              <ThemedText style={styles.currentPriceValue}>
+                $ {formatPrice(token.price)}
               </ThemedText>
-              <View style={styles.contractActions}>
-                <Pressable onPress={handleCopyAddress} style={styles.contractButton}>
-                  <Ionicons
-                    name={copied ? 'checkmark' : 'copy-outline'}
-                    size={16}
-                    color={copied ? '#22c55e' : mutedColor}
-                  />
-                </Pressable>
-                <Pressable onPress={handleOpenExplorer} style={styles.contractButton}>
-                  <Ionicons name="open-outline" size={16} color={mutedColor} />
-                </Pressable>
-              </View>
+              <ThemedText style={[styles.currentPriceChange, { color: changeColor }]}>
+                {isPositive ? '' : ''}{token.change24h.toFixed(2)}%
+              </ThemedText>
             </View>
-          </ThemedView>
+          </View>
         )}
       </ScrollView>
     </ThemedView>
@@ -421,181 +395,175 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingBottom: 12,
+    paddingBottom: 8,
   },
-  backButton: {
+  headerButton: {
     width: 40,
     height: 40,
     borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  tokenHeader: {
-    flexDirection: 'row',
+  headerCenter: {
+    flex: 1,
     alignItems: 'center',
-    gap: 12,
   },
-  tokenIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  tokenIconText: {
-    fontSize: 16,
-  },
-  tokenName: {
-    fontSize: 16,
+  headerTitle: {
+    fontSize: 18,
     fontWeight: '600',
   },
-  tokenSymbol: {
+  headerSubtitle: {
     fontSize: 12,
+    marginTop: 2,
   },
-  watchlistButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
+  pressed: {
+    opacity: 0.7,
+    transform: [{ scale: 0.96 }],
   },
   scrollView: {
     flex: 1,
   },
   scrollContent: {
     paddingHorizontal: 16,
-    paddingTop: 8,
   },
-  priceSection: {
+
+  // Token Icon Section
+  tokenIconSection: {
     alignItems: 'center',
-    marginBottom: 20,
-    paddingTop: 4,
-  },
-  priceValue: {
-    fontSize: 36,
-    fontWeight: '300',
-    lineHeight: 44,
-    marginBottom: 4,
-  },
-  changeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  changeText: {
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  chartCard: {
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 16,
-  },
-  timeframeRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 8,
     marginTop: 16,
+    marginBottom: 20,
   },
-  timeframeButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-  },
-  timeframeText: {
-    fontSize: 12,
-    fontWeight: '500',
-  },
-  holdingsCard: {
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 16,
-  },
-  holdingsHeader: {
-    flexDirection: 'row',
+  tokenIconContainer: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 12,
+    justifyContent: 'center',
+    overflow: 'hidden',
   },
-  sectionTitle: {
-    fontSize: 10,
-    fontWeight: '500',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-    marginBottom: 12,
+  tokenIconImage: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
   },
-  autoBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  autoBadgeText: {
-    fontSize: 8,
+  tokenIconText: {
+    fontSize: 28,
     fontWeight: '600',
   },
-  holdingsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 16,
-  },
-  holdingItem: {
-    width: '45%',
-  },
-  holdingLabel: {
-    fontSize: 10,
-    textTransform: 'uppercase',
-    marginBottom: 4,
-  },
-  holdingValue: {
-    fontSize: 18,
-    fontWeight: '500',
-  },
-  holdingValueSmall: {
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  actionsSection: {
-    marginBottom: 16,
-  },
-  actionGrid4: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 8,
-  },
-  actionButton: {
-    flex: 1,
+
+  // Balance Section
+  balanceSection: {
     alignItems: 'center',
-    gap: 6,
-    paddingVertical: 14,
-    borderRadius: 14,
+    marginBottom: 24,
   },
-  actionButtonText: {
-    fontSize: 10,
+  balanceAmount: {
+    fontSize: 32,
+    fontWeight: '600',
+    letterSpacing: -0.5,
+  },
+  balanceValue: {
+    fontSize: 16,
+    marginTop: 4,
+  },
+  priceChangeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 4,
+  },
+  priceChangeText: {
+    fontSize: 16,
     fontWeight: '500',
   },
-  secondaryActions: {
+
+  // Transaction Card
+  transactionCard: {
     flexDirection: 'row',
-    gap: 8,
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    marginBottom: 24,
   },
-  secondaryButton: {
-    flex: 1,
-    flexDirection: 'row',
+  transactionIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 12,
-    borderRadius: 14,
   },
-  secondaryButtonText: {
+  transactionInfo: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  transactionType: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  transactionAddressRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 2,
+  },
+  addressDot: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: 'rgba(16, 185, 129, 0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  diamond: {
+    fontSize: 8,
+    fontWeight: 'bold',
+  },
+  transactionAddress: {
+    fontSize: 14,
+  },
+  transactionAmountContainer: {
+    alignItems: 'flex-end',
+  },
+  transactionAmount: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  transactionFiat: {
+    fontSize: 14,
+    marginTop: 2,
+  },
+
+  // Action Buttons
+  actionsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 32,
+    marginBottom: 32,
+  },
+  actionButton: {
+    alignItems: 'center',
+    gap: 8,
+  },
+  actionIconContainer: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionLabel: {
     fontSize: 12,
     fontWeight: '500',
   },
-  buyRow: {
+
+  // Non-owned Token Actions
+  nonOwnedActions: {
     flexDirection: 'row',
     gap: 12,
+    marginBottom: 32,
   },
   buyButton: {
     flex: 1,
@@ -603,72 +571,83 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    paddingVertical: 14,
-    borderRadius: 14,
+    paddingVertical: 16,
+    borderRadius: 16,
   },
   buyButtonText: {
     fontSize: 16,
-    fontWeight: '500',
+    fontWeight: '600',
     color: '#fff',
   },
-  watchlistActionButton: {
+  watchlistButton: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    paddingVertical: 14,
-    borderRadius: 14,
+    paddingVertical: 16,
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: 'transparent',
   },
-  watchlistActionText: {
+  watchlistButtonText: {
     fontSize: 14,
     fontWeight: '500',
   },
-  marketCard: {
+
+  // Stats Section
+  statsCard: {
     borderRadius: 16,
     padding: 16,
+    marginBottom: 24,
+  },
+  statsTitle: {
+    fontSize: 16,
+    fontWeight: '600',
     marginBottom: 16,
   },
-  marketList: {
-    gap: 12,
-  },
-  marketRow: {
+  statsGrid: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+  },
+  statItem: {
+    width: '50%',
+    paddingVertical: 12,
+    paddingRight: 8,
+  },
+  statHeader: {
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+    paddingRight: 16,
   },
-  marketLabel: {
-    fontSize: 14,
+  statLabel: {
+    fontSize: 12,
   },
-  marketValue: {
+  statValue: {
+    fontSize: 18,
+    fontWeight: '600',
+  },
+
+  // Current Price Section
+  currentPriceSection: {
+    marginBottom: 16,
+  },
+  currentPriceLabel: {
+    fontSize: 12,
+    marginBottom: 4,
+  },
+  currentPriceRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 8,
+  },
+  currentPriceValue: {
+    fontSize: 24,
+    fontWeight: '600',
+  },
+  currentPriceChange: {
     fontSize: 14,
     fontWeight: '500',
   },
-  contractCard: {
-    borderRadius: 16,
-    padding: 16,
-  },
-  contractRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  contractAddress: {
-    fontSize: 12,
-    fontFamily: 'monospace',
-  },
-  contractActions: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  contractButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
 });
-

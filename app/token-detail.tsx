@@ -10,7 +10,13 @@ export default function TokenDetailRoute() {
     price?: string;
     change24h?: string;
     volume24h?: string;
+    marketCap?: string;
+    supply?: string;
+    totalSupply?: string;
     logoUri?: string;
+    // Owned token data
+    balance?: string;
+    value?: string;
   }>();
 
   // Build token data from route params (real API data)
@@ -20,9 +26,18 @@ export default function TokenDetailRoute() {
     price: parseFloat(params.price || '0'),
     change24h: parseFloat(params.change24h || '0'),
     volume24h: params.volume24h,
+    marketCap: params.marketCap,
+    supply: params.supply,
+    totalSupply: params.totalSupply,
     logoUri: params.logoUri,
     mint: params.id, // Solana mint address
   } : null;
+
+  // Build owned data if balance is provided
+  const ownedData = params.balance ? {
+    balance: params.balance,
+    value: parseFloat(params.value || '0'),
+  } : undefined;
 
   useEffect(() => {
     if (!tokenData) {
@@ -37,12 +52,10 @@ export default function TokenDetailRoute() {
   return (
     <TokenDetailScreen
       token={tokenData}
+      owned={ownedData}
       onBack={() => router.back()}
       onBuy={() => {
         router.push(`/buy-crypto?currency=${tokenData.symbol.toLowerCase()}&mint=${params.id}`);
-      }}
-      onSell={() => {
-        router.push(`/sell-crypto?currency=${tokenData.symbol.toLowerCase()}&mint=${params.id}`);
       }}
       onSend={() => {
         // TODO: Navigate to send flow with mint address
@@ -54,10 +67,6 @@ export default function TokenDetailRoute() {
       }}
       onSwap={() => {
         // TODO: Navigate to Jupiter swap with this token
-        router.back();
-      }}
-      onSetGoal={() => {
-        // TODO: Navigate to goal setting
         router.back();
       }}
     />
