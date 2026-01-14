@@ -14,7 +14,7 @@
  * @see https://docs.arcium.com
  */
 
-import { PublicKey, Finality } from "@solana/web3.js";
+import { PublicKey, Finality, Connection } from "@solana/web3.js";
 import { BN } from "@coral-xyz/anchor";
 import {
   RescueCipher,
@@ -30,6 +30,7 @@ import {
 // Configuration
 // ============================================================================
 
+const RPC_URL = process.env.EXPO_PUBLIC_HELIUS_RPC_URL || "https://api.devnet.solana.com";
 const ARCIUM_CLUSTER_URL = process.env.EXPO_PUBLIC_ARCIUM_CLUSTER_URL || "https://devnet.arcium.com";
 const ARCIUM_PROGRAM_ID = process.env.EXPO_PUBLIC_ARCIUM_PROGRAM_ID || "";
 
@@ -120,6 +121,7 @@ export interface ArciumProvider {
 
 export class ArciumMpcService {
   private config: ArciumConfig;
+  private connection: Connection;
   private mxePublicKey: Uint8Array | null = null;
 
   // Callback infrastructure
@@ -132,6 +134,17 @@ export class ArciumMpcService {
       programId: config?.programId || ARCIUM_PROGRAM_ID,
       mxeOffset: config?.mxeOffset || 0,
     };
+
+    // Initialize Solana connection for on-chain operations
+    this.connection = new Connection(RPC_URL, "confirmed");
+    console.log("[ArciumMPC] Initialized with RPC:", RPC_URL.slice(0, 30) + "...");
+  }
+
+  /**
+   * Get internal provider for SDK operations
+   */
+  private getProvider(): ArciumProvider {
+    return { connection: this.connection };
   }
 
   // ==========================================================================
@@ -160,7 +173,7 @@ export class ArciumMpcService {
    * This key is used for Diffie-Hellman key exchange to derive
    * the shared secret for RescueCipher encryption.
    *
-   * @param provider - Optional Anchor provider for on-chain queries
+   * @param provider - Optional provider override (uses internal connection by default)
    */
   async getMxePublicKey(provider?: ArciumProvider): Promise<Uint8Array> {
     if (this.mxePublicKey) {
@@ -169,11 +182,14 @@ export class ArciumMpcService {
 
     console.log("[ArciumMPC] Fetching MXE public key...");
 
+    // Use internal provider if none specified
+    const effectiveProvider = provider || this.getProvider();
+
     try {
-      if (provider && this.config.programId) {
+      if (this.config.programId) {
         // Use SDK to fetch real MXE public key from on-chain
         const programId = new PublicKey(this.config.programId);
-        const mxePubKey = await getMXEPublicKey(provider as never, programId);
+        const mxePubKey = await getMXEPublicKey(effectiveProvider as never, programId);
 
         if (mxePubKey) {
           this.mxePublicKey = mxePubKey;
@@ -183,7 +199,7 @@ export class ArciumMpcService {
       }
 
       // Fallback for demo/testing - generate deterministic key
-      console.warn("[ArciumMPC] No provider or program ID - using fallback MXE key");
+      console.warn("[ArciumMPC] No program ID configured - using fallback MXE key");
       this.mxePublicKey = x25519.utils.randomPrivateKey();
       return this.mxePublicKey;
     } catch (error) {
@@ -511,7 +527,7 @@ export class ArciumMpcService {
    * Queries the Arcium network for the computation account state.
    *
    * @param computationId - Computation ID (hex string)
-   * @param provider - Optional provider for on-chain queries
+   * @param provider - Optional provider override (uses internal connection by default)
    */
   async getComputationStatus(
     computationId: string,
@@ -519,8 +535,11 @@ export class ArciumMpcService {
   ): Promise<ComputationStatus> {
     console.log("[ArciumMPC] Getting computation status:", computationId.slice(0, 8) + "...");
 
+    // Use internal provider if none specified
+    const effectiveProvider = provider || this.getProvider();
+
     try {
-      if (provider && this.config.programId) {
+      if (this.config.programId) {
         // Use SDK to check computation status
         const arciumEnv = getArciumEnv();
         const computationOffset = new BN(computationId, "hex");
@@ -532,7 +551,7 @@ export class ArciumMpcService {
         );
 
         // Fetch account data and parse status
-        const accountInfo = await provider.connection.getAccountInfo(computationAddress);
+        const accountInfo = await effectiveProvider.connection.getAccountInfo(computationAddress);
 
         if (!accountInfo) {
           return { computationId, status: "queued" };
@@ -549,7 +568,7 @@ export class ArciumMpcService {
         };
       }
 
-      // Fallback for demo
+      // Fallback for demo (no program ID)
       return { computationId, status: "queued" };
     } catch (error) {
       console.error("[ArciumMPC] Status check failed:", error);
@@ -578,7 +597,7 @@ export class ArciumMpcService {
    * otherwise falls back to manual polling.
    *
    * @param computationId - Computation ID (hex string)
-   * @param provider - Optional provider for SDK await
+   * @param provider - Optional provider override (uses internal connection by default)
    * @param commitment - Transaction commitment level
    * @param timeoutMs - Timeout in milliseconds
    */
@@ -590,14 +609,17 @@ export class ArciumMpcService {
   ): Promise<ComputationStatus> {
     console.log("[ArciumMPC] Awaiting computation finalization...");
 
+    // Use internal provider if none specified
+    const effectiveProvider = provider || this.getProvider();
+
     try {
-      if (provider && this.config.programId) {
+      if (this.config.programId) {
         const programId = new PublicKey(this.config.programId);
         const computationOffset = new BN(computationId, "hex");
 
         // Use SDK's await function
         const finalizeSig = await arciumAwaitFinalization(
-          provider as never,
+          effectiveProvider as never,
           computationOffset,
           programId,
           commitment
@@ -612,7 +634,7 @@ export class ArciumMpcService {
         };
       }
 
-      // Fallback: poll manually
+      // Fallback: poll manually (no program ID)
       return await this.pollForCompletion(computationId, timeoutMs);
     } catch (error) {
       console.error("[ArciumMPC] Await finalization failed:", error);
@@ -792,20 +814,23 @@ export class ArciumMpcService {
    *
    * Queries the Arcium cluster account for node count and availability.
    *
-   * @param provider - Optional provider for on-chain queries
+   * @param provider - Optional provider override (uses internal connection by default)
    */
   async getNetworkStatus(provider?: ArciumProvider): Promise<{
     available: boolean;
     clusterNodes: number;
     queuedComputations: number;
   }> {
+    // Use internal provider if none specified
+    const effectiveProvider = provider || this.getProvider();
+
     try {
-      if (provider && this.config.programId) {
+      if (this.config.programId) {
         const arciumEnv = getArciumEnv();
         const clusterAddress = getClusterAccAddress(arciumEnv.arciumClusterOffset);
 
         // Fetch cluster account to get node count
-        const clusterInfo = await provider.connection.getAccountInfo(clusterAddress);
+        const clusterInfo = await effectiveProvider.connection.getAccountInfo(clusterAddress);
 
         if (clusterInfo) {
           // Parse cluster data for node count
@@ -833,6 +858,14 @@ export class ArciumMpcService {
         queuedComputations: 0,
       };
     }
+  }
+
+  /**
+   * Get the internal Solana connection
+   * Useful for external code that needs direct RPC access
+   */
+  getConnection(): Connection {
+    return this.connection;
   }
 }
 
