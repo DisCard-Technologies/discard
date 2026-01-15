@@ -3,7 +3,6 @@ import {
   StyleSheet,
   View,
   Pressable,
-  Keyboard,
   Alert,
   ActivityIndicator,
   Dimensions,
@@ -15,7 +14,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
-import { KeyboardStickyView } from 'react-native-keyboard-controller';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -33,7 +31,6 @@ import { api } from '@/convex/_generated/api';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { TopBar } from '@/components/top-bar';
-import { CommandBar } from '@/components/command-bar';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useAuth } from '@/stores/authConvex';
@@ -48,8 +45,6 @@ export interface CardScreenContentProps {
   onNavigateToStrategy?: () => void;
   onNavigateToHome?: () => void;
 }
-
-const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 // MCC code to category mapping
 const MCC_CATEGORIES: Record<string, string> = {
@@ -204,35 +199,6 @@ export function CardScreenContent({ onNavigateToStrategy, onNavigateToHome }: Ca
     setShowDetails(!showDetails);
   };
 
-  // Command bar state
-  const backdropOpacity = useSharedValue(0);
-
-  const handleCommandBarFocusChange = (focused: boolean) => {
-    backdropOpacity.value = withTiming(focused ? 1 : 0, { duration: 200 });
-  };
-
-  const handleBackdropPress = () => {
-    Keyboard.dismiss();
-    backdropOpacity.value = withTiming(0, { duration: 200 });
-  };
-
-  const backdropAnimatedStyle = useAnimatedStyle(() => ({
-    opacity: backdropOpacity.value,
-    pointerEvents: backdropOpacity.value > 0 ? 'auto' : 'none',
-  }));
-
-  const handleSendMessage = (message: string) => {
-    // Command bar handles this internally - just log
-    console.log('[Card] Command bar message:', message);
-  };
-
-  const handleCamera = () => {
-    router.push('/transfer/scan');
-  };
-
-  const handleMic = () => {
-    // Voice input not yet implemented
-  };
 
   const copyCardNumber = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -743,22 +709,6 @@ export function CardScreenContent({ onNavigateToStrategy, onNavigateToHome }: Ca
         </GestureDetector>
       )}
 
-      {/* Backdrop Overlay */}
-      <AnimatedPressable
-        style={[styles.backdrop, backdropAnimatedStyle]}
-        onPress={handleBackdropPress}
-      />
-
-      {/* Command Bar */}
-      <KeyboardStickyView offset={{ closed: 0, opened: insets.bottom }} style={styles.stickyCommandBar}>
-        <CommandBar
-          onSend={handleSendMessage}
-          onCamera={handleCamera}
-          onMic={handleMic}
-          onFocusChange={handleCommandBarFocusChange}
-        />
-        <View style={{ height: insets.bottom }} />
-      </KeyboardStickyView>
     </ThemedView>
   );
 }
@@ -781,15 +731,7 @@ const styles = StyleSheet.create({
   },
   mainContent: {
     flex: 1,
-    paddingBottom: DRAWER_CLOSED_HEIGHT + 80,
-  },
-  backdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    zIndex: 10,
-  },
-  stickyCommandBar: {
-    zIndex: 20,
+    paddingBottom: DRAWER_CLOSED_HEIGHT + 40,
   },
   
   // Card Carousel

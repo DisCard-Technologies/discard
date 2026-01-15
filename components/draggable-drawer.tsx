@@ -33,8 +33,9 @@ export function DraggableDrawer({
   initiallyOpen = false,
   onOpenChange,
 }: DraggableDrawerProps) {
-  const backgroundColor = useThemeColor({}, 'card');
-  const borderColor = useThemeColor({}, 'border');
+  // Match the unified dock styling (same as top bar)
+  const backgroundColor = useThemeColor({ light: 'rgba(0,0,0,0.05)', dark: 'rgba(255,255,255,0.08)' }, 'background');
+  const borderColor = useThemeColor({ light: 'rgba(0,0,0,0.08)', dark: 'rgba(255,255,255,0.1)' }, 'background');
   const handleColor = useThemeColor({ light: '#d1d5db', dark: '#4b5563' }, 'icon');
 
   const maxTranslate = -(openHeight - closedHeight);

@@ -213,15 +213,20 @@ export function HomeScreenContent({ onNavigateToStrategy, onNavigateToCard }: Ho
     <ThemedView style={styles.container}>
       <StatusBar style={isDark ? 'light' : 'dark'} />
 
-      {/* Ambient gradient background */}
-      <View style={styles.ambientGradient}>
+      {/* Dynamic ambient gradient - emanates from drawer area based on performance */}
+      <View style={[styles.ambientGradient, { bottom: DRAWER_CLOSED_HEIGHT - 50 }]}>
         <LinearGradient
           colors={isDark 
-            ? ['rgba(16, 185, 129, 0.08)', 'transparent'] 
-            : ['rgba(16, 185, 129, 0.05)', 'transparent']}
+            ? isPositive 
+              ? ['transparent', 'rgba(16, 185, 129, 0.12)']
+              : ['transparent', 'rgba(239, 68, 68, 0.10)']
+            : isPositive
+              ? ['transparent', 'rgba(16, 185, 129, 0.08)']
+              : ['transparent', 'rgba(239, 68, 68, 0.06)']
+          }
           style={StyleSheet.absoluteFill}
           start={{ x: 0.5, y: 0 }}
-          end={{ x: 0.5, y: 0.6 }}
+          end={{ x: 0.5, y: 1 }}
         />
       </View>
       
@@ -273,9 +278,9 @@ export function HomeScreenContent({ onNavigateToStrategy, onNavigateToCard }: Ho
         />
       </View>
 
-      {/* Gradient overlay before drawer */}
+      {/* Gradient overlay before drawer - blends into drawer color */}
       <LinearGradient
-        colors={isDark ? ['transparent', '#0f1419'] : ['transparent', '#ffffff']}
+        colors={isDark ? ['transparent', '#1a1f25'] : ['transparent', '#f4f4f5']}
         style={[styles.drawerGradient, { bottom: DRAWER_CLOSED_HEIGHT - 40 }]}
         pointerEvents="none"
       />
@@ -307,10 +312,9 @@ const styles = StyleSheet.create({
   },
   ambientGradient: {
     position: 'absolute',
-    top: 0,
     left: 0,
     right: 0,
-    height: SCREEN_HEIGHT * 0.5,
+    height: '70%',
     pointerEvents: 'none',
   },
   content: {

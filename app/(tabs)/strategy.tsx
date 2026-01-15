@@ -1,18 +1,15 @@
 import { useState, useMemo } from 'react';
-import { StyleSheet, View, Pressable, ScrollView, Dimensions, Keyboard, ActivityIndicator, TextInput, Alert } from 'react-native';
+import { StyleSheet, View, Pressable, ScrollView, Dimensions, ActivityIndicator, TextInput, Alert } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
-import { KeyboardStickyView } from 'react-native-keyboard-controller';
-import Animated, { useSharedValue, useAnimatedStyle, withTiming } from 'react-native-reanimated';
 import { router } from 'expo-router';
 import Svg, { Path, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { TopBar } from '@/components/top-bar';
-import { CommandBar } from '@/components/command-bar';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useAuth, useCurrentUserId } from '@/stores/authConvex';
@@ -26,8 +23,6 @@ export interface StrategyScreenContentProps {
   onNavigateToHome?: () => void;
   onNavigateToCard?: () => void;
 }
-
-const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CHART_WIDTH = SCREEN_WIDTH - 40;
@@ -214,35 +209,6 @@ export function StrategyScreenContent({ onNavigateToHome, onNavigateToCard }: St
   const dailyChangeAmount = Math.abs(dailyChange * walletsValue / 100);
   const isPositive = dailyChange >= 0;
 
-  // Command bar state
-  const backdropOpacity = useSharedValue(0);
-
-  const handleCommandBarFocusChange = (focused: boolean) => {
-    backdropOpacity.value = withTiming(focused ? 1 : 0, { duration: 200 });
-  };
-
-  const handleBackdropPress = () => {
-    Keyboard.dismiss();
-    backdropOpacity.value = withTiming(0, { duration: 200 });
-  };
-
-  const backdropAnimatedStyle = useAnimatedStyle(() => ({
-    opacity: backdropOpacity.value,
-    pointerEvents: backdropOpacity.value > 0 ? 'auto' : 'none',
-  }));
-
-  const handleSendMessage = (message: string) => {
-    // Command bar handles this internally - just log
-    console.log('[Strategy] Command bar message:', message);
-  };
-
-  const handleCamera = () => {
-    router.push('/transfer/scan');
-  };
-
-  const handleMic = () => {
-    // Voice input not yet implemented
-  };
 
   // Yield vault handlers
   const handleSelectVault = (vault: YieldVault) => {
@@ -792,23 +758,6 @@ export function StrategyScreenContent({ onNavigateToHome, onNavigateToCard }: St
           </View>
         )}
       </ScrollView>
-
-      {/* Backdrop Overlay */}
-      <AnimatedPressable
-        style={[styles.backdrop, backdropAnimatedStyle]}
-        onPress={handleBackdropPress}
-      />
-
-      {/* Command Bar - Sticky above keyboard */}
-      <KeyboardStickyView offset={{ closed: 0, opened: insets.bottom }} style={styles.stickyCommandBar}>
-        <CommandBar
-          onSend={handleSendMessage}
-          onCamera={handleCamera}
-          onMic={handleMic}
-          onFocusChange={handleCommandBarFocusChange}
-        />
-        <View style={{ height: insets.bottom }} />
-      </KeyboardStickyView>
     </ThemedView>
   );
 }
@@ -826,15 +775,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingHorizontal: 20,
-    paddingBottom: 120,
-  },
-  backdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    zIndex: 10,
-  },
-  stickyCommandBar: {
-    zIndex: 20,
+    paddingBottom: 40,
   },
   
   // Portfolio Header

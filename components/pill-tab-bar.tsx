@@ -26,6 +26,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { ThemedText } from '@/components/themed-text';
+import { useColorScheme } from '@/hooks/use-color-scheme';
 
 // Enable LayoutAnimation on Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -48,10 +49,14 @@ const navTabConfig: Record<string, TabConfig> = {
   menu: { icon: 'grid', label: 'Menu' },
 };
 
-// Colors matching the design
-const DOCK_BG = 'rgba(28, 28, 30, 0.98)';
+// Colors matching the design - matches top bar styling
+const DOCK_BG_LIGHT = 'rgba(0,0,0,0.05)';
+const DOCK_BG_DARK = 'rgba(255,255,255,0.08)';
+const BORDER_LIGHT = 'rgba(0,0,0,0.08)';
+const BORDER_DARK = 'rgba(255,255,255,0.1)';
 const ACTIVE_COLOR = '#10B981';
 const INACTIVE_ICON_COLOR = '#6B7280';
+const INACTIVE_ICON_COLOR_DARK = '#9BA1A6';
 const PLACEHOLDER_COLOR = '#6B7280';
 const SPARKLE_COLOR = '#10B981';
 const USER_BUBBLE_COLOR = '#10B981';
@@ -86,6 +91,13 @@ const springConfig = {
 
 export function PillTabBar({ state, descriptors, navigation }: PillTabBarProps) {
   const insets = useSafeAreaInsets();
+  const colorScheme = useColorScheme();
+  const isDark = colorScheme === 'dark';
+  
+  // Theme-aware colors matching top bar
+  const dockBg = isDark ? DOCK_BG_DARK : DOCK_BG_LIGHT;
+  const borderColor = isDark ? BORDER_DARK : BORDER_LIGHT;
+  const iconColor = isDark ? INACTIVE_ICON_COLOR_DARK : INACTIVE_ICON_COLOR;
   
   // Command bar state
   const [isCommandExpanded, setIsCommandExpanded] = useState(false);
@@ -299,12 +311,10 @@ export function PillTabBar({ state, descriptors, navigation }: PillTabBarProps) 
         accessibilityState={isFocused ? { selected: true } : {}}
         accessibilityLabel={options.tabBarAccessibilityLabel}
         onPress={onPress}
-        style={({ pressed }) => [styles.navItem, pressed && styles.pressed]}
+        style={({ pressed }) => [styles.navItem, isFocused && styles.navItemActive, pressed && styles.pressed]}
       >
-        <View style={[styles.iconCircle, isFocused && styles.iconCircleActive]}>
-          <Ionicons name={config.icon} size={22} color={isFocused ? '#FFFFFF' : INACTIVE_ICON_COLOR} />
-        </View>
-        <ThemedText style={[styles.navLabel, isFocused && styles.navLabelActive]}>{config.label}</ThemedText>
+        <Ionicons name={config.icon} size={20} color={isFocused ? '#FFFFFF' : iconColor} />
+        <ThemedText style={[styles.navLabel, isFocused && styles.navLabelActive, !isFocused && { color: iconColor }]}>{config.label}</ThemedText>
       </Pressable>
     );
   };
@@ -312,7 +322,7 @@ export function PillTabBar({ state, descriptors, navigation }: PillTabBarProps) 
   return (
     <View style={[styles.container, { paddingBottom: Math.max(insets.bottom, 8) }]}>
       {/* Command Bar - Expandable */}
-      <Animated.View style={[styles.commandBar, commandBarAnimatedStyle]}>
+      <Animated.View style={[styles.commandBar, { backgroundColor: dockBg, borderColor }, commandBarAnimatedStyle]}>
         {isCommandExpanded ? (
           // Expanded State
           <View style={styles.expandedContent}>
@@ -414,9 +424,9 @@ export function PillTabBar({ state, descriptors, navigation }: PillTabBarProps) 
           // Collapsed State
           <Pressable onPress={handleCommandBarPress} style={styles.collapsedBar}>
             <Ionicons name="sparkles" size={18} color={SPARKLE_COLOR} />
-            <ThemedText style={styles.collapsedText}>Ask anything or give a command...</ThemedText>
+            <ThemedText style={[styles.collapsedText, { color: iconColor }]}>Ask anything or give a command...</ThemedText>
             <Pressable onPress={handleMicPress} hitSlop={8}>
-              <Ionicons name="mic-outline" size={20} color={INACTIVE_ICON_COLOR} />
+              <Ionicons name="mic-outline" size={20} color={iconColor} />
             </Pressable>
           </Pressable>
         )}
@@ -425,7 +435,7 @@ export function PillTabBar({ state, descriptors, navigation }: PillTabBarProps) 
       {/* Bottom Row: Nav Pill + Search */}
       <View style={styles.bottomRow}>
         {/* Navigation Pill - Collapses when search is expanded */}
-        <View style={[styles.navPill, isSearchExpanded && styles.navPillCollapsed]}>
+        <View style={[styles.navPill, { backgroundColor: dockBg, borderColor }, isSearchExpanded && styles.navPillCollapsed]}>
           {!isSearchExpanded ? (
             // Expanded Navbar - Home, Transfer, Menu
             navRoutes.map((route) => renderNavItem(route))
@@ -438,25 +448,25 @@ export function PillTabBar({ state, descriptors, navigation }: PillTabBarProps) 
               <Ionicons 
                 name="home" 
                 size={24} 
-                color={state.index === 0 ? ACTIVE_COLOR : INACTIVE_ICON_COLOR} 
+                color={state.index === 0 ? ACTIVE_COLOR : iconColor} 
               />
             </Pressable>
           )}
         </View>
 
         {/* Search Button / Expanded Search Bar */}
-        <View style={[styles.searchContainer, isSearchExpanded && styles.searchContainerExpanded]}>
+        <View style={[styles.searchContainer, { backgroundColor: dockBg, borderColor }, isSearchExpanded && styles.searchContainerExpanded]}>
           {isSearchExpanded ? (
             // Expanded Search Bar
             <View style={styles.searchBarExpanded}>
-              <Ionicons name="search" size={20} color={INACTIVE_ICON_COLOR} />
+              <Ionicons name="search" size={20} color={iconColor} />
               <TextInput
                 ref={searchInputRef}
                 value={searchQuery}
                 onChangeText={setSearchQuery}
                 placeholder="Search tokens, markets, assets..."
-                placeholderTextColor={PLACEHOLDER_COLOR}
-                style={styles.searchInput}
+                placeholderTextColor={iconColor}
+                style={[styles.searchInput, { color: isDark ? '#FFFFFF' : '#11181C' }]}
               />
               <Pressable
                 onPress={() => {
@@ -466,18 +476,16 @@ export function PillTabBar({ state, descriptors, navigation }: PillTabBarProps) 
                 }}
                 style={styles.searchCloseButton}
               >
-                <Ionicons name="close" size={18} color={INACTIVE_ICON_COLOR} />
+                <Ionicons name="close" size={18} color={iconColor} />
               </Pressable>
             </View>
           ) : (
             // Collapsed Search Button
             <Pressable
               onPress={handleSearchPress}
-              style={({ pressed }) => [styles.searchButton, pressed && styles.pressed]}
+              style={({ pressed }) => [styles.searchButton, isOnExplore && styles.searchButtonActive, pressed && styles.pressed]}
             >
-              <View style={[styles.searchIconCircle, isOnExplore && styles.iconCircleActive]}>
-                <Ionicons name="search" size={22} color={isOnExplore ? '#FFFFFF' : INACTIVE_ICON_COLOR} />
-              </View>
+              <Ionicons name="search" size={20} color={isOnExplore ? '#FFFFFF' : iconColor} />
             </Pressable>
           )}
         </View>
@@ -494,10 +502,11 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
 
-  // Command Bar
+  // Command Bar - matches top bar styling
   commandBar: {
-    backgroundColor: DOCK_BG,
     overflow: 'hidden',
+    borderWidth: 1,
+    borderRadius: 28,
   },
 
   // Collapsed State
@@ -511,7 +520,6 @@ const styles = StyleSheet.create({
   collapsedText: {
     flex: 1,
     fontSize: 14,
-    color: PLACEHOLDER_COLOR,
   },
 
   // Expanded State
@@ -653,77 +661,71 @@ const styles = StyleSheet.create({
   // Bottom Row
   bottomRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'stretch',
     gap: 8,
   },
 
-  // Navigation Pill
+  // Navigation Pill - matches top bar styling
   navPill: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-around',
-    backgroundColor: DOCK_BG,
-    borderRadius: 32,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
+    borderRadius: 28,
+    borderWidth: 1,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
   },
   navPillCollapsed: {
     flex: 0,
+    width: 52,
     paddingHorizontal: 0,
-    paddingVertical: 0,
   },
   collapsedNavButton: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
+  // Vertical layout: icon on top, label below, both inside active pill
   navItem: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 8,
+    gap: 2,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
   },
-  iconCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'transparent',
-  },
-  iconCircleActive: {
+  navItemActive: {
     backgroundColor: ACTIVE_COLOR,
   },
   navLabel: {
     fontSize: 10,
-    fontWeight: '500',
-    color: INACTIVE_ICON_COLOR,
-    marginTop: 2,
+    fontWeight: '600',
   },
   navLabelActive: {
-    color: ACTIVE_COLOR,
+    color: '#FFFFFF',
   },
 
-  // Search Container
+  // Search Container - matches top bar styling
   searchContainer: {
-    backgroundColor: DOCK_BG,
-    borderRadius: 32,
+    borderRadius: 28,
+    borderWidth: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 6,
   },
   searchContainerExpanded: {
     flex: 1,
   },
   searchButton: {
-    padding: 8,
-  },
-  searchIconCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'transparent',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+  },
+  searchButtonActive: {
+    backgroundColor: ACTIVE_COLOR,
   },
   searchBarExpanded: {
     flexDirection: 'row',
