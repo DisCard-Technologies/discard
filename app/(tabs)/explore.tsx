@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { StyleSheet, View, Pressable, TextInput, ScrollView, ActivityIndicator, Image } from 'react-native';
+import { StyleSheet, View, Pressable, ScrollView, ActivityIndicator, Image } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
@@ -46,15 +46,13 @@ export default function ExploreScreen() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
 
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState<CategoryFilter>('tokens');
 
   const primaryColor = useThemeColor({}, 'tint');
   const mutedColor = useThemeColor({ light: '#687076', dark: '#9BA1A6' }, 'icon');
-  const textColor = useThemeColor({}, 'text');
   const cardBg = useThemeColor({ light: '#f4f4f5', dark: '#1c1c1e' }, 'background');
   const borderColor = useThemeColor({ light: 'rgba(0,0,0,0.08)', dark: 'rgba(255,255,255,0.1)' }, 'background');
-  const inputBg = useThemeColor({ light: 'rgba(0,0,0,0.05)', dark: 'rgba(255,255,255,0.08)' }, 'background');
 
   // Fetch trending tokens
   const { tokens, isLoading: tokensLoading, error: tokensError } = useTrendingTokens();
@@ -160,33 +158,6 @@ export default function ExploreScreen() {
         <Ionicons name="add" size={20} color="#fff" />
         <ThemedText style={styles.depositButtonText}>Deposit / Buy Crypto</ThemedText>
       </Pressable>
-
-      {/* Header with Search */}
-      <View style={styles.header}>
-        <View style={[styles.searchContainer, { backgroundColor: inputBg }]}>
-          <Ionicons name="search" size={18} color={mutedColor} />
-          <TextInput
-            style={[styles.searchInput, { color: textColor }]}
-            placeholder="Search tokens..."
-            placeholderTextColor={mutedColor}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
-          {searchQuery.length > 0 && (
-            <Pressable onPress={() => setSearchQuery('')}>
-              <Ionicons name="close-circle" size={18} color={mutedColor} />
-            </Pressable>
-          )}
-        </View>
-        <Pressable
-          style={[styles.sortButton, { backgroundColor: inputBg }]}
-          onPress={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)}
-        >
-          <Ionicons name="filter" size={18} color={mutedColor} />
-        </Pressable>
-      </View>
 
       {/* Category Filter Pills */}
       <View style={styles.categoryFilters}>
@@ -471,34 +442,6 @@ export default function ExploreScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    gap: 12,
-  },
-  searchContainer: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 12,
-    gap: 8,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 16,
-    padding: 0,
-  },
-  sortButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   categoryFilters: {
     flexDirection: 'row',

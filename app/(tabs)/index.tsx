@@ -1,9 +1,8 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { StyleSheet, View, Pressable, Keyboard, Dimensions } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { KeyboardStickyView } from 'react-native-keyboard-controller';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, { useSharedValue, useAnimatedStyle, withTiming } from 'react-native-reanimated';
 import { useQuery } from 'convex/react';
@@ -15,7 +14,6 @@ const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { TopBar } from '@/components/top-bar';
-import { CommandBar } from '@/components/command-bar';
 import { AnimatedCounter } from '@/components/animated-counter';
 import { TransactionStack, StackTransaction } from '@/components/transaction-stack';
 import { QuickActions } from '@/components/quick-actions';
@@ -25,9 +23,7 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useAuth } from '@/stores/authConvex';
 import { useFunding } from '@/stores/fundingConvex';
 import { useTokenHoldings } from '@/hooks/useTokenHoldings';
-import { useChatHistory } from '@/hooks/useChatHistory';
 import { positiveColor, negativeColor } from '@/constants/theme';
-import type { ChatMessage } from '@/types/chat';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
@@ -44,37 +40,6 @@ export interface HomeScreenContentProps {
 export function HomeScreenContent({ onNavigateToStrategy, onNavigateToCard }: HomeScreenContentProps) {
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme();
-
-  // Chat history hook
-  const {
-    activeSession,
-    createNewChat,
-    updateMessages,
-    clearActiveChat,
-  } = useChatHistory();
-
-  // Handle new session creation (when first message is sent without a session)
-  const handleNewSession = useCallback((firstMessage: string) => {
-    const session = createNewChat(firstMessage);
-    console.log('[HomeScreen] Created new chat session:', session.id);
-  }, [createNewChat]);
-
-  // Use ref to track active session for the callback (avoids dependency issues)
-  const activeSessionRef = useRef(activeSession);
-  activeSessionRef.current = activeSession;
-
-  // Handle messages change (for persistence)
-  // Using ref to avoid recreating callback when activeSession changes
-  const handleMessagesChange = useCallback((messages: ChatMessage[]) => {
-    if (activeSessionRef.current && messages.length > 0) {
-      updateMessages(messages);
-    }
-  }, [updateMessages]);
-
-  // Handle chat close - clear active session so next chat starts fresh
-  const handleChatClose = useCallback(() => {
-    clearActiveChat();
-  }, [clearActiveChat]);
 
   // Real data from stores
   const { user } = useAuth();
@@ -239,22 +204,7 @@ export function HomeScreenContent({ onNavigateToStrategy, onNavigateToCard }: Ho
   };
 
   const handleAddGoal = () => {
-    // Focus command bar with goal creation suggestion
-    // The command bar handles the actual goal creation via AI
-  };
-
-  // Command bar handlers
-  const handleSendMessage = (message: string) => {
-    // Command bar handles this internally - this is just a fallback
-    console.log('[Home] Command bar message:', message);
-  };
-
-  const handleCamera = () => {
-    router.push('/transfer/scan');
-  };
-
-  const handleMic = () => {
-    // Voice input not yet implemented
+    // Goal creation is now handled by the unified dock in the tab bar
   };
 
   const isDark = colorScheme === 'dark';
@@ -340,39 +290,11 @@ export function HomeScreenContent({ onNavigateToStrategy, onNavigateToCard }: Ho
         style={[styles.backdrop, backdropAnimatedStyle]}
         onPress={handleBackdropPress}
       />
-
-      {/* Command Bar - Sticky above keyboard */}
-      <KeyboardStickyView offset={{ closed: 0, opened: insets.bottom }} style={styles.stickyCommandBar}>
-        <CommandBar
-          onSend={handleSendMessage}
-          onCamera={handleCamera}
-          onMic={handleMic}
-          onFocusChange={handleCommandBarFocusChange}
-          // Chat history integration
-          initialMessages={activeSession?.messages}
-          sessionId={activeSession?.id || null}
-          onNewSession={handleNewSession}
-          onMessagesChange={handleMessagesChange}
-          onChatClose={handleChatClose}
-        />
-        {/* Safe area for bottom (home indicator) */}
-        <View style={{ height: insets.bottom }} />
-      </KeyboardStickyView>
     </ThemedView>
   );
 }
 
 export default function HomeScreen() {
-  const { chatSessionId } = useLocalSearchParams<{ chatSessionId?: string }>();
-  const { loadChat } = useChatHistory();
-
-  // Load chat when navigated with session ID
-  useEffect(() => {
-    if (chatSessionId) {
-      loadChat(chatSessionId);
-    }
-  }, [chatSessionId, loadChat]);
-
   // Use SwipeableMainView for the main home screen with pager navigation
   // This enables swiping between Card <-> Home <-> Strategy
   const { SwipeableMainView } = require('@/components/swipeable-main-view');
