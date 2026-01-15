@@ -3,9 +3,13 @@
  *
  * Fetches real tokenized Real World Assets (RWA) available on Solana.
  * Includes tokenized treasuries, money market funds, and yield-bearing stablecoins.
+ *
+ * Price data is fetched via Convex to keep API keys server-side.
  */
 
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { useAction } from "convex/react";
+import { api } from "@/convex/_generated/api";
 
 // ============================================================================
 // Types
@@ -135,48 +139,8 @@ const KNOWN_RWA_TOKENS: Omit<RwaToken, "priceUsd" | "change24h">[] = [
 ];
 
 // ============================================================================
-// Price Fetching
+// Price Fetching (via Convex to keep API keys server-side)
 // ============================================================================
-
-const JUPITER_PRICE_API = "https://api.jup.ag/price/v2";
-
-async function fetchTokenPrices(
-  mints: string[]
-): Promise<Record<string, { price: number; change24h: number }>> {
-  try {
-    const ids = mints.join(",");
-    const response = await fetch(`${JUPITER_PRICE_API}?ids=${ids}&showExtraInfo=true`);
-
-    if (!response.ok) {
-      throw new Error(`Jupiter API error: ${response.status}`);
-    }
-
-    const data = await response.json();
-    const prices: Record<string, { price: number; change24h: number }> = {};
-
-    for (const mint of mints) {
-      const tokenData = data.data?.[mint];
-      if (tokenData) {
-        prices[mint] = {
-          price: parseFloat(tokenData.price) || 1.0,
-          change24h: tokenData.extraInfo?.quotedPrice?.buyPriceImpactPct || 0,
-        };
-      } else {
-        // Default to $1 for stablecoin-like RWA tokens
-        prices[mint] = { price: 1.0, change24h: 0 };
-      }
-    }
-
-    return prices;
-  } catch (error) {
-    console.error("[useRwaTokens] Price fetch error:", error);
-    // Return default prices
-    return mints.reduce(
-      (acc, mint) => ({ ...acc, [mint]: { price: 1.0, change24h: 0 } }),
-      {}
-    );
-  }
-}
 
 // ============================================================================
 // Hook
@@ -187,14 +151,17 @@ export function useRwaTokens(): UseRwaTokensReturn {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Use Convex action to fetch prices (keeps API key server-side)
+  const getTokenPrices = useAction(api.explore.trending.getTokenPrices);
+
   const refresh = useCallback(async () => {
     setIsLoading(true);
     setError(null);
 
     try {
-      // Fetch real-time prices from Jupiter
+      // Fetch real-time prices via Convex (server-side API call)
       const mints = KNOWN_RWA_TOKENS.map((t) => t.mint);
-      const prices = await fetchTokenPrices(mints);
+      const prices = await getTokenPrices({ mints });
 
       // Combine static data with real-time prices
       const enrichedTokens: RwaToken[] = KNOWN_RWA_TOKENS.map((token) => ({
@@ -222,7 +189,7 @@ export function useRwaTokens(): UseRwaTokensReturn {
     }
 
     setIsLoading(false);
-  }, []);
+  }, [getTokenPrices]);
 
   // Initial fetch
   useEffect(() => {

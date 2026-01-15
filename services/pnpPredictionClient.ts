@@ -154,25 +154,32 @@ export class PnpPredictionService {
 
   /**
    * Get available markets for betting
+   * Note: Markets are fetched from DFlow API which requires auth.
+   * For client-side use, prefer using Convex-cached markets instead.
    */
   async getMarkets(options?: {
     category?: string;
     status?: "open" | "closed" | "resolved";
     limit?: number;
   }): Promise<PredictionMarket[]> {
-    let markets = await this.dflow.getAllMarkets(options?.limit || 100);
+    try {
+      let markets = await this.dflow.getAllMarkets(options?.limit || 100);
 
-    if (options?.category) {
-      markets = markets.filter(
-        (m) => m.category.toLowerCase() === options.category!.toLowerCase()
-      );
+      if (options?.category) {
+        markets = markets.filter(
+          (m) => m.category.toLowerCase() === options.category!.toLowerCase()
+        );
+      }
+
+      if (options?.status) {
+        markets = markets.filter((m) => m.status === options.status);
+      }
+
+      return markets;
+    } catch (error) {
+      console.warn("[PNP] Failed to fetch markets from DFlow, use Convex cache instead:", error);
+      return [];
     }
-
-    if (options?.status) {
-      markets = markets.filter((m) => m.status === options.status);
-    }
-
-    return markets;
   }
 
   /**
@@ -188,12 +195,18 @@ export class PnpPredictionService {
 
   /**
    * Get trending markets (high volume)
+   * Note: For client-side use, prefer using Convex-cached markets instead.
    */
   async getTrendingMarkets(limit: number = 10): Promise<PredictionMarket[]> {
-    const markets = await this.dflow.getOpenMarkets();
-    return markets
-      .sort((a, b) => b.volume24h - a.volume24h)
-      .slice(0, limit);
+    try {
+      const markets = await this.dflow.getOpenMarkets();
+      return markets
+        .sort((a, b) => b.volume24h - a.volume24h)
+        .slice(0, limit);
+    } catch (error) {
+      console.warn("[PNP] Failed to fetch trending markets from DFlow:", error);
+      return [];
+    }
   }
 
   // ==========================================================================

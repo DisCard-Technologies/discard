@@ -18,6 +18,7 @@ config.resolver.sourceExts = [...config.resolver.sourceExts, 'cjs'];
 config.resolver.extraNodeModules = {
   crypto: require.resolve('expo-crypto'),
   buffer: require.resolve('buffer'),
+  fs: require.resolve('./shims/fs.js'),
 };
 
 // Disable package exports for problematic packages (rpc-websockets, @noble/hashes)

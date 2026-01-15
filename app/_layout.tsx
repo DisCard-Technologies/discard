@@ -22,26 +22,8 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 const convexUrl = process.env.EXPO_PUBLIC_CONVEX_URL;
 const convex = convexUrl ? new ConvexReactClient(convexUrl) : null;
 
-// One-time cleanup for corrupted credentials (temporary migration fix)
-async function cleanupCorruptedCredentials(): Promise<void> {
-  if (Platform.OS === 'web') return;
-  try {
-    const storedUserId = await SecureStore.getItemAsync('discard_user_id');
-    // If the userId exists but causes "table name" validation errors,
-    // it's likely from a different table (e.g., fundingTransactions)
-    // Clear it to force re-authentication
-    if (storedUserId && storedUserId.startsWith('k')) {
-      // Convex IDs start with table-specific prefixes
-      // Users table IDs should start with 'm' in most deployments
-      // If we see a 'k' prefix, it might be from fundingTransactions
-      console.warn('[Layout] Detected potentially corrupted userId, clearing:', storedUserId.substring(0, 8));
-      await SecureStore.deleteItemAsync('discard_user_id');
-      await SecureStore.deleteItemAsync('discard_credential_id');
-    }
-  } catch (e) {
-    console.error('[Layout] Error during credential cleanup:', e);
-  }
-}
+// Note: Previous migration cleanup removed - Convex IDs can start with any letter
+// The 'k' prefix check was incorrectly clearing valid user IDs
 
 export const unstable_settings = {
   anchor: '(tabs)',
@@ -104,11 +86,9 @@ export default function RootLayout() {
     'JetBrainsMono-Regular': require('../assets/fonts/JetBrainsMono-Regular.ttf'),
   });
 
-  // Run credential cleanup before mounting providers
+  // Mark app ready once fonts are loaded
   useEffect(() => {
-    cleanupCorruptedCredentials().then(() => {
-      setIsReady(true);
-    });
+    setIsReady(true);
   }, []);
 
   // Show loading screen while cleanup runs or fonts load

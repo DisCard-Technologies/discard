@@ -24,7 +24,10 @@ import type {
   DFlowOutcomeToken,
 } from "@/types/holdings.types";
 
-const DFLOW_API_BASE_URL = "https://api.pond.dflow.net/api/v1";
+// DFlow API endpoints (updated January 2025)
+// Note: API key should be kept server-side, use Convex actions for authenticated calls
+const DFLOW_PREDICTION_API_URL = "https://b.prediction-markets-api.dflow.net";
+const DFLOW_QUOTE_API_URL = "https://b.quote-api.dflow.net";
 const DFLOW_WS_URL = "wss://ws.pond.dflow.net";
 
 export interface DFlowConfig {
@@ -75,7 +78,8 @@ type PriceUpdateCallback = (
 ) => void;
 
 export class DFlowClient {
-  private baseUrl: string;
+  private predictionApiUrl: string;
+  private quoteApiUrl: string;
   private wsUrl: string;
   private timeout: number;
   private headers: Record<string, string>;
@@ -87,12 +91,13 @@ export class DFlowClient {
   private globalPriceCallback: PriceUpdateCallback | null = null;
 
   constructor(config: DFlowConfig = {}) {
-    this.baseUrl = DFLOW_API_BASE_URL;
+    this.predictionApiUrl = DFLOW_PREDICTION_API_URL;
+    this.quoteApiUrl = DFLOW_QUOTE_API_URL;
     this.wsUrl = DFLOW_WS_URL;
     this.timeout = config.timeout ?? 15000;
     this.headers = {
       "Content-Type": "application/json",
-      ...(config.apiKey && { Authorization: `Bearer ${config.apiKey}` }),
+      ...(config.apiKey && { "x-api-key": config.apiKey }),
     };
   }
 
@@ -306,7 +311,7 @@ export class DFlowClient {
     const timeoutId = setTimeout(() => controller.abort(), this.timeout);
 
     try {
-      const response = await fetch(`${this.baseUrl}${endpoint}`, {
+      const response = await fetch(`${this.predictionApiUrl}${endpoint}`, {
         ...options,
         headers: { ...this.headers, ...options?.headers },
         signal: controller.signal,
@@ -416,9 +421,14 @@ export class DFlowClient {
 // Singleton instance
 let dflowClientInstance: DFlowClient | null = null;
 
+// Note: DFLOW_API_KEY should only be used server-side (Convex actions)
+// Client-side calls will work without key for public endpoints
+const DFLOW_API_KEY = process.env.DFLOW_API_KEY;
+
 export function getDFlowClient(config?: DFlowConfig): DFlowClient {
   if (!dflowClientInstance) {
-    dflowClientInstance = new DFlowClient(config);
+    const apiKey = config?.apiKey || DFLOW_API_KEY;
+    dflowClientInstance = new DFlowClient({ ...config, apiKey });
   }
   return dflowClientInstance;
 }

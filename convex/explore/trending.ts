@@ -214,8 +214,8 @@ export const refreshTrendingTokens = action({
         name: string;
         icon?: string;
         usdPrice?: number;
-        marketCap?: number;
-        fdv?: number; // fully diluted valuation (fallback for marketCap)
+        mcap?: number; // Jupiter API uses "mcap" not "marketCap"
+        fdv?: number; // fully diluted valuation (fallback for mcap)
         isVerified?: boolean;
         organicScore?: number;
         tags?: string[];
@@ -231,7 +231,7 @@ export const refreshTrendingTokens = action({
         priceUsd: token.usdPrice ?? 0,
         change24h: token.stats24h?.priceChange ?? 0,
         volume24h: (token.stats24h?.buyVolume ?? 0) + (token.stats24h?.sellVolume ?? 0),
-        marketCap: token.marketCap ?? token.fdv,
+        marketCap: token.mcap ?? token.fdv,
         logoUri: token.icon,
         verified: token.isVerified ?? token.tags?.includes("verified") ?? false,
         organicScore: token.organicScore,
@@ -484,5 +484,72 @@ export const clearAllCaches = mutation({
       trendingDeleted: trending.length,
       marketsDeleted: markets.length,
     };
+  },
+});
+
+// ============================================================================
+// Token Price API (Jupiter Price V3)
+// ============================================================================
+
+const JUPITER_PRICE_API = "https://api.jup.ag/price/v3";
+
+/**
+ * Fetch token prices from Jupiter Price API V3
+ * This keeps the API key server-side
+ */
+export const getTokenPrices = action({
+  args: {
+    mints: v.array(v.string()),
+  },
+  handler: async (_ctx, args) => {
+    const JUPITER_API_KEY = process.env.JUPITER_API_KEY;
+    if (!JUPITER_API_KEY) {
+      console.warn("[Jupiter] API key not configured, returning default prices");
+      return args.mints.reduce(
+        (acc, mint) => ({ ...acc, [mint]: { price: 1.0, change24h: 0 } }),
+        {} as Record<string, { price: number; change24h: number }>
+      );
+    }
+
+    try {
+      const ids = args.mints.join(",");
+      const response = await fetch(`${JUPITER_PRICE_API}?ids=${ids}`, {
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": JUPITER_API_KEY,
+        },
+      });
+
+      if (!response.ok) {
+        console.error(`[Jupiter] Price API error: ${response.status}`);
+        return args.mints.reduce(
+          (acc, mint) => ({ ...acc, [mint]: { price: 1.0, change24h: 0 } }),
+          {} as Record<string, { price: number; change24h: number }>
+        );
+      }
+
+      const data = await response.json();
+      const prices: Record<string, { price: number; change24h: number }> = {};
+
+      for (const mint of args.mints) {
+        const tokenData = data[mint];
+        if (tokenData) {
+          prices[mint] = {
+            price: tokenData.usdPrice ?? 1.0,
+            change24h: tokenData.priceChange24h ?? 0,
+          };
+        } else {
+          prices[mint] = { price: 1.0, change24h: 0 };
+        }
+      }
+
+      return prices;
+    } catch (error) {
+      console.error("[Jupiter] Price fetch error:", error);
+      return args.mints.reduce(
+        (acc, mint) => ({ ...acc, [mint]: { price: 1.0, change24h: 0 } }),
+        {} as Record<string, { price: number; change24h: number }>
+      );
+    }
   },
 });

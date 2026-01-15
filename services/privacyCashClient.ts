@@ -71,7 +71,8 @@ export type ConvexActionExecutor = {
 
 // Privacy Cash Shielded Pool address (mainnet)
 // This is the destination for all auto-shield operations
-const PRIVACY_CASH_POOL_ADDRESS = process.env.EXPO_PUBLIC_PRIVACY_CASH_POOL || "PCashPool111111111111111111111111111111111";
+// Placeholder uses valid base58 chars (no 0, O, I, l)
+const PRIVACY_CASH_POOL_ADDRESS = process.env.EXPO_PUBLIC_PRIVACY_CASH_POOL || "PCash11111111111111111111111111111111111111";
 
 // USDC mint on Solana mainnet
 const USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
@@ -767,7 +768,7 @@ export class PrivacyCashService {
   isAvailable(): boolean {
     try {
       const hasConnection = !!this.connection;
-      const hasPoolAddress = this.poolAddress.toBase58() !== "PCashPool111111111111111111111111111111111";
+      const hasPoolAddress = this.poolAddress.toBase58() !== "PCash11111111111111111111111111111111111111";
       const hasCryptoLibs = typeof sha256 !== "undefined" && typeof nacl !== "undefined";
 
       if (!hasConnection || !hasCryptoLibs) {
