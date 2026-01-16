@@ -1,124 +1,280 @@
 # DisCard
 
-> Intent-Centric Super Wallet with Virtual Global Card and AI Co-Pilot
+> Privacy-First Intent-Centric Super Wallet with Virtual Global Cards and AI Co-Pilot
 
-DisCard is a mobile-first crypto wallet that combines disposable virtual debit cards with DeFi trading capabilities. Powered by conversational AI, users interact through natural language—describe what you want ("swap 50 USDC for SOL", "create a card with $100 limit") and the system parses your intent, clarifies ambiguity, and executes complex multi-step operations automatically.
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Built with Expo](https://img.shields.io/badge/Built%20with-Expo-blue)](https://expo.dev)
+[![Convex](https://img.shields.io/badge/Backend-Convex-orange)](https://convex.dev)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue)](https://typescriptlang.org)
 
-**Key capabilities:**
-- **Human Language Interface**: Conversational intent parsing with clarification flows for ambiguous commands
-- **Dual AI Security**: Two LLMs in Phala TEE—"Brain" (orchestrator) parses intents, "Soul" (your financial persona) executes—each validates the other
-- **Auto-Yield on Idle Funds**: Automatically deploy unused balances to DeFi protocols, withdraw seamlessly when needed
-- **Instant Virtual Cards**: Disposable debit cards with crypto funding, self-healing on breach detection
-- **MEV-Protected Trading**: Jupiter DEX integration with DFlow order flow for best execution
+DisCard is a mobile-first crypto wallet that combines disposable virtual debit cards with DeFi trading capabilities. Powered by conversational AI, users interact through natural language - describe what you want and the system parses your intent, clarifies ambiguity, and executes complex multi-step operations automatically.
+
+**Advanced tech, simple experience.** Despite sophisticated privacy tech (ZK proofs, MPC encryption, confidential transactions), DisCard abstracts complexity through AI and intuitive design—making it accessible to crypto newcomers and power users alike.
+
+![DisCard Home Screen](assets/discard-mobile-homescreen.png)
+
+## Key Capabilities
+
+### AI-Powered Interface
+- **Natural Language Commands**: Just describe what you want. No crypto jargon required
+- **Dual AI Security**: Two LLMs in Phala TEE - "Brain" (orchestrator) parses intents, "Soul" (your financial persona) executes - each validates the other
+- **Smart Disambiguation**: Handles ambiguous commands with contextual follow-up questions
+- **Guided Flows**: Step-by-step assistance for complex operations, explanations when you need them
+
+### Privacy by Default
+- **Private Deposits**: Auto-shield funds via single-use addresses. No link between KYC and spending
+- **Private Cashout**: Unshield to fresh addresses with zero transaction history
+- **Private P2P**: Zero-knowledge proof transfers via ShadowWire
 - **ZK-Compressed State**: Light Protocol for privacy-preserving wallet state on Solana
+
+### Instant Virtual Cards
+- **Disposable Cards**: Generate virtual debit and prepaid cards in seconds with crypto funding
+- **Self-Healing**: Automatic card reissue when breach detected
+- **Cryptographic Isolation**: No cross-card correlation possible
+- **Real-time Fraud Detection**: Sub-800ms transaction analysis with 5 anomaly algorithms
+
+### DeFi Native
+- **Auto-Yield**: Idle funds automatically deployed to DeFi protocols, withdrawn seamlessly when needed
+- **MEV-Protected Trading**: Jupiter DEX integration with DFlow order flow for best execution
+- **Confidential Swaps**: Encrypted order execution via Anoncoin
+- **Prediction Markets**: Private betting with encrypted amounts via PNP Exchange
+
+## Design Philosophy
+
+**You don't need to understand crypto to use it.**
+
+DisCard packs sophisticated technology under the hood, but the AI co-pilot translates your intent into action:
+
+| You say... | DisCard handles... |
+|------------|-------------------|
+| "Deposit $100" | MoonPay KYC, single-use address generation, auto-shielding to privacy pool |
+| "Send $50 to Alice privately" | ZK-proof generation, ShadowWire transfer, recipient notification |
+| "Create a travel card" | Virtual card creation, cryptographic isolation, fraud monitoring setup |
+| "Swap my USDC for SOL" | Jupiter routing, MEV protection, DFlow order flow, slippage management |
+
+**Built for everyone:**
+- **Crypto newcomers**: Natural language interface, no jargon, guided flows that explain as they go
+- **Power users**: Full control when you want it, advanced features accessible via commands
+- **Developers**: Open architecture, extensible plugins, comprehensive API
 
 ## Features
 
-### Core Features
-- **Intent-Centric UI**: Natural language command bar with conversational clarification
-- **Dual AI Validation**: Brain orchestrates, Soul executes—mutual verification in Phala TEE
-- **Auto-Yield**: Idle funds automatically deployed to DeFi, withdrawn on-demand
-- **Instant Card Creation**: Generate virtual debit cards in seconds
-- **Crypto Funding**: Support for SOL, USDC, and major Solana tokens
-- **Privacy-First**: Cards with cryptographic isolation, no cross-card correlation
-- **Self-Healing Cards**: Automatic reissue when breach detected
+### AI & Intent
 
-### Funding Options
-- **Card Payments**: Fund via Stripe with credit/debit cards
-- **MoonPay On-Ramp**: Buy crypto with card/bank and auto-convert to USD
-- **Virtual IBAN**: Direct bank deposits via dedicated IBAN (EU/UK transfers)
-- **Crypto Wallets**: Fund from connected ETH/SOL wallets
-- **DeFi Yield**: Withdraw from Aave, Compound, and other yield positions
+| Feature | Description |
+|---------|-------------|
+| **Command Bar** | Natural language interface for all wallet operations |
+| **Intent Parsing** | LLM-powered understanding of financial commands |
+| **Dual AI Validation** | Brain + Soul mutual verification in Phala TEE |
+| **Conversational Flows** | Multi-turn clarification for ambiguous requests |
 
-### Trading & Portfolio
-- **Jupiter DEX Integration**: Token exploration with real-time prices and images
-- **DFlow Order Flow**: MEV-protected swaps with best execution
-- **Holdings Dashboard**: Portfolio tracking across all connected wallets
-- **Transaction History**: Full audit trail with status tracking
+### Privacy
 
-### Security & Fraud Prevention
-- **Real-time Fraud Detection**: Sub-800ms transaction analysis with 5 anomaly algorithms
-- **Passkey Authentication**: WebAuthn with P-256 keys, no passwords
-- **Automated Card Freezing**: Instant security response via Marqeta
-- **Risk Scoring**: Velocity, amount, location, time, and merchant analysis
+| Feature | Technology | Integration |
+|---------|------------|-------------|
+| **Private Deposits** | Auto-shield via single-use addresses | Privacy Cash + Turnkey |
+| **Private Cashout** | Unshield to zero-history addresses | Privacy Cash + Turnkey |
+| **Private P2P** | Zero-knowledge proof transfers | ShadowWire (Radr Labs) |
+| **ZK State** | Compressed wallet state | Light Protocol |
+| **Private Identity** | ZK credential proofs | Aztec + Arcium |
+| **Selective Disclosure** | Prove "over 21" without revealing birthdate | Aztec Noir circuits |
+| **Encrypted Credentials** | MPC-encrypted vault hides what verifications you have | Arcium MXE |
+| **One-Time Payment Links** | Disposable payment URLs that expire after single claim | Convex + Solana Pay |
+| **Confidential Balances** | Token-2022 confidential transfers | SPL Token Wrap |
+| **Privacy Payments** | Alternative privacy-focused payment rails | Starpay |
 
-### Compliance
-- **AML Monitoring**: Privacy-preserving anti-money laundering
-- **KYC Integration**: Minimal data collection with document verification
-- **Transaction Isolation**: Database-level separation preventing correlation
+### Cards & Payments
+
+| Feature | Description |
+|---------|-------------|
+| **Instant Card Creation** | Generate virtual Visa cards in seconds |
+| **Crypto Funding** | Support for SOL, USDC, and major Solana tokens |
+| **Self-Healing Cards** | Automatic reissue when breach detected |
+| **Fraud Detection** | 5-algorithm analysis in sub-800ms |
+| **MoonPay On-Ramp** | Buy crypto with card/bank, auto-convert to USDC |
+
+### Identity & Verification
+
+| Feature | Description | Integration |
+|---------|-------------|-------------|
+| **KYC Verification** | Identity verification with document + liveness checks | Civic |
+| **DID Documents** | Decentralized identity anchored on Solana | DID:SOL |
+| **Attestations** | Verifiable credentials (age, residency, accreditation) | Civic + Custom |
+| **Biometric Auth** | Face/fingerprint verification for sensitive operations | Device biometrics |
+| **Identity Recovery** | Social recovery with trusted guardians | Turnkey |
+| **Selective Disclosure** | Prove claims without revealing underlying data | Aztec Noir |
+| **Encrypted Storage** | Credentials stored in MPC-encrypted vault | Arcium MXE |
+
+**Identity Flow:**
+1. **Verify once** → Complete KYC via Civic (documents + liveness)
+2. **Store privately** → Attestations encrypted in Arcium vault
+3. **Prove selectively** → Generate ZK proofs for specific claims ("I'm over 21", "I'm not sanctioned")
+4. **Control access** → You decide what to share, with whom, and when
+
+### DeFi & Trading
+
+| Feature | Technology | Integration |
+|---------|------------|-------------|
+| **Token Swaps** | MEV-protected execution | Jupiter + DFlow |
+| **Confidential Swaps** | Encrypted order amounts | Anoncoin |
+| **Auto-Yield** | Idle fund deployment | DeFi protocols |
+| **Shielded Yield** | MPC-encrypted positions | Arcium |
+| **Prediction Markets** | Private bet amounts | PNP Exchange |
+| **RWA Purchases** | Private tokenized assets | Anoncoin + Arcium |
 
 ## Architecture
 
 ```
 discard/
-├── app/                    # Expo Router screens
-│   ├── (tabs)/             # Main tabbed screens
-│   │   ├── index.tsx       # Home/Dashboard
-│   │   ├── card.tsx        # Cards management + creation
-│   │   ├── holdings.tsx    # Asset holdings & portfolio
-│   │   └── transfer.tsx    # Send/receive transfers
-│   ├── auth.tsx            # Passkey authentication
-│   ├── buy-crypto.tsx      # MoonPay integration
-│   ├── sell-crypto.tsx     # Crypto off-ramp
-│   ├── history.tsx         # Transaction history
-│   ├── identity.tsx        # KYC flow
-│   └── settings.tsx        # App settings
-├── components/             # React Native UI components
-│   ├── command-bar.tsx     # Natural language command interface
-│   ├── explore-view.tsx    # Token exploration with Jupiter data
-│   ├── market-detail-screen.tsx
-│   ├── token-detail-screen.tsx
-│   └── ui/                 # Shared UI components
-├── convex/                 # Backend (serverless functions + DB)
-│   ├── schema.ts           # Database schema (13 tables)
-│   ├── auth/               # Passkey authentication
-│   ├── cards/              # Card management + Marqeta API
-│   ├── funding/            # Stripe + crypto funding
-│   ├── intents/            # Claude AI intent parsing
-│   ├── fraud/              # Fraud detection engine
-│   ├── bridge/             # Turnkey integrations
-│   ├── http.ts             # Webhook handlers
-│   └── crons.ts            # Scheduled jobs
-├── services/               # External API clients
-│   ├── jupiterTokensClient.ts  # Jupiter token data
-│   ├── jupiterUltraClient.ts   # Jupiter DEX swaps
-│   ├── dflowClient.ts      # DFlow protocol integration
-│   ├── dflowSwapClient.ts  # DFlow swap execution
-│   └── brainClient.ts      # AI orchestrator
-├── programs/               # Solana smart contracts (Anchor)
-│   ├── discard-state/      # ZK compressed card state PDAs
-│   ├── discard-hooks/      # Token-2022 transfer hooks
-│   └── merchant-registry/  # On-chain merchant validation
-├── packages/               # elizaOS plugins
-│   ├── plugin-financial-armor/  # Turnkey bridging + TEE
-│   └── plugin-brain-orchestrator/  # Intent parsing + planning
-├── hooks/                  # Convex data subscription hooks
-├── stores/                 # State management
-├── lib/                    # Utilities (passkeys, etc.)
-├── assets/                 # Icons, images, splash screens
-└── docs/                   # Architecture documentation
++-- app/                    # Expo Router screens
+|   +-- (tabs)/             # Main tabbed screens
+|   |   +-- index.tsx       # Home/Dashboard
+|   |   +-- card.tsx        # Cards management + creation
+|   |   +-- holdings.tsx    # Asset holdings & portfolio
+|   |   +-- transfer.tsx    # Send/receive transfers
+|   +-- auth.tsx            # Passkey authentication
+|   +-- buy-crypto.tsx      # MoonPay integration
+|   +-- sell-crypto.tsx     # Crypto off-ramp
+|   +-- history.tsx         # Transaction history
+|   +-- identity.tsx        # KYC flow
+|   +-- settings.tsx        # App settings
++-- components/             # React Native UI components
+|   +-- command-bar.tsx     # Natural language command interface
+|   +-- explore-view.tsx    # Token exploration with Jupiter data
+|   +-- market-detail-screen.tsx
+|   +-- token-detail-screen.tsx
+|   +-- ui/                 # Shared UI components
++-- convex/                 # Backend (serverless functions + DB)
+|   +-- schema.ts           # Database schema (13 tables)
+|   +-- auth/               # Passkey authentication
+|   +-- cards/              # Card management + Marqeta API
+|   +-- funding/            # Stripe + crypto funding
+|   +-- intents/            # AI intent parsing
+|   +-- fraud/              # Fraud detection engine
+|   +-- privacy/            # Privacy Cash integration
+|   +-- bridge/             # Turnkey integrations
+|   +-- http.ts             # Webhook handlers
+|   +-- crons.ts            # Scheduled jobs
++-- services/               # External API clients
+|   +-- jupiterTokensClient.ts  # Jupiter token data
+|   +-- jupiterUltraClient.ts   # Jupiter DEX swaps
+|   +-- dflowClient.ts      # DFlow protocol integration
+|   +-- dflowSwapClient.ts  # DFlow swap execution
+|   +-- privacyCashClient.ts    # Privacy Cash shielding
+|   +-- shadowWireClient.ts     # ShadowWire P2P
+|   +-- arciumYieldClient.ts    # Arcium yield vaults
+|   +-- brainClient.ts      # AI orchestrator
++-- programs/               # Solana smart contracts (Anchor)
+|   +-- discard-state/      # ZK compressed card state PDAs
+|   +-- discard-hooks/      # Token-2022 transfer hooks
+|   +-- merchant-registry/  # On-chain merchant validation
++-- packages/               # elizaOS plugins
+|   +-- plugin-financial-armor/  # Turnkey bridging + TEE
+|   +-- plugin-brain-orchestrator/  # Intent parsing + planning
++-- hooks/                  # Convex data subscription hooks
++-- stores/                 # State management
++-- lib/                    # Utilities (passkeys, etc.)
++-- assets/                 # Icons, images, splash screens
++-- docs/                   # Architecture documentation
+```
+
+## Privacy Architecture
+
+```
++-------------------------------------------------------------+
+|  DISCARD PRIVACY ARCHITECTURE                               |
++-------------------------------------------------------------+
+|                                                             |
+|  DEPOSITS (MoonPay -> Shielded Balance)                     |
+|  +-- Turnkey: Single-use deposit addresses (non-custodial)  |
+|  +-- Privacy Cash: Auto-shield pool                         |
+|  +-- Result: No link between KYC and wallet                 |
+|                                                             |
+|  CASHOUT (Shielded Balance -> Bank Account)                 |
+|  +-- Privacy Cash: Unshield to single-use address           |
+|  +-- Turnkey: Fresh address with zero history               |
+|  +-- MoonPay: Receives from clean address                   |
+|  +-- Result: No wallet history exposed to off-ramp          |
+|                                                             |
+|  P2P TRANSFERS (User -> User)                               |
+|  +-- ShadowWire: ZK-proof private transfers                 |
+|  +-- Result: No link between sender and receiver            |
+|                                                             |
+|  SPENDING (Shielded Balance -> Cards/Swaps/Bets/RWA)        |
+|  +-- Light Protocol: ZK-compressed card state               |
+|  +-- Anoncoin: Confidential swaps + RWA purchases           |
+|  +-- PNP Exchange: Private prediction bets                  |
+|  +-- Arcium: Confidential yield vaults + RWA storage        |
+|                                                             |
+|  IDENTITY (Private Credentials)                             |
+|  +-- Aztec Noir: ZK proofs for credential claims            |
+|  +-- Arcium: MPC-encrypted credential storage               |
+|  +-- Result: Prove verification without revealing identity  |
+|                                                             |
+|  COMPLIANCE                                                 |
+|  +-- Range: Wallet screening before transfers               |
+|  +-- Result: OFAC compliant, privacy preserved              |
+|                                                             |
+|  COMPLETE PRIVACY LOOP:                                     |
+|  Deposit (Address A) -> Shield -> Activity -> Unshield (B)  |
+|       +------------------ NO CORRELATION ------------------+|
+|                                                             |
++-------------------------------------------------------------+
 ```
 
 ## Tech Stack
 
-- **Frontend**: React Native 0.81, Expo 54, TypeScript 5.9
-- **Backend**: Convex (real-time database + serverless functions)
-- **Authentication**: WebAuthn Passkeys (react-native-passkey + Turnkey SDK)
-- **AI**: Dual LLM in Phala TEE (Brain + Soul) via elizaOS plugins
-- **Card Issuing**: Marqeta JIT Funding
-- **Payments**: Stripe for fiat funding
-- **Crypto On-Ramp**: MoonPay for crypto purchases
-- **Banking**: Stripe Treasury for virtual IBANs
-- **Blockchain**: Solana (@solana/web3.js v1.98)
-- **DEX Integration**: Jupiter (token data + swaps)
-- **Order Flow**: DFlow protocol for MEV-protected trades
-- **ZK Compression**: Light Protocol (compressed tokens + PDAs)
-- **Smart Contracts**: Anchor Framework (Token-2022 hooks)
+### Frontend
+- **React Native 0.81** + **Expo 54** - Cross-platform mobile app
+- **Expo Router** - File-based navigation
+- **TypeScript 5.9** - Type-safe development
 
-## Getting Started
+### Backend
+- **Convex** - Real-time database + serverless functions
+- **Turnkey** - Non-custodial wallet infrastructure
+- **Helius** - Solana RPC + webhooks
+
+### AI Layer
+- **Dual LLM in Phala TEE** - Brain + Soul via elizaOS plugins
+- **LLM** - Intent parsing, planning and analysis
+- **WebAuthn Passkeys** - Hardware-bound authentication
+
+### Privacy Layer
+- **Privacy Cash** - Shielded deposit/cashout pool
+- **ShadowWire** - ZK-proof P2P transfers
+- **Light Protocol** - ZK state compression
+- **Anoncoin** - Confidential token swaps
+- **Arcium** - MPC-encrypted DeFi + credential storage
+- **Aztec** - Noir ZK circuits for private identity proofs + selective disclosure
+- **Token-2022** - Confidential transfers via SPL Token Wrap
+- **Starpay** - Privacy-focused payment rails
+- **Solana Pay** - One-time payment links
+
+### DeFi & Trading
+- **Jupiter** - DEX aggregation and swaps
+- **DFlow** - MEV-protected order flow
+- **PNP Exchange** - Private prediction markets
+
+### Payments & Cards
+- **Marqeta** - Virtual card issuing (JIT Funding)
+- **MoonPay** - Fiat on/off-ramp
+- **Stripe** - Fiat funding + Treasury for IBANs (direct deposit)
+
+### Identity
+- **Civic** - KYC verification + attestations
+- **DID:SOL** - Decentralized identity on Solana
+
+### Compliance
+- **Range** - Wallet screening + OFAC compliance
+
+### Blockchain
+- **Solana** - @solana/web3.js v1.98
+- **Anchor** - Smart contract framework
+- **Token-2022** - Transfer hooks for policy enforcement
+
+## Quick Start
 
 ### Prerequisites
-
 - Node.js 18+
 - Expo CLI (`npm install -g expo-cli`)
 - Convex CLI (`npm install -g convex`)
@@ -128,11 +284,15 @@ discard/
 
 ```bash
 # Clone the repository
-git clone https://github.com/Braze76/discard.git
+git clone https://github.com/YOUR_ORG/discard.git
 cd discard
 
 # Install dependencies
 npm install
+
+# Copy environment variables
+cp .env.example .env.local
+# Edit .env.local with your API keys
 
 # Start Convex development server
 npx convex dev
@@ -141,13 +301,52 @@ npx convex dev
 npm start
 ```
 
-### Environment Setup
+### Development Build (Required for Turnkey)
 
-Copy `.env.example` to `.env` and configure:
+Turnkey passkeys require native modules not available in Expo Go:
 
 ```bash
-# Required
+# Create development build
+npx expo prebuild
+
+# Run on iOS
+npx expo run:ios
+
+# Run on Android
+npx expo run:android
+```
+
+### Environment Variables
+
+```env
+# Convex
+CONVEX_DEPLOYMENT=your_deployment
 EXPO_PUBLIC_CONVEX_URL=https://your-deployment.convex.cloud
+
+# Turnkey (Non-custodial wallets)
+TURNKEY_ORGANIZATION_ID=your_org_id
+TURNKEY_API_PRIVATE_KEY=your_private_key
+TURNKEY_API_PUBLIC_KEY=your_public_key
+EXPO_PUBLIC_TURNKEY_RP_ID=your_domain
+
+# MoonPay (Fiat on-ramp)
+MOONPAY_API_KEY=your_api_key
+MOONPAY_SECRET_KEY=your_secret_key
+EXPO_PUBLIC_MOONPAY_API_KEY=your_public_key
+
+# Privacy Cash
+PRIVACY_CASH_API_KEY=your_api_key
+PRIVACY_CASH_POOL_ADDRESS=pool_address
+
+# ShadowWire
+SHADOWWIRE_API_KEY=your_api_key
+
+# Helius (RPC)
+HELIUS_API_KEY=your_api_key
+HELIUS_RPC_URL=your_rpc_url
+
+# Range (Compliance)
+RANGE_API_KEY=your_api_key
 
 # Card Issuing (Marqeta)
 MARQETA_BASE_URL=https://sandbox-api.marqeta.com/v3
@@ -158,137 +357,115 @@ MARQETA_ACCESS_TOKEN=your_token
 STRIPE_SECRET_KEY=sk_test_...
 STRIPE_WEBHOOK_SECRET=whsec_...
 
-# MoonPay (Crypto On-Ramp)
-MOONPAY_API_KEY=pk_test_...
-MOONPAY_SECRET_KEY=sk_test_...
-MOONPAY_WEBHOOK_SECRET=your_secret
-
-# Virtual IBAN
-IBAN_PROVIDER=stripe_treasury
-
-# AI (Anthropic)
-ANTHROPIC_API_KEY=your_key
+# AI (Phala Redpill)
+REDPILL_API_KEY=your_key
 
 # Blockchain
 SOLANA_RPC_URL=https://api.mainnet-beta.solana.com
-```
-
-## Convex Backend
-
-### Schema (13 Tables)
-
-| Table | Purpose |
-|-------|---------|
-| `users` | Passkey credentials, KYC status |
-| `intents` | Command bar entries, AI parsing results |
-| `cards` | Virtual cards with Marqeta tokens |
-| `wallets` | Connected crypto wallets |
-| `authorizations` | Payment authorizations |
-| `authorizationHolds` | Reserved funds |
-| `fraud` | Fraud analysis results |
-| `defi` | DeFi positions for yield funding |
-| `compliance` | KYC documents |
-| `fundingTransactions` | Money movement records |
-| `cryptoRates` | Cached crypto prices |
-| `virtualIbans` | User-dedicated IBANs for bank deposits |
-| `moonpayTransactions` | Crypto on-ramp transaction tracking |
-
-### Cron Jobs
-
-| Job | Schedule | Purpose |
-|-----|----------|---------|
-| `expireHolds` | Every 5 min | Release expired authorization holds |
-| `syncDefi` | Every 15 min | Sync DeFi positions |
-| `syncRates` | Every 1 min | Update crypto prices |
-| `selfHealingCheck` | Hourly | Check breach databases |
-| `cleanupSessions` | Daily | Remove expired wallet sessions |
-| `cleanupMetrics` | Weekly | Purge old fraud records |
-
-### HTTP Endpoints
-
-| Endpoint | Purpose |
-|----------|---------|
-| `POST /webhooks/marqeta/authorization` | Marqeta JIT authorization (sub-800ms) |
-| `POST /webhooks/marqeta/transactions` | Marqeta transaction events |
-| `POST /webhooks/stripe` | Stripe payment webhooks |
-| `POST /webhooks/moonpay` | MoonPay crypto purchase events |
-| `POST /webhooks/iban` | Virtual IBAN deposit notifications |
-| `GET /health` | Health check endpoint |
-
-## Solana Programs
-
-On-chain smart contracts built with Anchor Framework:
-
-| Program | Purpose |
-|---------|---------|
-| `discard-state` | ZK-compressed card state using Light Protocol PDAs |
-| `discard-hooks` | Token-2022 transfer hooks for policy enforcement |
-| `merchant-registry` | On-chain merchant validation and whitelist management |
-
-## External Services
-
-Client integrations in `services/`:
-
-| Service | Purpose |
-|---------|---------|
-| `jupiterTokensClient` | Token metadata, prices, and images from Jupiter API |
-| `jupiterUltraClient` | DEX swap routing and execution |
-| `dflowClient` | DFlow protocol for MEV-protected order flow |
-| `dflowSwapClient` | Swap execution through DFlow auctions |
-| `brainClient` | AI orchestrator communication |
-
-## Scripts
-
-```bash
-# Development
-npm start              # Start Expo
-npx convex dev         # Start Convex dev server
-
-# Testing
-npm test               # Run Jest tests
-npm run type-check     # TypeScript check
-
-# Deployment
-npx convex deploy      # Deploy Convex to production
 ```
 
 ## Intent Examples
 
 The command bar understands natural language:
 
+**Cards & Payments**
 - "Create a card with $50 limit"
-- "Fund my travel card with $100 from Aave"
-- "Transfer $25 from shopping to groceries card"
+- "Fund my travel card with $100"
 - "Freeze my Amazon card"
 - "What's my total balance across all cards?"
+
+**Deposits & Withdrawals**
+- "Deposit $100" - Private deposit via MoonPay
+- "Withdraw $50 to bank" - Private cashout
 - "Top up $200 with MoonPay"
 - "Show me my IBAN for bank transfers"
-- "Buy $100 of ETH and add to my account"
-- "Swap 50 USDC for SOL"
+
+**Transfers & P2P**
+- "Send $25 to @alice privately"
+- "Transfer $50 from shopping to groceries card"
+
+**Trading & DeFi**
+- "Swap 100 USDC for SOL"
 - "Show me trending tokens"
+- "Buy $100 of ETH"
+- "Buy $1000 USDY privately" - Private RWA purchase
+
+**Predictions**
+- "Bet $10 on SOL hitting $300"
+
+## Sponsor Integrations
+
+DisCard integrates with the following sponsors and technologies:
+
+| Category | Sponsor | Integration |
+|----------|---------|-------------|
+| **Private Payments** | Privacy Cash | Deposit shielding + cashout unshielding |
+| **Private P2P** | Radr Labs (ShadowWire) | Zero-knowledge proof transfers |
+| **Private Swaps** | Anoncoin | Confidential swap execution + RWA purchases |
+| **Private DeFi** | Arcium | Shielded yield vaults + encrypted credential storage |
+| **Private Identity** | Aztec | Noir ZK proofs for selective disclosure |
+| **ZK Compression** | Light Protocol | Compressed wallet state on Solana |
+| **Compliance** | Range | Wallet screening + OFAC compliance |
+| **RPC Infrastructure** | Helius | Solana RPC + webhooks |
+| **Wallet Infrastructure** | Turnkey | Non-custodial passkey wallets |
+| **Prediction Markets** | PNP Exchange | Private prediction bets |
+| **Privacy Payment Rails** | Starpay | Alternative privacy-focused payments + DeFi |
+| **Confidential Tokens** | Token-2022 | SPL Token Wrap for confidential balances |
+| **Identity Verification** | Civic | KYC, attestations, liveness checks |
 
 ## Security
 
-- **Passkeys**: Hardware-bound keys via Secure Enclave / StrongBox
-- **No Passwords**: Biometric authentication only
-- **Encryption**: All sensitive data encrypted at rest
-- **Isolation**: Cryptographic card context prevents correlation
-- **Real-time Monitoring**: Sub-second fraud detection
+- **Non-custodial**: User controls all keys via passkey
+- **Dual AI Validation**: Brain + Soul mutual verification prevents single point of failure
+- **Policy-limited**: Session keys restricted to specific actions
+- **Audited dependencies**: Privacy Cash, ShadowWire, Light Protocol
+- **Compliant**: Range wallet screening for OFAC
+- **Hardware-bound keys**: Via Secure Enclave / StrongBox
+- **No passwords**: Biometric authentication only
+- **Real-time monitoring**: Sub-second fraud detection
+
+For security issues, email security@discard.app (do not open public issues).
+
+## Contributing
+
+We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ## License
 
-MIT
+MIT License - see [LICENSE](LICENSE)
 
-## Links
+## Acknowledgments
 
-- [Convex Dashboard](https://dashboard.convex.dev)
+**Submitted to:**
+- [Solana Privacy Hack 2026](https://solana.com/privacyhack)
+- [Solana Colosseum Eternal](https://www.colosseum.org/eternal)
+
+**Privacy Integrations:**
+- [Privacy Cash](https://privacycash.co) - Shielded deposits + cashout
+- [Radr Labs](https://radrlabs.io) - ShadowWire P2P
+- [Light Protocol](https://lightprotocol.com) - ZK compression
+- [Arcium](https://arcium.com) - Confidential DeFi + encrypted credential storage
+- [Anoncoin](https://anoncoin.io) - Private swaps + RWA purchases
+- [Aztec](https://aztec.network) - Private Identity ZK proofs + selective disclosure
+- [PNP Exchange](https://pnp.exchange) - Private predictions
+- [Starpay](https://starpay.com) - Privacy payment rails
+
+**Infrastructure:**
+- [Turnkey](https://turnkey.com) - Non-custodial wallets
+- [Helius](https://helius.dev) - Solana RPC
+- [Range](https://range.org) - Compliance
+- [Civic](https://civic.com) - Identity verification
+- [Convex](https://convex.dev) - Real-time backend
+- [Phala Network](https://phala.network) - TEE infrastructure
+
+**Additional Resources:**
 - [Expo Documentation](https://docs.expo.dev)
-- [Marqeta Docs](https://www.marqeta.com/docs)
-- [MoonPay Docs](https://docs.moonpay.com)
-- [Stripe Treasury](https://stripe.com/docs/treasury)
 - [Jupiter API](https://station.jup.ag/docs)
 - [DFlow Protocol](https://docs.dflow.net)
-- [Light Protocol](https://docs.lightprotocol.com)
-- [Turnkey Docs](https://docs.turnkey.com)
-- [Phala Network](https://docs.phala.network)
-- [elizaOS](https://elizaos.github.io/eliza/)
+- [Marqeta Docs](https://www.marqeta.com/docs)
+- [MoonPay Docs](https://docs.moonpay.com)
+
+---
+
+**DisCard** - Intent-Centric Super Wallet
+*AI-powered. Privacy by default. Cards in seconds. DeFi native.*
