@@ -2,6 +2,8 @@
 
 > Privacy-First Intent-Centric Super Wallet with Virtual Global Cards and AI Co-Pilot
 
+![DisCard Home Screen](assets/discard-mobile-homescreen.png)
+
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Built with Expo](https://img.shields.io/badge/Built%20with-Expo-blue)](https://expo.dev)
 [![Convex](https://img.shields.io/badge/Backend-Convex-orange)](https://convex.dev)
@@ -9,9 +11,9 @@
 
 DisCard is a mobile-first crypto wallet that combines disposable virtual debit cards with DeFi trading capabilities. Powered by conversational AI, users interact through natural language - describe what you want and the system parses your intent, clarifies ambiguity, and executes complex multi-step operations automatically.
 
-**Advanced tech, simple experience.** Despite sophisticated privacy tech (ZK proofs, MPC encryption, confidential transactions), DisCard abstracts complexity through AI and intuitive design—making it accessible to crypto newcomers and power users alike.
+**Advanced tech, simple experience.** Despite sophisticated privacy tech (ZK proofs, MPC encryption, confidential transactions), DisCard abstracts complexity through AI and intuitive design, making it accessible to crypto newcomers and power users alike.
 
-![DisCard Home Screen](assets/discard-mobile-homescreen.png)
+
 
 ## Key Capabilities
 
