@@ -40,6 +40,12 @@ export interface CardWithDetails {
   nickname?: string;
   color?: string;
   marqetaCardToken?: string;
+  // Provider info
+  provider?: "marqeta" | "starpay";
+  providerCardToken?: string;
+  // Starpay-specific fields
+  starpayCardType?: "black" | "platinum";
+  prepaidBalance?: number;
   // Temporary sensitive data (cleared after display)
   cardNumber?: string;
   cvv?: string;
@@ -83,6 +89,12 @@ export interface CardsActions {
 
 // Create card request
 export interface CreateCardRequest {
+  // Provider selection
+  provider?: "marqeta" | "starpay";
+  // Starpay-specific options
+  starpayCardType?: "black" | "platinum";
+  initialAmount?: number;  // For Starpay prepaid cards (cents)
+  // Common options
   nickname?: string;
   color?: string;
   spendingLimit?: number;
@@ -181,9 +193,14 @@ export function CardsProvider({ children }: { children: ReactNode }) {
         setCreateCardLoading(true);
         setError(null);
 
-        console.log('[CardsStore] Calling createCardMutation with credentialId:', credentialId);
+        console.log('[CardsStore] Calling createCardMutation with credentialId:', credentialId, 'provider:', cardData.provider);
         // Create card in Convex - pass credentialId for auth when Convex auth isn't configured
         const cardId = await createCardMutation({
+          // Provider selection
+          provider: cardData.provider,
+          starpayCardType: cardData.starpayCardType,
+          initialAmount: cardData.initialAmount,
+          // Common options
           nickname: cardData.nickname,
           color: cardData.color,
           spendingLimit: cardData.spendingLimit,
@@ -193,7 +210,7 @@ export function CardsProvider({ children }: { children: ReactNode }) {
           blockedCountries: cardData.blockedCountries,
           credentialId: credentialId,
         });
-        console.log('[CardsStore] Card created with ID:', cardId);
+        console.log('[CardsStore] Card created with ID:', cardId, 'provider:', cardData.provider);
 
         // Card was created - return a placeholder that indicates success
         // The actual card data will come through the Convex subscription

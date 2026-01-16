@@ -143,10 +143,18 @@ export default defineSchema({
   cards: defineTable({
     userId: v.id("users"),
 
+    // Card provider (supports multi-provider architecture)
+    provider: v.optional(v.union(
+      v.literal("marqeta"),           // KYC + JIT funding (primary)
+      v.literal("starpay")            // No-KYC + prepaid (alternative)
+    )),
+
     // Card identity and privacy isolation
     cardContext: v.string(),            // SHA-256 hash for transaction isolation
-    marqetaCardToken: v.optional(v.string()), // Marqeta card reference
-    marqetaUserToken: v.optional(v.string()), // Marqeta user reference
+    marqetaCardToken: v.optional(v.string()), // Marqeta card reference (legacy)
+    marqetaUserToken: v.optional(v.string()), // Marqeta user reference (legacy)
+    providerCardToken: v.optional(v.string()), // Generic provider card token
+    providerUserToken: v.optional(v.string()), // Generic provider user token
 
     // Card details (PAN/CVV stored only in Marqeta)
     last4: v.string(),
@@ -190,6 +198,20 @@ export default defineSchema({
     // Privacy isolation flag
     privacyIsolated: v.boolean(),
 
+    // Prepaid card fields (Starpay)
+    starpayCardType: v.optional(v.union(
+      v.literal("black"),             // One-time use, no top-ups
+      v.literal("platinum")           // Reloadable, requires $STARPAY tokens
+    )),
+    prepaidBalance: v.optional(v.number()),      // Current prepaid balance (cents)
+    balanceCommitment: v.optional(v.string()),   // SHA-256 commitment for privacy
+    balanceRandomness: v.optional(v.string()),   // Randomness for commitment (encrypted)
+    lastTopUpAt: v.optional(v.number()),         // Last top-up timestamp
+    maxSingleTopUp: v.optional(v.number()),      // Max per top-up (cents)
+    dailyTopUpLimit: v.optional(v.number()),     // Daily top-up limit (cents)
+    totalTopUpToday: v.optional(v.number()),     // Today's total top-ups (cents)
+    topUpResetAt: v.optional(v.number()),        // When daily counter resets
+
     // Metadata
     nickname: v.optional(v.string()),
     color: v.optional(v.string()),
@@ -203,7 +225,52 @@ export default defineSchema({
     .index("by_user_status", ["userId", "status"])
     .index("by_card_context", ["cardContext"])
     .index("by_marqeta_token", ["marqetaCardToken"])
+    .index("by_provider_token", ["providerCardToken"])
+    .index("by_provider", ["provider"])
     .index("by_status", ["status"]),
+
+  // ============ CARD FUNDING REQUESTS ============
+  // Privacy-preserving funding requests for prepaid cards
+  cardFundingRequests: defineTable({
+    userId: v.id("users"),
+    cardId: v.id("cards"),
+
+    // Funding details
+    amount: v.number(),              // Requested amount (cents)
+    fee: v.number(),                 // Provider fee (cents)
+    netAmount: v.number(),           // Net amount after fee (cents)
+
+    // Single-use address for privacy
+    depositAddress: v.string(),      // Turnkey-generated single-use address
+    sessionKeyId: v.string(),        // Restricted session key ID
+    subOrgId: v.string(),            // Turnkey sub-org ID
+
+    // Status tracking
+    status: v.union(
+      v.literal("pending"),          // Awaiting deposit
+      v.literal("funded"),           // Deposit received
+      v.literal("processing"),       // Funding card via provider
+      v.literal("completed"),        // Card funded successfully
+      v.literal("expired"),          // Address expired (30 min)
+      v.literal("failed")            // Error occurred
+    ),
+
+    // Transaction tracking
+    depositTxSignature: v.optional(v.string()),  // Solana tx signature
+    fundingTransactionId: v.optional(v.string()), // Provider transaction ID
+    errorMessage: v.optional(v.string()),
+
+    // Timestamps
+    createdAt: v.number(),
+    expiresAt: v.number(),           // When single-use address expires
+    fundedAt: v.optional(v.number()),
+    completedAt: v.optional(v.number()),
+  })
+    .index("by_user", ["userId"])
+    .index("by_card", ["cardId"])
+    .index("by_address", ["depositAddress"])
+    .index("by_status", ["status"])
+    .index("by_expires", ["expiresAt"]),
 
   // ============ WALLETS ============
   // Connected external wallets (crypto)

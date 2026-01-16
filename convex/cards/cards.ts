@@ -325,6 +325,12 @@ export const getSecrets = action({
  */
 export const create = mutation({
   args: {
+    // Provider selection (defaults to Marqeta for backwards compatibility)
+    provider: v.optional(v.union(v.literal("marqeta"), v.literal("starpay"))),
+    // Starpay-specific options
+    starpayCardType: v.optional(v.union(v.literal("black"), v.literal("platinum"))),
+    initialAmount: v.optional(v.number()),    // For Starpay prepaid cards (cents)
+    // Common options
     spendingLimit: v.optional(v.number()),    // Max per transaction (cents)
     dailyLimit: v.optional(v.number()),       // Max per day (cents)
     monthlyLimit: v.optional(v.number()),     // Max per month (cents)
@@ -373,18 +379,28 @@ export const create = mutation({
     const dailyLimit = args.dailyLimit ?? 500000;       // $5000 default
     const monthlyLimit = args.monthlyLimit ?? 2000000;  // $20000 default
 
+    // Determine provider (default to Marqeta for backwards compatibility)
+    const provider = args.provider ?? "marqeta";
+    const starpayCardType = args.starpayCardType ?? "black";
+
+    // Validate Starpay requirements
+    if (provider === "starpay" && starpayCardType === "black" && !args.initialAmount) {
+      throw new Error("Starpay Black cards require an initial funding amount");
+    }
+
     // Create card record in pending state
     const cardId = await ctx.db.insert("cards", {
       userId: user._id,
       cardContext,
-      last4: "0000",  // Will be updated after Marqeta provisioning
+      provider,
+      last4: "0000",  // Will be updated after provider provisioning
       expirationMonth: 0,
       expirationYear: 0,
       cardType: "virtual",
       spendingLimit,
       dailyLimit,
       monthlyLimit,
-      currentBalance: 0,
+      currentBalance: provider === "starpay" ? (args.initialAmount ?? 0) : 0,
       reservedBalance: 0,
       overdraftLimit: 0,
       status: "pending",
@@ -393,15 +409,30 @@ export const create = mutation({
       privacyIsolated: user.privacySettings?.transactionIsolation ?? true,
       nickname: args.nickname,
       color: args.color,
+      // Starpay-specific fields
+      starpayCardType: provider === "starpay" ? starpayCardType : undefined,
+      prepaidBalance: provider === "starpay" ? (args.initialAmount ?? 0) : undefined,
+      maxSingleTopUp: provider === "starpay" ? 100000 : undefined,  // $1,000 default
+      dailyTopUpLimit: provider === "starpay" ? 500000 : undefined, // $5,000 default
       createdAt: Date.now(),
       updatedAt: Date.now(),
     });
 
-    // Schedule Marqeta card provisioning
-    await ctx.scheduler.runAfter(0, internal.cards.marqeta.provisionCard, {
-      cardId,
-      userId: user._id,
-    });
+    // Schedule provider-specific card provisioning
+    if (provider === "starpay") {
+      await ctx.scheduler.runAfter(0, internal.cards.starpay.provisionCard, {
+        cardId,
+        userId: user._id,
+        cardType: starpayCardType,
+        initialAmount: args.initialAmount ?? 0,
+      });
+    } else {
+      // Default to Marqeta
+      await ctx.scheduler.runAfter(0, internal.cards.marqeta.provisionCard, {
+        cardId,
+        userId: user._id,
+      });
+    }
 
     return cardId;
   },

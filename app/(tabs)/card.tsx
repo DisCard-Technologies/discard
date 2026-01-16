@@ -27,10 +27,12 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useQuery } from 'convex/react';
 import { router } from 'expo-router';
 import { api } from '@/convex/_generated/api';
+import type { Doc } from '@/convex/_generated/dataModel';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { TopBar } from '@/components/top-bar';
+import { CreateCardModal } from '@/components/create-card-modal';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useAuth } from '@/stores/authConvex';
@@ -134,7 +136,7 @@ export function CardScreenContent({ onNavigateToStrategy, onNavigateToHome }: Ca
 
   const transactions: DisplayTransaction[] = useMemo(() => {
     if (!rawTransactions) return [];
-    return rawTransactions.map((auth) => ({
+    return rawTransactions.map((auth: Doc<"authorizations">) => ({
       merchant: auth.merchantName || "Unknown Merchant",
       amount: formatAmount(-auth.amount),
       date: formatRelativeDate(auth.processedAt),
@@ -151,7 +153,7 @@ export function CardScreenContent({ onNavigateToStrategy, onNavigateToHome }: Ca
   const [showDetails, setShowDetails] = useState(false);
   const [copied, setCopied] = useState(false);
   const [loadingSecrets, setLoadingSecrets] = useState(false);
-  const [creatingCard, setCreatingCard] = useState(false);
+  const [showCreateModal, setShowCreateModal] = useState(false);
   const [cardSecrets, setCardSecrets] = useState<{
     pan: string;
     cvv: string;
@@ -211,19 +213,9 @@ export function CardScreenContent({ onNavigateToStrategy, onNavigateToHome }: Ca
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleCreateCard = async () => {
+  const handleOpenCreateModal = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    setCreatingCard(true);
-    try {
-      const result = await createCard({ nickname: 'New Card' });
-      if (!result) {
-        Alert.alert('Error', cardsState?.error || 'Failed to create card. Please try again.');
-      }
-    } catch (error) {
-      Alert.alert('Error', error instanceof Error ? error.message : 'Failed to create card');
-    } finally {
-      setCreatingCard(false);
-    }
+    setShowCreateModal(true);
   };
 
   const handleToggleFreeze = async () => {
@@ -334,19 +326,26 @@ export function CardScreenContent({ onNavigateToStrategy, onNavigateToHome }: Ca
   const renderCard = ({ item, index }: { item: any; index: number }) => {
     const isActive = index === activeCardIndex;
     const isFrozen = item.status === 'frozen';
-    
+    const isStarpay = item.provider === 'starpay';
+    const isPrepaid = isStarpay && item.starpayCardType === 'black';
+
+    // Different gradient for Starpay cards
+    const cardGradient = isStarpay
+      ? ['#6366f1', '#8b5cf6', '#a78bfa'] as [string, string, string]
+      : ['#0d9488', '#10b981', '#14b8a6'] as [string, string, string];
+
     return (
       <View style={[styles.cardWrapper, { marginHorizontal: CARD_MARGIN }]}>
         <View style={[styles.cardContainer, isFrozen && styles.cardFrozen]}>
           <LinearGradient
-            colors={['#0d9488', '#10b981', '#14b8a6']}
+            colors={cardGradient}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={styles.cardGradient}
           >
             {/* Glow effect */}
             <View style={styles.cardGlow} />
-            
+
             {/* Watermark pattern */}
             <View style={styles.watermarkContainer}>
               <ThemedText style={styles.watermarkText}>$</ThemedText>
@@ -356,13 +355,25 @@ export function CardScreenContent({ onNavigateToStrategy, onNavigateToHome }: Ca
             <View style={styles.cardHeader}>
               <View style={styles.cardBrand}>
                 <View style={styles.brandCircle}>
-                  <ThemedText style={styles.brandSymbol}>≡</ThemedText>
+                  <ThemedText style={styles.brandSymbol}>{isStarpay ? '★' : '≡'}</ThemedText>
                 </View>
-                <ThemedText style={styles.cardAddressText}>
-                  {walletAddress ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}` : 'No wallet'}
-                </ThemedText>
+                {isPrepaid ? (
+                  <ThemedText style={styles.cardAddressText}>
+                    Prepaid • ${((item.prepaidBalance || 0) / 100).toFixed(2)}
+                  </ThemedText>
+                ) : (
+                  <ThemedText style={styles.cardAddressText}>
+                    {walletAddress ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}` : 'No wallet'}
+                  </ThemedText>
+                )}
               </View>
               <View style={styles.cardHeaderRight}>
+                {isPrepaid && (
+                  <View style={styles.prepaidBadge}>
+                    <Ionicons name="flash" size={12} color="#fbbf24" />
+                    <ThemedText style={styles.prepaidText}>Instant</ThemedText>
+                  </View>
+                )}
                 {isFrozen && (
                   <View style={styles.frozenBadge}>
                     <Ionicons name="snow" size={14} color="#a855f7" />
@@ -381,15 +392,18 @@ export function CardScreenContent({ onNavigateToStrategy, onNavigateToHome }: Ca
                 {isActive && loadingSecrets ? "Loading..." : (isActive ? displayCardNumber : `•••• •••• •••• ${item.last4 || '••••'}`)}
               </ThemedText>
               <ThemedText style={styles.cardExpiry}>
-                {isActive && cardSecrets 
-                  ? `${String(cardSecrets.expirationMonth).padStart(2, '0')}/${String(cardSecrets.expirationYear).slice(-2)}` 
+                {isActive && cardSecrets
+                  ? `${String(cardSecrets.expirationMonth).padStart(2, '0')}/${String(cardSecrets.expirationYear).slice(-2)}`
                   : '••/••'}
               </ThemedText>
             </View>
 
             {/* Card Footer */}
             <View style={styles.cardFooter}>
-              <View />
+              {item.nickname && (
+                <ThemedText style={styles.cardNickname}>{item.nickname}</ThemedText>
+              )}
+              {!item.nickname && <View />}
               <ThemedText style={styles.visaLogo}>VISA</ThemedText>
             </View>
           </LinearGradient>
@@ -443,23 +457,15 @@ export function CardScreenContent({ onNavigateToStrategy, onNavigateToHome }: Ca
               Create your first virtual card to start spending securely with disposable card numbers.
             </ThemedText>
             <Pressable
-              onPress={handleCreateCard}
-              disabled={creatingCard}
+              onPress={handleOpenCreateModal}
               style={({ pressed }) => [
                 styles.createCardButton,
                 { backgroundColor: primaryColor },
                 pressed && { opacity: 0.8 },
-                creatingCard && { opacity: 0.6 }
               ]}
             >
-              {creatingCard ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
-                <Ionicons name="add" size={20} color="#fff" />
-              )}
-              <ThemedText style={styles.createCardButtonText}>
-                {creatingCard ? "Creating Card..." : "Create Card"}
-              </ThemedText>
+              <Ionicons name="add" size={20} color="#fff" />
+              <ThemedText style={styles.createCardButtonText}>Create Card</ThemedText>
             </Pressable>
           </View>
         </View>
@@ -709,6 +715,12 @@ export function CardScreenContent({ onNavigateToStrategy, onNavigateToHome }: Ca
         </GestureDetector>
       )}
 
+      {/* Create Card Modal */}
+      <CreateCardModal
+        visible={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+      />
+
     </ThemedView>
   );
 }
@@ -841,6 +853,20 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#a855f7',
   },
+  prepaidBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(251, 191, 36, 0.2)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+  },
+  prepaidText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#fbbf24',
+  },
   contactlessIcon: {
     padding: 4,
   },
@@ -871,6 +897,11 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     letterSpacing: -1,
     color: 'rgba(255,255,255,0.9)',
+  },
+  cardNickname: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: 'rgba(255,255,255,0.7)',
   },
 
   // Pagination
