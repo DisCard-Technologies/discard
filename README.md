@@ -30,6 +30,7 @@ DisCard is a mobile-first crypto wallet that combines disposable virtual debit c
 - **ZK-Compressed State**: Light Protocol for privacy-preserving wallet state on Solana
 
 ### Instant Virtual Cards
+- **Dual Card Providers**: Choose between Marqeta (reloadable Visa, KYC required) or Starpay (prepaid Mastercard, no KYC)
 - **Disposable Cards**: Generate virtual debit and prepaid cards in seconds with crypto funding
 - **Self-Healing**: Automatic card reissue when breach detected
 - **Cryptographic Isolation**: No cross-card correlation possible
@@ -51,7 +52,8 @@ DisCard packs sophisticated technology under the hood, but the AI co-pilot trans
 |------------|-------------------|
 | "Deposit $100" | MoonPay KYC, single-use address generation, auto-shielding to privacy pool |
 | "Send $50 to Alice privately" | ZK-proof generation, ShadowWire transfer, recipient notification |
-| "Create a travel card" | Virtual card creation, cryptographic isolation, fraud monitoring setup |
+| "Create a travel card" | Marqeta virtual Visa creation, KYC verification, JIT funding setup |
+| "Create an instant $200 prepaid card" | Starpay prepaid Mastercard, no KYC, privacy-preserving funding |
 | "Swap my USDC for SOL" | Jupiter routing, MEV protection, DFlow order flow, slippage management |
 
 **Built for everyone:**
@@ -89,7 +91,9 @@ DisCard packs sophisticated technology under the hood, but the AI co-pilot trans
 
 | Feature | Description |
 |---------|-------------|
-| **Instant Card Creation** | Generate virtual Visa cards in seconds |
+| **Dual Card Providers** | Marqeta (reloadable Visa, KYC) or Starpay (prepaid Mastercard, no KYC) |
+| **Marqeta Cards** | Reloadable virtual Visa cards with JIT funding - funds stay shielded until you spend |
+| **Starpay Cards** | Prepaid virtual Mastercard cards - no KYC required, instant issuance |
 | **Crypto Funding** | Support for SOL, USDC, and major Solana tokens |
 | **Self-Healing Cards** | Automatic reissue when breach detected |
 | **Fraud Detection** | 5-algorithm analysis in sub-800ms |
@@ -149,7 +153,11 @@ discard/
 +-- convex/                 # Backend (serverless functions + DB)
 |   +-- schema.ts           # Database schema (13 tables)
 |   +-- auth/               # Passkey authentication
-|   +-- cards/              # Card management + Marqeta API
+|   +-- cards/              # Card management (Marqeta + Starpay)
+|   |   +-- cards.ts        # Core card operations
+|   |   +-- marqeta.ts      # Marqeta API (reloadable Visa)
+|   |   +-- starpay.ts      # Starpay API (prepaid Mastercard)
+|   |   +-- cardFunding.ts  # Privacy-preserving funding
 |   +-- funding/            # Stripe + crypto funding
 |   +-- intents/            # AI intent parsing
 |   +-- fraud/              # Fraud detection engine
@@ -158,6 +166,11 @@ discard/
 |   +-- http.ts             # Webhook handlers
 |   +-- crons.ts            # Scheduled jobs
 +-- services/               # External API clients
+|   +-- cardProviders/      # Card provider abstraction layer
+|   |   +-- types.ts        # Shared provider interface
+|   |   +-- index.ts        # Provider factory
+|   |   +-- marqetaProvider.ts  # Marqeta implementation
+|   |   +-- starpayProvider.ts  # Starpay implementation
 |   +-- jupiterTokensClient.ts  # Jupiter token data
 |   +-- jupiterUltraClient.ts   # Jupiter DEX swaps
 |   +-- dflowClient.ts      # DFlow protocol integration
@@ -258,7 +271,8 @@ discard/
 - **PNP Exchange** - Private prediction markets
 
 ### Payments & Cards
-- **Marqeta** - Virtual card issuing (JIT Funding)
+- **Marqeta** - Reloadable virtual Visa cards (KYC required, JIT funding)
+- **Starpay** - Prepaid virtual Mastercard cards (no KYC, instant issuance)
 - **MoonPay** - Fiat on/off-ramp
 - **Stripe** - Fiat funding + Treasury for IBANs (direct deposit)
 
@@ -350,10 +364,14 @@ HELIUS_RPC_URL=your_rpc_url
 # Range (Compliance)
 RANGE_API_KEY=your_api_key
 
-# Card Issuing (Marqeta)
+# Card Issuing (Marqeta - Reloadable Visa, KYC)
 MARQETA_BASE_URL=https://sandbox-api.marqeta.com/v3
 MARQETA_APPLICATION_TOKEN=your_token
 MARQETA_ACCESS_TOKEN=your_token
+
+# Card Issuing (Starpay - Prepaid Mastercard, No KYC)
+STARPAY_API_URL=https://api.starpay.cards/v1
+STARPAY_API_KEY=your_api_key
 
 # Payments (Stripe)
 STRIPE_SECRET_KEY=sk_test_...
@@ -371,7 +389,8 @@ SOLANA_RPC_URL=https://api.mainnet-beta.solana.com
 The command bar understands natural language:
 
 **Cards & Payments**
-- "Create a card with $50 limit"
+- "Create a card with $50 limit" - Creates a Marqeta reloadable Visa (KYC required)
+- "Create an instant prepaid card with $100" - Creates a Starpay prepaid Mastercard (no KYC)
 - "Fund my travel card with $100"
 - "Freeze my Amazon card"
 - "What's my total balance across all cards?"
