@@ -11,6 +11,10 @@ This document details how DisCard integrates with various sponsors and third-par
   - [Anoncoin](#anoncoin)
   - [Arcium](#arcium)
   - [Aztec](#aztec)
+  - [MagicBlock](#magicblock) (TEE-Secured Authorization)
+  - [Sunspot](#sunspot) (On-Chain ZK Verification)
+  - [Hush](#hush) (Stealth Addresses)
+  - [Umbra](#umbra) (Shielded Pools)
 - [Identity & Compliance](#identity--compliance)
   - [Civic](#civic)
   - [Range](#range)
@@ -203,6 +207,259 @@ lib/circuits/                     # Noir circuit definitions
 - `ageVerification.nr` - Prove age threshold
 - `residencyProof.nr` - Prove country without revealing address
 - `accreditationProof.nr` - Prove investor status
+
+---
+
+### MagicBlock
+
+**Purpose:** TEE-secured ephemeral rollups for sub-50ms card authorization decisions.
+
+**Features Used:**
+- Private Ephemeral Rollups (PER) in Intel TDX TEE
+- Private velocity state (spending limits, patterns never on-chain)
+- Batch settlement to Solana L1
+- Sub-50ms authorization decisions
+
+**Integration Points:**
+```
+lib/tee/magicblock-types.ts           # TypeScript types
+services/magicblockClient.ts          # SDK wrapper + session management
+convex/tee/magicblock.ts              # Convex actions for sessions
+hooks/useMagicBlockAuth.ts            # React hook for authorization
+```
+
+**Architecture:**
+```
+Card Transaction Flow:
+┌─────────────────────────────────────────┐
+│ Merchant Authorization Request          │
+└──────────────────┬──────────────────────┘
+                   ▼
+┌─────────────────────────────────────────┐
+│ MagicBlock Private Ephemeral Rollup     │
+│ (Intel TDX TEE)                         │
+│                                         │
+│ • Velocity check (private state)        │
+│ • Spending limit validation             │
+│ • Fraud scoring                         │
+│ • MCC/merchant rules                    │
+│                                         │
+│ Decision: APPROVE/DECLINE (<50ms)       │
+└──────────────────┬──────────────────────┘
+                   ▼
+┌─────────────────────────────────────────┐
+│ Batch Commit to Solana L1               │
+│ (Every 5 seconds)                       │
+│ • Merkle root of decisions              │
+│ • Audit trail for compliance            │
+└─────────────────────────────────────────┘
+```
+
+**Privacy Advantages:**
+- Spending limits/velocity state never exposed on-chain
+- Authorization decisions processed in TEE isolation
+- Only Merkle commitments published (not individual decisions)
+- 80-90% reduction in L1 costs via batching
+
+**Environment Variables:**
+```env
+MAGICBLOCK_API_URL=https://tee.magicblock.app
+MAGICBLOCK_API_KEY=your_api_key
+MAGICBLOCK_WEBHOOK_SECRET=your_secret
+EXPO_PUBLIC_MAGICBLOCK_CLUSTER=devnet
+```
+
+---
+
+### Sunspot
+
+**Purpose:** On-chain zero-knowledge proof verification using Noir circuits and Groth16.
+
+**Features Used:**
+- Noir circuit compilation and proof generation
+- Groth16 proof verification on Solana (~200k CU)
+- Spending limit proofs (prove balance >= amount)
+- Compliance proofs (prove not sanctioned)
+- Balance threshold proofs
+
+**Integration Points:**
+```
+lib/zk/circuits/spending-limit.nr     # Noir circuit for spending proofs
+lib/zk/sunspot-client.ts              # Proof generation client
+convex/privacy/zkProofs.ts            # Proof recording and verification
+```
+
+**Spending Limit Circuit:**
+```noir
+// Prove balance >= amount without revealing balance
+fn main(
+    balance: Field,           // Private: actual balance
+    randomness: Field,        // Private: commitment randomness
+    amount: pub Field,        // Public: transaction amount
+    commitment: pub Field     // Public: balance commitment
+) {
+    assert(balance as u64 >= amount as u64);
+    let computed = std::hash::pedersen_hash([balance, randomness]);
+    assert(computed == commitment);
+}
+```
+
+**Flow:**
+1. User's balance stored as Pedersen commitment
+2. Before transaction, client generates ZK proof
+3. Proof submitted to Groth16 verifier program
+4. If valid, transaction proceeds without revealing balance
+
+**Proof Types:**
+- `spending_limit` - Prove balance >= amount
+- `compliance` - Prove not on sanctions list
+- `balance_threshold` - Prove balance meets minimum
+- `age_verification` - Prove age >= minimum
+- `kyc_level` - Prove KYC level >= required
+
+**Environment Variables:**
+```env
+# Sunspot uses Solana syscalls - no API key needed
+# Requires HELIUS_RPC_URL for transaction submission
+```
+
+---
+
+### Hush
+
+**Purpose:** ECDH-based stealth addresses for privacy-preserving card funding.
+
+**Features Used:**
+- One-time stealth address generation
+- ECDH key derivation
+- Address pool management
+- Per-card address isolation
+
+**Integration Points:**
+```
+services/hushClient.ts                # Stealth address service
+lib/stealth/address-generator.ts      # ECDH address derivation
+convex/privacy/stealthAddresses.ts    # Address tracking
+hooks/useStealthAddress.ts            # React hook
+```
+
+**Architecture:**
+```
+Stealth Address Flow:
+┌─────────────────────────────────────────┐
+│ User: Request card top-up               │
+└──────────────────┬──────────────────────┘
+                   ▼
+┌─────────────────────────────────────────┐
+│ Hush: Generate stealth address          │
+│                                         │
+│ stealth = ECDH(user_pub, ephemeral)     │
+│ Only user can derive private key        │
+└──────────────────┬──────────────────────┘
+                   ▼
+┌─────────────────────────────────────────┐
+│ User: Unshield from Privacy Cash        │
+│       to stealth address                │
+└──────────────────┬──────────────────────┘
+                   ▼
+┌─────────────────────────────────────────┐
+│ Card: Funded via stealth address        │
+│       Address discarded after use       │
+└─────────────────────────────────────────┘
+```
+
+**Privacy Advantages:**
+- Each top-up uses fresh, disposable address
+- No link between user's main wallet and card funding
+- Addresses derived deterministically from ephemeral keys
+- Only recipient can spend from stealth address
+
+**Key Functions:**
+```typescript
+// Generate stealth address for recipient
+generateStealthAddress(recipientPubKey): StealthMeta
+
+// Derive private key to spend from stealth address
+deriveStealthKey(recipientPrivKey, ephemeralPubKey): DerivedKey
+
+// Check if address belongs to user
+isOwnStealthAddress(address, privKey, ephemeralPubKey): boolean
+```
+
+**Environment Variables:**
+```env
+# Hush is client-side only - no server config needed
+```
+
+---
+
+### Umbra
+
+**Purpose:** Shielded liquidity pools for large transfers and cross-card movements.
+
+**Features Used:**
+- ElGamal-encrypted deposit amounts
+- Nullifier-based double-spend prevention
+- ZK proof of ownership for withdrawals
+- Cross-card private transfers
+
+**Integration Points:**
+```
+services/umbraClient.ts               # Shielded pool service
+convex/privacy/umbra.ts               # Pool operations
+hooks/useUmbraPool.ts                 # React hook
+```
+
+**Architecture:**
+```
+Shielded Pool Flow:
+┌─────────────────────────────────────────┐
+│ User: Transfer $10,000 to card          │
+└──────────────────┬──────────────────────┘
+                   ▼
+┌─────────────────────────────────────────┐
+│ Umbra: Deposit to shielded pool         │
+│                                         │
+│ • Amount encrypted (ElGamal)            │
+│ • Mixed with other deposits             │
+│ • Commitment + nullifier generated      │
+└──────────────────┬──────────────────────┘
+                   ▼
+┌─────────────────────────────────────────┐
+│ Withdrawal: ZK proof of ownership       │
+│                                         │
+│ • Nullifier published (prevents reuse)  │
+│ • Proof verified on-chain               │
+│ • No link to deposit amount/source      │
+└──────────────────┬──────────────────────┘
+                   ▼
+┌─────────────────────────────────────────┐
+│ Card: Receives funds                    │
+│       No public link to deposit         │
+└─────────────────────────────────────────┘
+```
+
+**Use Cases:**
+- **Large card reloads** - Hide amounts in liquidity pool
+- **Cross-card transfers** - Move funds between cards privately
+- **Institutional cards** - Corporate spending privacy
+
+**Key Concepts:**
+- **Deposit Note:** Commitment + nullifier + encrypted amount
+- **Commitment:** `Pedersen(amount, randomness)` - binds to amount
+- **Nullifier:** `Hash(noteId, secret)` - prevents double-spend
+- **Withdrawal Proof:** ZK proof that user owns the note
+
+**Pool Settings:**
+- Minimum deposit: 0.001 SOL
+- Maximum deposit: 1000 SOL
+- Pool fee: 0.3% (30 basis points)
+
+**Environment Variables:**
+```env
+UMBRA_PROGRAM_ID=your_program_id
+UMBRA_RELAYER_URL=https://umbra-relayer.arcium.com
+```
 
 ---
 

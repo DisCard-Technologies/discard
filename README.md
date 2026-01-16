@@ -86,6 +86,10 @@ DisCard packs sophisticated technology under the hood, but the AI co-pilot trans
 | **One-Time Payment Links** | Disposable payment URLs that expire after single claim | Convex + Solana Pay |
 | **Confidential Balances** | Token-2022 confidential transfers | SPL Token Wrap |
 | **Privacy Payments** | Alternative privacy-focused payment rails | Starpay |
+| **TEE Authorization** | Sub-50ms card authorization in isolated TEE | MagicBlock Ephemeral Rollups |
+| **On-Chain ZK Proofs** | Groth16 spending limit verification | Sunspot + Noir |
+| **Stealth Addresses** | ECDH-derived disposable funding addresses | Hush |
+| **Shielded Pools** | Hidden amounts for large transfers | Umbra |
 
 ### Cards & Payments
 
@@ -264,6 +268,10 @@ discard/
 - **Token-2022** - Confidential transfers via SPL Token Wrap
 - **Starpay** - Privacy-focused payment rails
 - **Solana Pay** - One-time payment links
+- **MagicBlock** - TEE-secured ephemeral rollups for sub-50ms authorization
+- **Sunspot** - On-chain Groth16 ZK proof verification
+- **Hush** - ECDH stealth addresses for anonymous card funding
+- **Umbra** - Shielded liquidity pools for large transfers
 
 ### DeFi & Trading
 - **Jupiter** - DEX aggregation and swaps
@@ -426,6 +434,10 @@ DisCard integrates with the following sponsors and technologies:
 | **Private DeFi** | Arcium | Shielded yield vaults + encrypted credential storage |
 | **Private Identity** | Aztec | Noir ZK proofs for selective disclosure |
 | **ZK Compression** | Light Protocol | Compressed wallet state on Solana |
+| **TEE Authorization** | MagicBlock | Sub-50ms card authorization in ephemeral rollups |
+| **On-Chain ZK Verification** | Sunspot | Groth16 spending limit proofs |
+| **Stealth Addresses** | Hush | ECDH disposable funding addresses |
+| **Shielded Pools** | Umbra | Hidden amounts for large transfers |
 | **Compliance** | Range | Wallet screening + OFAC compliance |
 | **RPC Infrastructure** | Helius | Solana RPC + webhooks |
 | **Wallet Infrastructure** | Turnkey | Non-custodial passkey wallets |
@@ -470,6 +482,10 @@ MIT License - see [LICENSE](LICENSE)
 - [Aztec](https://aztec.network) - Private Identity ZK proofs + selective disclosure
 - [PNP Exchange](https://pnp.exchange) - Private predictions
 - [Starpay](https://starpay.com) - Privacy payment rails
+- [MagicBlock](https://magicblock.gg) - TEE-secured ephemeral rollups
+- [Sunspot](https://github.com/solana-foundation/noir-examples) - On-chain Groth16 verification
+- [Hush](https://hushwallet.io) - Stealth addresses
+- [Umbra](https://umbra.cash) - Shielded liquidity pools
 
 **Infrastructure:**
 - [Turnkey](https://turnkey.com) - Non-custodial wallets

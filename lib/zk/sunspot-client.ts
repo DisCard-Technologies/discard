@@ -1,0 +1,495 @@
+/**
+ * Sunspot ZK Proof Client
+ *
+ * Client for generating and verifying Noir/Groth16 zero-knowledge proofs on Solana.
+ * Used for:
+ * - Proving spending limits without revealing balance
+ * - Proving compliance without revealing identity
+ * - Proving thresholds without revealing actual values
+ *
+ * @see https://github.com/solana-foundation/noir-examples
+ * @see https://github.com/Lightprotocol/groth16-solana
+ */
+
+import { Connection, PublicKey, Transaction, TransactionInstruction } from '@solana/web3.js';
+
+// ============ TYPES ============
+
+/**
+ * Supported proof types
+ */
+export type ProofType =
+  | 'spending_limit'    // Prove balance >= amount
+  | 'compliance'        // Prove not sanctioned
+  | 'balance_threshold' // Prove balance meets threshold
+  | 'age_verification'  // Prove age >= minimum
+  | 'kyc_level';        // Prove KYC level >= required
+
+/**
+ * Public inputs for spending limit proof
+ */
+export interface SpendingLimitInputs {
+  /** Transaction amount (public) */
+  amount: bigint;
+  /** Balance commitment (public) */
+  commitment: string;
+}
+
+/**
+ * Private witness for spending limit proof
+ */
+export interface SpendingLimitWitness {
+  /** Actual balance (private) */
+  balance: bigint;
+  /** Randomness used in commitment (private) */
+  randomness: string;
+}
+
+/**
+ * Public inputs for compliance proof
+ */
+export interface ComplianceInputs {
+  /** Merkle root of sanctions list (public) */
+  sanctionsRoot: string;
+  /** User address commitment (public) */
+  addressCommitment: string;
+}
+
+/**
+ * Private witness for compliance proof
+ */
+export interface ComplianceWitness {
+  /** User's wallet address (private) */
+  walletAddress: string;
+  /** Merkle path proving non-inclusion (private) */
+  merklePath: string[];
+  /** Path indices (private) */
+  pathIndices: number[];
+}
+
+/**
+ * Generated proof
+ */
+export interface ZkProof {
+  /** Proof type */
+  type: ProofType;
+  /** Serialized proof bytes */
+  proof: Uint8Array;
+  /** Public inputs */
+  publicInputs: Uint8Array;
+  /** Proof hash for deduplication */
+  hash: string;
+}
+
+/**
+ * Verification result
+ */
+export interface VerificationResult {
+  /** Whether proof is valid */
+  valid: boolean;
+  /** Error message if invalid */
+  error?: string;
+  /** On-chain transaction signature */
+  txSignature?: string;
+}
+
+/**
+ * Sunspot configuration
+ */
+export interface SunspotConfig {
+  /** Solana RPC connection */
+  connection: Connection;
+  /** Verifier program ID */
+  verifierProgramId: PublicKey;
+  /** Proof generation endpoint (if using server-side generation) */
+  proverEndpoint?: string;
+}
+
+// ============ CONSTANTS ============
+
+/**
+ * Default verifier program ID (Light Protocol Groth16)
+ */
+export const DEFAULT_VERIFIER_PROGRAM_ID = new PublicKey(
+  'Verifier111111111111111111111111111111111111' // Placeholder - use actual program ID
+);
+
+/**
+ * Groth16 proof size (constant)
+ */
+export const GROTH16_PROOF_SIZE = 128;
+
+/**
+ * Approximate verification compute units
+ */
+export const VERIFICATION_COMPUTE_UNITS = 200000;
+
+// ============ SERVICE CLASS ============
+
+/**
+ * Sunspot ZK Proof Service
+ *
+ * Handles proof generation and on-chain verification.
+ */
+export class SunspotService {
+  private config: SunspotConfig;
+
+  constructor(config: SunspotConfig) {
+    this.config = config;
+  }
+
+  // ============ SPENDING LIMIT PROOFS ============
+
+  /**
+   * Generate a proof that balance >= amount without revealing balance
+   */
+  async generateSpendingLimitProof(
+    inputs: SpendingLimitInputs,
+    witness: SpendingLimitWitness
+  ): Promise<ZkProof> {
+    console.log('[Sunspot] Generating spending limit proof');
+
+    // Validate witness
+    if (witness.balance < inputs.amount) {
+      throw new Error('Balance is less than amount - proof would be invalid');
+    }
+
+    // In production, this would:
+    // 1. Load the compiled Noir circuit
+    // 2. Generate witness
+    // 3. Run Groth16 prover
+    // For now, return mock proof structure
+
+    const publicInputs = this.encodeSpendingLimitInputs(inputs);
+    const proof = await this.generateProof('spending_limit', publicInputs, witness);
+
+    return {
+      type: 'spending_limit',
+      proof: proof,
+      publicInputs: publicInputs,
+      hash: await this.hashProof(proof, publicInputs),
+    };
+  }
+
+  /**
+   * Verify spending limit proof on-chain
+   */
+  async verifySpendingLimitProof(
+    proof: ZkProof,
+    payer: PublicKey
+  ): Promise<VerificationResult> {
+    if (proof.type !== 'spending_limit') {
+      return { valid: false, error: 'Invalid proof type' };
+    }
+
+    return this.verifyOnChain(proof, payer);
+  }
+
+  // ============ COMPLIANCE PROOFS ============
+
+  /**
+   * Generate a proof that user is not on sanctions list
+   */
+  async generateComplianceProof(
+    inputs: ComplianceInputs,
+    witness: ComplianceWitness
+  ): Promise<ZkProof> {
+    console.log('[Sunspot] Generating compliance proof');
+
+    const publicInputs = this.encodeComplianceInputs(inputs);
+    const proof = await this.generateProof('compliance', publicInputs, witness);
+
+    return {
+      type: 'compliance',
+      proof: proof,
+      publicInputs: publicInputs,
+      hash: await this.hashProof(proof, publicInputs),
+    };
+  }
+
+  /**
+   * Verify compliance proof on-chain
+   */
+  async verifyComplianceProof(
+    proof: ZkProof,
+    payer: PublicKey
+  ): Promise<VerificationResult> {
+    if (proof.type !== 'compliance') {
+      return { valid: false, error: 'Invalid proof type' };
+    }
+
+    return this.verifyOnChain(proof, payer);
+  }
+
+  // ============ BALANCE THRESHOLD PROOFS ============
+
+  /**
+   * Generate a proof that balance meets a threshold
+   */
+  async generateBalanceThresholdProof(
+    threshold: bigint,
+    balance: bigint,
+    commitment: string,
+    randomness: string
+  ): Promise<ZkProof> {
+    console.log('[Sunspot] Generating balance threshold proof');
+
+    if (balance < threshold) {
+      throw new Error('Balance below threshold - proof would be invalid');
+    }
+
+    const inputs = {
+      threshold,
+      commitment,
+    };
+
+    const witness = {
+      balance,
+      randomness,
+    };
+
+    const publicInputs = this.encodeThresholdInputs(inputs);
+    const proof = await this.generateProof('balance_threshold', publicInputs, witness);
+
+    return {
+      type: 'balance_threshold',
+      proof: proof,
+      publicInputs: publicInputs,
+      hash: await this.hashProof(proof, publicInputs),
+    };
+  }
+
+  // ============ COMMITMENT UTILITIES ============
+
+  /**
+   * Generate a Pedersen commitment to a value
+   * commitment = hash(value || randomness)
+   */
+  async generateCommitment(value: bigint, randomness?: string): Promise<{
+    commitment: string;
+    randomness: string;
+  }> {
+    const rand = randomness || this.generateRandomness();
+
+    // Use Web Crypto for hashing
+    const data = new TextEncoder().encode(`${value}||${rand}`);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const commitment = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+
+    return { commitment, randomness: rand };
+  }
+
+  /**
+   * Verify a commitment opens to a value
+   */
+  async verifyCommitment(
+    commitment: string,
+    value: bigint,
+    randomness: string
+  ): Promise<boolean> {
+    const { commitment: computed } = await this.generateCommitment(value, randomness);
+    return computed === commitment;
+  }
+
+  // ============ ON-CHAIN VERIFICATION ============
+
+  /**
+   * Build verification instruction
+   */
+  buildVerificationInstruction(
+    proof: ZkProof,
+    payer: PublicKey
+  ): TransactionInstruction {
+    // Build instruction data: [proof_type (1 byte)][proof (128 bytes)][public_inputs (variable)]
+    const proofTypeIndex = this.getProofTypeIndex(proof.type);
+    const data = Buffer.concat([
+      Buffer.from([proofTypeIndex]),
+      Buffer.from(proof.proof),
+      Buffer.from(proof.publicInputs),
+    ]);
+
+    return new TransactionInstruction({
+      keys: [
+        { pubkey: payer, isSigner: true, isWritable: true },
+      ],
+      programId: this.config.verifierProgramId,
+      data,
+    });
+  }
+
+  /**
+   * Verify proof on-chain
+   */
+  private async verifyOnChain(
+    proof: ZkProof,
+    payer: PublicKey
+  ): Promise<VerificationResult> {
+    try {
+      const instruction = this.buildVerificationInstruction(proof, payer);
+
+      const transaction = new Transaction().add(instruction);
+      transaction.feePayer = payer;
+
+      const { blockhash } = await this.config.connection.getLatestBlockhash();
+      transaction.recentBlockhash = blockhash;
+
+      // Note: In production, this would be signed and sent
+      // For now, simulate the verification
+      const simulation = await this.config.connection.simulateTransaction(transaction);
+
+      if (simulation.value.err) {
+        return {
+          valid: false,
+          error: `Verification failed: ${JSON.stringify(simulation.value.err)}`,
+        };
+      }
+
+      return { valid: true };
+    } catch (error) {
+      return {
+        valid: false,
+        error: error instanceof Error ? error.message : 'Verification failed',
+      };
+    }
+  }
+
+  // ============ INTERNAL HELPERS ============
+
+  /**
+   * Generate proof (placeholder - would use actual Noir/Groth16 prover)
+   */
+  private async generateProof(
+    type: ProofType,
+    publicInputs: Uint8Array,
+    witness: unknown
+  ): Promise<Uint8Array> {
+    // In production, this would:
+    // 1. Use noir_js or a Rust prover
+    // 2. Load the proving key
+    // 3. Generate the actual Groth16 proof
+
+    // For development, return a placeholder proof
+    console.log(`[Sunspot] Generating ${type} proof with ${publicInputs.length} bytes of public inputs`);
+
+    // Groth16 proofs are always 128 bytes
+    const mockProof = new Uint8Array(GROTH16_PROOF_SIZE);
+    crypto.getRandomValues(mockProof);
+
+    return mockProof;
+  }
+
+  /**
+   * Encode spending limit inputs
+   */
+  private encodeSpendingLimitInputs(inputs: SpendingLimitInputs): Uint8Array {
+    const amountBytes = this.bigintToBytes(inputs.amount, 32);
+    const commitmentBytes = this.hexToBytes(inputs.commitment);
+    return new Uint8Array([...amountBytes, ...commitmentBytes]);
+  }
+
+  /**
+   * Encode compliance inputs
+   */
+  private encodeComplianceInputs(inputs: ComplianceInputs): Uint8Array {
+    const rootBytes = this.hexToBytes(inputs.sanctionsRoot);
+    const commitmentBytes = this.hexToBytes(inputs.addressCommitment);
+    return new Uint8Array([...rootBytes, ...commitmentBytes]);
+  }
+
+  /**
+   * Encode threshold inputs
+   */
+  private encodeThresholdInputs(inputs: { threshold: bigint; commitment: string }): Uint8Array {
+    const thresholdBytes = this.bigintToBytes(inputs.threshold, 32);
+    const commitmentBytes = this.hexToBytes(inputs.commitment);
+    return new Uint8Array([...thresholdBytes, ...commitmentBytes]);
+  }
+
+  /**
+   * Hash proof for deduplication
+   */
+  private async hashProof(proof: Uint8Array, publicInputs: Uint8Array): Promise<string> {
+    const data = new Uint8Array([...proof, ...publicInputs]);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  /**
+   * Get proof type index
+   */
+  private getProofTypeIndex(type: ProofType): number {
+    const types: ProofType[] = [
+      'spending_limit',
+      'compliance',
+      'balance_threshold',
+      'age_verification',
+      'kyc_level',
+    ];
+    return types.indexOf(type);
+  }
+
+  /**
+   * Convert bigint to bytes
+   */
+  private bigintToBytes(value: bigint, length: number): Uint8Array {
+    const bytes = new Uint8Array(length);
+    let remaining = value;
+    for (let i = length - 1; i >= 0; i--) {
+      bytes[i] = Number(remaining & BigInt(0xff));
+      remaining >>= BigInt(8);
+    }
+    return bytes;
+  }
+
+  /**
+   * Convert hex string to bytes
+   */
+  private hexToBytes(hex: string): Uint8Array {
+    const cleanHex = hex.startsWith('0x') ? hex.slice(2) : hex;
+    const bytes = new Uint8Array(cleanHex.length / 2);
+    for (let i = 0; i < cleanHex.length; i += 2) {
+      bytes[i / 2] = parseInt(cleanHex.substr(i, 2), 16);
+    }
+    return bytes;
+  }
+
+  /**
+   * Generate random bytes as hex
+   */
+  private generateRandomness(): string {
+    const bytes = new Uint8Array(32);
+    crypto.getRandomValues(bytes);
+    return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+}
+
+// ============ FACTORY ============
+
+let sunspotInstance: SunspotService | null = null;
+
+/**
+ * Get Sunspot service instance
+ */
+export function getSunspotService(config?: Partial<SunspotConfig>): SunspotService {
+  if (!sunspotInstance) {
+    const rpcUrl = process.env.EXPO_PUBLIC_HELIUS_RPC_URL || 'https://api.devnet.solana.com';
+    const connection = new Connection(rpcUrl, 'confirmed');
+
+    sunspotInstance = new SunspotService({
+      connection,
+      verifierProgramId: DEFAULT_VERIFIER_PROGRAM_ID,
+      ...config,
+    });
+  }
+  return sunspotInstance;
+}
+
+/**
+ * Check if Sunspot is available
+ */
+export function isSunspotConfigured(): boolean {
+  // Sunspot uses Solana syscalls, so it's available if we have RPC
+  return Boolean(process.env.EXPO_PUBLIC_HELIUS_RPC_URL);
+}

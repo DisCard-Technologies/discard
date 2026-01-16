@@ -1741,4 +1741,183 @@ export default defineSchema({
   })
     .index("by_user", ["userId"])
     .index("by_user_status", ["userId", "status"]),
+
+  // ============================================================================
+  // MAGICBLOCK SESSIONS - Ephemeral rollup sessions for card authorization
+  // ============================================================================
+  magicblockSessions: defineTable({
+    cardId: v.id("cards"),
+    userId: v.id("users"),
+
+    // Session identification
+    sessionId: v.string(),               // MagicBlock session ID
+    clusterEndpoint: v.string(),         // PER cluster endpoint
+
+    // Delegated state
+    delegatedAccounts: v.array(v.string()), // Account pubkeys delegated to PER
+
+    // Session state
+    status: v.union(
+      v.literal("creating"),             // Session being initialized
+      v.literal("active"),               // Session active, processing authorizations
+      v.literal("committing"),           // Final batch being committed
+      v.literal("committed"),            // Session completed, state on L1
+      v.literal("expired"),              // Session expired
+      v.literal("failed")                // Session failed
+    ),
+
+    // Metrics
+    transactionCount: v.number(),        // Total authorizations processed
+    lastCommitAt: v.optional(v.number()), // Last batch commit timestamp
+
+    // Timestamps
+    expiresAt: v.number(),               // Session expiration
+    createdAt: v.number(),
+  })
+    .index("by_card", ["cardId"])
+    .index("by_user", ["userId"])
+    .index("by_session", ["sessionId"])
+    .index("by_status", ["status"]),
+
+  // ============================================================================
+  // AUTHORIZATION BATCHES - Batch commits from MagicBlock PER to Solana L1
+  // ============================================================================
+  authorizationBatches: defineTable({
+    sessionId: v.string(),               // MagicBlock session ID
+
+    // Batch content
+    merkleRoot: v.string(),              // Merkle root of all decisions
+    decisionCount: v.number(),           // Number of decisions in batch
+
+    // Timestamps
+    startTimestamp: v.number(),          // First decision in batch
+    endTimestamp: v.number(),            // Last decision in batch
+    committedAt: v.number(),             // When batch was committed
+
+    // Blockchain reference
+    txSignature: v.optional(v.string()), // Solana transaction signature
+
+    // Status
+    status: v.union(
+      v.literal("pending"),              // Batch created, not yet submitted
+      v.literal("submitted"),            // Transaction submitted
+      v.literal("confirmed"),            // Transaction confirmed on L1
+      v.literal("failed")                // Transaction failed
+    ),
+  })
+    .index("by_session", ["sessionId"])
+    .index("by_status", ["status"])
+    .index("by_committed", ["committedAt"]),
+
+  // ============================================================================
+  // ZK PROOFS - On-chain ZK proof verification records (Sunspot/Groth16)
+  // ============================================================================
+  zkProofs: defineTable({
+    userId: v.id("users"),
+    cardId: v.optional(v.id("cards")),
+
+    // Proof type
+    proofType: v.union(
+      v.literal("spending_limit"),       // Prove balance >= amount
+      v.literal("compliance"),           // Prove not sanctioned
+      v.literal("balance_threshold"),    // Prove balance meets threshold
+      v.literal("age_verification"),     // Prove age >= threshold
+      v.literal("kyc_level")             // Prove KYC level >= required
+    ),
+
+    // Proof data
+    publicInputs: v.string(),            // JSON serialized public inputs
+    proofHash: v.string(),               // Hash of the proof for deduplication
+
+    // Verification result
+    verified: v.boolean(),               // Whether proof was verified on-chain
+    verifiedAt: v.optional(v.number()),  // Verification timestamp
+
+    // Blockchain reference
+    txSignature: v.optional(v.string()), // Verification transaction signature
+
+    // Timestamps
+    createdAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_card", ["cardId"])
+    .index("by_proof_type", ["proofType"])
+    .index("by_verified", ["verified"]),
+
+  // ============================================================================
+  // STEALTH ADDRESSES - Hush-style disposable addresses for card funding
+  // ============================================================================
+  stealthAddresses: defineTable({
+    userId: v.id("users"),
+    cardId: v.optional(v.id("cards")),
+
+    // Address data
+    stealthAddress: v.string(),          // ECDH-derived stealth address
+    ephemeralPubKey: v.string(),         // Ephemeral public key for derivation
+
+    // Purpose
+    purpose: v.union(
+      v.literal("card_funding"),         // Fund a card
+      v.literal("merchant_payment"),     // Pay a merchant
+      v.literal("p2p_transfer")          // Private P2P transfer
+    ),
+
+    // State
+    used: v.boolean(),                   // Whether address has been used
+    amount: v.optional(v.number()),      // Amount received (after use)
+
+    // Timestamps
+    createdAt: v.number(),
+    usedAt: v.optional(v.number()),
+  })
+    .index("by_user", ["userId"])
+    .index("by_card", ["cardId"])
+    .index("by_address", ["stealthAddress"])
+    .index("by_used", ["used"]),
+
+  // ============================================================================
+  // UMBRA POOL TRANSFERS - Shielded pool transfers via Arcium
+  // ============================================================================
+  umbraTransfers: defineTable({
+    userId: v.id("users"),
+    cardId: v.optional(v.id("cards")),
+
+    // Transfer details
+    amount: v.number(),                  // Amount in cents
+    commitment: v.string(),              // Balance commitment hash
+    nullifier: v.optional(v.string()),   // Nullifier for withdrawal
+
+    // Direction
+    direction: v.union(
+      v.literal("deposit"),              // User → Pool
+      v.literal("withdrawal")            // Pool → Card/Wallet
+    ),
+
+    // Recipient (for withdrawals)
+    recipientType: v.optional(v.union(
+      v.literal("card"),
+      v.literal("wallet"),
+      v.literal("external")
+    )),
+    recipientId: v.optional(v.string()),
+
+    // Status
+    status: v.union(
+      v.literal("pending"),              // Transfer initiated
+      v.literal("processing"),           // MPC processing
+      v.literal("completed"),            // Transfer complete
+      v.literal("failed")                // Transfer failed
+    ),
+
+    // Blockchain reference
+    txSignature: v.optional(v.string()),
+
+    // Timestamps
+    createdAt: v.number(),
+    completedAt: v.optional(v.number()),
+  })
+    .index("by_user", ["userId"])
+    .index("by_card", ["cardId"])
+    .index("by_status", ["status"])
+    .index("by_commitment", ["commitment"]),
 });
