@@ -1866,6 +1866,9 @@ export default defineSchema({
     used: v.boolean(),                   // Whether address has been used
     amount: v.optional(v.number()),      // Amount received (after use)
 
+    // Blockchain reference
+    txSignature: v.optional(v.string()), // Transaction signature when used
+
     // Timestamps
     createdAt: v.number(),
     usedAt: v.optional(v.number()),
@@ -1880,44 +1883,53 @@ export default defineSchema({
   // ============================================================================
   umbraTransfers: defineTable({
     userId: v.id("users"),
-    cardId: v.optional(v.id("cards")),
+
+    // Card references
+    sourceCardId: v.optional(v.id("cards")),   // Source card for deposits
+    targetCardId: v.optional(v.id("cards")),   // Target card for withdrawals
+
+    // Note identification
+    noteId: v.string(),                  // Unique deposit note ID
+    sourceNoteId: v.optional(v.string()), // Original note ID (for withdrawals)
 
     // Transfer details
-    amount: v.number(),                  // Amount in cents
     commitment: v.string(),              // Balance commitment hash
-    nullifier: v.optional(v.string()),   // Nullifier for withdrawal
+    nullifier: v.string(),               // Nullifier for double-spend prevention
+    encryptedAmount: v.string(),         // ElGamal encrypted amount
+    poolId: v.string(),                  // Pool program ID
 
-    // Direction
-    direction: v.union(
+    // Transfer type
+    type: v.union(
       v.literal("deposit"),              // User → Pool
       v.literal("withdrawal")            // Pool → Card/Wallet
     ),
 
     // Recipient (for withdrawals)
-    recipientType: v.optional(v.union(
-      v.literal("card"),
-      v.literal("wallet"),
-      v.literal("external")
-    )),
-    recipientId: v.optional(v.string()),
+    recipientAddress: v.optional(v.string()),  // Recipient wallet address
 
     // Status
     status: v.union(
       v.literal("pending"),              // Transfer initiated
-      v.literal("processing"),           // MPC processing
-      v.literal("completed"),            // Transfer complete
+      v.literal("confirmed"),            // Deposit confirmed on-chain
+      v.literal("withdrawing"),          // Withdrawal in progress
+      v.literal("withdrawn"),            // Withdrawal complete
       v.literal("failed")                // Transfer failed
     ),
+
+    // Cross-card transfer flag
+    isCardTransfer: v.optional(v.boolean()),
 
     // Blockchain reference
     txSignature: v.optional(v.string()),
 
     // Timestamps
     createdAt: v.number(),
-    completedAt: v.optional(v.number()),
+    confirmedAt: v.optional(v.number()),
   })
     .index("by_user", ["userId"])
-    .index("by_card", ["cardId"])
+    .index("by_source_card", ["sourceCardId"])
+    .index("by_target_card", ["targetCardId"])
+    .index("by_note", ["noteId"])
     .index("by_status", ["status"])
-    .index("by_commitment", ["commitment"]),
+    .index("by_type", ["type"]),
 });
