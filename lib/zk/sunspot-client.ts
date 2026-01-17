@@ -12,6 +12,8 @@
  */
 
 import { Connection, PublicKey, Transaction, TransactionInstruction } from '@solana/web3.js';
+import { sha256 } from '@noble/hashes/sha2';
+import { bytesToHex } from '@noble/hashes/utils';
 
 // ============ TYPES ============
 
@@ -68,7 +70,7 @@ export interface ComplianceWitness {
 }
 
 /**
- * Generated proof
+ * Generated proof with replay protection
  */
 export interface ZkProof {
   /** Proof type */
@@ -79,6 +81,17 @@ export interface ZkProof {
   publicInputs: Uint8Array;
   /** Proof hash for deduplication */
   hash: string;
+  /** Replay protection metadata */
+  replayProtection: {
+    /** Random nonce (prevents replay) */
+    nonce: string;
+    /** Proof generation timestamp */
+    timestamp: number;
+    /** Proof expiry timestamp */
+    expiresAt: number;
+    /** Nullifier hash (derived from nonce + proof data) */
+    nullifier: string;
+  };
 }
 
 /**
@@ -91,6 +104,10 @@ export interface VerificationResult {
   error?: string;
   /** On-chain transaction signature */
   txSignature?: string;
+  /** Whether proof was rejected due to replay */
+  replayDetected?: boolean;
+  /** Nullifier that was checked */
+  nullifier?: string;
 }
 
 /**
@@ -124,6 +141,11 @@ export const GROTH16_PROOF_SIZE = 128;
  */
 export const VERIFICATION_COMPUTE_UNITS = 200000;
 
+/**
+ * Default proof validity duration (1 hour)
+ */
+export const DEFAULT_PROOF_VALIDITY_MS = 60 * 60 * 1000;
+
 // ============ SERVICE CLASS ============
 
 /**
@@ -133,9 +155,18 @@ export const VERIFICATION_COMPUTE_UNITS = 200000;
  */
 export class SunspotService {
   private config: SunspotConfig;
+  
+  // Nullifier registry to prevent proof replay
+  private usedNullifiers: Set<string> = new Set();
+  
+  // Optional: Nullifier expiry tracking (remove old nullifiers to save memory)
+  private nullifierExpiry: Map<string, number> = new Map();
 
   constructor(config: SunspotConfig) {
     this.config = config;
+    
+    // Clean up expired nullifiers every 5 minutes
+    setInterval(() => this.cleanupExpiredNullifiers(), 5 * 60 * 1000);
   }
 
   // ============ SPENDING LIMIT PROOFS ============
@@ -145,7 +176,8 @@ export class SunspotService {
    */
   async generateSpendingLimitProof(
     inputs: SpendingLimitInputs,
-    witness: SpendingLimitWitness
+    witness: SpendingLimitWitness,
+    validityMs: number = DEFAULT_PROOF_VALIDITY_MS
   ): Promise<ZkProof> {
     console.log('[Sunspot] Generating spending limit proof');
 
@@ -154,9 +186,12 @@ export class SunspotService {
       throw new Error('Balance is less than amount - proof would be invalid');
     }
 
+    // Generate replay protection metadata
+    const replayProtection = this.generateReplayProtection(validityMs);
+
     // In production, this would:
     // 1. Load the compiled Noir circuit
-    // 2. Generate witness
+    // 2. Generate witness (including nonce in public inputs)
     // 3. Run Groth16 prover
     // For now, return mock proof structure
 
@@ -168,6 +203,7 @@ export class SunspotService {
       proof: proof,
       publicInputs: publicInputs,
       hash: await this.hashProof(proof, publicInputs),
+      replayProtection,
     };
   }
 
@@ -182,7 +218,21 @@ export class SunspotService {
       return { valid: false, error: 'Invalid proof type' };
     }
 
-    return this.verifyOnChain(proof, payer);
+    // Check replay protection BEFORE on-chain verification
+    const replayCheck = this.checkReplayProtection(proof);
+    if (!replayCheck.valid) {
+      return replayCheck;
+    }
+
+    // Verify proof on-chain
+    const result = await this.verifyOnChain(proof, payer);
+    
+    // If verification succeeds, mark nullifier as used
+    if (result.valid) {
+      this.markNullifierUsed(proof.replayProtection.nullifier, proof.replayProtection.expiresAt);
+    }
+    
+    return result;
   }
 
   // ============ COMPLIANCE PROOFS ============
@@ -192,9 +242,13 @@ export class SunspotService {
    */
   async generateComplianceProof(
     inputs: ComplianceInputs,
-    witness: ComplianceWitness
+    witness: ComplianceWitness,
+    validityMs: number = DEFAULT_PROOF_VALIDITY_MS
   ): Promise<ZkProof> {
     console.log('[Sunspot] Generating compliance proof');
+
+    // Generate replay protection metadata
+    const replayProtection = this.generateReplayProtection(validityMs);
 
     const publicInputs = this.encodeComplianceInputs(inputs);
     const proof = await this.generateProof('compliance', publicInputs, witness);
@@ -204,6 +258,7 @@ export class SunspotService {
       proof: proof,
       publicInputs: publicInputs,
       hash: await this.hashProof(proof, publicInputs),
+      replayProtection,
     };
   }
 
@@ -218,7 +273,19 @@ export class SunspotService {
       return { valid: false, error: 'Invalid proof type' };
     }
 
-    return this.verifyOnChain(proof, payer);
+    // Check replay protection
+    const replayCheck = this.checkReplayProtection(proof);
+    if (!replayCheck.valid) {
+      return replayCheck;
+    }
+
+    const result = await this.verifyOnChain(proof, payer);
+    
+    if (result.valid) {
+      this.markNullifierUsed(proof.replayProtection.nullifier, proof.replayProtection.expiresAt);
+    }
+    
+    return result;
   }
 
   // ============ BALANCE THRESHOLD PROOFS ============
@@ -230,13 +297,17 @@ export class SunspotService {
     threshold: bigint,
     balance: bigint,
     commitment: string,
-    randomness: string
+    randomness: string,
+    validityMs: number = DEFAULT_PROOF_VALIDITY_MS
   ): Promise<ZkProof> {
     console.log('[Sunspot] Generating balance threshold proof');
 
     if (balance < threshold) {
       throw new Error('Balance below threshold - proof would be invalid');
     }
+
+    // Generate replay protection metadata
+    const replayProtection = this.generateReplayProtection(validityMs);
 
     const inputs = {
       threshold,
@@ -256,6 +327,7 @@ export class SunspotService {
       proof: proof,
       publicInputs: publicInputs,
       hash: await this.hashProof(proof, publicInputs),
+      replayProtection,
     };
   }
 
@@ -462,6 +534,158 @@ export class SunspotService {
     const bytes = new Uint8Array(32);
     crypto.getRandomValues(bytes);
     return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  // ============ REPLAY PROTECTION ============
+
+  /**
+   * Generate replay protection metadata for a proof
+   * 
+   * @param validityMs - How long the proof is valid (default: 1 hour)
+   * @returns Replay protection metadata
+   */
+  private generateReplayProtection(validityMs: number = DEFAULT_PROOF_VALIDITY_MS): {
+    nonce: string;
+    timestamp: number;
+    expiresAt: number;
+    nullifier: string;
+  } {
+    // Generate cryptographically secure random nonce
+    const nonceBytes = new Uint8Array(32);
+    crypto.getRandomValues(nonceBytes);
+    const nonce = bytesToHex(nonceBytes);
+    
+    const timestamp = Date.now();
+    const expiresAt = timestamp + validityMs;
+    
+    // Generate nullifier from nonce + timestamp
+    // Nullifier = H(nonce || timestamp || "sunspot-nullifier-v1")
+    const nullifierData = new Uint8Array([
+      ...nonceBytes,
+      ...new TextEncoder().encode(timestamp.toString()),
+      ...new TextEncoder().encode('sunspot-nullifier-v1'),
+    ]);
+    const nullifier = bytesToHex(sha256(nullifierData));
+    
+    console.log(`[Sunspot] Generated proof with replay protection: nonce=${nonce.slice(0, 8)}..., expires in ${validityMs}ms`);
+    
+    return {
+      nonce,
+      timestamp,
+      expiresAt,
+      nullifier,
+    };
+  }
+
+  /**
+   * Check if a proof passes replay protection checks
+   * 
+   * @param proof - Proof to check
+   * @returns Verification result
+   */
+  private checkReplayProtection(proof: ZkProof): VerificationResult {
+    const { timestamp, expiresAt, nullifier } = proof.replayProtection;
+    const now = Date.now();
+    
+    // Check 1: Proof not expired
+    if (now > expiresAt) {
+      console.warn(`[Sunspot] Proof expired: generated at ${new Date(timestamp).toISOString()}, expired at ${new Date(expiresAt).toISOString()}`);
+      return {
+        valid: false,
+        error: `Proof expired at ${new Date(expiresAt).toISOString()}`,
+        nullifier,
+      };
+    }
+    
+    // Check 2: Timestamp not in future (clock skew tolerance: 5 minutes)
+    const maxClockSkew = 5 * 60 * 1000; // 5 minutes
+    if (timestamp > now + maxClockSkew) {
+      console.warn(`[Sunspot] Proof timestamp in future: ${new Date(timestamp).toISOString()}`);
+      return {
+        valid: false,
+        error: 'Proof timestamp is in the future',
+        nullifier,
+      };
+    }
+    
+    // Check 3: Nullifier not already used (replay detection)
+    if (this.usedNullifiers.has(nullifier)) {
+      console.warn(`[Sunspot] Replay attack detected: nullifier ${nullifier.slice(0, 16)}... already used`);
+      return {
+        valid: false,
+        error: 'Proof replay detected - nullifier already used',
+        replayDetected: true,
+        nullifier,
+      };
+    }
+    
+    // All checks passed
+    return {
+      valid: true,
+      nullifier,
+    };
+  }
+
+  /**
+   * Mark a nullifier as used to prevent replay
+   * 
+   * @param nullifier - Nullifier hash to mark as used
+   * @param expiresAt - When this nullifier expires (for cleanup)
+   */
+  private markNullifierUsed(nullifier: string, expiresAt: number): void {
+    this.usedNullifiers.add(nullifier);
+    this.nullifierExpiry.set(nullifier, expiresAt);
+    
+    console.log(`[Sunspot] Nullifier marked as used: ${nullifier.slice(0, 16)}... (expires: ${new Date(expiresAt).toISOString()})`);
+  }
+
+  /**
+   * Clean up expired nullifiers to save memory
+   * 
+   * Called periodically to remove nullifiers that have expired.
+   */
+  private cleanupExpiredNullifiers(): void {
+    const now = Date.now();
+    let cleanedCount = 0;
+    
+    for (const [nullifier, expiresAt] of this.nullifierExpiry.entries()) {
+      if (now > expiresAt) {
+        this.usedNullifiers.delete(nullifier);
+        this.nullifierExpiry.delete(nullifier);
+        cleanedCount++;
+      }
+    }
+    
+    if (cleanedCount > 0) {
+      console.log(`[Sunspot] Cleaned up ${cleanedCount} expired nullifiers. Active: ${this.usedNullifiers.size}`);
+    }
+  }
+
+  /**
+   * Get nullifier registry statistics
+   */
+  getNullifierStats(): {
+    activeNullifiers: number;
+    oldestExpiry: number | null;
+    newestExpiry: number | null;
+  } {
+    const expiries = Array.from(this.nullifierExpiry.values());
+    
+    return {
+      activeNullifiers: this.usedNullifiers.size,
+      oldestExpiry: expiries.length > 0 ? Math.min(...expiries) : null,
+      newestExpiry: expiries.length > 0 ? Math.max(...expiries) : null,
+    };
+  }
+
+  /**
+   * Clear all nullifiers (use with caution - for testing only)
+   */
+  clearNullifiers(): void {
+    const count = this.usedNullifiers.size;
+    this.usedNullifiers.clear();
+    this.nullifierExpiry.clear();
+    console.log(`[Sunspot] Cleared ${count} nullifiers`);
   }
 }
 

@@ -22,6 +22,8 @@ import { getArciumMpcService, type EncryptedInput } from "./arciumMpcClient";
 import { getRangeComplianceService } from "./rangeComplianceClient";
 import type { AttestationType, AttestationData, AttestationIssuer } from "@/lib/attestations/sas-client";
 import { deriveEncryptionKey, encryptData, decryptData } from "@/lib/crypto-utils";
+import { sha256 } from '@noble/hashes/sha2';
+import { bytesToHex } from '@noble/hashes/utils';
 
 // ============================================================================
 // Types
@@ -97,8 +99,10 @@ export interface ZkProof {
     issuerKeyHash: string;
     /** Proof expiry timestamp */
     validUntil: number;
-    /** Optional nonce for replay protection */
-    nonce?: string;
+    /** Nonce for replay protection (REQUIRED) */
+    nonce: string;
+    /** Nullifier hash (prevents replay) */
+    nullifier: string;
   };
   /** When the proof was generated */
   generatedAt: number;
@@ -235,6 +239,9 @@ export class PrivateIdentityService {
 
   // Generated proofs cache
   private proofCache: Map<string, ZkProof> = new Map();
+  
+  // Nullifier registry for replay protection
+  private usedNullifiers: Set<string> = new Set();
 
   // User's vault encryption key (derived from their wallet)
   private vaultKey: Uint8Array | null = null;
@@ -354,6 +361,11 @@ export class PrivateIdentityService {
         request.parameters
       );
 
+      // Generate replay protection
+      const nonce = this.generateNonce();
+      const validUntil = request.validUntil || Date.now() + 24 * 60 * 60 * 1000; // 24 hours default
+      const nullifier = await this.generateNullifier(nonce, request.proofType);
+      
       // Build claim string
       const claim = this.buildClaimString(request.proofType, request.parameters);
 
@@ -364,8 +376,9 @@ export class PrivateIdentityService {
         publicInputs: {
           claim,
           issuerKeyHash: await this.hashIssuerKey(credential.issuer),
-          validUntil: request.validUntil || Date.now() + 24 * 60 * 60 * 1000, // 24 hours default
-          nonce: Math.random().toString(36).slice(2, 10),
+          validUntil,
+          nonce,
+          nullifier,
         },
         generatedAt: Date.now(),
         verificationKeyId: `vk_${request.proofType}_v1`,
@@ -394,19 +407,33 @@ export class PrivateIdentityService {
     console.log("[PrivateIdentity] Verifying proof:", proof.id);
 
     try {
-      // Check expiry
+      // Check 1: Proof not expired
       if (Date.now() > proof.publicInputs.validUntil) {
         return {
           valid: false,
-          error: "Proof has expired",
+          error: `Proof expired at ${new Date(proof.publicInputs.validUntil).toISOString()}`,
         };
       }
 
-      // In production, this would verify the actual Noir proof
-      // using the verification key on-chain
+      // Check 2: Nullifier not already used (replay detection)
+      if (this.usedNullifiers.has(proof.publicInputs.nullifier)) {
+        console.warn("[PrivateIdentity] Replay attack detected:", proof.publicInputs.nullifier.slice(0, 16));
+        return {
+          valid: false,
+          error: "Proof replay detected - already used",
+        };
+      }
+
+      // Check 3: Verify the actual Noir proof
+      // In production, this would verify using the verification key on-chain
       const isValid = await this.verifyNoirProof(proof);
 
       if (isValid) {
+        // Mark nullifier as used to prevent replay
+        this.usedNullifiers.add(proof.publicInputs.nullifier);
+        
+        console.log("[PrivateIdentity] Proof verified successfully, nullifier marked as used");
+        
         return {
           valid: true,
           claim: proof.publicInputs.claim,
@@ -788,6 +815,23 @@ export class PrivateIdentityService {
     const proofHashes = proofs.map(p => p.id).join(",");
     const timestamp = Date.now();
     return Buffer.from(`compliance:${proofHashes}:${timestamp}`).toString("base64");
+  }
+
+  /**
+   * Generate a cryptographically secure nonce
+   */
+  private generateNonce(): string {
+    const bytes = new Uint8Array(32);
+    crypto.getRandomValues(bytes);
+    return bytesToHex(bytes);
+  }
+
+  /**
+   * Generate nullifier from nonce and proof type
+   */
+  private async generateNullifier(nonce: string, proofType: ZkProofType): Promise<string> {
+    const data = new TextEncoder().encode(`${nonce}:${proofType}:discard-identity-nullifier-v1`);
+    return bytesToHex(sha256(data));
   }
 }
 

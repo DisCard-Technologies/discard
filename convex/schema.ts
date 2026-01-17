@@ -1975,4 +1975,35 @@ export default defineSchema({
     .index("by_note", ["noteId"])
     .index("by_status", ["status"])
     .index("by_type", ["type"]),
+
+  // ============================================================================
+  // NULLIFIERS - ZK Proof Replay Protection
+  // ============================================================================
+  nullifiers: defineTable({
+    // Nullifier hash (unique identifier)
+    nullifier: v.string(),
+
+    // Proof metadata
+    proofType: v.string(),                 // "spending_limit", "compliance", etc.
+    proofHash: v.optional(v.string()),     // Hash of the proof that generated this nullifier
+
+    // Usage tracking
+    usedAt: v.number(),                    // When nullifier was first used
+    usedBy: v.optional(v.id("users")),     // User who used the proof
+    context: v.optional(v.string()),       // Additional context (e.g., transaction ID)
+
+    // Expiry (for cleanup)
+    expiresAt: v.number(),                 // When this nullifier expires
+
+    // Status
+    status: v.union(
+      v.literal("active"),                 // Currently preventing replay
+      v.literal("expired")                 // Expired, can be cleaned up
+    ),
+  })
+    .index("by_nullifier", ["nullifier"])
+    .index("by_proof_type", ["proofType"])
+    .index("by_expires", ["expiresAt"])
+    .index("by_status", ["status"])
+    .index("by_user", ["usedBy"]),
 });
