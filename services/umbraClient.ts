@@ -135,9 +135,13 @@ export const DEFAULT_POOL_CONFIG = {
 export class UmbraService {
   private config: UmbraPoolConfig;
   private depositNotes: Map<string, DepositNote> = new Map();
+  
+  // Optional: E2EE cloud storage for note backup
+  private convexStorage: any = null;
 
-  constructor(config: UmbraPoolConfig) {
+  constructor(config: UmbraPoolConfig, convexStorage?: any) {
     this.config = config;
+    this.convexStorage = convexStorage;
   }
 
   // ============ DEPOSITS ============
@@ -197,8 +201,24 @@ export class UmbraService {
         };
       }
 
-      // Store deposit note locally (in production, would encrypt and store securely)
+      // Store deposit note locally
       this.depositNotes.set(depositNote.noteId, depositNote);
+
+      // Sync to cloud if available (E2EE)
+      if (this.convexStorage) {
+        try {
+          await this.convexStorage.storeDepositNote({
+            noteId: depositNote.noteId,
+            commitment: depositNote.commitment,
+            nullifier: depositNote.nullifier,
+            encryptedAmount: depositNote.encryptedAmount,
+            poolId: depositNote.poolId,
+          });
+          console.log('[Umbra] Note backed up to cloud (encrypted)');
+        } catch (error) {
+          console.error('[Umbra] Cloud backup failed (continuing):', error);
+        }
+      }
 
       return {
         success: true,
@@ -523,7 +543,10 @@ let umbraInstance: UmbraService | null = null;
 /**
  * Get Umbra service instance
  */
-export function getUmbraService(config?: Partial<UmbraPoolConfig>): UmbraService {
+export function getUmbraService(
+  config?: Partial<UmbraPoolConfig>,
+  convexStorage?: any
+): UmbraService {
   if (!umbraInstance) {
     const rpcUrl = process.env.EXPO_PUBLIC_HELIUS_RPC_URL || 'https://api.devnet.solana.com';
     const connection = new Connection(rpcUrl, 'confirmed');
@@ -534,7 +557,7 @@ export function getUmbraService(config?: Partial<UmbraPoolConfig>): UmbraService
       poolAuthority: DEFAULT_POOL_AUTHORITY,
       ...DEFAULT_POOL_CONFIG,
       ...config,
-    });
+    }, convexStorage);
   }
   return umbraInstance;
 }

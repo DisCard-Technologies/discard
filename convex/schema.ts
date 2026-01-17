@@ -2006,4 +2006,97 @@ export default defineSchema({
     .index("by_expires", ["expiresAt"])
     .index("by_status", ["status"])
     .index("by_user", ["usedBy"]),
+
+  // ============================================================================
+  // ENCRYPTED CREDENTIALS - Private Identity Vault (E2EE)
+  // ============================================================================
+  encryptedCredentials: defineTable({
+    userId: v.id("users"),
+    
+    // Credential identification
+    credentialId: v.string(),              // Unique credential ID
+    
+    // ENCRYPTED DATA (client-side encrypted before storage)
+    encryptedData: v.string(),             // NaCl secretbox encrypted credential
+    
+    // Metadata (safe to store unencrypted)
+    credentialHash: v.string(),            // Hash for deduplication
+    attestationType: v.string(),           // Type of attestation
+    issuer: v.string(),                    // Issuer name
+    availableProofs: v.array(v.string()),  // Proof types available
+    
+    // Expiry
+    expiresAt: v.optional(v.number()),     // Credential expiry
+    
+    // Timestamps
+    storedAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_user_credential", ["userId", "credentialId"])
+    .index("by_type", ["attestationType"])
+    .index("by_expires", ["expiresAt"]),
+
+  // ============================================================================
+  // DEPOSIT NOTES - Umbra Pool Notes (E2EE)
+  // ============================================================================
+  depositNotes: defineTable({
+    userId: v.id("users"),
+    
+    // Note identification
+    noteId: v.string(),                    // Unique note ID
+    
+    // ENCRYPTED NOTE DATA
+    // Contains: commitment, nullifier, encryptedAmount, randomness
+    encryptedNote: v.string(),             // Entire note encrypted
+    
+    // Pool reference (public)
+    poolId: v.string(),
+    
+    // Spending status
+    spent: v.boolean(),
+    spentAt: v.optional(v.number()),
+    spentTxSignature: v.optional(v.string()),
+    
+    // Timestamps
+    createdAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_user_note", ["userId", "noteId"])
+    .index("by_spent", ["spent"]),
+
+  // ============================================================================
+  // REDEMPTION CODES - Gift Cards and RWA Codes (E2EE)
+  // ============================================================================
+  redemptionCodes: defineTable({
+    userId: v.id("users"),
+    
+    // Redemption identification
+    redemptionId: v.string(),
+    
+    // Product info (safe metadata)
+    productType: v.string(),               // "gift_card", "prepaid_card"
+    brand: v.string(),                     // "Amazon", "Visa"
+    
+    // ENCRYPTED CODE
+    encryptedCode: v.string(),             // Code encrypted with user's key
+    
+    // Redemption info
+    redemptionUrl: v.optional(v.string()),
+    
+    // Status
+    status: v.union(
+      v.literal("active"),
+      v.literal("redeemed"),
+      v.literal("expired")
+    ),
+    
+    // Timestamps
+    expiresAt: v.optional(v.number()),
+    createdAt: v.number(),
+    redeemedAt: v.optional(v.number()),
+  })
+    .index("by_user", ["userId"])
+    .index("by_user_status", ["userId", "status"])
+    .index("by_redemption_id", ["redemptionId"]),
 });

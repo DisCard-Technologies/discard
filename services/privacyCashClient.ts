@@ -166,10 +166,14 @@ export interface CashoutResult {
 export class PrivacyCashService {
   private connection: Connection;
   private poolAddress: PublicKey;
+  
+  // Optional: E2EE cloud storage for shielded balance
+  private convexStorage: any = null;
 
-  constructor() {
+  constructor(convexStorage?: any) {
     this.connection = new Connection(RPC_URL, "confirmed");
     this.poolAddress = new PublicKey(PRIVACY_CASH_POOL_ADDRESS);
+    this.convexStorage = convexStorage;
   }
 
   // ==========================================================================
@@ -401,17 +405,48 @@ export class PrivacyCashService {
    * @returns Shielded balance info
    */
   async getShieldedBalance(userId: string): Promise<ShieldedBalance> {
-    // TODO: Query user's commitments from storage/chain
-    // For now, return mock data
-
     console.log("[PrivacyCash] Getting shielded balance for:", userId);
 
-    return {
-      totalBalance: 0,
-      balanceFormatted: "$0.00",
-      token: "USDC",
-      commitmentCount: 0,
-    };
+    try {
+      // If Convex storage available, load encrypted commitments
+      if (this.convexStorage) {
+        const commitments = await this.convexStorage.loadShieldedCommitments(false);
+        
+        // Sum unspent commitments (amounts are decrypted client-side)
+        const total = commitments.reduce((sum: bigint, c: any) => sum + c.amount, BigInt(0));
+        
+        return {
+          totalBalance: Number(total),
+          balanceFormatted: this.formatUSDC(total),
+          token: "USDC",
+          commitmentCount: commitments.length,
+        };
+      }
+      
+      // Fallback: No cloud storage
+      return {
+        totalBalance: 0,
+        balanceFormatted: "$0.00",
+        token: "USDC",
+        commitmentCount: 0,
+      };
+    } catch (error) {
+      console.error("[PrivacyCash] Failed to get shielded balance:", error);
+      return {
+        totalBalance: 0,
+        balanceFormatted: "$0.00",
+        token: "USDC",
+        commitmentCount: 0,
+      };
+    }
+  }
+  
+  /**
+   * Format USDC amount for display
+   */
+  private formatUSDC(amount: bigint): string {
+    const dollars = Number(amount) / 1_000_000;
+    return `$${dollars.toFixed(2)}`;
   }
 
   /**
@@ -731,22 +766,35 @@ export class PrivacyCashService {
   /**
    * Generate a cryptographic commitment for shielded balance tracking
    *
-   * Uses a Pedersen-like commitment scheme: H(userId || amount || randomness)
+   * Uses a Pedersen-like commitment scheme: H(amount || randomness)
    * The randomness (blinding factor) ensures commitments are hiding.
    */
-  private generateCommitment(userId: string, amount: number): string {
+  private async generateCommitmentWithRandomness(amount: number): Promise<{
+    commitment: string;
+    randomness: string;
+  }> {
     // Generate random blinding factor
     const randomness = nacl.randomBytes(32);
+    const randomnessHex = Array.from(randomness).map(b => b.toString(16).padStart(2, '0')).join('');
 
-    // Create commitment data: userId || amount || timestamp || randomness
+    // Create commitment data: amount || randomness
     const data = new Uint8Array([
-      ...new TextEncoder().encode(userId),
       ...new TextEncoder().encode(amount.toString()),
-      ...new TextEncoder().encode(Date.now().toString()),
       ...randomness,
     ]);
 
     // Hash to create commitment
+    const hash = sha256(data);
+    const commitment = bs58.encode(hash);
+    
+    return { commitment, randomness: randomnessHex };
+  }
+  
+  /**
+   * Generate nullifier for spending detection
+   */
+  private async generateNullifier(commitment: string, randomness: string): Promise<string> {
+    const data = new TextEncoder().encode(`${commitment}:${randomness}:nullifier-v1`);
     const hash = sha256(data);
     return bs58.encode(hash);
   }
@@ -794,9 +842,9 @@ export class PrivacyCashService {
 
 let privacyCashServiceInstance: PrivacyCashService | null = null;
 
-export function getPrivacyCashService(): PrivacyCashService {
+export function getPrivacyCashService(convexStorage?: any): PrivacyCashService {
   if (!privacyCashServiceInstance) {
-    privacyCashServiceInstance = new PrivacyCashService();
+    privacyCashServiceInstance = new PrivacyCashService(convexStorage);
   }
   return privacyCashServiceInstance;
 }

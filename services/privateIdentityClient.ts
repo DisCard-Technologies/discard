@@ -234,7 +234,7 @@ export class PrivateIdentityService {
   private arcium = getArciumMpcService();
   private rangeCompliance = getRangeComplianceService();
 
-  // Encrypted credential vault (in production, this would be decentralized storage)
+  // Local credential cache (synced with Convex E2EE storage)
   private vault: Map<string, StoredCredential> = new Map();
 
   // Generated proofs cache
@@ -245,19 +245,69 @@ export class PrivateIdentityService {
 
   // User's vault encryption key (derived from their wallet)
   private vaultKey: Uint8Array | null = null;
+  
+  // Optional: Convex storage for backup and cross-device sync
+  private convexStorage: any = null; // PrivacyStorage instance
 
   /**
    * Initialize the vault with user's key
+   * 
+   * @param userPrivateKey - User's wallet private key
+   * @param convexStorage - Optional Convex E2EE storage for backup
    */
-  async initializeVault(userPrivateKey: Uint8Array): Promise<boolean> {
+  async initializeVault(
+    userPrivateKey: Uint8Array,
+    convexStorage?: any
+  ): Promise<boolean> {
     try {
       // Derive vault encryption key from user's wallet key
       this.vaultKey = await this.deriveVaultKey(userPrivateKey);
-      console.log("[PrivateIdentity] Vault initialized");
+      this.convexStorage = convexStorage;
+      
+      // If Convex storage available, sync from cloud
+      if (convexStorage) {
+        await this.syncFromCloud();
+      }
+      
+      console.log("[PrivateIdentity] Vault initialized", convexStorage ? "(with cloud sync)" : "(local only)");
       return true;
     } catch (error) {
       console.error("[PrivateIdentity] Vault initialization failed:", error);
       return false;
+    }
+  }
+
+  /**
+   * Sync credentials from Convex cloud storage
+   * 
+   * All data is encrypted - Convex cannot see plaintext
+   */
+  private async syncFromCloud(): Promise<void> {
+    if (!this.convexStorage) return;
+    
+    try {
+      console.log("[PrivateIdentity] Syncing from cloud (E2EE)...");
+      const credentials = await this.convexStorage.loadCredentials();
+      
+      // Load into local vault
+      for (const cred of credentials) {
+        const stored: StoredCredential = {
+          id: cred.credentialId,
+          attestationType: cred.attestationType as any,
+          issuer: { id: cred.issuer, name: cred.issuer, publicKey: '' },
+          storedAt: Date.now(),
+          expiresAt: cred.expiresAt,
+          encryptedData: '', // Already decrypted
+          credentialHash: '',
+          availableProofs: cred.availableProofs as any[],
+        };
+        this.vault.set(cred.credentialId, stored);
+      }
+      
+      console.log(`[PrivateIdentity] Synced ${credentials.length} credentials from cloud`);
+    } catch (error) {
+      console.error("[PrivateIdentity] Cloud sync failed:", error);
+      // Continue with local vault only
     }
   }
 
@@ -309,10 +359,28 @@ export class PrivateIdentityService {
 
       this.vault.set(credential.id, credential);
 
+      // Sync to cloud if available (E2EE)
+      if (this.convexStorage) {
+        try {
+          await this.convexStorage.storeCredential({
+            credentialId: credential.id,
+            data: attestation,
+            attestationType: credential.attestationType,
+            issuer: credential.issuer.name,
+            availableProofs: credential.availableProofs,
+            expiresAt: credential.expiresAt,
+          });
+          console.log("[PrivateIdentity] Credential synced to cloud (encrypted)");
+        } catch (error) {
+          console.error("[PrivateIdentity] Cloud sync failed (continuing with local):", error);
+        }
+      }
+
       console.log("[PrivateIdentity] Credential stored:", {
         id: credential.id,
         type: credential.attestationType,
         availableProofs: credential.availableProofs,
+        cloudBackup: !!this.convexStorage,
       });
 
       return credential;

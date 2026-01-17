@@ -210,9 +210,16 @@ export class PrivateRwaService {
   private shadowWire = getShadowWireService();
   private privacyCash = getPrivacyCashService();
 
-  // User's encrypted purchase history
+  // Local cache for purchase history
   private purchaseHistory: Map<string, RwaPurchaseResult> = new Map();
   private redemptions: Map<string, RwaRedemption> = new Map();
+  
+  // Optional: E2EE cloud storage
+  private convexStorage: any = null;
+
+  constructor(convexStorage?: any) {
+    this.convexStorage = convexStorage;
+  }
 
   /**
    * Get available RWA products
@@ -398,11 +405,29 @@ export class PrivateRwaService {
         expiresAt: result.deliveryInfo?.expiresAt,
       };
       this.redemptions.set(purchaseId, redemption);
+      
+      // Store encrypted code in cloud (E2EE)
+      if (this.convexStorage && encryptedCode) {
+        try {
+          await this.convexStorage.storeRedemptionCode({
+            redemptionId: purchaseId,
+            productType: quote.product.type,
+            brand: quote.product.brand,
+            code: mockCode, // Will be encrypted by storage layer
+            redemptionUrl: this.getRedemptionUrl(quote.product),
+            expiresAt: result.deliveryInfo?.expiresAt,
+          });
+          console.log('[PrivateRWA] Redemption backed up to cloud (encrypted)');
+        } catch (error) {
+          console.error('[PrivateRWA] Cloud backup failed:', error);
+        }
+      }
 
       console.log("[PrivateRWA] Purchase complete:", {
         purchaseId,
         brand: quote.product.brand,
         deliveredTo: quote.deliveryAddress.publicAddress.slice(0, 8) + "...",
+        cloudBackup: !!this.convexStorage,
       });
 
       return result;
@@ -560,9 +585,9 @@ export class PrivateRwaService {
 
 let privateRwaServiceInstance: PrivateRwaService | null = null;
 
-export function getPrivateRwaService(): PrivateRwaService {
+export function getPrivateRwaService(convexStorage?: any): PrivateRwaService {
   if (!privateRwaServiceInstance) {
-    privateRwaServiceInstance = new PrivateRwaService();
+    privateRwaServiceInstance = new PrivateRwaService(convexStorage);
   }
   return privateRwaServiceInstance;
 }
