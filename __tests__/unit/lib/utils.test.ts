@@ -2,23 +2,50 @@
  * Utility Functions Tests
  *
  * Tests for common utility functions used throughout the app.
+ * These tests import and test the ACTUAL source code from lib/utils.ts
  */
+
+import {
+  colors,
+  formatCurrency,
+  formatLargeNumber,
+  formatPercentage,
+  truncateAddress,
+} from '@/lib/utils';
 
 describe('Utility Functions', () => {
   // ==========================================================================
-  // Currency Formatting
+  // Colors Constants
   // ==========================================================================
 
-  describe('Currency Formatting', () => {
-    const formatCurrency = (amount: number, currency: string = 'USD'): string => {
-      return new Intl.NumberFormat('en-US', {
-        style: 'currency',
-        currency,
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      }).format(amount);
-    };
+  describe('Colors Constants', () => {
+    test('defines primary color', () => {
+      expect(colors.primary).toBe('#10B981');
+    });
 
+    test('defines background color', () => {
+      expect(colors.background).toBe('#0A0A0A');
+    });
+
+    test('defines all required colors', () => {
+      expect(colors).toHaveProperty('primary');
+      expect(colors).toHaveProperty('background');
+      expect(colors).toHaveProperty('surface');
+      expect(colors).toHaveProperty('card');
+      expect(colors).toHaveProperty('foreground');
+      expect(colors).toHaveProperty('muted');
+      expect(colors).toHaveProperty('mutedForeground');
+      expect(colors).toHaveProperty('accent');
+      expect(colors).toHaveProperty('border');
+      expect(colors).toHaveProperty('destructive');
+    });
+  });
+
+  // ==========================================================================
+  // Currency Formatting (Real Implementation)
+  // ==========================================================================
+
+  describe('formatCurrency', () => {
     test('formats USD correctly', () => {
       expect(formatCurrency(1234.56)).toBe('$1,234.56');
       expect(formatCurrency(0)).toBe('$0.00');
@@ -38,7 +65,100 @@ describe('Utility Functions', () => {
       expect(formatCurrency(10.999)).toBe('$11.00');
       expect(formatCurrency(10.994)).toBe('$10.99');
     });
+
+    test('supports different currencies', () => {
+      expect(formatCurrency(100, 'EUR')).toContain('100');
+      expect(formatCurrency(100, 'GBP')).toContain('100');
+    });
   });
+
+  // ==========================================================================
+  // Large Number Formatting (Real Implementation)
+  // ==========================================================================
+
+  describe('formatLargeNumber', () => {
+    test('formats millions with M suffix', () => {
+      expect(formatLargeNumber(1000000)).toBe('1.00M');
+      expect(formatLargeNumber(2500000)).toBe('2.50M');
+      expect(formatLargeNumber(12345678)).toBe('12.35M');
+    });
+
+    test('formats thousands with K suffix', () => {
+      expect(formatLargeNumber(1000)).toBe('1.00K');
+      expect(formatLargeNumber(2500)).toBe('2.50K');
+      expect(formatLargeNumber(999999)).toBe('1000.00K');
+    });
+
+    test('formats small numbers without suffix', () => {
+      expect(formatLargeNumber(999)).toBe('999.00');
+      expect(formatLargeNumber(100)).toBe('100.00');
+      expect(formatLargeNumber(0)).toBe('0.00');
+    });
+
+    test('handles decimal numbers', () => {
+      expect(formatLargeNumber(1234.56)).toBe('1.23K');
+    });
+  });
+
+  // ==========================================================================
+  // Percentage Formatting (Real Implementation)
+  // ==========================================================================
+
+  describe('formatPercentage', () => {
+    test('adds plus sign for positive values', () => {
+      expect(formatPercentage(5.25)).toBe('+5.25%');
+      expect(formatPercentage(100)).toBe('+100.00%');
+    });
+
+    test('shows negative sign for negative values', () => {
+      expect(formatPercentage(-5.25)).toBe('-5.25%');
+      expect(formatPercentage(-100)).toBe('-100.00%');
+    });
+
+    test('handles zero', () => {
+      expect(formatPercentage(0)).toBe('+0.00%');
+    });
+
+    test('formats to two decimal places', () => {
+      expect(formatPercentage(3.14159)).toBe('+3.14%');
+    });
+  });
+
+  // ==========================================================================
+  // Address Truncation (Real Implementation)
+  // ==========================================================================
+
+  describe('truncateAddress', () => {
+    const testAddress = 'So11111111111111111111111111111111111111112';
+
+    test('truncates long address with default params', () => {
+      const result = truncateAddress(testAddress);
+      expect(result).toBe('So1111...1112');
+      expect(result.length).toBeLessThan(testAddress.length);
+    });
+
+    test('truncates with custom start length', () => {
+      expect(truncateAddress(testAddress, 8, 4)).toBe('So111111...1112');
+    });
+
+    test('truncates with custom end length', () => {
+      expect(truncateAddress(testAddress, 6, 6)).toBe('So1111...111112');
+    });
+
+    test('returns original if shorter than combined lengths', () => {
+      const shortAddress = 'abc123';
+      expect(truncateAddress(shortAddress, 4, 4)).toBe(shortAddress);
+    });
+
+    test('handles edge cases', () => {
+      expect(truncateAddress('', 4, 4)).toBe('');
+      expect(truncateAddress('abcd', 2, 2)).toBe('abcd');
+    });
+  });
+
+  // ==========================================================================
+  // Additional Mock-based Tests (for utility patterns)
+  // ==========================================================================
 
   // ==========================================================================
   // Crypto Amount Formatting
