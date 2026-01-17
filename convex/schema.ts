@@ -138,6 +138,44 @@ export default defineSchema({
     .index("by_created", ["createdAt"])
     .index("by_status", ["status"]),
 
+  // ============ INTENT CACHE ============
+  // Cache for parsed intents and responses to reduce LLM calls
+  intentCache: defineTable({
+    inputHash: v.string(),           // Hash of normalized input text
+    inputText: v.string(),           // Original input text
+    responseType: v.string(),        // "question" | "conversation" | "action"
+    response: v.any(),               // Cached response object
+    hitCount: v.number(),            // Usage tracking for eviction
+    createdAt: v.number(),
+    expiresAt: v.number(),           // TTL-based expiration
+  }).index("by_hash", ["inputHash"]),
+
+  // ============ USER TOKEN USAGE ============
+  // Daily token usage tracking for rate limiting
+  userTokenUsage: defineTable({
+    userId: v.id("users"),
+    date: v.string(),                // YYYY-MM-DD format
+    inputTokens: v.number(),         // Total input tokens used
+    outputTokens: v.number(),        // Total output tokens used
+    requestCount: v.number(),        // Total requests made
+    cacheHits: v.number(),           // Requests served from cache
+    llmCalls: v.number(),            // Actual LLM API calls made
+  }).index("by_user_date", ["userId", "date"]),
+
+  // ============ INTENT QUEUE ============
+  // Queue for rate-limited requests
+  intentQueue: defineTable({
+    userId: v.id("users"),
+    rawText: v.string(),             // User's input text
+    queuedAt: v.number(),            // When request was queued
+    estimatedWaitMs: v.number(),     // Estimated wait time
+    position: v.number(),            // Position in queue
+    status: v.string(),              // "queued" | "processing" | "completed" | "expired"
+    expiresAt: v.number(),           // When queued request expires
+  })
+    .index("by_user_status", ["userId", "status"])
+    .index("by_expires", ["expiresAt"]),
+
   // ============ CARDS ============
   // Virtual disposable cards with privacy isolation
   cards: defineTable({
