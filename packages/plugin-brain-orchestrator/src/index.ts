@@ -242,11 +242,11 @@ export const brainOrchestratorPlugin: Plugin = {
       examples: [
         [
           {
-            user: "user",
+            name: "user",
             content: { text: "I want to add $50 to my card" },
           },
           {
-            user: "brain",
+            name: "brain",
             content: {
               text: "I understand you want to fund your card with $50.",
             },
@@ -256,8 +256,8 @@ export const brainOrchestratorPlugin: Plugin = {
       validate: async () => true,
       handler: async (runtime, message, state, options, callback) => {
         if (!services) {
-          callback?.({ text: "Brain Orchestrator not initialized", error: true });
-          return false;
+          callback?.({ text: "Brain Orchestrator not initialized" });
+          return { success: false, error: new Error("Brain Orchestrator not initialized") };
         }
 
         try {
@@ -272,23 +272,20 @@ export const brainOrchestratorPlugin: Plugin = {
           if (needsClarification && clarification) {
             callback?.({
               text: clarification.question,
-              data: { intent, clarification },
             });
-            return false;
+            return { success: false, data: { intent, clarification } };
           }
 
           callback?.({
             text: `Parsed intent: ${intent.action}${intent.amount ? ` for $${intent.amount}` : ""}`,
-            data: { intent },
           });
 
-          return true;
+          return { success: true, data: { intent } };
         } catch (error) {
           callback?.({
             text: `Parse error: ${error instanceof Error ? error.message : "Unknown"}`,
-            error: true,
           });
-          return false;
+          return { success: false, error: error instanceof Error ? error : new Error(String(error)) };
         }
       },
     },
@@ -300,34 +297,32 @@ export const brainOrchestratorPlugin: Plugin = {
       validate: async () => true,
       handler: async (runtime, message, state, options, callback) => {
         if (!services) {
-          callback?.({ text: "Not initialized", error: true });
-          return false;
+          callback?.({ text: "Not initialized" });
+          return { success: false, error: new Error("Not initialized") };
         }
 
         try {
           const content = message.content as Record<string, unknown>;
           const intent = content.intent as any;
           const sessionId = (content.sessionId as string) || `session_${Date.now()}`;
-          const userId = message.userId;
+          const entityId = message.entityId;
 
           const plan = services.planningEngine.createPlanFromIntent(
             intent,
             sessionId,
-            userId
+            entityId
           );
 
           callback?.({
             text: `Created plan with ${plan.totalSteps} steps`,
-            data: { plan },
           });
 
-          return true;
+          return { success: true, data: { plan } };
         } catch (error) {
           callback?.({
             text: `Plan error: ${error instanceof Error ? error.message : "Unknown"}`,
-            error: true,
           });
-          return false;
+          return { success: false, error: error instanceof Error ? error : new Error(String(error)) };
         }
       },
     },
@@ -339,8 +334,8 @@ export const brainOrchestratorPlugin: Plugin = {
       validate: async () => true,
       handler: async (runtime, message, state, options, callback) => {
         if (!services) {
-          callback?.({ text: "Not initialized", error: true });
-          return false;
+          callback?.({ text: "Not initialized" });
+          return { success: false, error: new Error("Not initialized") };
         }
 
         try {
@@ -354,16 +349,14 @@ export const brainOrchestratorPlugin: Plugin = {
 
           callback?.({
             text: `Plan executed. ${events.length} events.`,
-            data: { events },
           });
 
-          return true;
+          return { success: true, data: { events } };
         } catch (error) {
           callback?.({
             text: `Execution error: ${error instanceof Error ? error.message : "Unknown"}`,
-            error: true,
           });
-          return false;
+          return { success: false, error: error instanceof Error ? error : new Error(String(error)) };
         }
       },
     },
@@ -375,8 +368,8 @@ export const brainOrchestratorPlugin: Plugin = {
       validate: async () => true,
       handler: async (runtime, message, state, options, callback) => {
         if (!services) {
-          callback?.({ text: "Not initialized", error: true });
-          return false;
+          callback?.({ text: "Not initialized" });
+          return { success: false, error: new Error("Not initialized") };
         }
 
         try {
@@ -387,7 +380,7 @@ export const brainOrchestratorPlugin: Plugin = {
             {
               intent: content.intent,
               context: {
-                userId: message.userId,
+                entityId: message.entityId,
                 walletAddress: content.walletAddress || "",
                 subOrganizationId: content.subOrganizationId || "",
               },
@@ -398,16 +391,14 @@ export const brainOrchestratorPlugin: Plugin = {
             text: result.success
               ? "Intent verified by Soul"
               : `Verification failed: ${result.error}`,
-            data: result,
           });
 
-          return result.success;
+          return { success: result.success, data: { ...result } as Record<string, unknown> };
         } catch (error) {
           callback?.({
             text: `Soul verification error: ${error instanceof Error ? error.message : "Unknown"}`,
-            error: true,
           });
-          return false;
+          return { success: false, error: error instanceof Error ? error : new Error(String(error)) };
         }
       },
     },
@@ -428,7 +419,7 @@ export const brainOrchestratorPlugin: Plugin = {
       initialize: async (runtime: IAgentRuntime) => {
         const config: BrainOrchestratorConfig = {
           soulGrpcUrl:
-            runtime.getSetting("SOUL_GRPC_URL") ?? "localhost:50051",
+            String(runtime.getSetting("SOUL_GRPC_URL") ?? "localhost:50051"),
           grpcPort: Number(runtime.getSetting("GRPC_PORT") ?? 50052),
           contextTtlSeconds: Number(
             runtime.getSetting("CONTEXT_TTL_SECONDS") ?? 3600
@@ -437,7 +428,7 @@ export const brainOrchestratorPlugin: Plugin = {
             runtime.getSetting("MAX_CONTEXT_TURNS") ?? 50
           ),
           logLevel:
-            (runtime.getSetting("LOG_LEVEL") as "info") ?? "info",
+            (String(runtime.getSetting("LOG_LEVEL") ?? "info") as "debug" | "info" | "warn" | "error"),
         };
 
         await initialize(runtime, config);

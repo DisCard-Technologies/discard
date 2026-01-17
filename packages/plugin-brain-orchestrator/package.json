@@ -36,7 +36,7 @@
   "author": "DisCard Technologies",
   "license": "MIT",
   "dependencies": {
-    "@elizaos/core": "^0.1.7-alpha.2",
+    "@elizaos/core": "^1.7.1",
     "@grpc/grpc-js": "^1.12.5",
     "@grpc/proto-loader": "^0.7.13",
     "openai": "^4.77.0",
@@ -52,7 +52,7 @@
     "vitest": "^3.1.1"
   },
   "peerDependencies": {
-    "@elizaos/core": ">=0.1.0"
+    "@elizaos/core": ">=1.0.0"
   },
   "engines": {
     "node": ">=20.0.0"
