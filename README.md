@@ -8,6 +8,8 @@
 [![Built with Expo](https://img.shields.io/badge/Built%20with-Expo-blue)](https://expo.dev)
 [![Convex](https://img.shields.io/badge/Backend-Convex-orange)](https://convex.dev)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue)](https://typescriptlang.org)
+[![Firedancer Ready](https://img.shields.io/badge/Firedancer-Ready-9945FF)](https://jumpcrypto.com/firedancer/)
+[![Alpenglow](https://img.shields.io/badge/Alpenglow-150ms-14F195)](https://solana.com/news/solana-validator-client-firedancer)
 
 DisCard is a mobile-first crypto wallet that combines disposable virtual debit cards with DeFi trading capabilities. Powered by conversational AI, users interact through natural language - describe what you want and the system parses your intent, clarifies ambiguity, and executes complex multi-step operations automatically.
 
@@ -251,7 +253,13 @@ discard/
 ### Backend
 - **Convex** - Real-time database + serverless functions
 - **Turnkey** - Non-custodial wallet infrastructure
-- **Helius** - Solana RPC + webhooks
+- **Helius Firedancer RPC** - Optimized for Alpenglow sub-150ms confirmations
+
+### Network Performance
+- **Firedancer Ready** - Built for next-gen Solana validator client
+- **Alpenglow Target** - 150ms transaction confirmation target
+- **Multi-RPC Failover** - Automatic fallback for reliability
+- **WebSocket Subscriptions** - Real-time confirmation tracking with 50ms polling fallback
 
 ### AI Layer
 - **Dual LLM in Phala TEE** - Brain + Soul via elizaOS plugins
@@ -293,6 +301,7 @@ discard/
 
 ### Blockchain
 - **Solana** - @solana/web3.js v1.98
+- **Firedancer/Alpenglow** - Sub-150ms confirmation targeting
 - **Anchor** - Smart contract framework
 - **Token-2022** - Transfer hooks for policy enforcement
 
@@ -439,7 +448,7 @@ DisCard integrates with the following sponsors and technologies:
 | **Stealth Addresses** | Hush | ECDH disposable funding addresses |
 | **Shielded Pools** | Umbra | Hidden amounts for large transfers |
 | **Compliance** | Range | Wallet screening + OFAC compliance |
-| **RPC Infrastructure** | Helius | Solana RPC + webhooks |
+| **RPC Infrastructure** | Helius | Firedancer RPC + Alpenglow 150ms confirmations |
 | **Wallet Infrastructure** | Turnkey | Non-custodial passkey wallets |
 | **Prediction Markets** | PNP Exchange | Private prediction bets |
 | **Privacy Payment Rails** | Starpay | Alternative privacy-focused payments + DeFi |
@@ -489,7 +498,7 @@ MIT License - see [LICENSE](LICENSE)
 
 **Infrastructure:**
 - [Turnkey](https://turnkey.com) - Non-custodial wallets
-- [Helius](https://helius.dev) - Solana RPC
+- [Helius](https://helius.dev) - Firedancer RPC + Alpenglow confirmations
 - [Range](https://range.org) - Compliance
 - [Civic](https://civic.com) - Identity verification
 - [Convex](https://convex.dev) - Real-time backend
