@@ -89,7 +89,7 @@ export default function MerchantPaymentScreen() {
   const [error, setError] = useState<string | null>(null);
 
   // Hooks
-  const { holdings, loading: holdingsLoading } = useTokenHoldings();
+  const { holdings, isLoading: holdingsLoading } = useTokenHoldings(null);
   const getMerchantPaymentQuote = useAction(api.transfers.merchantPayment.getMerchantPaymentQuote);
 
   // Theme colors

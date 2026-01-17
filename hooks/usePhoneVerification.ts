@@ -61,7 +61,7 @@ export function usePhoneVerification(): UsePhoneVerificationReturn {
   const [verificationId, setVerificationId] = useState<Id<"phoneVerifications"> | null>(null);
 
   // Countdown timer ref
-  const countdownRef = useRef<NodeJS.Timeout | null>(null);
+  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Convex mutations/actions
   const requestVerificationMutation = useMutation(api.auth.phoneVerification.requestVerification);

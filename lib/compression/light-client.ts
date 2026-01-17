@@ -245,8 +245,8 @@ export class LightClient {
       payer,
       toAddress: payer, // Owner of the compressed account
       lamports: bn(0), // No lamports for data-only accounts
-      outputStateTree: stateTreeAccounts.merkleTree,
-    });
+      outputStateTreeInfo: stateTreeAccounts.merkleTree,
+    } as any);
 
     // Derive the compressed account address
     const address = this.deriveCompressedAddress(addressSeed, stateTreeAccounts.merkleTree);
@@ -356,15 +356,15 @@ export class LightClient {
       inputCompressedAccounts: [currentAccount],
       toAddress: payer,
       lamports: bn(currentAccount.lamports),
-      outputStateTree: stateTreeAccounts.merkleTree,
-    });
+      outputStateTreeInfo: stateTreeAccounts.merkleTree,
+    } as any);
 
     const compressIx = await LightSystemProgram.compress({
       payer,
       toAddress: payer,
       lamports: bn(0),
-      outputStateTree: stateTreeAccounts.merkleTree,
-    });
+      outputStateTreeInfo: stateTreeAccounts.merkleTree,
+    } as any);
 
     return [decompressIx, compressIx];
   }
@@ -449,6 +449,10 @@ export class LightClient {
     // Get proof from the RPC
     const hashes = accounts.map((a) => a.hash);
     const proof = await this.rpc.getValidityProof(hashes);
+
+    if (!proof.compressedProof) {
+      throw new Error("No compressed proof returned from RPC");
+    }
 
     return {
       a: Array.from(proof.compressedProof.a),

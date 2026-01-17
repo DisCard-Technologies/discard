@@ -710,17 +710,7 @@ export function useTransfer(options: UseTransferOptions): UseTransferReturn {
 }
 
 // ============================================================================
-// Export Types & Default
+// Default Export
 // ============================================================================
-
-export type {
-  TransferState,
-  TransferRecipient,
-  TransferToken,
-  TransferAmount,
-  TransferFees,
-  TransferResult,
-  TransferError,
-};
 
 export default useTransfer;

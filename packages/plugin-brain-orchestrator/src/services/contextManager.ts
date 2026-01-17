@@ -43,7 +43,7 @@ export class ContextManager {
   private config: ContextConfig;
   private sessions: Map<string, SessionContext>;
   private userStates: Map<string, UserState>;
-  private cleanupTimer: NodeJS.Timeout | null = null;
+  private cleanupTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(config?: Partial<ContextConfig>) {
     this.config = { ...DEFAULT_CONFIG, ...config };

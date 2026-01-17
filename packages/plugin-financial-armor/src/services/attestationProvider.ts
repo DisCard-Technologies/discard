@@ -24,7 +24,7 @@ export class AttestationProvider implements AttestationStamper {
   private publicKey: string;
   private currentQuote: PhalaAttestationQuote | null = null;
   private quoteExpiry: number = 0;
-  private refreshTimer: NodeJS.Timeout | null = null;
+  private refreshTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(config?: Partial<AttestationProviderConfig>) {
     this.config = { ...DEFAULT_ATTESTATION_CONFIG, ...config };

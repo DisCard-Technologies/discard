@@ -59,7 +59,7 @@ export default function SellCryptoScreen() {
   const { user, userId } = useAuth();
   const solanaAddress = user?.solanaAddress || null;
   const ethereumAddress = user?.ethereumAddress || null;
-  const subOrgId = user?.turnkeySubOrgId || undefined;
+  const subOrgId = (user as any)?.turnkeySubOrgId || undefined;
 
   // Get real token holdings (Solana-based for now)
   const { holdings, isLoading: holdingsLoading } = useTokenHoldings(solanaAddress);
@@ -141,7 +141,7 @@ export default function SellCryptoScreen() {
         const amountBaseUnits = Math.floor(numericAmount * 1_000_000);
 
         // Get the user's commitment (first available)
-        const userCommitment = shieldedBalance.commitments[0]?.commitment;
+        const userCommitment = (shieldedBalance as any).commitments?.[0]?.commitment;
         if (!userCommitment) {
           console.error('[SellCrypto] No shielded commitment available');
           // Fall back to regular MoonPay

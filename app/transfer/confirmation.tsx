@@ -98,17 +98,6 @@ export default function TransferConfirmationScreen() {
     shadowWireStatus,
   } = usePrivateTransfer();
 
-  // Auto-run compliance check on mount
-  useEffect(() => {
-    if (!complianceChecked && recipient && walletAddress && amount) {
-      checkTransferCompliance(
-        walletAddress,
-        recipient.address,
-        amount.amountUsd || 0
-      ).then(() => setComplianceChecked(true));
-    }
-  }, [complianceChecked, recipient, walletAddress, amount, checkTransferCompliance]);
-
   // Auth and Turnkey
   const { user, userId } = useAuth();
   const credentialId = useCurrentCredentialId();
@@ -151,6 +140,17 @@ export default function TransferConfirmationScreen() {
 
   const createsAta = params.createsAta === "true";
   const memo = params.memo;
+
+  // Auto-run compliance check on mount
+  useEffect(() => {
+    if (!complianceChecked && recipient && walletAddress && amount) {
+      checkTransferCompliance(
+        walletAddress,
+        recipient.address,
+        amount.amountUsd || 0
+      ).then(() => setComplianceChecked(true));
+    }
+  }, [complianceChecked, recipient, walletAddress, amount, checkTransferCompliance]);
 
   // Handle edit (go back)
   const handleEdit = useCallback(() => {

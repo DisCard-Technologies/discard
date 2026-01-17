@@ -274,7 +274,7 @@ export function PhoneVerificationModal({
                   {otpDigits.map((digit, index) => (
                     <TextInput
                       key={index}
-                      ref={(ref) => (otpRefs.current[index] = ref)}
+                      ref={(ref) => { otpRefs.current[index] = ref; }}
                       value={digit}
                       onChangeText={(value) => handleOtpChange(index, value)}
                       onKeyPress={({ nativeEvent }) => handleOtpKeyPress(index, nativeEvent.key)}

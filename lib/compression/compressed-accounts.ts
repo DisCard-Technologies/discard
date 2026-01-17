@@ -14,8 +14,8 @@ import {
   CompressedProof,
 } from "./light-client";
 import { poseidon2 } from "poseidon-lite";
-import { sha256 } from "@noble/hashes/sha256";
-import { bytesToHex } from "@noble/hashes/utils";
+import { sha256 } from "@noble/hashes/sha2.js";
+import { bytesToHex } from "@noble/hashes/utils.js";
 
 // ============================================================================
 // Types

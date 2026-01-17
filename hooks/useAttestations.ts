@@ -188,7 +188,7 @@ export function useAttestations(
       subjectDid: "", // Would come from DID document
       onChainAddress: a.sasAttestationAddress,
       status: a.status as any,
-      issuedAt: a.createdAt,
+      issuedAt: a.issuedAt ?? a._creationTime,
       expiresAt: a.expiresAt,
       lastVerifiedAt: a.verifiedAt,
       metadata: a.metadata as Record<string, unknown>,
@@ -204,7 +204,7 @@ export function useAttestations(
       subjectDid: "",
       onChainAddress: a.sasAttestationAddress,
       status: a.status as any,
-      issuedAt: a.createdAt,
+      issuedAt: a.issuedAt ?? a._creationTime,
       expiresAt: a.expiresAt,
       lastVerifiedAt: a.verifiedAt,
       metadata: a.metadata as Record<string, unknown>,

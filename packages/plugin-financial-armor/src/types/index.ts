@@ -5,20 +5,33 @@
  */
 
 // Intent verification types
-export type {
-  IntentAction,
-  SourceType,
-  TargetType,
-  MerchantInfo,
-  VerificationContext,
-  UserPolicies,
-  VelocityLimits,
-  VerificationRequest,
-  VerificationResult,
-  DenialReason,
-  SignedIntent,
-  EscalationRequest,
+import type {
+  IntentAction as _IntentAction,
+  SourceType as _SourceType,
+  TargetType as _TargetType,
+  MerchantInfo as _MerchantInfo,
+  VerificationContext as _VerificationContext,
+  UserPolicies as _UserPolicies,
+  VelocityLimits as _VelocityLimits,
+  VerificationRequest as _VerificationRequest,
+  VerificationResult as _VerificationResult,
+  DenialReason as _DenialReason,
+  SignedIntent as _SignedIntent,
+  EscalationRequest as _EscalationRequest,
 } from "./intent.js";
+
+export type IntentAction = _IntentAction;
+export type SourceType = _SourceType;
+export type TargetType = _TargetType;
+export type MerchantInfo = _MerchantInfo;
+export type VerificationContext = _VerificationContext;
+export type UserPolicies = _UserPolicies;
+export type VelocityLimits = _VelocityLimits;
+export type VerificationRequest = _VerificationRequest;
+export type VerificationResult = _VerificationResult;
+export type DenialReason = _DenialReason;
+export type SignedIntent = _SignedIntent;
+export type EscalationRequest = _EscalationRequest;
 
 // Merchant registry types
 export type {
@@ -58,18 +71,29 @@ export {
 } from "./velocity.js";
 
 // Attestation types
-export type {
-  PhalaAttestationQuote,
-  TurnkeyStampConfig,
-  AttestationStamper,
-  StampResult,
-  AttestationStampPayload,
-  RemoteAttestationRequest,
-  RemoteAttestationResponse,
-  AttestationVerificationDetails,
-  TEEKeyPair,
-  AttestationProviderConfig,
+import type {
+  PhalaAttestationQuote as _PhalaAttestationQuote,
+  TurnkeyStampConfig as _TurnkeyStampConfig,
+  AttestationStamper as _AttestationStamper,
+  StampResult as _StampResult,
+  AttestationStampPayload as _AttestationStampPayload,
+  RemoteAttestationRequest as _RemoteAttestationRequest,
+  RemoteAttestationResponse as _RemoteAttestationResponse,
+  AttestationVerificationDetails as _AttestationVerificationDetails,
+  TEEKeyPair as _TEEKeyPair,
+  AttestationProviderConfig as _AttestationProviderConfig,
 } from "./attestation.js";
+
+export type PhalaAttestationQuote = _PhalaAttestationQuote;
+export type TurnkeyStampConfig = _TurnkeyStampConfig;
+export type AttestationStamper = _AttestationStamper;
+export type StampResult = _StampResult;
+export type AttestationStampPayload = _AttestationStampPayload;
+export type RemoteAttestationRequest = _RemoteAttestationRequest;
+export type RemoteAttestationResponse = _RemoteAttestationResponse;
+export type AttestationVerificationDetails = _AttestationVerificationDetails;
+export type TEEKeyPair = _TEEKeyPair;
+export type AttestationProviderConfig = _AttestationProviderConfig;
 
 export {
   DEFAULT_ATTESTATION_CONFIG,

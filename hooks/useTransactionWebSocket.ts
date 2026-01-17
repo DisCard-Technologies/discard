@@ -82,8 +82,8 @@ export const useTransactionWebSocket = () => {
   const [subscriptions, setSubscriptions] = useState<Set<string>>(new Set());
   
   const ws = useRef<WebSocket | null>(null);
-  const reconnectTimeout = useRef<NodeJS.Timeout | null>(null);
-  const heartbeatInterval = useRef<NodeJS.Timeout | null>(null);
+  const reconnectTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const heartbeatInterval = useRef<ReturnType<typeof setInterval> | null>(null);
   const pendingSubscriptions = useRef<string[]>([]);
   
   const MAX_RECONNECT_ATTEMPTS = 5;

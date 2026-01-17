@@ -133,12 +133,11 @@ function TypeBadge({
 
   if (type === "unknown") return null;
 
-  const labels: Record<typeof type, string> = {
+  const labels: Record<string, string> = {
     address: "Address valid",
     sol_name: ".sol detected",
     phone: "Phone detected",
     email: "Email detected",
-    unknown: "",
   };
 
   const label = labels[type];

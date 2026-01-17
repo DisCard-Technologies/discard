@@ -208,7 +208,7 @@ export function CryptoProvider({ children }: { children: ReactNode }) {
       walletId: w._id,
       walletType: w.walletType as WalletType,
       networkType: w.networkType as NetworkType,
-      publicAddress: w.publicAddress,
+      publicAddress: (w as any).address || (w as any).publicAddress,
       connectionStatus: w.connectionStatus as ConnectionStatus,
       nickname: w.nickname,
       cachedBalanceUsd: w.cachedBalanceUsd,
@@ -235,7 +235,7 @@ export function CryptoProvider({ children }: { children: ReactNode }) {
   // Transform rates data
   const rates: CryptoRate[] = useMemo(() => {
     if (!ratesData) return [];
-    return ratesData.map((r) => ({
+    return ratesData.filter((r): r is NonNullable<typeof r> => r !== null).map((r) => ({
       symbol: r.symbol,
       name: r.name || r.symbol,
       usdPrice: r.usdPrice,

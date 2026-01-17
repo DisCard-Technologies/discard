@@ -75,8 +75,8 @@ export const useCryptoRatesWebSocket = (
 
   // Refs
   const websocketRef = useRef<WebSocket | null>(null);
-  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const heartbeatIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const heartbeatIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isManualDisconnectRef = useRef(false);
   const mountedRef = useRef(true);
 

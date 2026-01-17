@@ -23,7 +23,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import Animated, { FadeIn, FadeOut, SlideInDown } from "react-native-reanimated";
-import { useMutation } from "convex/react";
+import { useMutation, useAction } from "convex/react";
 import { api } from "@/convex/_generated/api";
 
 import { ThemedText } from "@/components/themed-text";
@@ -77,9 +77,9 @@ export function InviteModal({
   const [status, setStatus] = useState<InviteStatus>("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Convex mutation for creating and sending invitation
+  // Convex mutation for creating and action for sending invitation
   const createInvitation = useMutation(api.transfers.invitations.create);
-  const sendInvitation = useMutation(api.transfers.invitations.send);
+  const sendInvitation = useAction(api.transfers.invitations.send);
 
   // Format phone number for display
   const formatPhoneNumber = (phone: string): string => {

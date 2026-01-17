@@ -105,7 +105,7 @@ export function useAddressResolver(
   const [error, setError] = useState<string | null>(null);
 
   // Refs for debouncing and cleanup
-  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const latestInputRef = useRef(input);
 

@@ -92,7 +92,7 @@ export function useCryptoRates(
   // Transform rates data
   const rates: CryptoRate[] = useMemo(() => {
     if (!ratesData) return [];
-    return ratesData.map((rate) => ({
+    return ratesData.filter((rate): rate is NonNullable<typeof rate> => rate !== null).map((rate) => ({
       symbol: rate.symbol,
       name: rate.name || rate.symbol,
       usdPrice: rate.usdPrice.toString(),
@@ -174,20 +174,24 @@ export function useHistoricalRates(
   symbol: string,
   timeframe: '1h' | '24h' | '7d' | '30d' = '24h'
 ) {
+  // Map timeframe to days parameter that API expects
+  const daysMap = { '1h': 1, '24h': 1, '7d': 7, '30d': 30 };
   const historicalData = useQuery(api.wallets.rates.historical, {
     symbol,
-    timeframe,
+    days: daysMap[timeframe],
   });
 
+  // Cast to any to handle evolving API structure
+  const data = historicalData as any;
   return {
-    data: historicalData?.dataPoints || [],
-    summary: historicalData
+    data: data?.dataPoints || data?.history || [],
+    summary: data
       ? {
-          high: historicalData.high,
-          low: historicalData.low,
-          open: historicalData.open,
-          close: historicalData.close,
-          change: historicalData.changePercent,
+          high: data.high ?? Math.max(...(data.history || []).map((h: any) => h.price)),
+          low: data.low ?? Math.min(...(data.history || []).map((h: any) => h.price)),
+          open: data.open ?? (data.history?.[0]?.price || 0),
+          close: data.close ?? (data.history?.[data.history?.length - 1]?.price || 0),
+          change: data.changePercent ?? 0,
         }
       : null,
     isLoading: historicalData === undefined,
@@ -200,11 +204,13 @@ export function useHistoricalRates(
 export function useRateComparison(symbol: string) {
   const comparisonData = useQuery(api.wallets.rates.compare, { symbol });
 
+  // Cast to any to handle evolving API structure
+  const data = comparisonData as any;
   return {
-    exchanges: comparisonData?.exchanges || [],
-    bestBuy: comparisonData?.bestBuy || null,
-    bestSell: comparisonData?.bestSell || null,
-    spread: comparisonData?.averageSpread || 0,
+    exchanges: data?.exchanges || data?.comparison || [],
+    bestBuy: data?.bestBuy || null,
+    bestSell: data?.bestSell || null,
+    spread: data?.averageSpread || 0,
     isLoading: comparisonData === undefined,
   };
 }

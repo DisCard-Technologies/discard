@@ -646,7 +646,7 @@ export default function TransferScreen() {
             {!CameraView ? (
               // Camera not available (Expo Go limitation)
               <View style={styles.permissionContainer}>
-                <Ionicons name="camera-off-outline" size={48} color={mutedColor} />
+                <Ionicons name="camera-outline" size={48} color={mutedColor} />
                 <ThemedText style={[styles.permissionText, { color: mutedColor }]}>
                   Camera not available
                 </ThemedText>

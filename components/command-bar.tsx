@@ -202,7 +202,7 @@ export function CommandBar({
       params: {
         recipient: JSON.stringify({
           address: parsedIntent.targetId,
-          displayName: parsedIntent.metadata?.recipientName || parsedIntent.targetId?.slice(0, 8),
+          displayName: (parsedIntent as any).metadata?.recipientName || parsedIntent.targetId?.slice(0, 8),
           type: 'address',
         }),
         amount: JSON.stringify({
