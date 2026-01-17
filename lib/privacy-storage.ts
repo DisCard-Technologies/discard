@@ -93,21 +93,6 @@ export type ConvexStorageActions = {
     includeSpent?: boolean;
   }) => Promise<EncryptedShieldedCommitment[]>;
   
-  // Redemption Codes
-  storeRedemptionCode: (args: {
-    userId: Id<"users">;
-    redemptionId: string;
-    productType: string;
-    brand: string;
-    encryptedCode: string;
-    redemptionUrl?: string;
-    expiresAt?: number;
-  }) => Promise<{ success: boolean }>;
-  
-  getRedemptionCodes: (args: {
-    userId: Id<"users">;
-    status?: string;
-  }) => Promise<EncryptedRedemptionCode[]>;
 };
 
 export interface EncryptedCredential {
@@ -142,16 +127,6 @@ export interface EncryptedShieldedCommitment {
   createdAt: number;
 }
 
-export interface EncryptedRedemptionCode {
-  redemptionId: string;
-  productType: string;
-  brand: string;
-  encryptedCode: string;         // ENCRYPTED
-  redemptionUrl?: string;
-  status: string;
-  expiresAt?: number;
-  createdAt: number;
-}
 
 // ============================================================================
 // Privacy Storage Service
@@ -461,100 +436,6 @@ export class PrivacyStorage {
     }
   }
 
-  // ==========================================================================
-  // Gift Card Codes Storage (E2EE)
-  // ==========================================================================
-
-  /**
-   * Store encrypted gift card/RWA code
-   */
-  async storeRedemptionCode(redemption: {
-    redemptionId: string;
-    productType: string;
-    brand: string;
-    code: string;
-    redemptionUrl?: string;
-    expiresAt?: number;
-  }): Promise<{ success: boolean }> {
-    console.log('[PrivacyStorage] Storing redemption code:', redemption.redemptionId);
-    
-    try {
-      // 1. Derive encryption key
-      const encryptionKey = await this.getOrDeriveKey('rwa-codes-v1');
-      
-      // 2. Encrypt code
-      const encryptedCode = encryptData(redemption.code, encryptionKey);
-      
-      // 3. Store in Convex
-      const result = await this.config.convex.storeRedemptionCode({
-        userId: this.config.userId,
-        redemptionId: redemption.redemptionId,
-        productType: redemption.productType,
-        brand: redemption.brand,
-        encryptedCode,
-        redemptionUrl: redemption.redemptionUrl,
-        expiresAt: redemption.expiresAt,
-      });
-      
-      console.log('[PrivacyStorage] Redemption code encrypted and stored');
-      return result;
-    } catch (error) {
-      console.error('[PrivacyStorage] Failed to store redemption:', error);
-      return { success: false };
-    }
-  }
-
-  /**
-   * Load and decrypt redemption codes
-   */
-  async loadRedemptionCodes(status?: string): Promise<Array<{
-    redemptionId: string;
-    productType: string;
-    brand: string;
-    code: string;
-    redemptionUrl?: string;
-    status: string;
-    expiresAt?: number;
-  }>> {
-    console.log('[PrivacyStorage] Loading redemption codes');
-    
-    try {
-      // 1. Fetch from Convex
-      const encrypted = await this.config.convex.getRedemptionCodes({
-        userId: this.config.userId,
-        status,
-      });
-      
-      // 2. Derive decryption key
-      const encryptionKey = await this.getOrDeriveKey('rwa-codes-v1');
-      
-      // 3. Decrypt codes
-      const decrypted = [];
-      for (const enc of encrypted) {
-        try {
-          const code = decryptData(enc.encryptedCode, encryptionKey);
-          
-          decrypted.push({
-            redemptionId: enc.redemptionId,
-            productType: enc.productType,
-            brand: enc.brand,
-            code,
-            redemptionUrl: enc.redemptionUrl,
-            status: enc.status,
-            expiresAt: enc.expiresAt,
-          });
-        } catch (error) {
-          console.error(`[PrivacyStorage] Failed to decrypt code ${enc.redemptionId}:`, error);
-        }
-      }
-      
-      console.log(`[PrivacyStorage] Loaded ${decrypted.length} redemption codes`);
-      return decrypted;
-    } catch (error) {
-      console.error('[PrivacyStorage] Failed to load codes:', error);
-      return [];
-    }
-  }
 
   // ==========================================================================
   // Key Management (Client-Side)
@@ -621,7 +502,6 @@ export class PrivacyStorage {
       credentials: await this.config.convex.getCredentials({ userId: this.config.userId }),
       depositNotes: await this.config.convex.getDepositNotes({ userId: this.config.userId, includeSpent: true }),
       shieldedCommitments: await this.config.convex.getShieldedCommitments({ userId: this.config.userId, includeSpent: true }),
-      redemptionCodes: await this.config.convex.getRedemptionCodes({ userId: this.config.userId }),
     };
     
     // Still encrypted - user needs their wallet key to decrypt

@@ -2065,38 +2065,4 @@ export default defineSchema({
     .index("by_user_note", ["userId", "noteId"])
     .index("by_spent", ["spent"]),
 
-  // ============================================================================
-  // REDEMPTION CODES - Gift Cards and RWA Codes (E2EE)
-  // ============================================================================
-  redemptionCodes: defineTable({
-    userId: v.id("users"),
-    
-    // Redemption identification
-    redemptionId: v.string(),
-    
-    // Product info (safe metadata)
-    productType: v.string(),               // "gift_card", "prepaid_card"
-    brand: v.string(),                     // "Amazon", "Visa"
-    
-    // ENCRYPTED CODE
-    encryptedCode: v.string(),             // Code encrypted with user's key
-    
-    // Redemption info
-    redemptionUrl: v.optional(v.string()),
-    
-    // Status
-    status: v.union(
-      v.literal("active"),
-      v.literal("redeemed"),
-      v.literal("expired")
-    ),
-    
-    // Timestamps
-    expiresAt: v.optional(v.number()),
-    createdAt: v.number(),
-    redeemedAt: v.optional(v.number()),
-  })
-    .index("by_user", ["userId"])
-    .index("by_user_status", ["userId", "status"])
-    .index("by_redemption_id", ["redemptionId"]),
 });

@@ -17,6 +17,15 @@
  */
 
 import { Connection, PublicKey, Transaction, TransactionInstruction, Keypair } from '@solana/web3.js';
+import {
+  generateKeypair as generateElGamalKeypair,
+  encrypt as elgamalEncrypt,
+  decrypt as elgamalDecrypt,
+  serializeCiphertext,
+  deserializeCiphertext,
+  type ElGamalCiphertext,
+  type ElGamalKeypair,
+} from '@/lib/crypto/elgamal';
 
 // ============ TYPES ============
 
@@ -138,10 +147,27 @@ export class UmbraService {
   
   // Optional: E2EE cloud storage for note backup
   private convexStorage: any = null;
+  
+  // Pool's ElGamal public key (for amount encryption)
+  private poolElGamalKey: ElGamalKeypair | null = null;
 
   constructor(config: UmbraPoolConfig, convexStorage?: any) {
     this.config = config;
     this.convexStorage = convexStorage;
+    
+    // Initialize pool's ElGamal keypair
+    // In production, pool's public key would be on-chain
+    this.initializePoolKey();
+  }
+  
+  /**
+   * Initialize pool's ElGamal keypair
+   */
+  private initializePoolKey(): void {
+    // For development, generate a keypair
+    // In production, fetch pool's public key from on-chain account
+    this.poolElGamalKey = generateElGamalKeypair();
+    console.log('[Umbra] Pool ElGamal key initialized');
   }
 
   // ============ DEPOSITS ============
@@ -511,17 +537,43 @@ export class UmbraService {
   }
 
   /**
-   * Encrypt amount with ElGamal (simplified)
-   * In production, use proper ElGamal with the pool's public key
+   * Encrypt amount with proper ElGamal encryption
+   * 
+   * Uses twisted ElGamal on Ristretto255 for homomorphic properties.
+   * Pool can verify amounts without decrypting (for fee calculation).
    */
-  private async encryptAmount(amount: bigint): Promise<string> {
-    // Simplified encryption: hash(amount || random)
-    const random = this.generateRandomHex(32);
-    const data = new TextEncoder().encode(`${amount}||${random}`);
-    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-    return Array.from(new Uint8Array(hashBuffer))
-      .map(b => b.toString(16).padStart(2, '0'))
-      .join('');
+  private encryptAmount(amount: bigint): string {
+    if (!this.poolElGamalKey) {
+      throw new Error('Pool ElGamal key not initialized');
+    }
+    
+    // Encrypt amount using pool's public key
+    const ciphertext = elgamalEncrypt(amount, this.poolElGamalKey.publicKey);
+    
+    // Serialize for storage
+    const serialized = serializeCiphertext(ciphertext);
+    
+    // Return as JSON string
+    return JSON.stringify(serialized);
+  }
+  
+  /**
+   * Decrypt amount (for withdrawal)
+   * 
+   * @param encryptedAmount - Serialized ElGamal ciphertext
+   * @returns Decrypted amount
+   */
+  private decryptAmount(encryptedAmount: string): bigint {
+    if (!this.poolElGamalKey) {
+      throw new Error('Pool ElGamal key not initialized');
+    }
+    
+    // Deserialize ciphertext
+    const serialized = JSON.parse(encryptedAmount);
+    const ciphertext = deserializeCiphertext(serialized);
+    
+    // Decrypt using pool's private key
+    return elgamalDecrypt(ciphertext, this.poolElGamalKey.privateKey);
   }
 
   /**

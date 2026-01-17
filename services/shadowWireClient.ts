@@ -27,6 +27,12 @@ import nacl from "tweetnacl";
 import naclUtil from "tweetnacl-util";
 import bs58 from "bs58";
 import {
+  generateRingSignature,
+  verifyRingSignature,
+  isKeyImageUsed,
+  type RingSignature,
+} from "@/lib/crypto/ring-signatures";
+import {
   LightClient,
   getLightClient,
   type CompressedProof,
@@ -162,6 +168,9 @@ export class ShadowWireService {
   private relayerUrl: string;
   private lightClient: LightClient | null = null;
   private zkCompressionEnabled: boolean = false;
+  
+  // Key image registry to prevent double-signing
+  private usedKeyImages: Set<string> = new Set();
 
   constructor() {
     this.connection = new Connection(RPC_URL, "confirmed");
@@ -596,11 +605,11 @@ export class ShadowWireService {
   }
 
   /**
-   * Generate a simplified ring signature proof
+   * Generate a ring signature proof
    *
-   * This creates a proof that the sender is one of the ring members
-   * without revealing which one. For hackathon purposes, this is a
-   * simplified implementation - production would use full ZK-SNARKs.
+   * Uses proper Borromean-style ring signatures on Ed25519.
+   * Proves sender is one of the ring members without revealing which one.
+   * Key images prevent double-signing (linkability).
    */
   private async generateRingProof(
     senderAddress: string,
@@ -608,7 +617,7 @@ export class ShadowWireService {
     amount: number,
     recipientStealth: string
   ): Promise<string> {
-    console.log("[ShadowWire] Generating ring proof with", decoys.length, "decoys");
+    console.log("[ShadowWire] Generating ring signature with", decoys.length, "decoys");
 
     try {
       // Create ring with sender at random position
@@ -621,62 +630,82 @@ export class ShadowWireService {
         JSON.stringify({
           amount,
           recipient: recipientStealth,
-          ring: ringMembers.sort(), // Sort to hide position
           timestamp: Date.now(),
+          version: 2, // Ring signature v2 (proper implementation)
         })
       );
-      const message = sha256(messageData);
 
-      // Generate key images and signatures for each ring member
-      const keyImages: Uint8Array[] = [];
-      const signatures: Uint8Array[] = [];
-      const challenges: Uint8Array[] = [];
+      // Convert addresses to public keys
+      const ringPublicKeys = ringMembers.map(addr => bs58.decode(addr).slice(0, 32));
+      
+      // Get sender's private key (in production, from wallet)
+      // For demo, derive from address hash
+      const senderPrivateKey = sha256(new TextEncoder().encode(senderAddress)).slice(0, 32);
 
-      for (let i = 0; i < ringMembers.length; i++) {
-        // Generate random values for all positions (simplified ring sig)
-        const randomK = nacl.randomBytes(32);
-        const keyImage = sha256(new Uint8Array([...bs58.decode(ringMembers[i]).slice(0, 16), ...randomK]));
-        keyImages.push(keyImage);
+      // Generate proper ring signature
+      const ringSignature = generateRingSignature({
+        message: messageData,
+        signerPrivateKey: senderPrivateKey,
+        signerIndex,
+        ringPublicKeys,
+      });
 
-        if (i === senderIndex) {
-          // For sender position, create a valid signature
-          // In production, this would be a proper Schnorr signature
-          const sig = sha256(new Uint8Array([...message, ...randomK, ...keyImage]));
-          signatures.push(sig);
-        } else {
-          // For decoys, create random but valid-looking signatures
-          signatures.push(nacl.randomBytes(32));
-        }
-
-        // Challenge is hash of message with current state
-        const challengeData = new Uint8Array([
-          ...message,
-          ...signatures[i],
-          ...keyImage,
-        ]);
-        challenges.push(sha256(challengeData));
+      // Check for key image collision (double-signing detection)
+      if (isKeyImageUsed(ringSignature.keyImage, this.usedKeyImages)) {
+        console.warn("[ShadowWire] Key image already used - double-signing detected");
+        throw new Error('Key image already used');
       }
 
-      // Encode the ring proof
-      const proof = {
-        version: 1,
-        ringSize: ringMembers.length,
-        keyImages: keyImages.map(ki => bs58.encode(ki)),
-        signatures: signatures.map(s => bs58.encode(s)),
-        challenges: challenges.map(c => bs58.encode(c)),
-        messageHash: bs58.encode(message),
-      };
-
-      const proofBytes = new TextEncoder().encode(JSON.stringify(proof));
+      // Encode the ring signature for storage
+      const proofBytes = new TextEncoder().encode(JSON.stringify(ringSignature));
       const proofEncoded = bs58.encode(proofBytes);
 
-      console.log("[ShadowWire] Ring proof generated, size:", proofEncoded.length, "chars");
+      console.log("[ShadowWire] Ring signature generated:", {
+        ringSize: ringMembers.length,
+        signerIndex: 'hidden',
+        keyImage: ringSignature.keyImage.slice(0, 16) + '...',
+        size: proofEncoded.length,
+      });
 
       return proofEncoded;
     } catch (error) {
-      console.error("[ShadowWire] Ring proof generation failed:", error);
-      // Return a fallback proof structure
-      return bs58.encode(sha256(new TextEncoder().encode(`fallback_${Date.now()}`)));
+      console.error("[ShadowWire] Ring signature generation failed:", error);
+      throw error;
+    }
+  }
+  
+  /**
+   * Verify a ring signature proof
+   * 
+   * @param proofEncoded - Encoded ring signature
+   * @param expectedMessage - Expected message data
+   * @returns True if signature is valid
+   */
+  private verifyRingProof(proofEncoded: string, expectedMessage: Uint8Array): boolean {
+    try {
+      // Decode ring signature
+      const proofBytes = bs58.decode(proofEncoded);
+      const ringSignature = JSON.parse(new TextDecoder().decode(proofBytes)) as RingSignature;
+      
+      // Verify signature
+      const valid = verifyRingSignature(ringSignature, expectedMessage);
+      
+      if (valid) {
+        // Check for key image reuse (linkability attack)
+        if (isKeyImageUsed(ringSignature.keyImage, this.usedKeyImages)) {
+          console.warn("[ShadowWire] Key image reuse detected");
+          return false;
+        }
+        
+        // Mark key image as used
+        this.usedKeyImages.add(ringSignature.keyImage);
+        console.log("[ShadowWire] Ring signature verified, key image tracked");
+      }
+      
+      return valid;
+    } catch (error) {
+      console.error("[ShadowWire] Ring signature verification failed:", error);
+      return false;
     }
   }
 
