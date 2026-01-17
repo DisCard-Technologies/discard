@@ -21,6 +21,7 @@
 import { getArciumMpcService, type EncryptedInput } from "./arciumMpcClient";
 import { getRangeComplianceService } from "./rangeComplianceClient";
 import type { AttestationType, AttestationData, AttestationIssuer } from "@/lib/attestations/sas-client";
+import { deriveEncryptionKey, encryptData, decryptData } from "@/lib/crypto-utils";
 
 // ============================================================================
 // Types
@@ -635,15 +636,42 @@ export class PrivateIdentityService {
   }
 
   private async encryptCredential(data: string, userPrivateKey: Uint8Array): Promise<string> {
-    // In production, encrypt with Arcium MXE
-    // For demo, base64 encode
-    return Buffer.from(data).toString("base64");
+    try {
+      // Derive encryption key from user's private key using HKDF
+      const encryptionKey = await deriveEncryptionKey(
+        userPrivateKey,
+        'discard-credential-encryption-v1'
+      );
+      
+      // Encrypt with NaCl secretbox (XSalsa20-Poly1305)
+      // This provides authenticated encryption with a random nonce
+      const encrypted = encryptData(data, encryptionKey);
+      
+      console.log('[PrivateIdentity] Credential encrypted with NaCl secretbox');
+      return encrypted;
+    } catch (error) {
+      console.error('[PrivateIdentity] Credential encryption failed:', error);
+      throw new Error('Failed to encrypt credential');
+    }
   }
 
   private async decryptCredential(encryptedData: string, userPrivateKey: Uint8Array): Promise<string> {
-    // In production, decrypt with Arcium MXE
-    // For demo, base64 decode
-    return Buffer.from(encryptedData, "base64").toString("utf-8");
+    try {
+      // Derive same encryption key from user's private key
+      const encryptionKey = await deriveEncryptionKey(
+        userPrivateKey,
+        'discard-credential-encryption-v1'
+      );
+      
+      // Decrypt and verify MAC
+      const decrypted = decryptData(encryptedData, encryptionKey);
+      
+      console.log('[PrivateIdentity] Credential decrypted successfully');
+      return decrypted;
+    } catch (error) {
+      console.error('[PrivateIdentity] Credential decryption failed:', error);
+      throw new Error('Failed to decrypt credential - wrong key or corrupted data');
+    }
   }
 
   private async hashCredential(data: string): Promise<string> {

@@ -25,6 +25,7 @@ import { getArciumMpcService, type EncryptedInput } from "./arciumMpcClient";
 import { getAnoncoinSwapService } from "./anoncoinSwapClient";
 import { getShadowWireService, type StealthAddress } from "./shadowWireClient";
 import { getPrivacyCashService } from "./privacyCashClient";
+import { deriveEncryptionKey, encryptData, decryptData } from "@/lib/crypto-utils";
 
 // ============================================================================
 // Types
@@ -458,9 +459,17 @@ export class PrivateRwaService {
     userPrivateKey: Uint8Array
   ): Promise<string | null> {
     try {
-      // In production, would use actual decryption
-      // For now, return mock code
-      return "MOCK-CODE-XXXX";
+      // Derive same encryption key from user's private key
+      const encryptionKey = await deriveEncryptionKey(
+        userPrivateKey,
+        'discard-rwa-code-encryption-v1'
+      );
+      
+      // Decrypt and verify MAC
+      const decrypted = decryptData(encryptedCode, encryptionKey);
+      
+      console.log('[PrivateRWA] Gift card code decrypted successfully');
+      return decrypted;
     } catch (error) {
       console.error("[PrivateRWA] Decryption failed:", error);
       return null;
@@ -516,9 +525,23 @@ export class PrivateRwaService {
   }
 
   private async encryptCode(code: string, privateKey: Uint8Array): Promise<string> {
-    // In production, encrypt with user's public key
-    // For demo, just base64 encode
-    return Buffer.from(code).toString("base64");
+    try {
+      // Derive encryption key from user's private key using HKDF
+      const encryptionKey = await deriveEncryptionKey(
+        privateKey,
+        'discard-rwa-code-encryption-v1'
+      );
+      
+      // Encrypt with NaCl secretbox (XSalsa20-Poly1305)
+      // This provides authenticated encryption that only the user can decrypt
+      const encrypted = encryptData(code, encryptionKey);
+      
+      console.log('[PrivateRWA] Gift card code encrypted with NaCl secretbox');
+      return encrypted;
+    } catch (error) {
+      console.error('[PrivateRWA] Code encryption failed:', error);
+      throw new Error('Failed to encrypt gift card code');
+    }
   }
 
   private getRedemptionUrl(product: RwaProduct): string | undefined {
