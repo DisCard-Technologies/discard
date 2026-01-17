@@ -527,7 +527,7 @@ export const submitSignedTransaction = internalAction({
     try {
       // Get signing request
       const request = await ctx.runQuery(
-        internal.bridge.turnkeyBridge.getSigningRequest,
+        internal.bridge.turnkeyBridge.getSigningRequestInternal,
         { requestId: args.requestId }
       );
 

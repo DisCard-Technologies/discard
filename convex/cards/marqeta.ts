@@ -763,7 +763,7 @@ export const processAuthorization = internalAction({
       const authorizationCode = generateAuthorizationCode();
 
       // Step 9: Create authorization record
-      await ctx.runMutation(internal.cards.createAuthorization, {
+      await ctx.runMutation(internal.cards.marqeta.createAuthorization, {
         cardId: card._id,
         cardContext: card.cardContext,
         marqetaTransactionToken: args.marqetaTransactionToken,
@@ -780,7 +780,7 @@ export const processAuthorization = internalAction({
       });
 
       // Step 10: Create authorization hold
-      await ctx.runMutation(internal.cards.createAuthorizationHold, {
+      await ctx.runMutation(internal.cards.marqeta.createAuthorizationHold, {
         cardId: card._id,
         cardContext: card.cardContext,
         authorizationCode,

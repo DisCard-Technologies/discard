@@ -303,7 +303,7 @@ export const freezeCard = internalAction({
 
     await starpayRequest("POST", `/cards/${card.providerCardToken}/freeze`, {});
 
-    await ctx.runMutation(internal.cards.cards.updateStatus, {
+    await ctx.runMutation(internal.cards.cards.updateStatusInternal, {
       cardId: args.cardId,
       status: "frozen",
     });
@@ -328,7 +328,7 @@ export const unfreezeCard = internalAction({
 
     await starpayRequest("POST", `/cards/${card.providerCardToken}/unfreeze`, {});
 
-    await ctx.runMutation(internal.cards.cards.updateStatus, {
+    await ctx.runMutation(internal.cards.cards.updateStatusInternal, {
       cardId: args.cardId,
       status: "active",
     });
@@ -353,7 +353,7 @@ export const closeCard = internalAction({
 
     await starpayRequest("DELETE", `/cards/${card.providerCardToken}`, {});
 
-    await ctx.runMutation(internal.cards.cards.updateStatus, {
+    await ctx.runMutation(internal.cards.cards.updateStatusInternal, {
       cardId: args.cardId,
       status: "terminated",
     });

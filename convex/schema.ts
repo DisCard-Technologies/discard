@@ -74,6 +74,7 @@ export default defineSchema({
         v.literal("withdraw_defi"),
         v.literal("create_card"),
         v.literal("freeze_card"),
+        v.literal("delete_card"),       // Delete/terminate a card
         v.literal("pay_bill"),
         v.literal("merchant_payment"),  // Cross-currency payment to merchant
         v.literal("create_goal"),       // Create a savings/accumulation goal
@@ -1050,7 +1051,7 @@ export default defineSchema({
   // Solana Attestation Service stamps for identity verification
   attestations: defineTable({
     userId: v.id("users"),
-    didDocumentId: v.id("didDocuments"),
+    didDocumentId: v.optional(v.id("didDocuments")), // Optional - not all attestations require DID
 
     // Attestation type (expanded to support all verification types)
     attestationType: v.union(
@@ -1082,9 +1083,12 @@ export default defineSchema({
       v.literal("professional_investor"), // Professional investor status
       // Social recovery
       v.literal("recovery_guardian"),   // Can act as guardian for others
-      // Email/Phone verification
+      // Email/Phone/Address verification
       v.literal("email_verified"),      // Email address verified
       v.literal("phone_verified"),      // Phone number verified
+      v.literal("address_verified"),    // Physical address verified
+      // Compliance checks
+      v.literal("pep_check"),           // Politically exposed person check
       // Custom
       v.literal("custom")               // Custom attestation
     ),
@@ -1571,6 +1575,7 @@ export default defineSchema({
 
     // Timestamps
     createdAt: v.number(),
+    updatedAt: v.optional(v.number()),
     viewedAt: v.optional(v.number()),
     paidAt: v.optional(v.number()),
   })

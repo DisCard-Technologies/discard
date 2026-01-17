@@ -506,11 +506,11 @@ export const linkPhoneDev = mutation({
  */
 export const sendVerificationSMS = action({
   args: { verificationId: v.id("phoneVerifications") },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<{ success: boolean; message: string; code?: string }> => {
     // Get verification record
     const verification = await ctx.runQuery(internal.auth.phoneVerification.getById, {
       id: args.verificationId,
-    });
+    }) as { phoneNumber: string; code: string; status: string } | null;
 
     if (!verification) {
       throw new Error("Verification not found");

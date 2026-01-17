@@ -541,6 +541,125 @@ export const resetDailySpending = internalMutation({
   },
 });
 
+/**
+ * Handle sub-organization creation completion from webhook
+ */
+export const handleSubOrgCreated = internalMutation({
+  args: {
+    activityId: v.string(),
+    subOrganizationId: v.optional(v.string()),
+    rootUserId: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    console.log("[Turnkey] Sub-org created:", {
+      activityId: args.activityId,
+      subOrganizationId: args.subOrganizationId,
+    });
+    // The actual sub-org record is created via the create mutation
+    // This webhook handler is for logging/audit purposes
+  },
+});
+
+/**
+ * Handle wallet creation completion from webhook
+ */
+export const handleWalletCreated = internalMutation({
+  args: {
+    activityId: v.string(),
+    walletId: v.optional(v.string()),
+    addresses: v.optional(v.array(v.string())),
+  },
+  handler: async (ctx, args) => {
+    console.log("[Turnkey] Wallet created:", {
+      activityId: args.activityId,
+      walletId: args.walletId,
+      addresses: args.addresses,
+    });
+    // Wallet details are handled in the sub-org creation flow
+    // This webhook handler is for logging/audit purposes
+  },
+});
+
+/**
+ * Log security events for audit trail
+ */
+export const logSecurityEvent = internalMutation({
+  args: {
+    eventType: v.string(),
+    activityId: v.string(),
+    status: v.string(),
+  },
+  handler: async (ctx, args) => {
+    console.warn("[Turnkey Security Event]", {
+      eventType: args.eventType,
+      activityId: args.activityId,
+      status: args.status,
+      timestamp: Date.now(),
+    });
+    // In production, this would insert into a security_events audit table
+  },
+});
+
+/**
+ * Handle policy denial events
+ */
+export const handlePolicyDenial = internalMutation({
+  args: {
+    activityId: v.string(),
+    policyId: v.string(),
+    reason: v.string(),
+  },
+  handler: async (ctx, args) => {
+    console.warn("[Turnkey Policy Denial]", {
+      activityId: args.activityId,
+      policyId: args.policyId,
+      reason: args.reason,
+    });
+    // In production, update the signing request status and notify user
+  },
+});
+
+/**
+ * Handle consensus (multi-sig) required events
+ */
+export const handleConsensusRequired = internalMutation({
+  args: {
+    activityId: v.string(),
+    requiredApprovers: v.number(),
+    currentApprovers: v.number(),
+  },
+  handler: async (ctx, args) => {
+    console.log("[Turnkey Consensus Required]", {
+      activityId: args.activityId,
+      requiredApprovers: args.requiredApprovers,
+      currentApprovers: args.currentApprovers,
+    });
+    // In production, update the signing request to awaiting_approval
+    // and notify required approvers
+  },
+});
+
+/**
+ * Handle velocity limit exceeded events
+ */
+export const handleLimitExceeded = internalMutation({
+  args: {
+    activityId: v.string(),
+    limitType: v.string(),
+    currentValue: v.number(),
+    limitValue: v.number(),
+  },
+  handler: async (ctx, args) => {
+    console.warn("[Turnkey Limit Exceeded]", {
+      activityId: args.activityId,
+      limitType: args.limitType,
+      currentValue: args.currentValue,
+      limitValue: args.limitValue,
+    });
+    // In production, block the transaction and notify user
+  },
+});
+
 // ============================================================================
 // Actions - Turnkey API Calls
 // ============================================================================

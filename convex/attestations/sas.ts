@@ -242,7 +242,7 @@ export const hasRequiredForAction = query({
       .collect();
 
     const now = Date.now();
-    const activeTypes = new Set(
+    const activeTypes = new Set<string>(
       attestations
         .filter((a) => a.status === "active" && (!a.expiresAt || a.expiresAt > now))
         .map((a) => a.attestationType)
@@ -312,7 +312,7 @@ export const create = mutation({
       expiresAt: args.expiresAt,
       metadata: args.metadata,
       verifiedAt: now,
-      createdAt: now,
+      issuedAt: now,
       updatedAt: now,
     });
   },
@@ -494,7 +494,7 @@ export const syncCivicToken = mutation({
       status: status as "active" | "expired" | "revoked" | "pending",
       expiresAt: args.expiresAt,
       verifiedAt: now,
-      createdAt: args.issuedAt,
+      issuedAt: args.issuedAt,
       updatedAt: now,
       metadata: {
         gatekeeperNetwork: args.gatekeeperNetwork,

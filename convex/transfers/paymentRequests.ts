@@ -112,8 +112,8 @@ export const create = mutation({
       queryParams.push(`memo=${encodeURIComponent(args.memo)}`);
     }
 
-    if (args.recipientName || user.displayName) {
-      const label = args.recipientName || user.displayName;
+    const label = args.recipientName || user.displayName;
+    if (label) {
       queryParams.push(`label=${encodeURIComponent(label)}`);
     }
 

@@ -128,7 +128,7 @@ export const execute = internalAction({
       if (intent.parsedIntent.action === "fund_card" && intent.parsedIntent.amount) {
         // Create optimistic settlement record
         const settlement = await ctx.runMutation(
-          internal.realtime.optimistic.optimisticBalanceUpdate,
+          internal.realtime.optimistic.optimisticBalanceUpdateInternal,
           {
             userId: intent.userId,
             cardId: intent.parsedIntent.targetId as Id<"cards">,
@@ -140,7 +140,7 @@ export const execute = internalAction({
       } else if (intent.parsedIntent.action === "transfer" && intent.parsedIntent.amount) {
         // For transfers, deduct from source optimistically
         const settlement = await ctx.runMutation(
-          internal.realtime.optimistic.optimisticBalanceUpdate,
+          internal.realtime.optimistic.optimisticBalanceUpdateInternal,
           {
             userId: intent.userId,
             cardId: intent.parsedIntent.sourceId as Id<"cards">,
@@ -213,7 +213,7 @@ export const execute = internalAction({
       if (transaction.requiresSignature) {
         // Get user's Turnkey sub-organization
         const turnkeyOrg = await ctx.runQuery(
-          internal.tee.turnkey.getByUserId,
+          internal.tee.turnkey.getByUserIdInternal,
           { userId: intent.userId }
         );
 
@@ -700,11 +700,11 @@ async function buildMerchantPaymentTransaction(
 async function executeCreateCard(ctx: any, intent: any): Promise<void> {
   const { parsedIntent } = intent;
 
-  // Create card via Convex mutation - pass userId for internal auth
-  await ctx.runMutation(internal.cards.cards.create, {
+  // Create card via Convex internal mutation
+  await ctx.runMutation(internal.cards.cards.createInternal, {
+    userId: intent.userId,
     spendingLimit: parsedIntent.metadata?.spendingLimit,
     nickname: parsedIntent.metadata?.nickname,
-    userId: intent.userId,
   });
 }
 
@@ -718,7 +718,7 @@ async function executeFreezeCard(ctx: any, intent: any): Promise<void> {
     throw new Error("Card ID required to freeze");
   }
 
-  await ctx.runMutation(internal.cards.cards.freeze, {
+  await ctx.runMutation(internal.cards.cards.freezeInternal, {
     cardId: parsedIntent.targetId as Id<"cards">,
     reason: "User requested via intent",
   });

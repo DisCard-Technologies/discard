@@ -11,7 +11,7 @@
  */
 
 import { v } from "convex/values";
-import { mutation, query, internalMutation } from "../_generated/server";
+import { mutation, query, internalMutation, internalQuery } from "../_generated/server";
 import { Doc, Id } from "../_generated/dataModel";
 
 // ============================================================================
@@ -98,9 +98,9 @@ function getTTL(responseType: string): number {
 // ============================================================================
 
 /**
- * Check cache for a matching entry
+ * Check cache for a matching entry (internal)
  */
-export const checkCache = query({
+export const checkCache = internalQuery({
   args: {
     inputHash: v.string(),
   },
@@ -152,9 +152,9 @@ export const getCacheStats = query({
 // ============================================================================
 
 /**
- * Store a response in cache
+ * Store a response in cache (internal)
  */
-export const cacheResponse = mutation({
+export const cacheResponse = internalMutation({
   args: {
     inputHash: v.string(),
     inputText: v.string(),
@@ -194,9 +194,9 @@ export const cacheResponse = mutation({
 });
 
 /**
- * Increment hit count for cache entry
+ * Increment hit count for cache entry (internal)
  */
-export const recordCacheHit = mutation({
+export const recordCacheHit = internalMutation({
   args: {
     cacheId: v.id("intentCache"),
   },

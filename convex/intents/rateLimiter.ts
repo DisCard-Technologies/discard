@@ -16,7 +16,7 @@
  */
 
 import { v } from "convex/values";
-import { mutation, query, internalMutation } from "../_generated/server";
+import { mutation, query, internalMutation, internalQuery } from "../_generated/server";
 import { Doc, Id } from "../_generated/dataModel";
 
 // ============================================================================
@@ -114,7 +114,7 @@ function calculateEstimatedWait(position: number): number {
 /**
  * Check if user can make a request
  */
-export const checkRateLimit = query({
+export const checkRateLimit = internalQuery({
   args: {
     userId: v.id("users"),
   },
@@ -232,7 +232,7 @@ export const getUserUsageStats = query({
 /**
  * Record token usage for a request
  */
-export const recordUsage = mutation({
+export const recordUsage = internalMutation({
   args: {
     userId: v.id("users"),
     inputTokens: v.number(),
@@ -275,7 +275,7 @@ export const recordUsage = mutation({
 /**
  * Add request to queue when rate limited
  */
-export const queueRequest = mutation({
+export const queueRequest = internalMutation({
   args: {
     userId: v.id("users"),
     rawText: v.string(),

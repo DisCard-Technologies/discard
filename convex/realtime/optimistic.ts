@@ -414,6 +414,190 @@ export const markFinalized = internalMutation({
 });
 
 /**
+ * Internal version of optimistic balance update for executor
+ */
+export const optimisticBalanceUpdateInternal = internalMutation({
+  args: {
+    userId: v.id("users"),
+    cardId: v.id("cards"),
+    amount: v.number(),
+    operation: v.union(v.literal("add"), v.literal("subtract")),
+    description: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+
+    // 1. Get current state
+    const card = await ctx.db.get(args.cardId);
+    if (!card) {
+      throw new Error("Card not found");
+    }
+
+    const previousBalance = card.currentBalance;
+    const newBalance =
+      args.operation === "add"
+        ? previousBalance + args.amount
+        : previousBalance - args.amount;
+
+    // Validate
+    if (newBalance < 0) {
+      throw new Error("Insufficient balance");
+    }
+
+    // 2. Immediately update (optimistic)
+    await ctx.db.patch(args.cardId, {
+      currentBalance: newBalance,
+      updatedAt: now,
+    });
+
+    // 3. Create settlement record for tracking
+    const optimisticTxId = `opt_${now}_${Math.random().toString(36).slice(2, 11)}`;
+
+    const settlementId = await ctx.db.insert("optimisticSettlements", {
+      userId: args.userId,
+      optimisticTxId,
+      entityType: "card_balance",
+      entityId: args.cardId,
+      previousState: { balance: previousBalance },
+      optimisticState: { balance: newBalance },
+      status: "pending",
+      retryCount: 0,
+      createdAt: now,
+    });
+
+    return {
+      success: true,
+      optimisticTxId,
+      settlementId,
+      newBalance,
+      previousBalance,
+      pendingConfirmation: true,
+    };
+  },
+});
+
+/**
+ * Record an optimistic update (internal version for executor)
+ */
+export const recordOptimisticUpdate = internalMutation({
+  args: {
+    userId: v.id("users"),
+    entityType: v.string(),
+    entityId: v.string(),
+    previousState: v.any(),
+    optimisticState: v.any(),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const optimisticTxId = `opt_${now}_${Math.random().toString(36).slice(2, 11)}`;
+
+    const settlementId = await ctx.db.insert("optimisticSettlements", {
+      userId: args.userId,
+      optimisticTxId,
+      entityType: args.entityType as any,
+      entityId: args.entityId,
+      previousState: args.previousState,
+      optimisticState: args.optimisticState,
+      status: "pending",
+      retryCount: 0,
+      createdAt: now,
+    });
+
+    return { settlementId, optimisticTxId };
+  },
+});
+
+/**
+ * Confirm an optimistic update after blockchain confirmation (internal version for executor)
+ */
+export const confirmOptimisticUpdate = internalMutation({
+  args: {
+    settlementId: v.id("optimisticSettlements"),
+    signature: v.string(),
+    confirmationTimeMs: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const settlement = await ctx.db.get(args.settlementId);
+    if (!settlement) return;
+
+    await ctx.db.patch(args.settlementId, {
+      status: "confirmed",
+      solanaSignature: args.signature,
+      confirmationTimeMs: args.confirmationTimeMs,
+      confirmedAt: now,
+    });
+  },
+});
+
+/**
+ * Confirm settlement after blockchain confirmation
+ */
+export const confirmSettlement = internalMutation({
+  args: {
+    settlementId: v.id("optimisticSettlements"),
+    signature: v.string(),
+    confirmationTimeMs: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const settlement = await ctx.db.get(args.settlementId);
+    if (!settlement) return;
+
+    await ctx.db.patch(args.settlementId, {
+      status: "confirmed",
+      solanaSignature: args.signature,
+      confirmationTimeMs: args.confirmationTimeMs,
+      confirmedAt: now,
+    });
+  },
+});
+
+/**
+ * Rollback a settlement if blockchain confirmation fails
+ */
+export const rollbackSettlement = internalMutation({
+  args: {
+    settlementId: v.id("optimisticSettlements"),
+    reason: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const settlement = await ctx.db.get(args.settlementId);
+    if (!settlement) return;
+
+    const now = Date.now();
+
+    // Restore previous state based on entity type
+    switch (settlement.entityType) {
+      case "card_balance": {
+        const previousState = settlement.previousState as { balance: number };
+        await ctx.db.patch(settlement.entityId as Id<"cards">, {
+          currentBalance: previousState.balance,
+          updatedAt: now,
+        });
+        break;
+      }
+
+      case "card_status": {
+        const previousState = settlement.previousState as { status: string };
+        await ctx.db.patch(settlement.entityId as Id<"cards">, {
+          status: previousState.status as any,
+          updatedAt: now,
+        });
+        break;
+      }
+    }
+
+    // Mark as rolled back
+    await ctx.db.patch(args.settlementId, {
+      status: "rolled_back",
+      errorMessage: args.reason,
+      finalState: settlement.previousState,
+    });
+  },
+});
+
+/**
  * Rollback an optimistic update
  */
 export const rollbackOptimistic = internalMutation({

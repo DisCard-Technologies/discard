@@ -298,7 +298,7 @@ export const checkTransactionStatus = internalAction({
 /**
  * Internal query to get transaction
  */
-export const getTransactionInternal = internalMutation({
+export const getTransactionInternal = internalQuery({
   args: {
     transactionId: v.id("moonpayTransactions"),
   },

@@ -307,7 +307,7 @@ export const createCardAccount = mutation({
       merkleTreeAddress: args.merkleTreeAddress,
       leafIndex: args.leafIndex,
       stateHash: args.stateHash,
-      compressedData: new TextEncoder().encode(JSON.stringify(cardState)),
+      compressedData: new TextEncoder().encode(JSON.stringify(cardState)).buffer as ArrayBuffer,
       syncStatus: "synced",
       createdAt: now,
       updatedAt: now,
@@ -349,7 +349,7 @@ export const updateCardBalance = mutation({
 
     await ctx.db.patch(account._id, {
       stateHash: args.newStateHash,
-      compressedData: new TextEncoder().encode(JSON.stringify(newState)),
+      compressedData: new TextEncoder().encode(JSON.stringify(newState)).buffer as ArrayBuffer,
       syncStatus: "synced",
       updatedAt: Date.now(),
     });
@@ -390,7 +390,7 @@ export const createDIDAccount = mutation({
       merkleTreeAddress: args.merkleTreeAddress,
       leafIndex: args.leafIndex,
       stateHash: args.stateHash,
-      compressedData: new TextEncoder().encode(JSON.stringify(didState)),
+      compressedData: new TextEncoder().encode(JSON.stringify(didState)).buffer as ArrayBuffer,
       syncStatus: "synced",
       createdAt: now,
       updatedAt: now,
@@ -433,7 +433,7 @@ export const updateDIDCommitment = mutation({
 
     await ctx.db.patch(account._id, {
       stateHash: args.newStateHash,
-      compressedData: new TextEncoder().encode(JSON.stringify(newState)),
+      compressedData: new TextEncoder().encode(JSON.stringify(newState)).buffer as ArrayBuffer,
       syncStatus: "synced",
       updatedAt: Date.now(),
     });

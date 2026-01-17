@@ -148,6 +148,19 @@ export const getPendingRequests = query({
 });
 
 /**
+ * Get a signing request by request ID (internal)
+ */
+export const getSigningRequestInternal = internalQuery({
+  args: { requestId: v.string() },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("signingRequests")
+      .withIndex("by_request_id", (q) => q.eq("requestId", args.requestId))
+      .first();
+  },
+});
+
+/**
  * Update signing request status
  */
 export const updateSigningStatus = internalMutation({

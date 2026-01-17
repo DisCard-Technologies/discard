@@ -11,7 +11,7 @@
  * - Railsr (ClearBank) for UK/EU
  * - Wise Platform for global
  */
-import { action, internalAction, internalMutation, mutation, query } from "../_generated/server";
+import { action, internalAction, internalMutation, internalQuery, mutation, query } from "../_generated/server";
 import { v } from "convex/values";
 import { Doc, Id } from "../_generated/dataModel";
 import { internal } from "../_generated/api";
@@ -294,7 +294,7 @@ export const closeIbanWithProvider = internalAction({
 /**
  * Get IBAN record internally
  */
-export const getIbanInternal = internalMutation({
+export const getIbanInternal = internalQuery({
   args: {
     ibanId: v.id("virtualIbans"),
   },

@@ -501,6 +501,119 @@ export const updateStatus = mutation({
 });
 
 /**
+ * Update card status (internal version for system operations)
+ */
+export const updateStatusInternal = internalMutation({
+  args: {
+    cardId: v.id("cards"),
+    status: v.union(
+      v.literal("active"),
+      v.literal("paused"),
+      v.literal("frozen"),
+      v.literal("terminated")
+    ),
+  },
+  handler: async (ctx, args): Promise<void> => {
+    await ctx.db.patch(args.cardId, {
+      status: args.status,
+      updatedAt: Date.now(),
+    });
+  },
+});
+
+/**
+ * Create a new virtual card (internal version for executor)
+ */
+export const createInternal = internalMutation({
+  args: {
+    userId: v.id("users"),
+    provider: v.optional(v.union(v.literal("marqeta"), v.literal("starpay"))),
+    spendingLimit: v.optional(v.number()),
+    dailyLimit: v.optional(v.number()),
+    monthlyLimit: v.optional(v.number()),
+    nickname: v.optional(v.string()),
+  },
+  handler: async (ctx, args): Promise<Id<"cards">> => {
+    const now = Date.now();
+    const provider = args.provider ?? "marqeta";
+
+    // Generate card context for privacy isolation
+    const cardContext = await generateCardContext(args.userId);
+
+    // Create card record
+    const cardId = await ctx.db.insert("cards", {
+      userId: args.userId,
+      provider,
+      cardContext,
+      last4: "0000", // Will be populated by provider
+      expirationMonth: 12,
+      expirationYear: new Date().getFullYear() + 3,
+      cardType: "virtual",
+      nickname: args.nickname ?? `Card ${now}`,
+      color: "#1a1a2e",
+      status: "pending",
+      currentBalance: 0,
+      reservedBalance: 0,
+      overdraftLimit: 0,
+      spendingLimit: args.spendingLimit ?? 500000, // $5000 default
+      dailyLimit: args.dailyLimit ?? 1000000,
+      monthlyLimit: args.monthlyLimit ?? 5000000,
+      blockedMccCodes: [],
+      blockedCountries: [],
+      privacyIsolated: true,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    // Schedule provider provisioning
+    if (provider === "marqeta") {
+      await ctx.scheduler.runAfter(0, internal.cards.marqeta.provisionCard, {
+        userId: args.userId,
+        cardId,
+      });
+    } else if (provider === "starpay") {
+      await ctx.scheduler.runAfter(0, internal.cards.starpay.provisionCard, {
+        userId: args.userId,
+        cardType: "black",
+        cardId,
+        initialAmount: 0,
+      });
+    }
+
+    return cardId;
+  },
+});
+
+/**
+ * Freeze card (internal version for executor)
+ */
+export const freezeInternal = internalMutation({
+  args: {
+    cardId: v.id("cards"),
+    reason: v.string(),
+  },
+  handler: async (ctx, args): Promise<void> => {
+    const card = await ctx.db.get(args.cardId);
+    if (!card) {
+      throw new Error("Card not found");
+    }
+
+    await ctx.db.patch(args.cardId, {
+      status: "frozen",
+      updatedAt: Date.now(),
+    });
+
+    // Sync with provider
+    if (card.marqetaCardToken) {
+      await ctx.scheduler.runAfter(0, internal.cards.marqeta.suspendCard, {
+        cardId: args.cardId,
+        reason: args.reason,
+      });
+    }
+  },
+});
+
+/**
  * Freeze card (security action)
  */
 export const freeze = mutation({

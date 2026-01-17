@@ -29,7 +29,7 @@ const PHALA_AI_API_KEY = process.env.PHALA_AI_API_KEY;
 const PHALA_AI_BASE_URL = process.env.PHALA_AI_BASE_URL || "https://api.redpill.ai/v1";
 const PHALA_AI_MODEL = process.env.PHALA_AI_MODEL || "meta-llama/llama-3.3-70b-instruct";
 
-// Action types that the solver can return
+// Action types that the solver can return (must match schema parsedIntent.action union)
 type IntentAction =
   | "fund_card"
   | "swap"
@@ -39,13 +39,14 @@ type IntentAction =
   | "freeze_card"
   | "delete_card"
   | "pay_bill"
+  | "merchant_payment"
   | "create_goal"
   | "update_goal"
   | "cancel_goal";
 
 const VALID_ACTIONS: IntentAction[] = [
   "fund_card", "swap", "transfer", "withdraw_defi", "create_card", "freeze_card", "delete_card", "pay_bill",
-  "create_goal", "update_goal", "cancel_goal"
+  "merchant_payment", "create_goal", "update_goal", "cancel_goal"
 ];
 
 type SourceType = "wallet" | "defi_position" | "card" | "external";
@@ -429,7 +430,7 @@ export const parseIntent = internalAction({
           await ctx.runMutation(internal.intents.intents.updateStatus, {
             intentId: args.intentId,
             status: shouldAutoApprove ? "approved" : "ready",
-            parsedIntent: sanitizedIntent,
+            parsedIntent: sanitizedIntent as any, // Type assertion for schema compatibility
             responseText: aiResponse.responseText,
           });
 
@@ -631,7 +632,7 @@ export const parseIntentOptimized = internalAction({
           await ctx.runMutation(internal.intents.intents.updateStatus, {
             intentId: args.intentId,
             status: shouldAutoApprove ? "approved" : "ready",
-            parsedIntent: sanitizedIntent,
+            parsedIntent: sanitizedIntent as any, // Type assertion for schema compatibility
             responseText: result.response,
           });
 
