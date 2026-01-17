@@ -3,9 +3,13 @@
  *
  * ECDH-based stealth address generation for privacy-preserving transactions.
  * Based on the Hush wallet implementation.
+ * 
+ * Uses X25519 (Curve25519) for ECDH key agreement.
  */
 
 import { Keypair, PublicKey } from '@solana/web3.js';
+import { x25519 } from '@noble/curves/ed25519';
+import { sha256 } from '@noble/hashes/sha2';
 
 // ============ TYPES ============
 
@@ -122,29 +126,39 @@ export async function isOwnStealthAddress(
 // ============ HELPER FUNCTIONS ============
 
 /**
- * Derive shared secret via simplified ECDH
- * Note: In production, use proper x25519 ECDH
+ * Derive shared secret via X25519 ECDH
+ * 
+ * Uses Curve25519 for Diffie-Hellman key agreement.
+ * Both parties compute the same shared secret:
+ * - Sender: sharedSecret = x25519(ephemeralPrivate, recipientPublic)
+ * - Recipient: sharedSecret = x25519(recipientPrivate, ephemeralPublic)
+ * 
+ * @param privateKey - Ed25519 or X25519 private key (first 32 bytes used)
+ * @param publicKey - Ed25519 or X25519 public key (first 32 bytes used)
+ * @returns 32-byte shared secret
  */
 async function deriveSharedSecret(
   privateKey: Uint8Array,
   publicKey: Uint8Array
 ): Promise<Uint8Array> {
-  // XOR + hash approach for simplified ECDH
-  // Production should use @noble/curves x25519
-  const combined = new Uint8Array(64);
-
-  // Use first 32 bytes of private key
-  const privSlice = privateKey.slice(0, 32);
-
-  // Combine private and public key material
-  for (let i = 0; i < 32; i++) {
-    combined[i] = privSlice[i];
-    combined[i + 32] = publicKey[i];
+  try {
+    // Extract first 32 bytes (Solana keys are 64 bytes with private+public)
+    const privKey32 = privateKey.slice(0, 32);
+    const pubKey32 = publicKey.slice(0, 32);
+    
+    // Perform X25519 ECDH
+    // This computes: scalar_multiply(privKey, pubKey) on Curve25519
+    const sharedSecret = x25519.getSharedSecret(privKey32, pubKey32);
+    
+    // Additional hash for key derivation (optional but recommended)
+    // Provides domain separation and ensures uniform distribution
+    const hashedSecret = sha256(sharedSecret);
+    
+    return hashedSecret;
+  } catch (error) {
+    console.error('[StealthAddress] ECDH failed:', error);
+    throw new Error('Failed to derive shared secret via X25519 ECDH');
   }
-
-  // Hash to get shared secret
-  const hashBuffer = await crypto.subtle.digest('SHA-256', combined);
-  return new Uint8Array(hashBuffer);
 }
 
 /**
@@ -160,9 +174,8 @@ function deriveKeypairFromSecret(secret: Uint8Array): Keypair {
  * Hash bytes to hex string
  */
 async function hashBytes(bytes: Uint8Array): Promise<string> {
-  const hashBuffer = await crypto.subtle.digest('SHA-256', bytes as BufferSource);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  const hash = sha256(bytes);
+  return Array.from(hash).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
 // ============ BATCH OPERATIONS ============
