@@ -5,6 +5,13 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "type": "module",
+  "overrides": {
+    "tar": "^7.5.3",
+    "nanoid": "^3.3.8",
+    "devalue": "^5.1.2",
+    "svelte": "^5.28.0",
+    "bigint-buffer": "npm:bigint-buffer-fixed@1.1.6"
+  },
   "scripts": {
     "build": "tsup src/index.ts src/standalone.ts --format esm --clean",
     "dev": "tsup src/index.ts src/standalone.ts --format esm --dts --watch",
@@ -32,8 +39,8 @@
     "@elizaos/core": "^0.1.7-alpha.2",
     "@grpc/grpc-js": "^1.12.5",
     "@grpc/proto-loader": "^0.7.13",
-    "@lightprotocol/compressed-token": "^0.17.1",
-    "@lightprotocol/stateless.js": "^0.17.1",
+    "@lightprotocol/compressed-token": "^0.22.0",
+    "@lightprotocol/stateless.js": "^0.22.0",
     "@solana/web3.js": "^1.98.4",
     "@turnkey/http": "^2.21.0",
     "@turnkey/solana": "^0.4.0",
