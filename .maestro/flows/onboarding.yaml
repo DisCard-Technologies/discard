@@ -1,0 +1,67 @@
+# Onboarding Flow E2E Test
+# Tests the first-time user onboarding experience
+
+appId: com.discard.app
+name: Onboarding Flow
+tags:
+  - smoke
+  - onboarding
+---
+
+# Launch the app fresh
+- launchApp:
+    clearState: true
+
+# Wait for splash screen to finish
+- waitForAnimationToEnd:
+    timeout: 5000
+
+# Verify welcome screen is shown
+- assertVisible:
+    text: "Welcome"
+    timeout: 5000
+
+# Tap "Get Started" button
+- tapOn:
+    text: "Get Started"
+
+# Wait for next screen
+- waitForAnimationToEnd
+
+# Verify passkey setup screen
+- assertVisible:
+    text: "Secure"
+    optional: true
+
+- assertVisible:
+    text: "Passkey"
+    optional: true
+
+# Tap to create passkey
+- tapOn:
+    text: "Create Passkey"
+    optional: true
+
+- tapOn:
+    text: "Continue"
+    optional: true
+
+# Wait for passkey creation (simulated in test)
+- waitForAnimationToEnd:
+    timeout: 10000
+
+# Should show wallet creation or main screen
+- assertVisible:
+    anyOf:
+      - "Your Wallet"
+      - "Cards"
+      - "Home"
+    timeout: 10000
+
+# Verify navigation is available
+- assertVisible:
+    text: "Cards"
+    optional: true
+
+# Take screenshot of completed onboarding
+- takeScreenshot: "onboarding-complete"

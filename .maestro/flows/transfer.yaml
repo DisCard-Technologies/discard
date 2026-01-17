@@ -1,0 +1,124 @@
+# P2P Transfer Flow E2E Test
+# Tests sending money to another user
+
+appId: com.discard.app
+name: Transfer Flow
+tags:
+  - critical
+  - transfers
+---
+
+# Launch app
+- launchApp
+
+# Ensure user is logged in
+- runFlow: utils/login.yaml
+
+# Navigate to transfer tab
+- tapOn:
+    text: "Transfer"
+
+# Wait for transfer screen
+- waitForAnimationToEnd
+
+# Verify transfer screen
+- assertVisible:
+    anyOf:
+      - "Send"
+      - "Transfer"
+      - "Recipient"
+    timeout: 5000
+
+# Enter amount
+- inputText:
+    id: "amount-input"
+    text: "50"
+
+# Tap to continue
+- tapOn:
+    text: "Continue"
+
+# Wait for recipient selection
+- waitForAnimationToEnd
+
+# Enter recipient address or select contact
+- inputText:
+    id: "recipient-input"
+    text: "alice.sol"
+    optional: true
+
+# Or tap on a contact
+- tapOn:
+    id: "contact-alice"
+    optional: true
+
+# Wait for address resolution
+- waitForAnimationToEnd:
+    timeout: 5000
+
+# Verify recipient is resolved
+- assertVisible:
+    text: "alice"
+    optional: true
+
+# Tap continue to review
+- tapOn:
+    text: "Continue"
+    optional: true
+
+- tapOn:
+    text: "Review"
+    optional: true
+
+# Wait for confirmation screen
+- waitForAnimationToEnd
+
+# Verify transfer details
+- assertVisible: "$50.00"
+
+# Verify fees are shown
+- assertVisible:
+    text: "Fee"
+    optional: true
+
+# Tap send/confirm button
+- tapOn:
+    text: "Send"
+    optional: true
+
+- tapOn:
+    text: "Confirm"
+    optional: true
+
+# Wait for biometric/passkey approval
+- waitForAnimationToEnd:
+    timeout: 10000
+
+# Wait for transaction confirmation
+- waitForAnimationToEnd:
+    timeout: 30000
+
+# Verify transfer success
+- assertVisible:
+    anyOf:
+      - "Transfer Complete"
+      - "Sent"
+      - "Success"
+    timeout: 15000
+
+# Verify confirmation details
+- assertVisible:
+    text: "$50.00"
+    optional: true
+
+# Take screenshot of success
+- takeScreenshot: "transfer-complete"
+
+# Tap done to return home
+- tapOn:
+    text: "Done"
+    optional: true
+
+- tapOn:
+    text: "Close"
+    optional: true

@@ -1,0 +1,54 @@
+# Reusable Assertion Utilities
+# Common assertion patterns for DisCard tests
+
+appId: com.discard.app
+name: Assertion Utilities
+---
+
+# This file contains reusable assertion flows that can be called from other tests
+# Note: Individual assertions should be called via runFlow with parameters
+
+# Example usage in other flows:
+# - runFlow:
+#     file: utils/assertions.yaml
+#     env:
+#       EXPECTED_BALANCE: "$100.00"
+
+# Verify card balance display
+- runFlow:
+    when:
+      env:
+        EXPECTED_BALANCE: ".+"
+    commands:
+      - assertVisible:
+          text: ${EXPECTED_BALANCE}
+          timeout: 5000
+
+# Verify transaction success
+- runFlow:
+    when:
+      env:
+        CHECK_TX_SUCCESS: "true"
+    commands:
+      - assertVisible:
+          text: "Transaction Complete"
+          optional: true
+      - assertVisible:
+          text: "Transfer Complete"
+          optional: true
+      - assertVisible:
+          text: "Success"
+          optional: true
+
+# Verify error display
+- runFlow:
+    when:
+      env:
+        CHECK_ERROR: "true"
+    commands:
+      - assertVisible:
+          text: "Error"
+          optional: true
+      - assertVisible:
+          text: "Failed"
+          optional: true

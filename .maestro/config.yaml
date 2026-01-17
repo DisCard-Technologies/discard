@@ -1,0 +1,50 @@
+# Maestro E2E Configuration
+# DisCard - Intent-Centric Virtual Card Platform
+
+appId: com.discard.app
+name: DisCard E2E Tests
+
+# Test flows location
+flows:
+  - flows/*.yaml
+
+# Environment variables for tests
+env:
+  TEST_USER_EMAIL: test@discard.app
+  TEST_USER_PHONE: "+15555555555"
+  TEST_WALLET_ADDRESS: "test_wallet_address_for_e2e_testing"
+  API_BASE_URL: "https://api.discard.app"
+
+# Maestro settings
+settings:
+  # Wait timeout for element visibility
+  waitTimeout: 10000
+
+  # Take screenshots on failure
+  screenshotOnFailure: true
+
+  # Record video of test runs
+  recordVideo: true
+
+  # Retry failed tests
+  retryCount: 1
+
+# Platform-specific app identifiers
+platforms:
+  ios:
+    appId: com.discard.app
+    bundlePath: ios/build/Build/Products/Release-iphonesimulator/DisCard.app
+  android:
+    appId: com.discard.app
+    apkPath: android/app/build/outputs/apk/release/app-release.apk
+
+# Test tags for selective running
+tags:
+  smoke:
+    - flows/onboarding.yaml
+    - flows/card-creation.yaml
+  critical:
+    - flows/transfer.yaml
+    - flows/card-funding.yaml
+  ai:
+    - flows/ai-intent.yaml

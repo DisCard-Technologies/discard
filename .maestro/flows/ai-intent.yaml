@@ -1,0 +1,143 @@
+# AI Intent Flow E2E Test
+# Tests the AI command bar natural language interface
+
+appId: com.discard.app
+name: AI Intent Flow
+tags:
+  - ai
+  - critical
+---
+
+# Launch app
+- launchApp
+
+# Ensure user is logged in
+- runFlow: utils/login.yaml
+
+# Wait for home screen
+- waitForAnimationToEnd
+
+# Tap on command bar input
+- tapOn:
+    id: "command-bar"
+    optional: true
+
+- tapOn:
+    text: "Ask anything"
+    optional: true
+
+# Verify command bar is focused
+- assertVisible:
+    text: "Ask anything or give a command"
+    optional: true
+
+# Test 1: Simple transfer intent
+- inputText: "send $50 to alice"
+
+# Tap send button
+- tapOn:
+    id: "send-button"
+    optional: true
+
+# Or submit via keyboard
+- pressKey: Enter
+
+# Wait for AI processing
+- waitForAnimationToEnd:
+    timeout: 10000
+
+# Verify AI understood the intent
+- assertVisible:
+    anyOf:
+      - "Confirm Transfer"
+      - "Send $50"
+      - "transfer"
+      - "alice"
+    timeout: 10000
+
+# Verify amount is shown
+- assertVisible:
+    text: "$50"
+    optional: true
+
+# Tap approve/confirm
+- tapOn:
+    text: "Approve"
+    optional: true
+
+- tapOn:
+    text: "Confirm"
+    optional: true
+
+# Wait for execution
+- waitForAnimationToEnd:
+    timeout: 15000
+
+# Verify success or completion
+- assertVisible:
+    anyOf:
+      - "Complete"
+      - "Success"
+      - "Done"
+    timeout: 15000
+
+# Take screenshot
+- takeScreenshot: "ai-transfer-complete"
+
+# Clear chat and test another intent
+- tapOn:
+    id: "close-chat"
+    optional: true
+
+# Test 2: Question intent
+- tapOn:
+    text: "Ask anything"
+    optional: true
+
+- inputText: "what is my balance?"
+
+- pressKey: Enter
+
+# Wait for response
+- waitForAnimationToEnd:
+    timeout: 10000
+
+# Verify AI responds with balance info
+- assertVisible:
+    anyOf:
+      - "balance"
+      - "USDC"
+      - "SOL"
+      - "$"
+    timeout: 10000
+
+# Take screenshot
+- takeScreenshot: "ai-question-response"
+
+# Test 3: Card creation intent
+- clearText
+
+- inputText: "create a new card for groceries"
+
+- pressKey: Enter
+
+# Wait for AI processing
+- waitForAnimationToEnd:
+    timeout: 10000
+
+# Verify card creation intent
+- assertVisible:
+    anyOf:
+      - "create"
+      - "card"
+      - "groceries"
+      - "Approve"
+    timeout: 10000
+
+# Cancel to avoid creating test card
+- tapOn:
+    text: "Cancel"
+    optional: true
+
+# Take final screenshot
+- takeScreenshot: "ai-intent-flow-complete"

@@ -1,0 +1,95 @@
+# Card Creation Flow E2E Test
+# Tests creating a new virtual card
+
+appId: com.discard.app
+name: Card Creation Flow
+tags:
+  - smoke
+  - cards
+---
+
+# Launch app
+- launchApp
+
+# Ensure user is logged in
+- runFlow: utils/login.yaml
+
+# Navigate to cards tab
+- tapOn:
+    text: "Cards"
+
+# Wait for cards screen
+- waitForAnimationToEnd
+
+# Tap create card button (+ icon or "Create Card" text)
+- tapOn:
+    id: "create-card-button"
+    optional: true
+
+- tapOn:
+    text: "Create Card"
+    optional: true
+
+- tapOn:
+    text: "+"
+    optional: true
+
+# Wait for card creation modal
+- waitForAnimationToEnd
+
+# Verify card creation screen
+- assertVisible:
+    anyOf:
+      - "New Card"
+      - "Create Card"
+      - "Card Name"
+    timeout: 5000
+
+# Enter card nickname
+- inputText:
+    id: "card-nickname-input"
+    text: "Shopping Card"
+    optional: true
+
+- inputText:
+    text: "Shopping Card"
+    optional: true
+
+# Select card color (tap on color option)
+- tapOn:
+    id: "color-green"
+    optional: true
+
+# Set spending limit (if available)
+- runFlow:
+    when:
+      visible: "Spending Limit"
+    commands:
+      - inputText:
+          id: "spending-limit-input"
+          text: "500"
+
+# Tap create/confirm button
+- tapOn:
+    text: "Create"
+    optional: true
+
+- tapOn:
+    text: "Confirm"
+    optional: true
+
+- tapOn:
+    text: "Done"
+    optional: true
+
+# Wait for card creation to complete
+- waitForAnimationToEnd:
+    timeout: 10000
+
+# Verify card was created
+- assertVisible:
+    text: "Shopping Card"
+    timeout: 5000
+
+# Take screenshot of new card
+- takeScreenshot: "card-created"

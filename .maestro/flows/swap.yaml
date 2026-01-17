@@ -1,0 +1,105 @@
+# Token Swap Flow E2E Test
+# Tests swapping tokens via Jupiter
+
+appId: com.discard.app
+name: Token Swap Flow
+tags:
+  - critical
+  - swaps
+---
+
+# Launch app
+- launchApp
+
+# Ensure user is logged in
+- runFlow: utils/login.yaml
+
+# Navigate to swap/explore tab
+- tapOn:
+    text: "Explore"
+    optional: true
+
+- tapOn:
+    text: "Swap"
+    optional: true
+
+# Wait for swap screen
+- waitForAnimationToEnd
+
+# Verify swap interface
+- assertVisible:
+    anyOf:
+      - "Swap"
+      - "From"
+      - "To"
+    timeout: 5000
+
+# Select source token (SOL)
+- tapOn:
+    id: "from-token-selector"
+    optional: true
+
+- tapOn:
+    text: "SOL"
+
+# Wait for token selection
+- waitForAnimationToEnd
+
+# Enter amount to swap
+- inputText:
+    id: "from-amount-input"
+    text: "1"
+
+# Select destination token (USDC)
+- tapOn:
+    id: "to-token-selector"
+    optional: true
+
+- tapOn:
+    text: "USDC"
+
+# Wait for quote
+- waitForAnimationToEnd:
+    timeout: 5000
+
+# Verify quote is shown
+- assertVisible:
+    text: "USDC"
+
+# Verify price impact or rate
+- assertVisible:
+    text: "Rate"
+    optional: true
+
+# Tap swap/confirm button
+- tapOn:
+    text: "Swap"
+    optional: true
+
+- tapOn:
+    text: "Confirm Swap"
+    optional: true
+
+# Wait for approval
+- waitForAnimationToEnd:
+    timeout: 10000
+
+# Wait for transaction
+- waitForAnimationToEnd:
+    timeout: 30000
+
+# Verify swap success
+- assertVisible:
+    anyOf:
+      - "Swap Complete"
+      - "Success"
+      - "Swapped"
+    timeout: 15000
+
+# Take screenshot
+- takeScreenshot: "swap-complete"
+
+# Return to home
+- tapOn:
+    text: "Done"
+    optional: true

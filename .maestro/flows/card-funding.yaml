@@ -1,0 +1,98 @@
+# Card Funding Flow E2E Test
+# Tests adding funds to a virtual card
+
+appId: com.discard.app
+name: Card Funding Flow
+tags:
+  - critical
+  - cards
+  - funding
+---
+
+# Launch app
+- launchApp
+
+# Ensure user is logged in
+- runFlow: utils/login.yaml
+
+# Navigate to cards tab
+- tapOn:
+    text: "Cards"
+
+# Wait for cards to load
+- waitForAnimationToEnd
+
+# Tap on a card to open details
+- tapOn:
+    id: "card-item-0"
+    optional: true
+
+# Or tap on card by visible text
+- tapOn:
+    text: "Shopping Card"
+    optional: true
+
+# Wait for card details screen
+- waitForAnimationToEnd
+
+# Tap fund/add money button
+- tapOn:
+    text: "Fund"
+    optional: true
+
+- tapOn:
+    text: "Add Funds"
+    optional: true
+
+- tapOn:
+    text: "+"
+    optional: true
+
+# Wait for funding modal
+- waitForAnimationToEnd
+
+# Verify funding screen
+- assertVisible:
+    anyOf:
+      - "Add Funds"
+      - "Fund Card"
+      - "Amount"
+    timeout: 5000
+
+# Enter funding amount
+- inputText:
+    id: "amount-input"
+    text: "100"
+
+# Select funding source (wallet)
+- tapOn:
+    text: "Wallet"
+    optional: true
+
+- tapOn:
+    text: "USDC"
+    optional: true
+
+# Tap continue/confirm
+- tapOn:
+    text: "Continue"
+    optional: true
+
+- tapOn:
+    text: "Confirm"
+    optional: true
+
+# Wait for funding to process
+- waitForAnimationToEnd:
+    timeout: 15000
+
+# Verify funding success
+- assertVisible:
+    anyOf:
+      - "Success"
+      - "Funded"
+      - "Complete"
+    timeout: 10000
+
+# Take screenshot of funded card
+- takeScreenshot: "card-funded"

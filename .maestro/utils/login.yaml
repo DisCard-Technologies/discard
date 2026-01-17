@@ -1,0 +1,47 @@
+# Reusable Login Steps
+# Use: - runFlow: utils/login.yaml
+
+appId: com.discard.app
+name: Login Utility
+---
+
+# Wait for app to load
+- waitForAnimationToEnd
+
+# Check if already logged in (skip if so)
+- runFlow:
+    when:
+      visible: "Welcome"
+    commands:
+      # Click "Get Started" or login button
+      - tapOn:
+          text: "Get Started"
+          optional: true
+
+      - tapOn:
+          text: "Sign In"
+          optional: true
+
+      # Wait for authentication prompt
+      - waitForAnimationToEnd
+
+      # Handle biometric authentication (will auto-succeed in test mode)
+      - tapOn:
+          text: "Continue with Passkey"
+          optional: true
+
+      # Or use test credentials if available
+      - runFlow:
+          when:
+            visible: "Email"
+          commands:
+            - inputText:
+                id: "email-input"
+                text: ${TEST_USER_EMAIL}
+            - tapOn: "Continue"
+            - waitForAnimationToEnd
+
+      # Wait for home screen
+      - assertVisible:
+          text: "Cards"
+          timeout: 10000
