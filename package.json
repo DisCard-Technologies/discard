@@ -113,6 +113,7 @@
     "typescript": "~5.9.2"
   },
   "overrides": {
-    "bigint-buffer": "npm:bigint-buffer-fixed@1.1.6"
+    "bigint-buffer": "npm:bigint-buffer-fixed@1.1.6",
+    "tar": "^7.5.3"
   }
 }
