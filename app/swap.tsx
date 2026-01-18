@@ -16,6 +16,12 @@ import { useTokenHoldings } from '@/hooks/useTokenHoldings';
 import { useCrossCurrencyTransfer } from '@/hooks/useCrossCurrencyTransfer';
 import { useAnoncoinSwap } from '@/hooks/useAnoncoinSwap';
 import { useTurnkeySigner } from '@/hooks/useTurnkeySigner';
+import { DFlowSwapClient } from '@/services/dflowSwapClient';
+import { Connection, Transaction, PublicKey } from '@solana/web3.js';
+
+// Swap client instance
+const dflowClient = new DFlowSwapClient({ debug: __DEV__ });
+const RPC_URL = process.env.EXPO_PUBLIC_HELIUS_RPC_URL || 'https://api.mainnet-beta.solana.com';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -299,7 +305,7 @@ export default function SwapScreen() {
           Alert.alert('Swap Failed', result?.error || 'Unknown error occurred.');
         }
       } else {
-        // Standard swap via Jupiter (less private)
+        // Standard swap via DFlow/Jupiter (less private but on-chain)
         console.log('[Swap] Executing standard swap:', {
           from: fromToken.symbol,
           to: toToken.symbol,
@@ -307,15 +313,86 @@ export default function SwapScreen() {
           quote: swapQuote,
         });
 
-        // TODO: Implement standard swap with Turnkey signing
-        // For now, show success feedback and navigate back
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        Alert.alert(
-          'Swap Initiated',
-          `Swapping ${fromAmount} ${fromToken.symbol} for ${toToken.symbol}`,
-          [{ text: 'OK', onPress: () => router.back() }]
-        );
-        return;
+        try {
+          // Get fresh quote and swap instructions
+          const { quote, instructions } = await dflowClient.buildSwapAndTransfer({
+            inputMint: fromToken.mint,
+            outputMint: toToken.mint,
+            inputAmount: amountBaseUnits.toString(),
+            recipientAddress: walletAddress!, // Swap to self
+            userPublicKey: walletAddress!,
+            slippageBps: Math.round(slippage * 100), // Convert percentage to bps
+          });
+
+          console.log('[Swap] Got swap instructions, building transaction...');
+
+          // Build transaction
+          const connection = new Connection(RPC_URL, 'confirmed');
+          const transaction = new Transaction();
+
+          // Add setup instructions (create ATAs, etc.)
+          for (const ix of instructions.setupInstructions) {
+            transaction.add(ix);
+          }
+
+          // Add main swap instruction
+          transaction.add(instructions.swapInstruction);
+
+          // Add cleanup instructions
+          for (const ix of instructions.cleanupInstructions) {
+            transaction.add(ix);
+          }
+
+          // Get recent blockhash
+          const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
+          transaction.recentBlockhash = blockhash;
+          transaction.lastValidBlockHeight = lastValidBlockHeight;
+          transaction.feePayer = new PublicKey(walletAddress!);
+
+          console.log('[Swap] Signing transaction with Turnkey...');
+
+          // Sign with Turnkey
+          const signedTx = await signTransaction(transaction);
+
+          if (!signedTx) {
+            throw new Error('Failed to sign transaction');
+          }
+
+          console.log('[Swap] Submitting transaction to Solana...');
+
+          // Submit to network
+          const txSignature = await connection.sendRawTransaction(signedTx.serialize(), {
+            skipPreflight: false,
+            preflightCommitment: 'confirmed',
+          });
+
+          console.log('[Swap] Transaction submitted:', txSignature);
+
+          // Wait for confirmation
+          await connection.confirmTransaction({
+            signature: txSignature,
+            blockhash,
+            lastValidBlockHeight,
+          }, 'confirmed');
+
+          console.log('[Swap] Swap completed:', txSignature);
+
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          Alert.alert(
+            'Swap Successful',
+            `Swapped ${fromAmount} ${fromToken.symbol} for ~${(parseInt(quote.outputAmount) / Math.pow(10, toToken.decimals)).toFixed(4)} ${toToken.symbol}\n\nTransaction: ${txSignature.slice(0, 8)}...`,
+            [{ text: 'OK', onPress: () => router.back() }]
+          );
+          return;
+        } catch (swapError) {
+          console.error('[Swap] Standard swap failed:', swapError);
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+          Alert.alert(
+            'Swap Failed',
+            swapError instanceof Error ? swapError.message : 'An error occurred during swap'
+          );
+          return;
+        }
       }
 
       router.back();

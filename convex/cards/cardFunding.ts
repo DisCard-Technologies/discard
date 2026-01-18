@@ -254,7 +254,41 @@ export const cancelFundingRequest = mutation({
       status: "expired",
     });
 
-    // TODO: Revoke session key via Turnkey
+    // Revoke session key via Turnkey (schedule action from mutation)
+    if (request.sessionKeyId && request.subOrgId) {
+      await ctx.scheduler.runAfter(0, internal.cards.cardFunding.revokeSessionKeyOnCancel, {
+        subOrganizationId: request.subOrgId,
+        sessionKeyId: request.sessionKeyId,
+        fundingRequestId: args.fundingRequestId,
+      });
+    }
+  },
+});
+
+/**
+ * Internal action to revoke session key after funding request cancellation
+ */
+export const revokeSessionKeyOnCancel = internalAction({
+  args: {
+    subOrganizationId: v.string(),
+    sessionKeyId: v.string(),
+    fundingRequestId: v.id("cardFundingRequests"),
+  },
+  handler: async (ctx, args): Promise<void> => {
+    try {
+      console.log("[CardFunding] Revoking session key for cancelled request:", args.fundingRequestId);
+
+      await ctx.runAction(internal.tee.turnkey.revokeSessionKey, {
+        subOrganizationId: args.subOrganizationId,
+        sessionKeyId: args.sessionKeyId,
+      });
+
+      console.log("[CardFunding] Session key revoked successfully");
+
+    } catch (error) {
+      // Log but don't fail - the request is already cancelled
+      console.error("[CardFunding] Failed to revoke session key:", error);
+    }
   },
 });
 

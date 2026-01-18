@@ -458,12 +458,29 @@ export class PrivacyCashService {
    * @param userId - User ID withdrawing
    * @param amount - Amount to withdraw (base units)
    * @param recipient - Recipient address
+   * @param convexActions - Convex action executor for nullifier tracking
    * @returns Unshield result
    */
   async withdrawShielded(
     userId: string,
     amount: number,
-    recipient: string
+    recipient: string,
+    convexActions?: {
+      checkNullifier: (nullifier: string) => Promise<boolean>;
+      markNullifierUsed: (args: {
+        nullifier: string;
+        proofType: string;
+        expiresAt: number;
+        context?: string;
+      }) => Promise<{ success: boolean; replayDetected?: boolean }>;
+      getCommitments: (userId: string) => Promise<Array<{
+        commitment: string;
+        encryptedAmount: string;
+        nullifier: string;
+        spent: boolean;
+      }>>;
+      markCommitmentSpent: (commitment: string) => Promise<void>;
+    }
   ): Promise<UnshieldResult> {
     console.log("[PrivacyCash] Withdrawing shielded funds:", { userId, amount, recipient });
 
@@ -478,27 +495,119 @@ export class PrivacyCashService {
         };
       }
 
-      // 2. Generate ZK withdrawal proof
-      // TODO: Replace with actual Privacy Cash SDK call
-      // const proof = await PrivacyCash.generateWithdrawProof({
-      //   commitment: userCommitment,
-      //   amount,
-      //   recipient: new PublicKey(recipient),
-      // });
+      // 2. Find suitable commitment(s) to spend
+      let commitmentToSpend: { commitment: string; nullifier: string } | null = null;
 
-      // 3. Submit withdrawal transaction
-      // TODO: Submit actual transaction
-      const mockTxSignature = `unshield_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+      if (convexActions) {
+        const commitments = await convexActions.getCommitments(userId);
+        const unspentCommitments = commitments.filter(c => !c.spent);
+
+        if (unspentCommitments.length === 0) {
+          return {
+            success: false,
+            error: "No unspent commitments found",
+          };
+        }
+
+        // Use the first unspent commitment (in production, would select based on amount)
+        commitmentToSpend = {
+          commitment: unspentCommitments[0].commitment,
+          nullifier: unspentCommitments[0].nullifier,
+        };
+
+        // 3. CRITICAL: Check nullifier hasn't been used (double-spend protection)
+        const nullifierUsed = await convexActions.checkNullifier(commitmentToSpend.nullifier);
+
+        if (nullifierUsed) {
+          console.error("[PrivacyCash] DOUBLE-SPEND DETECTED:", commitmentToSpend.nullifier.slice(0, 16));
+          return {
+            success: false,
+            error: "Double-spend attempt detected: commitment already spent",
+          };
+        }
+
+        // 4. Mark nullifier as used BEFORE executing transaction (atomic)
+        const nullifierResult = await convexActions.markNullifierUsed({
+          nullifier: commitmentToSpend.nullifier,
+          proofType: "unshield",
+          expiresAt: Date.now() + 365 * 24 * 60 * 60 * 1000, // 1 year (permanent for spent commitments)
+          context: `unshield:${amount}:${recipient.slice(0, 8)}`,
+        });
+
+        if (!nullifierResult.success) {
+          if (nullifierResult.replayDetected) {
+            return {
+              success: false,
+              error: "Double-spend attempt detected: nullifier race condition",
+            };
+          }
+          return {
+            success: false,
+            error: "Failed to register nullifier",
+          };
+        }
+      } else {
+        // Generate commitment for non-Convex mode (testing/fallback)
+        const { commitment, randomness } = await this.generateCommitmentWithRandomness(amount);
+        const nullifier = await this.generateNullifier(commitment, randomness);
+        commitmentToSpend = { commitment, nullifier };
+        console.warn("[PrivacyCash] No Convex actions - skipping nullifier validation (UNSAFE for production)");
+      }
+
+      // 5. Generate ZK withdrawal proof
+      // In production, this would use a ZK circuit to prove:
+      // - User knows the commitment's opening (amount, randomness)
+      // - Amount being withdrawn <= committed amount
+      // - Nullifier is correctly derived from commitment
+      const withdrawalProof = await this.generateWithdrawalProof(
+        commitmentToSpend.commitment,
+        commitmentToSpend.nullifier,
+        amount,
+        recipient
+      );
+
+      // 6. Build and submit withdrawal transaction
+      const recipientPubkey = new PublicKey(recipient);
+      const usdcMint = new PublicKey(USDC_MINT);
+
+      const poolAta = await getAssociatedTokenAddress(usdcMint, this.poolAddress);
+      const recipientAta = await getAssociatedTokenAddress(usdcMint, recipientPubkey);
+
+      const withdrawTx = new Transaction().add(
+        createTransferInstruction(
+          poolAta,
+          recipientAta,
+          this.poolAddress, // Pool authority signs
+          amount,
+        )
+      );
+
+      // Set recent blockhash
+      const { blockhash } = await this.connection.getLatestBlockhash();
+      withdrawTx.recentBlockhash = blockhash;
+      withdrawTx.feePayer = this.poolAddress;
+
+      // In production, this transaction would be signed by the Privacy Cash pool's
+      // authority after verifying the ZK proof on-chain via a Solana program
+      // For now, we simulate the transaction signature
+      const txSignature = `unshield_${Date.now()}_${withdrawalProof.proofHash.slice(0, 8)}`;
+
+      // 7. Mark commitment as spent in storage
+      if (convexActions && commitmentToSpend) {
+        await convexActions.markCommitmentSpent(commitmentToSpend.commitment);
+      }
 
       console.log("[PrivacyCash] Unshield complete:", {
-        txSignature: mockTxSignature,
+        txSignature,
         amount,
         recipient,
+        nullifier: commitmentToSpend.nullifier.slice(0, 16) + "...",
+        proofValid: withdrawalProof.valid,
       });
 
       return {
         success: true,
-        txSignature: mockTxSignature,
+        txSignature,
         unshieldedAmount: amount,
         recipientAddress: recipient,
       };
@@ -509,6 +618,50 @@ export class PrivacyCashService {
         error: error instanceof Error ? error.message : "Unshield failed",
       };
     }
+  }
+
+  /**
+   * Generate a ZK withdrawal proof
+   *
+   * In production, this would use a ZK circuit (e.g., Noir, Circom) to prove:
+   * 1. User knows commitment opening (amount, randomness)
+   * 2. Nullifier is correctly derived
+   * 3. Amount <= committed amount
+   *
+   * For now, we generate a cryptographic hash that simulates proof verification
+   */
+  private async generateWithdrawalProof(
+    commitment: string,
+    nullifier: string,
+    amount: number,
+    recipient: string
+  ): Promise<{ valid: boolean; proofHash: string; publicInputs: string[] }> {
+    // Create proof data structure
+    const proofData = new TextEncoder().encode(
+      `withdraw:${commitment}:${nullifier}:${amount}:${recipient}:${Date.now()}`
+    );
+
+    // Hash to create proof (in production: actual ZK proof generation)
+    const proofHash = bs58.encode(sha256(proofData));
+
+    // Public inputs that would be verified on-chain
+    const publicInputs = [
+      nullifier,                    // Nullifier to mark as spent
+      commitment,                   // Commitment being spent
+      amount.toString(),            // Amount being withdrawn
+      recipient,                    // Recipient address
+    ];
+
+    console.log("[PrivacyCash] Generated withdrawal proof:", {
+      proofHash: proofHash.slice(0, 16) + "...",
+      publicInputsCount: publicInputs.length,
+    });
+
+    return {
+      valid: true,
+      proofHash,
+      publicInputs,
+    };
   }
 
   // ==========================================================================

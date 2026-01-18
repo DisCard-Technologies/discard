@@ -304,6 +304,29 @@ export const getIbanInternal = internalQuery({
 });
 
 /**
+ * Get FX rate for a currency
+ */
+export const getFxRate = internalQuery({
+  args: {
+    currency: v.string(),
+  },
+  handler: async (ctx, args): Promise<{ rate: number; updatedAt: number; source: string } | null> => {
+    const fxRate = await ctx.db
+      .query("fxRates")
+      .withIndex("by_currency", (q) => q.eq("currency", args.currency))
+      .first();
+
+    if (!fxRate) return null;
+
+    return {
+      rate: fxRate.rate,
+      updatedAt: fxRate.updatedAt,
+      source: fxRate.source,
+    };
+  },
+});
+
+/**
  * Activate IBAN after successful provisioning
  */
 export const activateIban = internalMutation({
@@ -553,9 +576,19 @@ async function closeStripeTreasuryAccount(externalAccountId: string): Promise<vo
   });
 }
 
+// Railsr API configuration
+const RAILSR_API_URL = process.env.RAILSR_ENVIRONMENT === "production"
+  ? "https://api.railsr.com"
+  : "https://api.sandbox.railsr.com";
+
+// Wise API configuration
+const WISE_API_URL = process.env.WISE_ENVIRONMENT === "production"
+  ? "https://api.wise.com"
+  : "https://api.sandbox.wise.com";
+
 /**
  * Railsr (ClearBank) - Create account with IBAN
- * Placeholder - implement based on Railsr API docs
+ * UK/EU banking via ClearBank partnership
  */
 async function provisionRailsrAccount(displayName: string): Promise<{
   iban: string;
@@ -564,23 +597,80 @@ async function provisionRailsrAccount(displayName: string): Promise<{
   externalAccountId: string;
 }> {
   const apiKey = process.env.RAILSR_API_KEY;
+  const enduserId = process.env.RAILSR_ENDUSER_ID;
+
   if (!apiKey) {
     throw new Error("Railsr API key not configured");
   }
 
-  // TODO: Implement Railsr API integration
-  // https://docs.railsr.com/
+  // Step 1: Create a virtual account for the user
+  const accountResponse = await fetch(`${RAILSR_API_URL}/v1/accounts`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+      "X-EndUser-Id": enduserId || "",
+    },
+    body: JSON.stringify({
+      account_type: "virtual",
+      currency: "EUR", // Primary EUR, can also support GBP
+      account_holder_name: displayName,
+      country: "DE", // German IBAN (EU-wide SEPA)
+      metadata: {
+        source: "discard",
+        created_at: new Date().toISOString(),
+      },
+    }),
+  });
 
-  throw new Error("Railsr integration not yet implemented");
+  if (!accountResponse.ok) {
+    const error = await accountResponse.text();
+    throw new Error(`Railsr account creation failed: ${error}`);
+  }
+
+  const account = await accountResponse.json();
+
+  // Step 2: Get account details including IBAN
+  const detailsResponse = await fetch(`${RAILSR_API_URL}/v1/accounts/${account.id}`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+    },
+  });
+
+  if (!detailsResponse.ok) {
+    throw new Error("Failed to get Railsr account details");
+  }
+
+  const details = await detailsResponse.json();
+
+  console.log("[IBAN] Railsr account created:", account.id);
+
+  return {
+    iban: details.iban || account.iban,
+    bic: details.bic || "CLRBDEFFXXX", // ClearBank default BIC
+    bankName: "ClearBank (via Railsr)",
+    externalAccountId: account.id,
+  };
 }
 
 async function closeRailsrAccount(externalAccountId: string): Promise<void> {
-  // TODO: Implement
+  const apiKey = process.env.RAILSR_API_KEY;
+  if (!apiKey) return;
+
+  await fetch(`${RAILSR_API_URL}/v1/accounts/${externalAccountId}`, {
+    method: "DELETE",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+    },
+  });
+
+  console.log("[IBAN] Railsr account closed:", externalAccountId);
 }
 
 /**
  * Wise Platform - Create account with multi-currency IBANs
- * Placeholder - implement based on Wise API docs
+ * Global coverage with local bank details
  */
 async function provisionWiseAccount(displayName: string): Promise<{
   iban: string;
@@ -589,18 +679,86 @@ async function provisionWiseAccount(displayName: string): Promise<{
   externalAccountId: string;
 }> {
   const apiKey = process.env.WISE_API_KEY;
+  const profileId = process.env.WISE_PROFILE_ID;
+
   if (!apiKey) {
     throw new Error("Wise API key not configured");
   }
 
-  // TODO: Implement Wise Platform API integration
-  // https://api-docs.wise.com/
+  if (!profileId) {
+    throw new Error("Wise profile ID not configured");
+  }
 
-  throw new Error("Wise integration not yet implemented");
+  // Step 1: Create a balance account
+  const balanceResponse = await fetch(`${WISE_API_URL}/v4/profiles/${profileId}/balances`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      currency: "EUR",
+      type: "STANDARD",
+      name: displayName,
+    }),
+  });
+
+  if (!balanceResponse.ok) {
+    const error = await balanceResponse.text();
+    throw new Error(`Wise balance creation failed: ${error}`);
+  }
+
+  const balance = await balanceResponse.json();
+
+  // Step 2: Get bank details for the balance
+  const detailsResponse = await fetch(
+    `${WISE_API_URL}/v1/profiles/${profileId}/bank-details?currency=EUR`,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+      },
+    }
+  );
+
+  if (!detailsResponse.ok) {
+    throw new Error("Failed to get Wise bank details");
+  }
+
+  const bankDetails = await detailsResponse.json();
+
+  // Find EUR IBAN details
+  const eurDetails = bankDetails.find((d: any) => d.currency === "EUR");
+  if (!eurDetails) {
+    throw new Error("EUR bank details not available on Wise");
+  }
+
+  console.log("[IBAN] Wise account created:", balance.id);
+
+  return {
+    iban: eurDetails.iban,
+    bic: eurDetails.bic || "TRWIBEB1XXX", // Wise Belgium BIC
+    bankName: "Wise Payments Limited",
+    externalAccountId: balance.id.toString(),
+  };
 }
 
 async function closeWiseAccount(externalAccountId: string): Promise<void> {
-  // TODO: Implement
+  const apiKey = process.env.WISE_API_KEY;
+  const profileId = process.env.WISE_PROFILE_ID;
+
+  if (!apiKey || !profileId) return;
+
+  // Wise doesn't allow direct balance deletion, but we can deactivate
+  await fetch(`${WISE_API_URL}/v4/profiles/${profileId}/balances/${externalAccountId}/close`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+  });
+
+  console.log("[IBAN] Wise account closed:", externalAccountId);
 }
 
 // ============ WEBHOOK SIGNATURE VERIFICATION ============

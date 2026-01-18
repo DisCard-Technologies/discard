@@ -757,6 +757,18 @@ export default defineSchema({
     .index("by_symbol", ["symbol"])
     .index("by_updated", ["updatedAt"]),
 
+  // ============ FX RATES ============
+  // Fiat currency exchange rates (USD base)
+  fxRates: defineTable({
+    currency: v.string(),             // "EUR", "GBP", etc.
+    rate: v.number(),                 // Rate to USD (e.g., EUR 1.08 = 1 EUR = 1.08 USD)
+    source: v.string(),               // Data source ("exchangerate-api", "fixer", "fallback")
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_currency", ["currency"])
+    .index("by_updated", ["updatedAt"]),
+
   // ============ VIRTUAL IBANS ============
   // User-dedicated IBANs for direct bank deposits
   virtualIbans: defineTable({
@@ -813,8 +825,13 @@ export default defineSchema({
     cryptoAmount: v.optional(v.number()), // Crypto received
     usdAmount: v.optional(v.number()),   // Final USD amount (cents)
 
-    // Destination wallet for crypto
-    walletAddress: v.optional(v.string()),
+    // Destination wallet for crypto (PRIVACY FIELDS)
+    // walletAddress is DEPRECATED - use walletAddressHash for privacy
+    walletAddress: v.optional(v.string()), // Legacy - will be removed
+    // Hash of wallet address (privacy-preserving, non-reversible)
+    walletAddressHash: v.optional(v.string()),
+    // Last 4 chars for customer support display only
+    walletAddressPartial: v.optional(v.string()),
 
     // Fees
     moonpayFee: v.optional(v.number()),
@@ -2086,5 +2103,40 @@ export default defineSchema({
     .index("by_user", ["userId"])
     .index("by_user_note", ["userId", "noteId"])
     .index("by_spent", ["spent"]),
+
+  // ============================================================================
+  // PRIVACY DEPOSIT ADDRESSES - Unlinkable KYC/Address Storage
+  // ============================================================================
+  // Stores deposit addresses SEPARATELY from user identity to prevent
+  // MoonPay (or other KYC providers) from linking wallet addresses to users.
+  // NO userId field - lookup is only by addressHash.
+  privacyDepositAddresses: defineTable({
+    // Hash of the deposit address (SHA-256 with domain separator)
+    // Used for lookups without exposing the actual address
+    addressHash: v.string(),
+
+    // The actual deposit address (encrypted in production)
+    // Only accessible via addressHash lookup, not userId
+    encryptedAddress: v.string(),
+
+    // Reference to the transaction (but transaction does NOT store address)
+    transactionId: v.id("moonpayTransactions"),
+
+    // Purpose of this deposit address
+    purpose: v.union(
+      v.literal("moonpay_deposit"),
+      v.literal("iban_deposit"),
+      v.literal("card_funding"),
+      v.literal("other")
+    ),
+
+    // Timestamps
+    createdAt: v.number(),
+    // Auto-delete after retention period (24 hours default)
+    expiresAt: v.number(),
+  })
+    .index("by_hash", ["addressHash"])
+    .index("by_transaction", ["transactionId"])
+    .index("by_expiry", ["expiresAt"]),
 
 });

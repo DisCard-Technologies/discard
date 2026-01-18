@@ -15,6 +15,7 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useAuth, useCurrentUserId } from '@/stores/authConvex';
 import { useTokenHoldings } from '@/hooks/useTokenHoldings';
 import { useArciumYield } from '@/hooks/useArciumYield';
+import { useTurnkeySigner } from '@/hooks/useTurnkeySigner';
 import { positiveColor, negativeColor } from '@/constants/theme';
 import type { YieldVault, PrivateVaultPosition } from '@/services/arciumYieldClient';
 
@@ -160,6 +161,15 @@ export function StrategyScreenContent({ onNavigateToHome, onNavigateToCard }: St
     isAvailable: isYieldAvailable,
   } = useArciumYield(walletAddress || undefined);
 
+  // Turnkey signer for transaction signing
+  const {
+    isReady: signerReady,
+    isSigning,
+    signTransaction,
+    getPrivateKey,
+    error: signerError,
+  } = useTurnkeySigner(userId || undefined);
+
   // State
   const [viewMode, setViewMode] = useState<ViewMode>('wallets');
   const [selectedWallet, setSelectedWallet] = useState('all');
@@ -220,6 +230,11 @@ export function StrategyScreenContent({ onNavigateToHome, onNavigateToCard }: St
   const handleDeposit = async () => {
     if (!selectedVault || !depositAmount || !walletAddress) return;
 
+    if (!signerReady) {
+      Alert.alert('Error', 'Wallet signer not ready. Please try again.');
+      return;
+    }
+
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
     try {
@@ -231,9 +246,14 @@ export function StrategyScreenContent({ onNavigateToHome, onNavigateToCard }: St
         return;
       }
 
-      // In production, get from Turnkey
-      const mockPrivateKey = new Uint8Array(32);
-      const result = await deposit(quote, mockPrivateKey);
+      // Get signing key from Turnkey TEE
+      const privateKey = await getPrivateKey();
+      if (!privateKey) {
+        Alert.alert('Error', 'Failed to get signing key from Turnkey.');
+        return;
+      }
+
+      const result = await deposit(quote, privateKey);
 
       if (result?.success) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -254,6 +274,11 @@ export function StrategyScreenContent({ onNavigateToHome, onNavigateToCard }: St
   const handleWithdraw = async (position: PrivateVaultPosition) => {
     if (!walletAddress) return;
 
+    if (!signerReady) {
+      Alert.alert('Error', 'Wallet signer not ready. Please try again.');
+      return;
+    }
+
     Alert.alert(
       'Withdraw Position',
       'Withdraw your principal + yield to a stealth address?',
@@ -270,8 +295,14 @@ export function StrategyScreenContent({ onNavigateToHome, onNavigateToCard }: St
                 return;
               }
 
-              const mockPrivateKey = new Uint8Array(32);
-              const result = await withdraw(quote, mockPrivateKey);
+              // Get signing key from Turnkey TEE
+              const privateKey = await getPrivateKey();
+              if (!privateKey) {
+                Alert.alert('Error', 'Failed to get signing key from Turnkey.');
+                return;
+              }
+
+              const result = await withdraw(quote, privateKey);
 
               if (result?.success) {
                 Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);

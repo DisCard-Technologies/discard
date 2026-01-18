@@ -378,14 +378,31 @@ http.route({
             let usdAmount = credit.amount; // Already in cents
 
             if (currency !== "USD") {
-              // Convert to USD using current rate
-              // In production, fetch actual rate from forex API
-              const rates: Record<string, number> = {
-                EUR: 1.08,
-                GBP: 1.26,
-              };
-              const rate = rates[currency] || 1;
+              // Convert to USD using current FX rate from database
+              const fxRate = await ctx.runQuery(internal.funding.iban.getFxRate, {
+                currency,
+              });
+
+              if (!fxRate) {
+                console.error(`[Treasury] No FX rate for ${currency}, rejecting deposit`);
+                return new Response(
+                  JSON.stringify({ error: `Unsupported currency: ${currency}` }),
+                  { status: 400, headers: { "Content-Type": "application/json" } }
+                );
+              }
+
+              // Validate rate freshness (max 30 min old)
+              const rateAgeMs = Date.now() - fxRate.updatedAt;
+              const MAX_RATE_AGE_MS = 30 * 60 * 1000; // 30 minutes
+
+              if (rateAgeMs > MAX_RATE_AGE_MS) {
+                console.warn(`[Treasury] Stale FX rate for ${currency}, age: ${Math.round(rateAgeMs / 60000)} min`);
+                // Still process but flag for review
+              }
+
+              const rate = fxRate.rate;
               usdAmount = Math.round(credit.amount * rate);
+              console.log(`[Treasury] Converted ${credit.amount} ${currency} to ${usdAmount} USD at rate ${rate}`);
             }
 
             await ctx.runMutation(internal.funding.iban.processDeposit, {

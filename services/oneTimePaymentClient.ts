@@ -13,7 +13,23 @@
  * @see Hackathon Target: Private Payments Track
  */
 
-import { Keypair, Connection } from "@solana/web3.js";
+import {
+  Keypair,
+  Connection,
+  PublicKey,
+  Transaction,
+  ComputeBudgetProgram,
+  SystemProgram,
+  LAMPORTS_PER_SOL,
+} from "@solana/web3.js";
+import {
+  TOKEN_PROGRAM_ID,
+  getAssociatedTokenAddress,
+  createAssociatedTokenAccountInstruction,
+  createTransferInstruction,
+  getAccount,
+  TokenAccountNotFoundError,
+} from "@solana/spl-token";
 import * as Crypto from "expo-crypto";
 
 // ============================================================================
@@ -274,20 +290,120 @@ export class OneTimePaymentService {
       token: claimResult.linkData.token,
     });
 
-    // TODO: Implement actual token transfer
-    // 1. Create transfer instruction to stealth address
-    // 2. Sign with payer's private key
-    // 3. Submit transaction
+    try {
+      const connection = new Connection(RPC_URL, "confirmed");
+      const payerKeypair = Keypair.fromSecretKey(payerPrivateKey);
+      const recipientPubkey = new PublicKey(claimResult.stealthAddress);
 
-    const mockTxSignature = `onetimepay_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+      // Convert amount to base units
+      const amountBaseUnits = BigInt(
+        Math.floor(claimResult.linkData.amount * Math.pow(10, claimResult.linkData.tokenDecimals))
+      );
 
-    console.log("[OneTimePayment] Payment delivered:", mockTxSignature);
+      const transaction = new Transaction();
 
-    return {
-      success: true,
-      txSignature: mockTxSignature,
-      stealthAddress: claimResult.stealthAddress,
-    };
+      // Add priority fee for faster confirmation
+      transaction.add(
+        ComputeBudgetProgram.setComputeUnitLimit({ units: 200000 }),
+        ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 10000 })
+      );
+
+      // Check if this is native SOL or SPL token
+      const isNativeSOL = claimResult.linkData.token === "SOL" ||
+        claimResult.linkData.tokenMint === "So11111111111111111111111111111111111111112";
+
+      if (isNativeSOL) {
+        // Native SOL transfer
+        transaction.add(
+          SystemProgram.transfer({
+            fromPubkey: payerKeypair.publicKey,
+            toPubkey: recipientPubkey,
+            lamports: amountBaseUnits,
+          })
+        );
+      } else {
+        // SPL Token transfer
+        const mintPubkey = new PublicKey(claimResult.linkData.tokenMint);
+
+        // Get sender's token account
+        const senderAta = await getAssociatedTokenAddress(mintPubkey, payerKeypair.publicKey);
+
+        // Get or create recipient's token account
+        const recipientAta = await getAssociatedTokenAddress(mintPubkey, recipientPubkey);
+
+        // Check if recipient ATA exists
+        let needsAtaCreation = false;
+        try {
+          await getAccount(connection, recipientAta);
+        } catch (error) {
+          if (error instanceof TokenAccountNotFoundError) {
+            needsAtaCreation = true;
+          } else {
+            throw error;
+          }
+        }
+
+        // Create ATA if needed
+        if (needsAtaCreation) {
+          transaction.add(
+            createAssociatedTokenAccountInstruction(
+              payerKeypair.publicKey, // payer
+              recipientAta, // ata
+              recipientPubkey, // owner
+              mintPubkey // mint
+            )
+          );
+        }
+
+        // Add transfer instruction
+        transaction.add(
+          createTransferInstruction(
+            senderAta, // source
+            recipientAta, // destination
+            payerKeypair.publicKey, // owner
+            amountBaseUnits // amount
+          )
+        );
+      }
+
+      // Get recent blockhash
+      const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash("confirmed");
+      transaction.recentBlockhash = blockhash;
+      transaction.lastValidBlockHeight = lastValidBlockHeight;
+      transaction.feePayer = payerKeypair.publicKey;
+
+      // Sign and send transaction
+      transaction.sign(payerKeypair);
+
+      const txSignature = await connection.sendRawTransaction(transaction.serialize(), {
+        skipPreflight: false,
+        preflightCommitment: "confirmed",
+      });
+
+      console.log("[OneTimePayment] Transaction submitted:", txSignature);
+
+      // Wait for confirmation
+      await connection.confirmTransaction({
+        signature: txSignature,
+        blockhash,
+        lastValidBlockHeight,
+      }, "confirmed");
+
+      console.log("[OneTimePayment] Payment delivered:", txSignature);
+
+      return {
+        success: true,
+        txSignature,
+        stealthAddress: claimResult.stealthAddress,
+      };
+    } catch (error) {
+      console.error("[OneTimePayment] Delivery failed:", error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Payment delivery failed",
+        stealthAddress: claimResult.stealthAddress,
+      };
+    }
   }
 
   // ==========================================================================
@@ -343,37 +459,84 @@ export class OneTimePaymentService {
   }
 
   // ==========================================================================
-  // Encryption Utilities
+  // Encryption Utilities (AES-256-GCM)
   // ==========================================================================
 
   /**
-   * Encrypt memo with viewing key
+   * Encrypt memo with viewing key using AES-256-GCM
+   *
+   * Output format: nonce (12 bytes) || ciphertext || auth tag (16 bytes)
+   * All encoded as base64
    */
   private async encryptMemo(memo: string, viewingKey: string): Promise<string> {
-    // Simple XOR encryption with viewing key for demo
-    // In production, use proper AES-GCM
     const memoBytes = new TextEncoder().encode(memo);
     const keyBytes = this.base64ToUint8Array(viewingKey);
 
-    const encrypted = new Uint8Array(memoBytes.length);
-    for (let i = 0; i < memoBytes.length; i++) {
-      encrypted[i] = memoBytes[i] ^ keyBytes[i % keyBytes.length];
-    }
+    // Derive a proper 256-bit key from viewing key using SHA-256
+    const keyMaterial = await crypto.subtle.digest("SHA-256", keyBytes);
+    const cryptoKey = await crypto.subtle.importKey(
+      "raw",
+      keyMaterial,
+      { name: "AES-GCM", length: 256 },
+      false,
+      ["encrypt"]
+    );
 
-    return this.uint8ArrayToBase64(encrypted);
+    // Generate random 12-byte nonce (IV)
+    const nonce = await Crypto.getRandomBytesAsync(12);
+
+    // Encrypt with AES-GCM (includes authentication tag automatically)
+    const ciphertext = await crypto.subtle.encrypt(
+      {
+        name: "AES-GCM",
+        iv: nonce,
+        tagLength: 128, // 16 bytes auth tag
+      },
+      cryptoKey,
+      memoBytes
+    );
+
+    // Combine nonce + ciphertext (auth tag is appended by AES-GCM)
+    const combined = new Uint8Array(nonce.length + ciphertext.byteLength);
+    combined.set(nonce, 0);
+    combined.set(new Uint8Array(ciphertext), nonce.length);
+
+    return this.uint8ArrayToBase64(combined);
   }
 
   /**
-   * Decrypt memo with viewing key
+   * Decrypt memo with viewing key using AES-256-GCM
+   *
+   * Input format: nonce (12 bytes) || ciphertext || auth tag (16 bytes)
    */
   private async decryptMemo(encryptedMemo: string, viewingKey: string): Promise<string> {
-    const encryptedBytes = this.base64ToUint8Array(encryptedMemo);
+    const combined = this.base64ToUint8Array(encryptedMemo);
     const keyBytes = this.base64ToUint8Array(viewingKey);
 
-    const decrypted = new Uint8Array(encryptedBytes.length);
-    for (let i = 0; i < encryptedBytes.length; i++) {
-      decrypted[i] = encryptedBytes[i] ^ keyBytes[i % keyBytes.length];
-    }
+    // Extract nonce and ciphertext
+    const nonce = combined.slice(0, 12);
+    const ciphertext = combined.slice(12);
+
+    // Derive the same key from viewing key
+    const keyMaterial = await crypto.subtle.digest("SHA-256", keyBytes);
+    const cryptoKey = await crypto.subtle.importKey(
+      "raw",
+      keyMaterial,
+      { name: "AES-GCM", length: 256 },
+      false,
+      ["decrypt"]
+    );
+
+    // Decrypt with AES-GCM (verifies auth tag automatically)
+    const decrypted = await crypto.subtle.decrypt(
+      {
+        name: "AES-GCM",
+        iv: nonce,
+        tagLength: 128,
+      },
+      cryptoKey,
+      ciphertext
+    );
 
     return new TextDecoder().decode(decrypted);
   }

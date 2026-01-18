@@ -104,25 +104,41 @@ export const refundPayment = internalAction({
     transactionId: v.id("fundingTransactions"),
     reason: v.optional(v.string()),
   },
-  handler: async (ctx, args): Promise<{ success: boolean }> => {
+  handler: async (ctx, args): Promise<{ success: boolean; error?: string }> => {
     try {
-      // Get transaction
-      const transaction = await ctx.runQuery(internal.funding.funding.getByStripeIntentId, {
-        stripePaymentIntentId: "", // This needs the actual intent ID
+      // Get transaction by ID to retrieve the Stripe payment intent ID
+      const transaction = await ctx.runQuery(internal.funding.stripe.getTransactionById, {
+        transactionId: args.transactionId,
       });
 
-      if (!transaction || !transaction.stripePaymentIntentId) {
-        throw new Error("Transaction not found");
+      if (!transaction) {
+        console.error("[Stripe] Transaction not found:", args.transactionId);
+        return { success: false, error: "Transaction not found" };
       }
 
-      // Create refund
-      await stripeRequest("/refunds", {
+      if (!transaction.stripePaymentIntentId) {
+        console.error("[Stripe] Transaction has no Stripe payment intent:", args.transactionId);
+        return { success: false, error: "No Stripe payment intent associated with transaction" };
+      }
+
+      // Verify transaction is in a refundable state
+      if (transaction.status !== "completed" && transaction.status !== "processing") {
+        console.error("[Stripe] Transaction not refundable, status:", transaction.status);
+        return { success: false, error: `Cannot refund transaction in ${transaction.status} status` };
+      }
+
+      console.log("[Stripe] Initiating refund for payment intent:", transaction.stripePaymentIntentId);
+
+      // Create refund with Stripe
+      const refundResult = await stripeRequest("/refunds", {
         method: "POST",
         body: new URLSearchParams({
           payment_intent: transaction.stripePaymentIntentId,
           reason: args.reason ?? "requested_by_customer",
         }),
       });
+
+      console.log("[Stripe] Refund created:", refundResult.id);
 
       // Update transaction status
       await ctx.runMutation(internal.funding.funding.updateTransactionStatus, {
@@ -133,9 +149,33 @@ export const refundPayment = internalAction({
       return { success: true };
 
     } catch (error) {
-      console.error("Failed to refund payment:", error);
-      return { success: false };
+      console.error("[Stripe] Failed to refund payment:", error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Refund failed"
+      };
     }
+  },
+});
+
+/**
+ * Get transaction by ID (for refund lookup)
+ */
+export const getTransactionById = internalQuery({
+  args: {
+    transactionId: v.id("fundingTransactions"),
+  },
+  handler: async (ctx, args) => {
+    const transaction = await ctx.db.get(args.transactionId);
+    if (!transaction) return null;
+
+    return {
+      _id: transaction._id,
+      status: transaction.status,
+      stripePaymentIntentId: (transaction as any).stripePaymentIntentId,
+      amount: transaction.amount,
+      userId: transaction.userId,
+    };
   },
 });
 
