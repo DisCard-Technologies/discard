@@ -22,8 +22,31 @@ import { Connection, Transaction, PublicKey } from '@solana/web3.js';
 // Swap client instance
 const dflowClient = new DFlowSwapClient({ debug: __DEV__ });
 const RPC_URL = process.env.EXPO_PUBLIC_HELIUS_RPC_URL || 'https://api.mainnet-beta.solana.com';
+const IS_DEVNET = RPC_URL.includes('devnet');
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
+// Popular tokens available for swapping (shown even if not held)
+const SWAPPABLE_TOKENS: Array<{
+  symbol: string;
+  name: string;
+  mint: string;
+  decimals: number;
+  logoUri?: string;
+}> = IS_DEVNET ? [
+  // Devnet tokens
+  { symbol: 'SOL', name: 'Solana', mint: 'So11111111111111111111111111111111111111112', decimals: 9 },
+  { symbol: 'USDC', name: 'USD Coin (Devnet)', mint: '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU', decimals: 6 },
+  { symbol: 'USDT', name: 'Tether USD (Devnet)', mint: 'EJwZgeZrdC8TXTQbQBoL6bfuAnFUUy1PVCMB4DYPzVaS', decimals: 6 },
+] : [
+  // Mainnet tokens
+  { symbol: 'SOL', name: 'Solana', mint: 'So11111111111111111111111111111111111111112', decimals: 9 },
+  { symbol: 'USDC', name: 'USD Coin', mint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', decimals: 6 },
+  { symbol: 'USDT', name: 'Tether USD', mint: 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB', decimals: 6 },
+  { symbol: 'BONK', name: 'Bonk', mint: 'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263', decimals: 5 },
+  { symbol: 'JUP', name: 'Jupiter', mint: 'JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN', decimals: 6 },
+  { symbol: 'WIF', name: 'dogwifhat', mint: 'EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm', decimals: 6 },
+];
 
 // Token type for display
 interface DisplayToken {
@@ -86,10 +109,10 @@ export default function SwapScreen() {
     getPrivacyLevel,
   } = useAnoncoinSwap();
 
-  // Available tokens for selection
+  // Available tokens for selection (merge held tokens with swappable list)
   const availableTokens = useMemo((): DisplayToken[] => {
-    if (!holdings) return [];
-    return holdings.map(h => ({
+    // Start with held tokens
+    const heldTokens: DisplayToken[] = (holdings || []).map(h => ({
       symbol: h.symbol,
       name: h.name,
       mint: h.mint,
@@ -103,18 +126,40 @@ export default function SwapScreen() {
       priceUsd: h.priceUsd,
       logoUri: h.logoUri,
     }));
+
+    // Get mints of held tokens
+    const heldMints = new Set(heldTokens.map(t => t.mint));
+
+    // Add swappable tokens that user doesn't hold
+    const additionalTokens: DisplayToken[] = SWAPPABLE_TOKENS
+      .filter(t => !heldMints.has(t.mint))
+      .map(t => ({
+        symbol: t.symbol,
+        name: t.name,
+        mint: t.mint,
+        decimals: t.decimals,
+        balance: 0,
+        balanceFormatted: '0',
+        valueUsd: 0,
+        priceUsd: 0,
+        logoUri: t.logoUri,
+      }));
+
+    return [...heldTokens, ...additionalTokens];
   }, [holdings]);
 
   // Set default tokens when holdings load
   useEffect(() => {
     if (availableTokens.length > 0 && !fromToken) {
-      // Default from token: SOL or first available
-      const sol = availableTokens.find(t => t.symbol === 'SOL');
-      setFromToken(sol || availableTokens[0]);
-      
-      // Default to token: USDC or second available
+      // Default from token: SOL (if held) or first held token
+      const heldTokens = availableTokens.filter(t => t.balance > 0);
+      const sol = heldTokens.find(t => t.symbol === 'SOL');
+      const defaultFrom = sol || heldTokens[0] || availableTokens[0];
+      setFromToken(defaultFrom);
+
+      // Default to token: USDC (even if not held)
       const usdc = availableTokens.find(t => t.symbol === 'USDC');
-      const defaultTo = usdc || availableTokens.find(t => t.symbol !== (sol?.symbol || availableTokens[0]?.symbol));
+      const defaultTo = usdc || availableTokens.find(t => t.mint !== defaultFrom?.mint);
       if (defaultTo) setToToken(defaultTo);
     }
   }, [availableTokens, fromToken]);
