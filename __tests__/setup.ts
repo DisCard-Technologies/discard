@@ -17,6 +17,12 @@ import './mocks/jupiter';
 import './mocks/turnkey';
 
 // ============================================================================
+// @noble/curves and @noble/hashes Mocks
+// ============================================================================
+
+// These are mocked via moduleNameMapper in jest.config.js
+
+// ============================================================================
 // React Native Core Mocks
 // ============================================================================
 
@@ -262,6 +268,15 @@ jest.mock('expo-web-browser', () => ({
 
 global.TextEncoder = TextEncoder;
 global.TextDecoder = TextDecoder as any;
+
+// ============================================================================
+// BigInt Serialization Fix for Jest Workers
+// ============================================================================
+
+// Jest workers can't serialize BigInt, so we need to handle this
+(BigInt.prototype as any).toJSON = function() {
+  return this.toString();
+};
 
 // ============================================================================
 // Crypto Polyfills

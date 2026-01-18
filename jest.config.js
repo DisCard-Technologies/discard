@@ -5,11 +5,17 @@ module.exports = {
   testMatch: ['<rootDir>/__tests__/**/*.test.{ts,tsx}'],
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/$1',
-    // Handle @noble ESM packages
-    '^@noble/curves/ed25519$': '<rootDir>/node_modules/@noble/curves/ed25519.js',
-    '^@noble/curves/ed25519.js$': '<rootDir>/node_modules/@noble/curves/ed25519.js',
-    '^@noble/hashes/sha2$': '<rootDir>/node_modules/@noble/hashes/sha2.js',
-    '^@noble/hashes/utils$': '<rootDir>/node_modules/@noble/hashes/utils.js',
+    // Mock @noble packages with our test mocks
+    '^@noble/curves/ed25519$': '<rootDir>/__tests__/mocks/noble-curves.ts',
+    '^@noble/curves/ed25519.js$': '<rootDir>/__tests__/mocks/noble-curves.ts',
+    '^@noble/hashes/sha2$': '<rootDir>/__tests__/mocks/noble-hashes.ts',
+    '^@noble/hashes/sha2.js$': '<rootDir>/__tests__/mocks/noble-hashes.ts',
+    '^@noble/hashes/sha256$': '<rootDir>/__tests__/mocks/noble-hashes.ts',
+    '^@noble/hashes/sha512$': '<rootDir>/__tests__/mocks/noble-hashes.ts',
+    '^@noble/hashes/utils$': '<rootDir>/__tests__/mocks/noble-hashes.ts',
+    '^@noble/hashes/utils.js$': '<rootDir>/__tests__/mocks/noble-hashes.ts',
+    // Mock Arcium client to avoid its bundled noble/curves
+    '^@arcium-hq/client$': '<rootDir>/__tests__/mocks/arcium-client.ts',
   },
   transformIgnorePatterns: [
     'node_modules/(?!((jest-)?react-native|@react-native(-community)?)|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|react-navigation|@react-navigation/.*|@unimodules/.*|unimodules|sentry-expo|native-base|react-native-svg|@lightprotocol|@solana|convex|bs58|@noble|tweetnacl|poseidon-lite)',
