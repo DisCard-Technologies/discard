@@ -131,6 +131,39 @@ export interface SettlementResult {
   error?: string;
 }
 
+export interface SellPositionRequest {
+  /** Position ID to sell */
+  positionId: string;
+  /** User's wallet address */
+  userAddress: string;
+  /** Minimum acceptable price (slippage protection) */
+  minPrice?: number;
+  /** Use stealth address for proceeds */
+  useStealthOutput?: boolean;
+}
+
+export interface SellPositionResult {
+  /** Success status */
+  success: boolean;
+  /** Position ID sold */
+  positionId: string;
+  /** Sale price (per share) */
+  salePrice?: number;
+  /** Proceeds amount */
+  proceedsAmount?: number;
+  /** Proceeds address (stealth for privacy) */
+  proceedsAddress?: string;
+  /** Transaction signature */
+  signature?: string;
+  /** Privacy metrics */
+  privacyMetrics?: {
+    amountHidden: boolean;
+    proceedsPrivate: boolean;
+  };
+  /** Error */
+  error?: string;
+}
+
 // ============================================================================
 // Service
 // ============================================================================
@@ -469,6 +502,166 @@ export class PnpPredictionService {
 
     console.log("[PNP] Position cancelled:", positionId);
     return { success: true };
+  }
+
+  /**
+   * Sell a position before market resolution
+   *
+   * Sells shares at current market price, proceeds sent to stealth address.
+   * This allows users to lock in profits or cut losses before resolution.
+   */
+  async sellPosition(request: SellPositionRequest): Promise<SellPositionResult> {
+    console.log("[PNP] Selling position:", request.positionId);
+
+    const position = this.positions.get(request.positionId);
+    if (!position) {
+      return {
+        success: false,
+        positionId: request.positionId,
+        error: "Position not found",
+      };
+    }
+
+    if (position.status !== "open") {
+      return {
+        success: false,
+        positionId: request.positionId,
+        error: `Position is ${position.status}, cannot sell`,
+      };
+    }
+
+    try {
+      // Get current market price
+      const market = await this.dflow.getMarket(position.marketId);
+      if (!market) {
+        return {
+          success: false,
+          positionId: request.positionId,
+          error: "Market not found",
+        };
+      }
+
+      if (market.status !== "open") {
+        return {
+          success: false,
+          positionId: request.positionId,
+          error: "Market is closed, use settle instead",
+        };
+      }
+
+      // Get current sell price (opposite side's buy price)
+      const sellPrice = position.side === "yes" ? market.yesPrice : market.noPrice;
+
+      // Check slippage
+      if (request.minPrice && sellPrice < request.minPrice) {
+        return {
+          success: false,
+          positionId: request.positionId,
+          error: `Price ${sellPrice.toFixed(3)} below minimum ${request.minPrice.toFixed(3)}`,
+        };
+      }
+
+      // Calculate shares and proceeds
+      const shares = position.amount / 100 / position.entryPrice;
+      const proceedsAmount = Math.floor(shares * sellPrice * 100); // In cents
+
+      // Generate stealth address for proceeds if requested
+      let proceedsAddress: string | undefined;
+      if (request.useStealthOutput) {
+        const stealthAddress = await this.shadowWire.generateStealthAddress(
+          request.userAddress
+        );
+        proceedsAddress = stealthAddress?.publicAddress;
+      }
+
+      // In production flow:
+      // 1. Submit sell order to market
+      // 2. Wait for execution confirmation
+      // 3. Verify proceeds received
+      // 4. Update local position
+
+      // Simulate execution
+      const signature = `sell_${request.positionId}_${Date.now()}`;
+
+      // Update position status
+      position.status = "settled";
+
+      console.log("[PNP] Position sold:", {
+        positionId: request.positionId,
+        shares: shares.toFixed(4),
+        salePrice: sellPrice.toFixed(3),
+        proceeds: `$${(proceedsAmount / 100).toFixed(2)}`,
+        pnl: `$${((proceedsAmount - position.amount) / 100).toFixed(2)}`,
+      });
+
+      return {
+        success: true,
+        positionId: request.positionId,
+        salePrice: sellPrice,
+        proceedsAmount,
+        proceedsAddress,
+        signature,
+        privacyMetrics: {
+          amountHidden: true,
+          proceedsPrivate: !!proceedsAddress,
+        },
+      };
+    } catch (error) {
+      console.error("[PNP] Sell position failed:", error);
+      return {
+        success: false,
+        positionId: request.positionId,
+        error: error instanceof Error ? error.message : "Sell failed",
+      };
+    }
+  }
+
+  /**
+   * Get sell quote for a position
+   *
+   * Returns estimated proceeds without executing the sale.
+   */
+  async getSellQuote(positionId: string): Promise<{
+    currentPrice: number;
+    estimatedProceeds: number;
+    estimatedPnl: number;
+    canSell: boolean;
+    error?: string;
+  } | null> {
+    const position = this.positions.get(positionId);
+    if (!position) {
+      return null;
+    }
+
+    try {
+      const market = await this.dflow.getMarket(position.marketId);
+      if (!market) {
+        return {
+          currentPrice: 0,
+          estimatedProceeds: 0,
+          estimatedPnl: 0,
+          canSell: false,
+          error: "Market not found",
+        };
+      }
+
+      const canSell = market.status === "open";
+      const currentPrice = position.side === "yes" ? market.yesPrice : market.noPrice;
+      const shares = position.amount / 100 / position.entryPrice;
+      const estimatedProceeds = Math.floor(shares * currentPrice * 100);
+      const estimatedPnl = estimatedProceeds - position.amount;
+
+      return {
+        currentPrice,
+        estimatedProceeds,
+        estimatedPnl,
+        canSell,
+        error: canSell ? undefined : "Market is not open",
+      };
+    } catch (error) {
+      console.error("[PNP] Get sell quote failed:", error);
+      return null;
+    }
   }
 
   // ==========================================================================

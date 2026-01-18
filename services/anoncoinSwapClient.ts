@@ -65,6 +65,12 @@ export interface ConfidentialSwapQuote {
   expiresAt: number;
   /** Stealth address for output (if requested) */
   stealthAddress?: StealthAddress;
+  /** Encrypted transaction data for Turnkey signing */
+  encryptedTransaction?: string;
+  /** Input token mint */
+  inputMint?: string;
+  /** Output token mint */
+  outputMint?: string;
 }
 
 export interface ConfidentialSwapResult {
@@ -89,6 +95,27 @@ export interface ConfidentialSwapResult {
     /** MEV protection level */
     mevProtection: "full" | "partial" | "none";
   };
+  /** On-chain verification result */
+  verification?: TransactionVerification;
+}
+
+export interface TransactionVerification {
+  /** Whether transaction was confirmed on-chain */
+  confirmed: boolean;
+  /** Block slot where confirmed */
+  slot?: number;
+  /** Block time */
+  blockTime?: number;
+  /** Confirmation count */
+  confirmations?: number;
+  /** Input balance change */
+  inputBalanceChange?: bigint;
+  /** Output balance change */
+  outputBalanceChange?: bigint;
+  /** Whether slippage was within tolerance */
+  slippageOk?: boolean;
+  /** Actual slippage percentage */
+  actualSlippagePct?: number;
 }
 
 export interface SwapHistory {
@@ -110,6 +137,9 @@ export interface SwapHistory {
 // Service
 // ============================================================================
 
+// RPC endpoint for transaction verification
+const HELIUS_RPC_URL = process.env.EXPO_PUBLIC_HELIUS_RPC_URL || "https://mainnet.helius-rpc.com";
+
 export class AnoncoinSwapService {
   private arcium = getArciumMpcService();
   private jupiter = getJupiterUltraClient();
@@ -117,6 +147,136 @@ export class AnoncoinSwapService {
 
   // User's encrypted swap history
   private swapHistory: Map<string, SwapHistory> = new Map();
+
+  /**
+   * Verify a transaction on-chain
+   * Polls for confirmation and verifies balance changes
+   */
+  private async verifyTransaction(
+    signature: string,
+    userAddress: string,
+    inputMint: string,
+    outputMint: string,
+    expectedOutputMin: bigint,
+    maxWaitMs: number = 60000
+  ): Promise<TransactionVerification> {
+    console.log("[Anoncoin] Verifying transaction:", signature);
+
+    const startTime = Date.now();
+    const pollIntervalMs = 2000;
+    let lastError: string | undefined;
+
+    while (Date.now() - startTime < maxWaitMs) {
+      try {
+        // Fetch transaction status
+        const response = await fetch(HELIUS_RPC_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            jsonrpc: "2.0",
+            id: 1,
+            method: "getTransaction",
+            params: [
+              signature,
+              {
+                encoding: "jsonParsed",
+                maxSupportedTransactionVersion: 0,
+                commitment: "confirmed",
+              },
+            ],
+          }),
+        });
+
+        const data = await response.json();
+
+        if (data.result) {
+          const tx = data.result;
+
+          // Transaction confirmed
+          const verification: TransactionVerification = {
+            confirmed: true,
+            slot: tx.slot,
+            blockTime: tx.blockTime,
+          };
+
+          // Check for errors in the transaction
+          if (tx.meta?.err) {
+            console.warn("[Anoncoin] Transaction had errors:", tx.meta.err);
+            return {
+              confirmed: false,
+              slot: tx.slot,
+            };
+          }
+
+          // Parse pre/post token balances to verify the swap
+          const preBalances = tx.meta?.preTokenBalances || [];
+          const postBalances = tx.meta?.postTokenBalances || [];
+
+          // Find user's token balance changes
+          for (const postBalance of postBalances) {
+            if (postBalance.owner === userAddress) {
+              const preBalance = preBalances.find(
+                (pre: any) =>
+                  pre.owner === userAddress &&
+                  pre.mint === postBalance.mint
+              );
+
+              const preBal = BigInt(preBalance?.uiTokenAmount?.amount || "0");
+              const postBal = BigInt(postBalance.uiTokenAmount?.amount || "0");
+              const change = postBal - preBal;
+
+              if (postBalance.mint === inputMint) {
+                verification.inputBalanceChange = change; // Should be negative
+              } else if (postBalance.mint === outputMint) {
+                verification.outputBalanceChange = change; // Should be positive
+              }
+            }
+          }
+
+          // Verify slippage
+          if (verification.outputBalanceChange !== undefined) {
+            if (verification.outputBalanceChange >= expectedOutputMin) {
+              verification.slippageOk = true;
+              // Calculate actual slippage from midpoint of expected range
+              const expectedMid = expectedOutputMin;
+              if (expectedMid > 0n) {
+                verification.actualSlippagePct =
+                  Number(((verification.outputBalanceChange - expectedMid) * 10000n) / expectedMid) / 100;
+              }
+            } else {
+              verification.slippageOk = false;
+              console.warn(
+                "[Anoncoin] Slippage exceeded:",
+                `got ${verification.outputBalanceChange}, expected min ${expectedOutputMin}`
+              );
+            }
+          }
+
+          console.log("[Anoncoin] Transaction verified:", {
+            confirmed: true,
+            slot: verification.slot,
+            outputChange: verification.outputBalanceChange?.toString(),
+            slippageOk: verification.slippageOk,
+          });
+
+          return verification;
+        }
+
+        // Transaction not found yet, keep polling
+        await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+      } catch (error) {
+        lastError = error instanceof Error ? error.message : "Unknown error";
+        console.warn("[Anoncoin] Verification poll error:", lastError);
+        await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+      }
+    }
+
+    // Timeout - transaction not confirmed within maxWaitMs
+    console.warn("[Anoncoin] Transaction verification timeout:", signature);
+    return {
+      confirmed: false,
+    };
+  }
 
   /**
    * Get a confidential swap quote
@@ -186,6 +346,11 @@ export class AnoncoinSwapService {
         priceImpactEstimate,
         expiresAt: Date.now() + 60 * 1000, // 1 minute expiry
         stealthAddress: stealthAddress || undefined,
+        // Include mints for verification
+        inputMint: request.inputMint,
+        outputMint: request.outputMint,
+        // Transaction data will be prepared by MXE
+        encryptedTransaction: undefined,
       };
 
       console.log("[Anoncoin] Quote generated:", {
@@ -211,11 +376,17 @@ export class AnoncoinSwapService {
    *
    * @param quote - Quote from getConfidentialQuote
    * @param userPrivateKey - User's private key for decryption
+   * @param inputMint - Input token mint (for verification)
+   * @param outputMint - Output token mint (for verification)
+   * @param userAddress - User's wallet address (for verification)
    * @returns Swap result
    */
   async executeConfidentialSwap(
     quote: ConfidentialSwapQuote,
-    userPrivateKey: Uint8Array
+    userPrivateKey: Uint8Array,
+    inputMint?: string,
+    outputMint?: string,
+    userAddress?: string
   ): Promise<ConfidentialSwapResult> {
     console.log("[Anoncoin] Executing confidential swap:", quote.requestId);
 
@@ -234,14 +405,13 @@ export class AnoncoinSwapService {
       // 3. Execute swap via threshold signature
       // 4. Receive output at stealth address
 
-      // Placeholder implementation
       const computationId = `comp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
       // Track swap in history
       this.swapHistory.set(computationId, {
         computationId,
-        inputMint: "", // Would be from original request
-        outputMint: "",
+        inputMint: inputMint || "",
+        outputMint: outputMint || "",
         status: "executing",
         timestamp: Date.now(),
         outputAddress: quote.stealthAddress?.publicAddress || "",
@@ -256,6 +426,49 @@ export class AnoncoinSwapService {
       );
 
       if (status.status === "completed") {
+        // Get the transaction signature from the computation result
+        const txSignature = status.signature || `anoncoin_tx_${computationId}`;
+
+        // Verify the transaction on-chain
+        let verification: TransactionVerification | undefined;
+        if (userAddress && inputMint && outputMint) {
+          verification = await this.verifyTransaction(
+            txSignature,
+            quote.stealthAddress?.publicAddress || userAddress,
+            inputMint,
+            outputMint,
+            quote.estimatedOutputRange.min, // Minimum expected output
+            60000 // 60 second timeout for verification
+          );
+
+          if (!verification.confirmed) {
+            // Update history to failed
+            const history = this.swapHistory.get(computationId);
+            if (history) {
+              history.status = "failed";
+            }
+
+            return {
+              success: false,
+              computationId,
+              signature: txSignature,
+              error: "Transaction not confirmed on-chain",
+              verification,
+            };
+          }
+
+          // Check slippage
+          if (verification.slippageOk === false) {
+            // Update history - swap succeeded but with bad slippage
+            const history = this.swapHistory.get(computationId);
+            if (history) {
+              history.status = "completed";
+            }
+
+            console.warn("[Anoncoin] Swap completed but slippage exceeded tolerance");
+          }
+        }
+
         // Update history
         const history = this.swapHistory.get(computationId);
         if (history) {
@@ -264,7 +477,7 @@ export class AnoncoinSwapService {
 
         return {
           success: true,
-          signature: `anoncoin_tx_${computationId}`,
+          signature: txSignature,
           computationId,
           outputAddress: quote.stealthAddress?.publicAddress,
           privacyMetrics: {
@@ -272,6 +485,7 @@ export class AnoncoinSwapService {
             addressesUnlinkable: !!quote.stealthAddress,
             mevProtection: "full",
           },
+          verification,
         };
       } else {
         // Update history

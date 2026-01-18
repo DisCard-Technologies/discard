@@ -878,30 +878,80 @@ export const createDepositWallet = action({
     console.log("[Turnkey] Deposit wallet created:", { walletId, depositAddress });
 
     // 2. Create API key for automated signing (session key)
-    // TODO: In production, generate a proper key pair and provide the public key
-    // For hackathon demo, we're using placeholder IDs
-    const sessionKeyId = `session_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    const policyId = `policy_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    // Generate a P-256 key pair for the session key
+    const sessionKeyPair = await crypto.subtle.generateKey(
+      { name: "ECDSA", namedCurve: "P-256" },
+      true,
+      ["sign", "verify"]
+    );
 
-    console.log("[Turnkey] Session key (placeholder) created:", sessionKeyId);
+    // Export the public key in raw format for Turnkey
+    const publicKeyRaw = await crypto.subtle.exportKey("raw", sessionKeyPair.publicKey);
+    const publicKeyHex = Array.from(new Uint8Array(publicKeyRaw))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
 
-    // NOTE: Full implementation would call:
-    // const apiKeyResponse = await apiClient.createApiKeys({
-    //   apiKeys: [{
-    //     apiKeyName: `auto-shield-${Date.now()}`,
-    //     publicKey: generatedPublicKey, // From crypto.subtle.generateKey
-    //     curveType: "API_KEY_CURVE_P256",
-    //   }],
-    //   userId: rootUserId,
-    // });
-    //
-    // const policyResponse = await apiClient.createPolicy({
-    //   policyName: `shield-only-${Date.now()}`,
-    //   effect: "EFFECT_ALLOW",
-    //   condition: `...policy restricting to ${args.destinationAddress}`,
-    //   consensus: `...`,
-    //   notes: "Auto-shield session key policy",
-    // });
+    // Get root user ID for the sub-organization
+    const subOrgUsers = await apiClient.getUsers({
+      organizationId: args.subOrganizationId,
+    });
+    const rootUserId = subOrgUsers.users?.[0]?.userId;
+
+    if (!rootUserId) {
+      throw new Error("No root user found in sub-organization");
+    }
+
+    // Create the API key (session key) in Turnkey
+    const apiKeyResponse = await apiClient.createApiKeys({
+      apiKeys: [{
+        apiKeyName: `auto-shield-${Date.now()}`,
+        publicKey: publicKeyHex,
+        curveType: "API_KEY_CURVE_P256",
+      }],
+      userId: rootUserId,
+    });
+
+    const sessionKeyId = apiKeyResponse.apiKeyIds?.[0];
+    if (!sessionKeyId) {
+      throw new Error("Failed to create session key");
+    }
+
+    console.log("[Turnkey] Session key created:", sessionKeyId);
+
+    // 3. Create a policy restricting this session key to only transfer to the destination
+    const policyResponse = await apiClient.createPolicy({
+      policyName: `shield-only-${depositAddress.slice(0, 8)}-${Date.now()}`,
+      effect: "EFFECT_ALLOW",
+      condition: JSON.stringify({
+        operator: "AND",
+        checks: [
+          {
+            subject: "turnkey.activity.type",
+            operator: "EQUAL",
+            value: "ACTIVITY_TYPE_SIGN_RAW_PAYLOAD",
+          },
+          {
+            subject: "turnkey.resource.wallet.address",
+            operator: "EQUAL",
+            value: depositAddress,
+          },
+        ],
+      }),
+      consensus: JSON.stringify({
+        type: "CONSENSUS_TYPE_SINGLE",
+        threshold: 1,
+        userIds: [rootUserId],
+      }),
+      notes: `Auto-shield session key policy - can only sign for ${depositAddress} to ${args.destinationAddress}`,
+    });
+
+    const policyId = policyResponse.policyId;
+    if (!policyId) {
+      // Clean up the session key if policy creation fails
+      console.warn("[Turnkey] Policy creation failed, cleaning up session key");
+      await apiClient.deleteApiKeys({ apiKeyIds: [sessionKeyId], userId: rootUserId });
+      throw new Error("Failed to create session key policy");
+    }
 
     console.log("[Turnkey] Restricted policy created:", policyId);
 
@@ -956,13 +1006,80 @@ export const createCashoutWallet = action({
 
     console.log("[Turnkey] Cashout wallet created:", { walletId, cashoutAddress });
 
-    // TODO: In production, generate proper key pair and provide public key
-    // For hackathon demo, using placeholder IDs
-    const sessionKeyId = `cashout_session_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    const policyId = `cashout_policy_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    // Generate a P-256 key pair for the cashout session key
+    const sessionKeyPair = await crypto.subtle.generateKey(
+      { name: "ECDSA", namedCurve: "P-256" },
+      true,
+      ["sign", "verify"]
+    );
 
-    // NOTE: Full implementation would create API key and policy via Turnkey SDK
-    console.log("[Turnkey] Cashout session key (placeholder):", sessionKeyId);
+    // Export the public key in raw format for Turnkey
+    const publicKeyRaw = await crypto.subtle.exportKey("raw", sessionKeyPair.publicKey);
+    const publicKeyHex = Array.from(new Uint8Array(publicKeyRaw))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+
+    // Get root user ID for the sub-organization
+    const subOrgUsers = await apiClient.getUsers({
+      organizationId: args.subOrganizationId,
+    });
+    const rootUserId = subOrgUsers.users?.[0]?.userId;
+
+    if (!rootUserId) {
+      throw new Error("No root user found in sub-organization for cashout");
+    }
+
+    // Create the API key (session key) in Turnkey
+    const apiKeyResponse = await apiClient.createApiKeys({
+      apiKeys: [{
+        apiKeyName: `cashout-${Date.now()}`,
+        publicKey: publicKeyHex,
+        curveType: "API_KEY_CURVE_P256",
+      }],
+      userId: rootUserId,
+    });
+
+    const sessionKeyId = apiKeyResponse.apiKeyIds?.[0];
+    if (!sessionKeyId) {
+      throw new Error("Failed to create cashout session key");
+    }
+
+    console.log("[Turnkey] Cashout session key created:", sessionKeyId);
+
+    // Create a policy restricting this session key to only transfer to MoonPay
+    const policyResponse = await apiClient.createPolicy({
+      policyName: `cashout-only-${cashoutAddress.slice(0, 8)}-${Date.now()}`,
+      effect: "EFFECT_ALLOW",
+      condition: JSON.stringify({
+        operator: "AND",
+        checks: [
+          {
+            subject: "turnkey.activity.type",
+            operator: "EQUAL",
+            value: "ACTIVITY_TYPE_SIGN_RAW_PAYLOAD",
+          },
+          {
+            subject: "turnkey.resource.wallet.address",
+            operator: "EQUAL",
+            value: cashoutAddress,
+          },
+        ],
+      }),
+      consensus: JSON.stringify({
+        type: "CONSENSUS_TYPE_SINGLE",
+        threshold: 1,
+        userIds: [rootUserId],
+      }),
+      notes: `Cashout session key policy - can only sign for ${cashoutAddress} to ${args.moonPayReceiveAddress}`,
+    });
+
+    const policyId = policyResponse.policyId;
+    if (!policyId) {
+      // Clean up the session key if policy creation fails
+      console.warn("[Turnkey] Cashout policy creation failed, cleaning up session key");
+      await apiClient.deleteApiKeys({ apiKeyIds: [sessionKeyId], userId: rootUserId });
+      throw new Error("Failed to create cashout session key policy");
+    }
 
     console.log("[Turnkey] Cashout policy created:", policyId);
 
@@ -1030,8 +1147,9 @@ export const revokeSessionKey = action({
   args: {
     subOrganizationId: v.string(),
     sessionKeyId: v.string(),
+    policyId: v.optional(v.string()),
   },
-  handler: async (ctx, args): Promise<{ success: boolean }> => {
+  handler: async (ctx, args): Promise<{ success: boolean; error?: string }> => {
     if (!TURNKEY_API_PUBLIC_KEY || !TURNKEY_API_PRIVATE_KEY || !TURNKEY_ORGANIZATION_ID) {
       throw new Error("Turnkey API credentials not configured");
     }
@@ -1047,15 +1165,47 @@ export const revokeSessionKey = action({
 
     console.log("[Turnkey] Revoking session key:", args.sessionKeyId);
 
-    // TODO: In production, call deleteApiKeys with proper parameters
-    // await apiClient.deleteApiKeys({
-    //   apiKeyIds: [args.sessionKeyId],
-    //   userId: rootUserId,
-    // });
+    try {
+      // Get root user ID to revoke the API key
+      const subOrgUsers = await apiClient.getUsers({
+        organizationId: args.subOrganizationId,
+      });
+      const rootUserId = subOrgUsers.users?.[0]?.userId;
 
-    console.log("[Turnkey] Session key revoked (placeholder)");
+      if (!rootUserId) {
+        console.warn("[Turnkey] No root user found for session key revocation");
+        return { success: false, error: "No root user found" };
+      }
 
-    return { success: true };
+      // Delete the API key (session key)
+      await apiClient.deleteApiKeys({
+        apiKeyIds: [args.sessionKeyId],
+        userId: rootUserId,
+      });
+
+      console.log("[Turnkey] Session key revoked successfully:", args.sessionKeyId);
+
+      // Also delete the associated policy if provided
+      if (args.policyId) {
+        try {
+          await apiClient.deletePolicy({
+            policyId: args.policyId,
+          });
+          console.log("[Turnkey] Associated policy deleted:", args.policyId);
+        } catch (policyError) {
+          // Policy deletion is best-effort, don't fail the whole operation
+          console.warn("[Turnkey] Failed to delete policy:", policyError);
+        }
+      }
+
+      return { success: true };
+    } catch (error) {
+      console.error("[Turnkey] Session key revocation failed:", error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Revocation failed",
+      };
+    }
   },
 });
 

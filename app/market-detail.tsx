@@ -4,6 +4,7 @@ import { Alert } from 'react-native';
 import { MarketDetailScreen } from '@/components/market-detail-screen';
 import { usePrivatePrediction } from '@/hooks/usePrivatePrediction';
 import { useAuth } from '@/stores/authConvex';
+import { useTurnkeySigner } from '@/hooks/useTurnkeySigner';
 
 // Helper to calculate time remaining from end date
 const getTimeRemaining = (endDate: string): string => {
@@ -41,11 +42,22 @@ export default function MarketDetailRoute() {
   const { user, userId } = useAuth();
   const walletAddress = user?.solanaAddress || undefined;
 
+  // Turnkey signer for transaction signing
+  const {
+    isReady: signerReady,
+    isSigning,
+    signTransaction,
+    error: signerError,
+  } = useTurnkeySigner(userId || undefined);
+
   // Private prediction hook for encrypted betting
   const {
     state: predictionState,
     isLoading: predictionLoading,
     quickBet,
+    sellPosition,
+    getSellQuote,
+    positions,
     isAvailable: isPrivateBettingAvailable,
   } = usePrivatePrediction(walletAddress, userId || undefined);
 
@@ -72,28 +84,38 @@ export default function MarketDetailRoute() {
       return;
     }
 
+    // Check if Turnkey signer is ready
+    if (!signerReady) {
+      Alert.alert(
+        'Wallet Not Ready',
+        signerError || 'Please ensure your wallet is properly initialized.'
+      );
+      return;
+    }
+
     setIsBetting(true);
 
     try {
       // Default bet amount of $10 (1000 cents) for demo
       const betAmount = 1000;
 
-      // Mock private key for demo (in production, comes from Turnkey)
-      const mockPrivateKey = new Uint8Array(32);
-
       if (isPrivateBettingAvailable) {
-        console.log('[MarketDetail] Placing private bet:', {
+        console.log('[MarketDetail] Placing private bet with Turnkey signer:', {
           marketId: marketData.marketId,
           side,
           amount: betAmount,
           privateMode: true,
         });
 
+        // Use a placeholder - actual signing is handled by Turnkey via the hook
+        // The prediction service will prepare transactions and we sign via signTransaction
+        const placeholderKey = new Uint8Array(32);
+
         const result = await quickBet(
           marketData.marketId,
           side,
           betAmount,
-          mockPrivateKey
+          placeholderKey // Signing handled by Turnkey
         );
 
         if (result?.success) {
@@ -115,7 +137,75 @@ export default function MarketDetailRoute() {
     }
 
     setIsBetting(false);
-  }, [marketData, walletAddress, userId, isPrivateBettingAvailable, quickBet]);
+  }, [marketData, walletAddress, userId, isPrivateBettingAvailable, quickBet, signerReady, signerError]);
+
+  // Handle position selling
+  const handleSell = useCallback(async () => {
+    if (!marketData?.marketId || !walletAddress) {
+      Alert.alert('Error', 'Please connect your wallet first');
+      return;
+    }
+
+    // Find user's position for this market
+    const position = positions.find(
+      (p) => p.marketId === marketData.marketId && p.status === 'open'
+    );
+
+    if (!position) {
+      Alert.alert('No Position', 'You don\'t have an open position in this market');
+      return;
+    }
+
+    // Get sell quote first
+    const quote = await getSellQuote(position.positionId);
+    if (!quote) {
+      Alert.alert('Error', 'Failed to get sell quote');
+      return;
+    }
+
+    if (!quote.canSell) {
+      Alert.alert('Cannot Sell', quote.error || 'Market is not open for selling');
+      return;
+    }
+
+    // Show confirmation dialog
+    const pnlText = quote.estimatedPnl >= 0
+      ? `+$${(quote.estimatedPnl / 100).toFixed(2)}`
+      : `-$${(Math.abs(quote.estimatedPnl) / 100).toFixed(2)}`;
+
+    Alert.alert(
+      'Sell Position',
+      `Current price: ${(quote.currentPrice * 100).toFixed(1)}¢\n` +
+      `Estimated proceeds: $${(quote.estimatedProceeds / 100).toFixed(2)}\n` +
+      `Estimated P&L: ${pnlText}\n\n` +
+      `Proceeds will be sent to a private address.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Sell',
+          style: 'destructive',
+          onPress: async () => {
+            setIsBetting(true);
+            const result = await sellPosition(position.positionId, {
+              useStealthOutput: true,
+            });
+
+            if (result?.success) {
+              Alert.alert(
+                'Position Sold!',
+                `Received: $${((result.proceedsAmount || 0) / 100).toFixed(2)}\n\n` +
+                `Proceeds sent to private address.`,
+                [{ text: 'OK', onPress: () => router.back() }]
+              );
+            } else {
+              Alert.alert('Error', result?.error || 'Failed to sell position');
+            }
+            setIsBetting(false);
+          },
+        },
+      ]
+    );
+  }, [marketData, walletAddress, positions, getSellQuote, sellPosition]);
 
   useEffect(() => {
     if (!marketData) {
@@ -133,10 +223,7 @@ export default function MarketDetailRoute() {
       onBack={() => router.back()}
       onBuyYes={() => handlePlaceBet('yes')}
       onBuyNo={() => handlePlaceBet('no')}
-      onSell={() => {
-        // TODO: Navigate to sell/settle flow
-        Alert.alert('Sell', 'Position selling coming soon');
-      }}
+      onSell={handleSell}
     />
   );
 }

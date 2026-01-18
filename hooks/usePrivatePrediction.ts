@@ -19,6 +19,7 @@ import {
   type PrivateBetResult,
   type PrivatePosition,
   type SettlementResult,
+  type SellPositionResult,
 } from "@/services/pnpPredictionClient";
 import type { PredictionMarket } from "@/types/holdings.types";
 
@@ -35,6 +36,8 @@ export interface PredictionState {
     | "quoted"
     | "placing"
     | "placed"
+    | "selling"
+    | "sold"
     | "settling"
     | "settled"
     | "failed";
@@ -44,6 +47,8 @@ export interface PredictionState {
   quote?: PrivateBetQuote;
   /** Bet result */
   betResult?: PrivateBetResult;
+  /** Sell result */
+  sellResult?: SellPositionResult;
   /** Settlement result */
   settlementResult?: SettlementResult;
   /** Error message */
@@ -302,6 +307,65 @@ export function usePrivatePrediction(
     return result;
   }, [refreshPositions]);
 
+  /**
+   * Sell a position before market resolution
+   */
+  const sellPosition = useCallback(async (
+    positionId: string,
+    options?: {
+      minPrice?: number;
+      useStealthOutput?: boolean;
+    }
+  ): Promise<SellPositionResult | null> => {
+    if (!userAddress) {
+      return null;
+    }
+
+    setIsLoading(true);
+    setState((prev) => ({ ...prev, phase: "selling" }));
+
+    try {
+      const result = await pnpService.current.sellPosition({
+        positionId,
+        userAddress,
+        minPrice: options?.minPrice,
+        useStealthOutput: options?.useStealthOutput ?? true, // Privacy by default
+      });
+
+      if (result.success) {
+        setState({
+          phase: "sold",
+          sellResult: result,
+        });
+        refreshPositions();
+      } else {
+        setState({
+          phase: "failed",
+          sellResult: result,
+          error: result.error,
+        });
+      }
+
+      setIsLoading(false);
+      return result;
+    } catch (error) {
+      console.error("[PrivatePrediction] Sell failed:", error);
+      setState({
+        phase: "failed",
+        error: error instanceof Error ? error.message : "Sell failed",
+      });
+      setIsLoading(false);
+      return null;
+    }
+  }, [userAddress, refreshPositions]);
+
+  /**
+   * Get a sell quote for a position
+   */
+  const getSellQuote = useCallback(async (positionId: string) => {
+    return await pnpService.current.getSellQuote(positionId);
+  }, []);
+
   // ==========================================================================
   // Settlement
   // ==========================================================================
@@ -471,6 +535,8 @@ export function usePrivatePrediction(
     refreshPositions,
     refreshPrices,
     cancelPosition,
+    sellPosition,
+    getSellQuote,
 
     // Settlement
     settlePosition,

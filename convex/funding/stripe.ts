@@ -4,7 +4,7 @@
  * Handles Stripe payment processing for account funding.
  * Ported from: apps/api/src/services/funding/stripe.service.ts
  */
-import { internalAction } from "../_generated/server";
+import { internalAction, internalMutation, internalQuery } from "../_generated/server";
 import { v } from "convex/values";
 import { internal } from "../_generated/api";
 import { Id } from "../_generated/dataModel";
@@ -175,27 +175,54 @@ async function stripeRequest(
 
 /**
  * Get or create Stripe customer for user
+ *
+ * Properly reuses existing Stripe customer IDs to:
+ * 1. Avoid creating duplicate customers in Stripe
+ * 2. Allow saved payment methods to persist
+ * 3. Enable better analytics and fraud detection
  */
 async function getOrCreateStripeCustomer(
   ctx: any,
   userId: Id<"users">
 ): Promise<string> {
-  // In production, you would:
-  // 1. Check if user already has a Stripe customer ID stored
-  // 2. If not, create a new Stripe customer
-  // 3. Store the customer ID with the user
+  // Check if user already has a Stripe customer ID stored
+  const user = await ctx.runQuery(internal.funding.stripe.getUserStripeCustomer, {
+    userId,
+  });
 
-  // For now, create a new customer each time
-  // This is a placeholder - implement proper customer management
+  if (user?.stripeCustomerId) {
+    console.log("[Stripe] Using existing customer:", user.stripeCustomerId);
+    return user.stripeCustomerId;
+  }
+
+  // Create a new Stripe customer
+  console.log("[Stripe] Creating new customer for user:", userId);
+
+  const body = new URLSearchParams();
+  body.append("metadata[convex_user_id]", userId);
+
+  // Add user email if available
+  if (user?.email) {
+    body.append("email", user.email);
+  }
+
+  // Add user name if available
+  if (user?.displayName) {
+    body.append("name", user.displayName);
+  }
 
   const customer = await stripeRequest("/customers", {
     method: "POST",
-    body: new URLSearchParams({
-      metadata: JSON.stringify({
-        convex_user_id: userId,
-      }),
-    }),
+    body,
   });
+
+  // Store the customer ID with the user
+  await ctx.runMutation(internal.funding.stripe.storeStripeCustomerId, {
+    userId,
+    stripeCustomerId: customer.id,
+  });
+
+  console.log("[Stripe] Created new customer:", customer.id);
 
   return customer.id;
 }
@@ -237,3 +264,41 @@ async function createStripePaymentIntent(params: {
     body,
   });
 }
+
+// ============ INTERNAL QUERIES ============
+
+/**
+ * Get user's Stripe customer ID
+ */
+export const getUserStripeCustomer = internalQuery({
+  args: {
+    userId: v.id("users"),
+  },
+  handler: async (ctx, args) => {
+    const user = await ctx.db.get(args.userId);
+    if (!user) return null;
+
+    return {
+      stripeCustomerId: (user as any).stripeCustomerId,
+      email: user.email,
+      displayName: user.displayName,
+    };
+  },
+});
+
+// ============ INTERNAL MUTATIONS ============
+
+/**
+ * Store Stripe customer ID for user
+ */
+export const storeStripeCustomerId = internalMutation({
+  args: {
+    userId: v.id("users"),
+    stripeCustomerId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.userId, {
+      stripeCustomerId: args.stripeCustomerId,
+    } as any);
+  },
+});

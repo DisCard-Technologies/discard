@@ -168,11 +168,27 @@ export const createFundingRequest = mutation({
     const netAmount = args.amount;
 
     // Generate single-use address via Turnkey
-    // This is a placeholder - actual implementation calls Turnkey
     const expiresAt = now + FUNDING_ADDRESS_EXPIRY_MS;
-    const depositAddress = `funding_${card._id}_${now}`; // Placeholder
-    const sessionKeyId = `session_${now}`; // Placeholder
-    const subOrgId = "user_suborg"; // Placeholder
+
+    // Get user's Turnkey organization for creating deposit wallet
+    const turnkeyOrg = await ctx.db
+      .query("turnkeyOrgs")
+      .withIndex("by_user", (q) => q.eq("userId", user._id))
+      .first();
+
+    if (!turnkeyOrg) {
+      throw new Error("Turnkey wallet not found. Please complete wallet setup.");
+    }
+
+    if (turnkeyOrg.status !== "active") {
+      throw new Error(`Turnkey wallet is ${turnkeyOrg.status}. Please contact support.`);
+    }
+
+    // Store placeholders - the actual Turnkey addresses will be created via action
+    // We create the funding request first, then call the action to get real addresses
+    const depositAddress = `pending_${card._id}_${now}`;
+    const sessionKeyId = `pending_session_${now}`;
+    const subOrgId = turnkeyOrg.subOrganizationId;
 
     // Create funding request record
     const fundingRequestId = await ctx.db.insert("cardFundingRequests", {
@@ -317,6 +333,89 @@ export const getFundingHistory = query({
   },
 });
 
+// ============ PUBLIC ACTIONS ============
+
+/**
+ * Create a real Turnkey deposit wallet for card funding
+ * This should be called after createFundingRequest to get real addresses
+ */
+export const createDepositWalletForFunding = action({
+  args: {
+    fundingRequestId: v.id("cardFundingRequests"),
+  },
+  handler: async (ctx, args): Promise<{
+    success: boolean;
+    depositAddress?: string;
+    sessionKeyId?: string;
+    error?: string;
+  }> => {
+    // Get the funding request
+    const request = await ctx.runQuery(internal.cards.cardFunding.getFundingRequestById, {
+      requestId: args.fundingRequestId,
+    });
+
+    if (!request) {
+      return { success: false, error: "Funding request not found" };
+    }
+
+    if (request.status !== "pending") {
+      return { success: false, error: `Request is ${request.status}, not pending` };
+    }
+
+    // Check if already has a real address (not placeholder)
+    if (!request.depositAddress.startsWith("pending_")) {
+      return {
+        success: true,
+        depositAddress: request.depositAddress,
+        sessionKeyId: request.sessionKeyId,
+      };
+    }
+
+    // Get the card to determine the provider's receive address
+    const card = await ctx.runQuery(internal.cards.cardFunding.getCardById, {
+      cardId: request.cardId,
+    });
+
+    if (!card) {
+      return { success: false, error: "Card not found" };
+    }
+
+    try {
+      // Create deposit wallet via Turnkey
+      // The destination is the card's virtual account or Starpay funding address
+      const starpayFundingAddress = process.env.STARPAY_FUNDING_ADDRESS || "";
+
+      const depositResult = await ctx.runAction(internal.tee.turnkey.createDepositWallet, {
+        subOrganizationId: request.subOrgId,
+        walletName: `CardFunding-${request.cardId.slice(-8)}-${Date.now()}`,
+        destinationAddress: starpayFundingAddress,
+      });
+
+      // Update the funding request with real addresses
+      await ctx.runMutation(internal.cards.cardFunding.updateFundingAddresses, {
+        requestId: args.fundingRequestId,
+        depositAddress: depositResult.depositAddress,
+        sessionKeyId: depositResult.sessionKeyId,
+        policyId: depositResult.policyId,
+      });
+
+      console.log("[CardFunding] Real deposit wallet created:", depositResult.depositAddress);
+
+      return {
+        success: true,
+        depositAddress: depositResult.depositAddress,
+        sessionKeyId: depositResult.sessionKeyId,
+      };
+    } catch (error) {
+      console.error("[CardFunding] Failed to create deposit wallet:", error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Failed to create deposit wallet",
+      };
+    }
+  },
+});
+
 // ============ INTERNAL ACTIONS ============
 
 /**
@@ -384,7 +483,18 @@ export const processDeposit = internalAction({
     }
 
     // Revoke session key (cleanup)
-    // TODO: Call Turnkey to revoke session key
+    if (request.sessionKeyId && !request.sessionKeyId.startsWith("pending_")) {
+      try {
+        await ctx.runAction(internal.tee.turnkey.revokeSessionKey, {
+          subOrganizationId: request.subOrgId,
+          sessionKeyId: request.sessionKeyId,
+        });
+        console.log(`[CardFunding] Session key revoked for request ${request._id}`);
+      } catch (revokeError) {
+        // Log but don't fail - the main operation succeeded
+        console.warn(`[CardFunding] Failed to revoke session key: ${revokeError}`);
+      }
+    }
   },
 });
 
@@ -407,7 +517,17 @@ export const expireOldRequests = internalAction({
       });
 
       // Revoke session key
-      // TODO: Call Turnkey to revoke session key
+      if (request.sessionKeyId && !request.sessionKeyId.startsWith("pending_")) {
+        try {
+          await ctx.runAction(internal.tee.turnkey.revokeSessionKey, {
+            subOrganizationId: request.subOrgId,
+            sessionKeyId: request.sessionKeyId,
+          });
+          console.log(`[CardFunding] Session key revoked for expired request ${request._id}`);
+        } catch (revokeError) {
+          console.warn(`[CardFunding] Failed to revoke session key for expired request: ${revokeError}`);
+        }
+      }
     }
 
     console.log(`[CardFunding] Expired ${expiredRequests.length} funding requests`);
@@ -433,6 +553,30 @@ export const getFundingRequestByAddress = internalQuery({
 });
 
 /**
+ * Get funding request by ID
+ */
+export const getFundingRequestById = internalQuery({
+  args: {
+    requestId: v.id("cardFundingRequests"),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db.get(args.requestId);
+  },
+});
+
+/**
+ * Get card by ID
+ */
+export const getCardById = internalQuery({
+  args: {
+    cardId: v.id("cards"),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db.get(args.cardId);
+  },
+});
+
+/**
  * Get expired pending requests
  */
 export const getExpiredRequests = internalQuery({
@@ -449,6 +593,25 @@ export const getExpiredRequests = internalQuery({
 });
 
 // ============ INTERNAL MUTATIONS ============
+
+/**
+ * Update funding addresses with real Turnkey wallet data
+ */
+export const updateFundingAddresses = internalMutation({
+  args: {
+    requestId: v.id("cardFundingRequests"),
+    depositAddress: v.string(),
+    sessionKeyId: v.string(),
+    policyId: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.requestId, {
+      depositAddress: args.depositAddress,
+      sessionKeyId: args.sessionKeyId,
+      // Store policyId if we have a field for it, or include in metadata
+    });
+  },
+});
 
 /**
  * Update funding request status
