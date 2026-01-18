@@ -363,7 +363,7 @@ export function CardScreenContent({ onNavigateToStrategy, onNavigateToHome }: Ca
                   </ThemedText>
                 ) : (
                   <ThemedText style={styles.cardAddressText}>
-                    {walletAddress ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}` : 'No wallet'}
+                    Wallet Connected
                   </ThemedText>
                 )}
               </View>
@@ -684,10 +684,10 @@ export function CardScreenContent({ onNavigateToStrategy, onNavigateToHome }: Ca
                   <ThemedText style={styles.drawerItemTitle}>Payment Method</ThemedText>
                   <View style={styles.paymentMethodRow}>
                     <View style={[styles.tokenBadge, { backgroundColor: `${primaryColor}20` }]}>
-                      <ThemedText style={[styles.tokenBadgeText, { color: primaryColor }]}>T</ThemedText>
+                      <ThemedText style={[styles.tokenBadgeText, { color: primaryColor }]}>◎</ThemedText>
                     </View>
                     <ThemedText style={[styles.drawerItemSubtitle, { color: mutedColor }]}>
-                      {walletAddress ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}` : 'Not set'}
+                      {walletAddress ? 'Solana Wallet' : 'Not set'}
                     </ThemedText>
                   </View>
                 </View>

@@ -35,6 +35,7 @@ import { useAuth } from '@/stores/authConvex';
 import { useTokenHoldings } from '@/hooks/useTokenHoldings';
 import { useContacts } from '@/hooks/useContacts';
 import { useCrossCurrencyTransfer } from '@/hooks/useCrossCurrencyTransfer';
+import { useFeeEstimate } from '@/hooks/useFeeEstimate';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -263,6 +264,13 @@ export default function TransferScreen() {
     debounceMs: 500,
   });
 
+  // Dynamic fee estimation
+  const { fees: dynamicFees } = useFeeEstimate({
+    amountUsd: amount !== '0' ? parseFloat(amount) : 0,
+    includeAtaRent: false,
+    enabled: true,
+  });
+
   // Format wallet address for display
   const displayAddress = walletAddress
     ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`
@@ -352,13 +360,13 @@ export default function TransferScreen() {
           amountBaseUnits: paymentAmountBaseUnits || (parseFloat(amount) * 1e6).toString(),
         }),
         fees: JSON.stringify({
-          networkFee: 0.00001,
-          networkFeeUsd: 0.001,
-          platformFee: 0,
-          priorityFee: 0.00001,
-          ataRent: 0,
-          totalFeesUsd: 0.001,
-          totalCostUsd: parseFloat(amount) + 0.001,
+          networkFee: dynamicFees.networkFee,
+          networkFeeUsd: dynamicFees.networkFeeUsd,
+          platformFee: dynamicFees.platformFee,
+          priorityFee: dynamicFees.priorityFee,
+          ataRent: dynamicFees.ataRent,
+          totalFeesUsd: dynamicFees.totalFeesUsd,
+          totalCostUsd: dynamicFees.totalCostUsd,
         }),
         settlement: JSON.stringify({
           token: settlementToken.symbol,
@@ -370,7 +378,7 @@ export default function TransferScreen() {
         }),
       },
     });
-  }, [amount, selectedContact, selectedToken, selectedPaymentToken, paymentAmountBaseUnits, settlementToken, needsSwap, estimatedReceivedFormatted]);
+  }, [amount, selectedContact, selectedToken, selectedPaymentToken, paymentAmountBaseUnits, settlementToken, needsSwap, estimatedReceivedFormatted, dynamicFees]);
 
   // Request payment
   const handleRequest = useCallback(() => {

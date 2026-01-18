@@ -77,8 +77,8 @@ export default function MarketDetailRoute() {
     traders: 0, // Would come from API
   } : null;
 
-  // Handle private bet placement
-  const handlePlaceBet = useCallback(async (side: 'yes' | 'no') => {
+  // Handle private bet placement - all bets are private by default
+  const handlePlaceBet = useCallback(async (side: 'yes' | 'no', amountDollars: number = 10) => {
     if (!marketData?.marketId || !walletAddress || !userId) {
       Alert.alert('Error', 'Please connect your wallet first');
       return;
@@ -93,43 +93,47 @@ export default function MarketDetailRoute() {
       return;
     }
 
+    if (!isPrivateBettingAvailable) {
+      Alert.alert(
+        'Private Betting Unavailable',
+        'Private betting service is currently unavailable. Please try again later.'
+      );
+      return;
+    }
+
     setIsBetting(true);
 
     try {
-      // Default bet amount of $10 (1000 cents) for demo
-      const betAmount = 1000;
+      // Convert dollars to cents
+      const betAmount = amountDollars * 100;
 
-      if (isPrivateBettingAvailable) {
-        console.log('[MarketDetail] Placing private bet with Turnkey signer:', {
-          marketId: marketData.marketId,
-          side,
-          amount: betAmount,
-          privateMode: true,
-        });
+      console.log('[MarketDetail] Placing private bet with Turnkey signer:', {
+        marketId: marketData.marketId,
+        side,
+        amount: betAmount,
+        amountDollars,
+        privateMode: true,
+      });
 
-        // Use a placeholder - actual signing is handled by Turnkey via the hook
-        // The prediction service will prepare transactions and we sign via signTransaction
-        const placeholderKey = new Uint8Array(32);
+      // Use a placeholder - actual signing is handled by Turnkey via the hook
+      // The prediction service will prepare transactions and we sign via signTransaction
+      const placeholderKey = new Uint8Array(32);
 
-        const result = await quickBet(
-          marketData.marketId,
-          side,
-          betAmount,
-          placeholderKey // Signing handled by Turnkey
+      const result = await quickBet(
+        marketData.marketId,
+        side,
+        betAmount,
+        placeholderKey // Signing handled by Turnkey
+      );
+
+      if (result?.success) {
+        Alert.alert(
+          'Bet Placed!',
+          `Your private ${side.toUpperCase()} bet of $${amountDollars} has been placed.\n\nBet amount is hidden on-chain via ZK proofs.`,
+          [{ text: 'OK', onPress: () => router.back() }]
         );
-
-        if (result?.success) {
-          Alert.alert(
-            'Bet Placed!',
-            `Your private ${side.toUpperCase()} bet has been placed.\n\nBet amount is hidden on-chain.`,
-            [{ text: 'OK', onPress: () => router.back() }]
-          );
-        } else {
-          Alert.alert('Error', result?.error || 'Failed to place bet');
-        }
       } else {
-        // Fallback to standard bet (would integrate with DFlow directly)
-        Alert.alert('Info', 'Standard betting coming soon');
+        Alert.alert('Error', result?.error || 'Failed to place bet');
       }
     } catch (error) {
       console.error('[MarketDetail] Bet failed:', error);
@@ -221,8 +225,8 @@ export default function MarketDetailRoute() {
     <MarketDetailScreen
       market={marketData}
       onBack={() => router.back()}
-      onBuyYes={() => handlePlaceBet('yes')}
-      onBuyNo={() => handlePlaceBet('no')}
+      onBuyYes={(amount) => handlePlaceBet('yes', amount)}
+      onBuyNo={(amount) => handlePlaceBet('no', amount)}
       onSell={handleSell}
     />
   );

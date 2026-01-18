@@ -31,8 +31,8 @@ interface MarketDetailProps {
     pnlPercent: number;
   };
   onBack: () => void;
-  onBuyYes?: () => void;
-  onBuyNo?: () => void;
+  onBuyYes?: (amount: number) => void;
+  onBuyNo?: (amount: number) => void;
   onSell?: () => void;
 }
 
@@ -330,18 +330,24 @@ export function MarketDetailScreen({
             </ThemedText>
           </View>
 
-          {/* Buy Button */}
+          {/* Buy Button - All bets are private */}
           <Pressable
-            onPress={selectedSide === 'yes' ? onBuyYes : onBuyNo}
+            onPress={() => selectedSide === 'yes' ? onBuyYes?.(selectedAmount) : onBuyNo?.(selectedAmount)}
             style={[
               styles.buyTradeButton,
               { backgroundColor: selectedSide === 'yes' ? '#22c55e' : '#ef4444' },
             ]}
           >
-            <ThemedText style={styles.buyTradeText}>
-              Buy {selectedSide.toUpperCase()} for ${selectedAmount}
-            </ThemedText>
+            <View style={styles.buyTradeRow}>
+              <Ionicons name="shield-checkmark" size={16} color="#fff" />
+              <ThemedText style={styles.buyTradeText}>
+                Private Bet: {selectedSide.toUpperCase()} for ${selectedAmount}
+              </ThemedText>
+            </View>
           </Pressable>
+          <ThemedText style={[styles.privateBetNote, { color: mutedColor }]}>
+            Amount hidden on-chain via zero-knowledge proofs
+          </ThemedText>
         </ThemedView>
 
         {/* Market Info */}
@@ -642,10 +648,20 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     alignItems: 'center',
   },
+  buyTradeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   buyTradeText: {
     fontSize: 16,
     fontWeight: '500',
     color: '#fff',
+  },
+  privateBetNote: {
+    fontSize: 11,
+    textAlign: 'center',
+    marginTop: 8,
   },
   infoCard: {
     borderRadius: 16,

@@ -72,6 +72,7 @@ export default function SwapScreen() {
   const [fromAmount, setFromAmount] = useState('');
   const [showFromSelector, setShowFromSelector] = useState(false);
   const [showToSelector, setShowToSelector] = useState(false);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [slippage, setSlippage] = useState(3.0); // 3%
   const [usePrivateMode, setUsePrivateMode] = useState(true); // Privacy by default
 
@@ -315,10 +316,11 @@ export default function SwapScreen() {
 
         try {
           // Get fresh quote and swap instructions
+          const swapAmountBaseUnits = BigInt(Math.floor(parseFloat(fromAmount) * Math.pow(10, fromToken.decimals)));
           const { quote, instructions } = await dflowClient.buildSwapAndTransfer({
             inputMint: fromToken.mint,
             outputMint: toToken.mint,
-            inputAmount: amountBaseUnits.toString(),
+            inputAmount: swapAmountBaseUnits.toString(),
             recipientAddress: walletAddress!, // Swap to self
             userPublicKey: walletAddress!,
             slippageBps: Math.round(slippage * 100), // Convert percentage to bps
@@ -488,6 +490,7 @@ export default function SwapScreen() {
         </Pressable>
         <ThemedText style={styles.headerTitle}>Swap</ThemedText>
         <Pressable
+          onPress={() => setShowSettingsModal(true)}
           style={({ pressed }) => [styles.settingsButton, pressed && styles.pressed]}
         >
           <Ionicons name="settings-outline" size={24} color={textColor} />
@@ -735,6 +738,109 @@ export default function SwapScreen() {
         () => setShowToSelector(false),
         handleSelectToToken,
         fromToken
+      )}
+
+      {/* Settings Modal */}
+      {showSettingsModal && (
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => setShowSettingsModal(false)}
+        >
+          <Animated.View
+            entering={FadeIn.duration(200)}
+            style={[styles.settingsModal, { backgroundColor: cardColor }]}
+          >
+            <View style={styles.settingsHeader}>
+              <ThemedText style={styles.settingsTitle}>Swap Settings</ThemedText>
+              <Pressable
+                onPress={() => setShowSettingsModal(false)}
+                style={styles.settingsClose}
+              >
+                <Ionicons name="close" size={24} color={mutedColor} />
+              </Pressable>
+            </View>
+
+            {/* Slippage Tolerance */}
+            <View style={styles.settingsSection}>
+              <View style={styles.settingsLabelRow}>
+                <ThemedText style={styles.settingsLabel}>Slippage Tolerance</ThemedText>
+                <Ionicons name="information-circle-outline" size={16} color={mutedColor} />
+              </View>
+              <View style={styles.slippageOptions}>
+                {[0.5, 1.0, 3.0, 5.0].map((value) => (
+                  <Pressable
+                    key={value}
+                    onPress={() => {
+                      setSlippage(value);
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    }}
+                    style={[
+                      styles.slippageOption,
+                      slippage === value && { backgroundColor: `${primaryColor}20`, borderColor: primaryColor },
+                      { borderColor },
+                    ]}
+                  >
+                    <ThemedText
+                      style={[
+                        styles.slippageOptionText,
+                        slippage === value && { color: primaryColor, fontWeight: '600' },
+                      ]}
+                    >
+                      {value}%
+                    </ThemedText>
+                  </Pressable>
+                ))}
+              </View>
+              <ThemedText style={[styles.slippageHint, { color: mutedColor }]}>
+                {slippage <= 1
+                  ? 'Low slippage may cause transaction failures'
+                  : slippage >= 5
+                  ? 'High slippage may result in unfavorable rates'
+                  : 'Recommended for most trades'}
+              </ThemedText>
+            </View>
+
+            {/* Privacy Mode */}
+            <View style={styles.settingsSection}>
+              <View style={styles.settingsLabelRow}>
+                <Ionicons name="shield-checkmark" size={16} color={usePrivateMode ? '#22c55e' : mutedColor} />
+                <ThemedText style={styles.settingsLabel}>Confidential Mode</ThemedText>
+              </View>
+              <Pressable
+                onPress={() => {
+                  setUsePrivateMode(!usePrivateMode);
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                }}
+                style={[
+                  styles.privacyToggle,
+                  usePrivateMode
+                    ? { backgroundColor: 'rgba(34,197,94,0.15)', borderColor: '#22c55e' }
+                    : { backgroundColor: `${mutedColor}10`, borderColor },
+                ]}
+              >
+                <ThemedText style={[styles.privacyToggleText, usePrivateMode && { color: '#22c55e' }]}>
+                  {usePrivateMode ? 'Enabled - Amount Hidden' : 'Disabled - Amount Visible'}
+                </ThemedText>
+                <View
+                  style={[
+                    styles.privacyToggleDot,
+                    usePrivateMode
+                      ? { backgroundColor: '#22c55e', marginLeft: 'auto' }
+                      : { backgroundColor: mutedColor, marginRight: 'auto' },
+                  ]}
+                />
+              </Pressable>
+            </View>
+
+            {/* Done Button */}
+            <Pressable
+              onPress={() => setShowSettingsModal(false)}
+              style={[styles.settingsDoneButton, { backgroundColor: primaryColor }]}
+            >
+              <ThemedText style={styles.settingsDoneText}>Done</ThemedText>
+            </Pressable>
+          </Animated.View>
+        </Pressable>
       )}
     </ThemedView>
   );
@@ -1001,5 +1107,89 @@ const styles = StyleSheet.create({
   tokenItemValue: {
     fontSize: 13,
     marginTop: 2,
+  },
+  // Settings Modal Styles
+  settingsModal: {
+    width: '100%',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+    paddingBottom: 40,
+  },
+  settingsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  settingsTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  settingsClose: {
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  settingsSection: {
+    marginBottom: 24,
+  },
+  settingsLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 12,
+  },
+  settingsLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  slippageOptions: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  slippageOption: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  slippageOptionText: {
+    fontSize: 14,
+  },
+  slippageHint: {
+    fontSize: 12,
+    marginTop: 8,
+  },
+  privacyToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  privacyToggleText: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  privacyToggleDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  settingsDoneButton: {
+    paddingVertical: 16,
+    borderRadius: 14,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  settingsDoneText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });

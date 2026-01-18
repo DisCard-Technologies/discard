@@ -29,6 +29,7 @@ import { RecipientInput } from "@/components/transfer/RecipientInput";
 import { InviteModal } from "@/components/transfer/InviteModal";
 import { useThemeColor } from "@/hooks/use-theme-color";
 import { useColorScheme } from "@/hooks/use-color-scheme";
+import { useFeeEstimate } from "@/hooks/useFeeEstimate";
 import { type ResolvedAddress } from "@/hooks/useAddressResolver";
 import { type Contact } from "@/hooks/useContacts";
 
@@ -56,6 +57,13 @@ export default function SendScreen() {
   const amount = params.amount ? JSON.parse(params.amount) : null;
   const token = params.token ? JSON.parse(params.token) : null;
 
+  // Dynamic fee estimation
+  const { fees } = useFeeEstimate({
+    amountUsd: amount?.amount || 0,
+    includeAtaRent: false, // Will be determined by recipient
+    enabled: true,
+  });
+
   // State
   const [inviteModalVisible, setInviteModalVisible] = useState(false);
   const [invitePhone, setInvitePhone] = useState("");
@@ -79,18 +87,18 @@ export default function SendScreen() {
           token: params.token,
           amount: params.amount,
           fees: JSON.stringify({
-            networkFee: 0.00001,
-            networkFeeUsd: 0.001,
-            platformFee: 0,
-            priorityFee: 0.00001,
-            ataRent: 0,
-            totalFeesUsd: 0.001,
-            totalCostUsd: (amount?.amount || 0) + 0.001,
+            networkFee: fees.networkFee,
+            networkFeeUsd: fees.networkFeeUsd,
+            platformFee: fees.platformFee,
+            priorityFee: fees.priorityFee,
+            ataRent: fees.ataRent,
+            totalFeesUsd: fees.totalFeesUsd,
+            totalCostUsd: fees.totalCostUsd,
           }),
         },
       });
     },
-    [params.token, params.amount, amount]
+    [params.token, params.amount, amount, fees]
   );
 
   // Handle invite

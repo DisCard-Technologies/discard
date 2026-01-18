@@ -1,14 +1,19 @@
-import { StyleSheet, View, Pressable, ScrollView } from 'react-native';
+import { StyleSheet, View, Pressable, ScrollView, Alert, Linking, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
+import Constants from 'expo-constants';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+
+// Version info from app.json/expo config
+const APP_VERSION = Constants.expoConfig?.version || '1.0.0';
+const BUILD_NUMBER = (Constants.expoConfig?.ios?.buildNumber || Constants.expoConfig?.android?.versionCode || '1').toString();
 
 type IoniconsName = React.ComponentProps<typeof Ionicons>['name'];
 
@@ -22,15 +27,80 @@ interface MenuItem {
   disabled?: boolean;
 }
 
+// Menu item handlers
+const openDeviceSecuritySettings = () => {
+  if (Platform.OS === 'ios') {
+    Linking.openURL('App-Prefs:');
+  } else {
+    Linking.openSettings();
+  }
+};
+
+const showSupportOptions = () => {
+  Alert.alert(
+    'Contact Support',
+    'How would you like to get help?',
+    [
+      {
+        text: 'Email Support',
+        onPress: () => Linking.openURL('mailto:support@discard.tech?subject=DisCard%20Support%20Request'),
+      },
+      {
+        text: 'Visit FAQ',
+        onPress: () => Linking.openURL('https://discard.tech/faq'),
+      },
+      { text: 'Cancel', style: 'cancel' },
+    ]
+  );
+};
+
+const showAboutInfo = () => {
+  Alert.alert(
+    'About DisCard',
+    `Version ${APP_VERSION} (${BUILD_NUMBER})\n\nPrivacy-first payments for the Solana ecosystem.\n\n© 2025 DisCard Technologies`,
+    [
+      {
+        text: 'Terms of Service',
+        onPress: () => Linking.openURL('https://discard.tech/terms'),
+      },
+      {
+        text: 'Privacy Policy',
+        onPress: () => Linking.openURL('https://discard.tech/privacy'),
+      },
+      { text: 'OK', style: 'cancel' },
+    ]
+  );
+};
+
+const showNotificationSettings = () => {
+  Alert.alert(
+    'Notifications',
+    'Manage your notification preferences',
+    [
+      {
+        text: 'Open Device Settings',
+        onPress: () => {
+          if (Platform.OS === 'ios') {
+            Linking.openURL('app-settings:');
+          } else {
+            Linking.openSettings();
+          }
+        },
+      },
+      { text: 'Cancel', style: 'cancel' },
+    ]
+  );
+};
+
 const menuItems: MenuItem[] = [
   { id: 'settings', icon: 'settings-outline', label: 'Settings', description: 'App preferences', route: '/settings' },
   { id: 'history', icon: 'time-outline', label: 'History', description: 'Transaction history', route: '/history' },
   { id: 'identity', icon: 'person-outline', label: 'Identity', description: 'KYC & verification', route: '/identity' },
   { id: 'cards', icon: 'card-outline', label: 'Cards', description: 'Manage cards', route: '/card' },
-  { id: 'security', icon: 'shield-outline', label: 'Security', description: 'Coming soon', disabled: true },
-  { id: 'notifications', icon: 'notifications-outline', label: 'Notifications', description: 'Coming soon', disabled: true },
-  { id: 'support', icon: 'help-circle-outline', label: 'Support', description: 'Coming soon', disabled: true },
-  { id: 'about', icon: 'information-circle-outline', label: 'About', description: 'Coming soon', disabled: true },
+  { id: 'security', icon: 'shield-outline', label: 'Security', description: 'Device security', onPress: openDeviceSecuritySettings },
+  { id: 'notifications', icon: 'notifications-outline', label: 'Notifications', description: 'Alert preferences', onPress: showNotificationSettings },
+  { id: 'support', icon: 'help-circle-outline', label: 'Support', description: 'Get help', onPress: showSupportOptions },
+  { id: 'about', icon: 'information-circle-outline', label: 'About', description: `v${APP_VERSION}`, onPress: showAboutInfo },
 ];
 
 export default function MenuScreen() {
@@ -107,7 +177,7 @@ export default function MenuScreen() {
         {/* App Version */}
         <View style={styles.versionContainer}>
           <ThemedText style={[styles.versionText, { color: mutedColor }]}>
-            DisCard v1.0.0
+            DisCard v{APP_VERSION} ({BUILD_NUMBER})
           </ThemedText>
         </View>
       </ScrollView>
