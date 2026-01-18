@@ -2139,4 +2139,54 @@ export default defineSchema({
     .index("by_transaction", ["transactionId"])
     .index("by_expiry", ["expiresAt"]),
 
+  // ============================================================================
+  // WALLET BACKUPS - Encrypted Seed Phrase Backup Metadata
+  // ============================================================================
+  // Tracks backup metadata only (NOT the encrypted seed itself).
+  // The encrypted backup is stored in cloud storage (iCloud/Google Drive/local file).
+  // This table allows users to see their backup history and verify backups.
+  walletBackups: defineTable({
+    // User who created the backup
+    userId: v.id("users"),
+
+    // Unique backup identifier
+    backupId: v.string(),
+
+    // Where the backup is stored
+    backupProvider: v.union(
+      v.literal("icloud"),
+      v.literal("google_drive"),
+      v.literal("local_file")
+    ),
+
+    // Hash of the encrypted backup for verification
+    // This allows checking if a downloaded backup matches what was uploaded
+    backupHash: v.string(),
+
+    // Wallet fingerprint (first 8 chars of mnemonic hash)
+    // Used to verify backup matches current wallet without decrypting
+    walletFingerprint: v.optional(v.string()),
+
+    // Device info for user reference
+    deviceName: v.optional(v.string()),
+
+    // Mnemonic word count (12 or 24)
+    wordCount: v.optional(v.number()),
+
+    // Status
+    status: v.union(
+      v.literal("active"),       // Current active backup
+      v.literal("superseded"),   // Replaced by newer backup
+      v.literal("deleted")       // User deleted this backup
+    ),
+
+    // Timestamps
+    createdAt: v.number(),
+    verifiedAt: v.optional(v.number()), // When user last verified backup
+  })
+    .index("by_user", ["userId"])
+    .index("by_user_status", ["userId", "status"])
+    .index("by_backup_id", ["backupId"])
+    .index("by_hash", ["backupHash"]),
+
 });

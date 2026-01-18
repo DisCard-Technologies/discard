@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { StyleSheet, View, Pressable, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -7,6 +7,15 @@ import { router } from 'expo-router';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { useThemeColor } from '@/hooks/use-theme-color';
+
+// Backup components
+import {
+  BackupSetupModal,
+  SeedPhraseDisplayModal,
+  RestoreWalletModal,
+} from '@/components/backup';
+import { getBackupInfo, isBackupNeeded, type BackupInfo } from '@/lib/backup';
+import { hasMnemonicWallet } from '@/lib/mnemonic';
 
 interface PaymentMethod {
   id: string;
@@ -44,7 +53,12 @@ const settingsSections = [
   },
   {
     title: 'Security',
-    items: [{ icon: 'shield-checkmark' as const, label: 'Security Settings', value: '', route: '' }],
+    items: [
+      { icon: 'key' as const, label: 'Seed Phrase', value: 'View', route: '', action: 'view_seed' },
+      { icon: 'cloud-upload' as const, label: 'Cloud Backup', value: '', route: '', action: 'setup_backup' },
+      { icon: 'refresh' as const, label: 'Restore Wallet', value: '', route: '', action: 'restore_wallet' },
+      { icon: 'shield-checkmark' as const, label: 'Security Settings', value: '', route: '' },
+    ],
   },
   {
     title: 'Support',
@@ -59,6 +73,55 @@ export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
   const [showPaymentMethods, setShowPaymentMethods] = useState(false);
   const [paymentMethods, setPaymentMethods] = useState(initialPaymentMethods);
+
+  // Backup modal states
+  const [showSeedPhrase, setShowSeedPhrase] = useState(false);
+  const [showBackupSetup, setShowBackupSetup] = useState(false);
+  const [showRestoreWallet, setShowRestoreWallet] = useState(false);
+
+  // Backup status
+  const [backupInfo, setBackupInfo] = useState<BackupInfo | null>(null);
+  const [hasMnemonic, setHasMnemonic] = useState(false);
+
+  // Load backup status on mount
+  useEffect(() => {
+    async function loadBackupStatus() {
+      try {
+        const info = await getBackupInfo();
+        setBackupInfo(info);
+        const hasSeed = await hasMnemonicWallet();
+        setHasMnemonic(hasSeed);
+      } catch (error) {
+        console.error('[Settings] Failed to load backup status:', error);
+      }
+    }
+    loadBackupStatus();
+  }, []);
+
+  // Handle security actions
+  const handleSecurityAction = (action: string | undefined) => {
+    switch (action) {
+      case 'view_seed':
+        if (hasMnemonic) {
+          setShowSeedPhrase(true);
+        }
+        break;
+      case 'setup_backup':
+        if (hasMnemonic) {
+          setShowBackupSetup(true);
+        }
+        break;
+      case 'restore_wallet':
+        setShowRestoreWallet(true);
+        break;
+    }
+  };
+
+  // Refresh backup status after backup
+  const handleBackupSuccess = async () => {
+    const info = await getBackupInfo();
+    setBackupInfo(info);
+  };
 
   const primaryColor = useThemeColor({}, 'tint');
   const mutedColor = useThemeColor({ light: '#687076', dark: '#9BA1A6' }, 'icon');
@@ -260,26 +323,44 @@ export default function SettingsScreen() {
               lightColor="rgba(0,0,0,0.03)"
               darkColor="rgba(255,255,255,0.06)"
             >
-              {section.items.map((item, idx) => (
-                <Pressable
-                  key={item.label}
-                  onPress={() => item.route ? router.push(item.route as any) : undefined}
-                  style={({ pressed }) => [
-                    styles.settingsItem,
-                    idx !== section.items.length - 1 && [styles.itemBorder, { borderBottomColor: borderColor }],
-                    pressed && styles.itemPressed,
-                  ]}
-                >
-                  <View style={[styles.itemIcon, { backgroundColor: `${primaryColor}10` }]}>
-                    <Ionicons name={item.icon} size={16} color={primaryColor} />
-                  </View>
-                  <ThemedText style={styles.itemLabel}>{item.label}</ThemedText>
-                  {item.value ? (
-                    <ThemedText style={[styles.itemValue, { color: mutedColor }]}>{item.value}</ThemedText>
-                  ) : null}
-                  <Ionicons name="chevron-forward" size={16} color={mutedColor} />
-                </Pressable>
-              ))}
+              {section.items.map((item, idx) => {
+                // Determine dynamic value for security items
+                let displayValue = item.value;
+                if ('action' in item) {
+                  if (item.action === 'setup_backup') {
+                    displayValue = backupInfo?.hasBackup ? 'Enabled' : 'Set Up';
+                  } else if (item.action === 'view_seed') {
+                    displayValue = hasMnemonic ? 'View' : 'N/A';
+                  }
+                }
+
+                return (
+                  <Pressable
+                    key={item.label}
+                    onPress={() => {
+                      if ('action' in item && item.action) {
+                        handleSecurityAction(item.action as string);
+                      } else if (item.route) {
+                        router.push(item.route as any);
+                      }
+                    }}
+                    style={({ pressed }) => [
+                      styles.settingsItem,
+                      idx !== section.items.length - 1 && [styles.itemBorder, { borderBottomColor: borderColor }],
+                      pressed && styles.itemPressed,
+                    ]}
+                  >
+                    <View style={[styles.itemIcon, { backgroundColor: `${primaryColor}10` }]}>
+                      <Ionicons name={item.icon} size={16} color={primaryColor} />
+                    </View>
+                    <ThemedText style={styles.itemLabel}>{item.label}</ThemedText>
+                    {displayValue ? (
+                      <ThemedText style={[styles.itemValue, { color: mutedColor }]}>{displayValue}</ThemedText>
+                    ) : null}
+                    <Ionicons name="chevron-forward" size={16} color={mutedColor} />
+                  </Pressable>
+                );
+              })}
             </ThemedView>
           </View>
         ))}
@@ -301,6 +382,28 @@ export default function SettingsScreen() {
         {/* Version */}
         <ThemedText style={[styles.versionText, { color: mutedColor }]}>NEXUS v2035.1.0</ThemedText>
       </ScrollView>
+
+      {/* Backup Modals */}
+      <SeedPhraseDisplayModal
+        visible={showSeedPhrase}
+        onClose={() => setShowSeedPhrase(false)}
+      />
+
+      <BackupSetupModal
+        visible={showBackupSetup}
+        onClose={() => setShowBackupSetup(false)}
+        onSuccess={handleBackupSuccess}
+      />
+
+      <RestoreWalletModal
+        visible={showRestoreWallet}
+        onClose={() => setShowRestoreWallet(false)}
+        onSuccess={(wallet) => {
+          console.log('[Settings] Wallet restored:', wallet.publicKey);
+          // Reload backup status
+          handleBackupSuccess();
+        }}
+      />
     </ThemedView>
   );
 }

@@ -23,6 +23,17 @@ import Constants from "expo-constants";
 import { Keypair } from "@solana/web3.js";
 import * as bs58 from "bs58";
 
+// Mnemonic wallet generation for seed phrase backup
+import {
+  generateMnemonic,
+  deriveKeypairFromMnemonic,
+  storeMnemonicLocally,
+  hasMnemonicWallet,
+  getMnemonicLocally,
+  setWalletType,
+  type MnemonicWallet,
+} from "@/lib/mnemonic";
+
 // Conditionally import Passkey - it may not be available in Expo Go
 let Passkey: any = null;
 try {
@@ -125,6 +136,67 @@ async function generateAndStoreSolanaWallet(): Promise<{ publicKey: string; secr
   return {
     publicKey: keypair.publicKey.toBase58(),
     secretKey: keypair.secretKey,
+  };
+}
+
+/**
+ * Generate a new mnemonic-based Solana wallet
+ * This creates a 12-word seed phrase that can be backed up
+ *
+ * @returns Wallet with mnemonic for backup capability
+ */
+async function generateMnemonicSolanaWallet(): Promise<{
+  publicKey: string;
+  secretKey: Uint8Array;
+  mnemonic: string;
+}> {
+  // Generate 12-word mnemonic
+  const mnemonic = generateMnemonic();
+
+  // Derive Solana keypair from mnemonic using BIP44 path
+  const wallet = deriveKeypairFromMnemonic(mnemonic);
+
+  // Store mnemonic securely (encrypted by device keychain)
+  await storeMnemonicLocally(mnemonic);
+
+  // Also store secret key for quick access (same as legacy flow)
+  const secretKeyBase58 = bs58.encode(wallet.secretKey);
+  await SecureStore.setItemAsync(SOLANA_SECRET_KEY, secretKeyBase58);
+
+  // Mark this as a mnemonic wallet
+  await setWalletType('mnemonic');
+
+  console.log("[Auth] Generated new mnemonic wallet:", wallet.publicKey);
+  console.log("[Auth] Seed phrase stored - user should back up!");
+
+  return {
+    publicKey: wallet.publicKey,
+    secretKey: wallet.secretKey,
+    mnemonic,
+  };
+}
+
+/**
+ * Check if there's an existing mnemonic wallet that can be recovered
+ */
+export async function canRecoverMnemonicWallet(): Promise<boolean> {
+  return await hasMnemonicWallet();
+}
+
+/**
+ * Get wallet from stored mnemonic (if available)
+ */
+export async function getWalletFromMnemonic(): Promise<{
+  publicKey: string;
+  secretKey: Uint8Array;
+} | null> {
+  const mnemonic = await getMnemonicLocally();
+  if (!mnemonic) return null;
+
+  const wallet = deriveKeypairFromMnemonic(mnemonic);
+  return {
+    publicKey: wallet.publicKey,
+    secretKey: wallet.secretKey,
   };
 }
 
@@ -616,15 +688,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               error: turnkeyError?.message || turnkeyError,
             });
 
-            // Use existing wallet if available (for recovery), otherwise generate new one
+            // Use existing wallet if available (for recovery), otherwise generate new mnemonic wallet
             let walletPublicKey: string;
             if (existingSolanaAddress) {
               console.log("[Auth] Using existing Solana wallet for recovery:", existingSolanaAddress);
               walletPublicKey = existingSolanaAddress;
             } else {
-              console.log("[Auth] No existing wallet, generating new Solana keypair");
-              const wallet = await generateAndStoreSolanaWallet();
+              // Generate mnemonic-based wallet (enables cloud backup)
+              console.log("[Auth] No existing wallet, generating new mnemonic wallet");
+              const wallet = await generateMnemonicSolanaWallet();
               walletPublicKey = wallet.publicKey;
+              // Note: User should be prompted to back up their seed phrase!
             }
             solanaAddress = walletPublicKey;
 
@@ -747,10 +821,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           attestation: "none",
         });
 
-        // Generate a local Solana wallet for this user
+        // Generate a mnemonic-based Solana wallet for this user (enables cloud backup)
         // Note: For TEE-managed wallets, use the Turnkey flow instead
-        const wallet = await generateAndStoreSolanaWallet();
-        console.log("[Auth] Generated Solana wallet for passkey user:", wallet.publicKey);
+        const wallet = await generateMnemonicSolanaWallet();
+        console.log("[Auth] Generated mnemonic wallet for passkey user:", wallet.publicKey);
+        // Note: User should be prompted to back up their seed phrase!
 
         // Register with Convex
         // Convert base64url public key to ArrayBuffer for Convex v.bytes() validator
