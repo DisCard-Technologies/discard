@@ -8,7 +8,7 @@
  * - Share/copy functionality
  */
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import {
   StyleSheet,
   View,
@@ -26,6 +26,7 @@ import QRCode from "react-native-qrcode-svg";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { useThemeColor } from "@/hooks/use-theme-color";
+import { useCryptoRates } from "@/hooks/useCryptoRatesConvex";
 import { usePaymentLink, type PaymentRequest } from "@/hooks/usePaymentLink";
 
 // ============================================================================
@@ -51,6 +52,11 @@ export default function RequestLinkScreen() {
   const { createPaymentLink, copyToClipboard, shareLink, isCreating, isCopying, isSharing, error } =
     usePaymentLink();
 
+  // Crypto rates for real-time SOL price
+  const { convertToUsd, convertFromUsd } = useCryptoRates({
+    symbols: ["SOL", "USDC", "USDT"],
+  });
+
   // Theme colors
   const primaryColor = useThemeColor({}, "tint");
   const mutedColor = useThemeColor({ light: "#687076", dark: "#9BA1A6" }, "icon");
@@ -71,11 +77,15 @@ export default function RequestLinkScreen() {
   // Parse amount
   const numericAmount = parseFloat(amount) || 0;
 
-  // Calculate USD (assuming stablecoins are 1:1, SOL at $150)
-  const amountUsd =
-    selectedToken.symbol === "USDC" || selectedToken.symbol === "USDT"
-      ? numericAmount
-      : numericAmount * 150; // SOL price placeholder
+  // Calculate USD using real-time rates
+  const amountUsd = useMemo(() => {
+    if (selectedToken.symbol === "USDC" || selectedToken.symbol === "USDT") {
+      return numericAmount; // Stablecoins are 1:1
+    }
+    // Use real-time price from Convex rates
+    const converted = convertToUsd(numericAmount, selectedToken.symbol);
+    return converted ?? numericAmount * 100; // Fallback if rate unavailable
+  }, [numericAmount, selectedToken.symbol, convertToUsd]);
 
   // Generate link
   const handleGenerate = useCallback(async () => {
@@ -292,9 +302,14 @@ export default function RequestLinkScreen() {
             </View>
             {numericAmount > 0 && (
               <ThemedText style={[styles.conversionText, { color: mutedColor }]}>
-                ≈ {(numericAmount / (selectedToken.symbol === "SOL" ? 150 : 1)).toFixed(
-                  selectedToken.decimals <= 2 ? 2 : 4
-                )}{" "}
+                ≈ {(() => {
+                  if (selectedToken.symbol === "USDC" || selectedToken.symbol === "USDT") {
+                    return numericAmount.toFixed(2);
+                  }
+                  // Convert USD input to token amount using real-time rate
+                  const tokenAmount = convertFromUsd(numericAmount, selectedToken.symbol);
+                  return (tokenAmount ?? numericAmount / 100).toFixed(4);
+                })()}{" "}
                 {selectedToken.symbol}
               </ThemedText>
             )}

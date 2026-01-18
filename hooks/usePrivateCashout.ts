@@ -148,6 +148,22 @@ export function usePrivateCashout(userId?: string, subOrgId?: string) {
       userCommitment: string
     ): Promise<CashoutResult | null> => {
       console.log("[PrivateCashout] Executing cashout:", session.sessionId);
+
+      // Enforce session expiry (30-minute window)
+      if (session.expiresAt < Date.now()) {
+        console.error("[PrivateCashout] Session expired:", {
+          sessionId: session.sessionId,
+          expiresAt: new Date(session.expiresAt).toISOString(),
+          now: new Date().toISOString(),
+        });
+        setState({
+          phase: "error",
+          session,
+          error: "Cashout session expired. Please start a new cashout.",
+        });
+        return null;
+      }
+
       setIsLoading(true);
 
       try {

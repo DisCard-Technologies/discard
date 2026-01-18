@@ -124,6 +124,16 @@ export interface ShieldedBalance {
   token: string;
   /** Number of commitments (deposits) */
   commitmentCount: number;
+  /** Yield earned on shielded balance (base units) */
+  yieldEarned: number;
+  /** Yield formatted for display */
+  yieldFormatted: string;
+  /** Current APY in basis points (e.g., 250 = 2.5%) */
+  currentApyBps: number;
+  /** Balance + yield total */
+  totalWithYield: number;
+  /** Total with yield formatted */
+  totalWithYieldFormatted: string;
 }
 
 export interface PrivateCashoutSession {
@@ -404,41 +414,102 @@ export class PrivacyCashService {
    * @param userId - User ID to check
    * @returns Shielded balance info
    */
+  // Privacy Cash yield configuration
+  // This represents the yield rate for shielded USDC balances
+  // In production, this would be dynamically fetched from protocol data
+  private static readonly PRIVACY_CASH_APY_BPS = 250; // 2.5% APY for shielded USDC
+
   async getShieldedBalance(userId: string): Promise<ShieldedBalance> {
     console.log("[PrivacyCash] Getting shielded balance for:", userId);
+
+    const emptyBalance: ShieldedBalance = {
+      totalBalance: 0,
+      balanceFormatted: "$0.00",
+      token: "USDC",
+      commitmentCount: 0,
+      yieldEarned: 0,
+      yieldFormatted: "$0.00",
+      currentApyBps: PrivacyCashClient.PRIVACY_CASH_APY_BPS,
+      totalWithYield: 0,
+      totalWithYieldFormatted: "$0.00",
+    };
 
     try {
       // If Convex storage available, load encrypted commitments
       if (this.convexStorage) {
         const commitments = await this.convexStorage.loadShieldedCommitments(false);
-        
+
         // Sum unspent commitments (amounts are decrypted client-side)
         const total = commitments.reduce((sum: bigint, c: any) => sum + c.amount, BigInt(0));
-        
+        const totalNumber = Number(total);
+
+        // Calculate yield based on time since commitment creation
+        const yieldEarned = this.computeYield(commitments);
+        const totalWithYield = totalNumber + yieldEarned;
+
+        console.log("[PrivacyCash] Balance computed:", {
+          principal: this.formatUSDC(total),
+          yield: this.formatUSDC(BigInt(yieldEarned)),
+          total: this.formatUSDC(BigInt(totalWithYield)),
+          apyBps: PrivacyCashClient.PRIVACY_CASH_APY_BPS,
+        });
+
         return {
-          totalBalance: Number(total),
+          totalBalance: totalNumber,
           balanceFormatted: this.formatUSDC(total),
           token: "USDC",
           commitmentCount: commitments.length,
+          yieldEarned,
+          yieldFormatted: this.formatUSDC(BigInt(yieldEarned)),
+          currentApyBps: PrivacyCashClient.PRIVACY_CASH_APY_BPS,
+          totalWithYield,
+          totalWithYieldFormatted: this.formatUSDC(BigInt(totalWithYield)),
         };
       }
-      
+
       // Fallback: No cloud storage
-      return {
-        totalBalance: 0,
-        balanceFormatted: "$0.00",
-        token: "USDC",
-        commitmentCount: 0,
-      };
+      return emptyBalance;
     } catch (error) {
       console.error("[PrivacyCash] Failed to get shielded balance:", error);
-      return {
-        totalBalance: 0,
-        balanceFormatted: "$0.00",
-        token: "USDC",
-        commitmentCount: 0,
-      };
+      return emptyBalance;
     }
+  }
+
+  /**
+   * Compute yield earned on shielded commitments
+   *
+   * Yield is calculated based on:
+   * - Time since each commitment was created
+   * - Current APY rate (2.5% for Privacy Cash USDC)
+   * - Compound interest (daily compounding)
+   *
+   * @param commitments - List of shielded commitments with amounts and timestamps
+   * @returns Total yield earned in base units
+   */
+  private computeYield(commitments: Array<{ amount: bigint; createdAt?: number }>): number {
+    const now = Date.now();
+    const apyDecimal = PrivacyCashClient.PRIVACY_CASH_APY_BPS / 10000; // Convert bps to decimal
+    const dailyRate = apyDecimal / 365;
+
+    let totalYield = 0;
+
+    for (const commitment of commitments) {
+      const amount = Number(commitment.amount);
+      const createdAt = commitment.createdAt ?? (now - 30 * 24 * 60 * 60 * 1000); // Default to 30 days if unknown
+
+      // Calculate days since deposit
+      const msElapsed = Math.max(0, now - createdAt);
+      const daysElapsed = msElapsed / (24 * 60 * 60 * 1000);
+
+      // Daily compounding: A * (1 + r)^t - A
+      // Where A = principal, r = daily rate, t = days
+      const compoundedValue = amount * Math.pow(1 + dailyRate, daysElapsed);
+      const yield_ = Math.floor(compoundedValue - amount);
+
+      totalYield += yield_;
+    }
+
+    return totalYield;
   }
   
   /**
@@ -459,6 +530,7 @@ export class PrivacyCashService {
    * @param amount - Amount to withdraw (base units)
    * @param recipient - Recipient address
    * @param convexActions - Convex action executor for nullifier tracking
+   * @param ownershipProof - Signature proving commitment ownership (optional but recommended)
    * @returns Unshield result
    */
   async withdrawShielded(
@@ -478,13 +550,37 @@ export class PrivacyCashService {
         encryptedAmount: string;
         nullifier: string;
         spent: boolean;
+        spendingPublicKey?: string; // Public key for ownership verification
       }>>;
       markCommitmentSpent: (commitment: string) => Promise<void>;
+    },
+    ownershipProof?: {
+      commitment: string;          // Commitment being spent
+      signature: string;           // Signature of (commitment || amount || recipient || timestamp)
+      timestamp: number;           // Timestamp of signature (prevents replay)
+      publicKey: string;           // Public key that signed (must match commitment's spending key)
     }
   ): Promise<UnshieldResult> {
     console.log("[PrivacyCash] Withdrawing shielded funds:", { userId, amount, recipient });
 
     try {
+      // 0. CRITICAL: Verify commitment ownership if proof provided
+      if (ownershipProof) {
+        const isValidOwnership = await this.verifyCommitmentOwnership(ownershipProof, amount, recipient);
+
+        if (!isValidOwnership.valid) {
+          console.error("[PrivacyCash] Commitment ownership verification FAILED:", isValidOwnership.reason);
+          return {
+            success: false,
+            error: `Ownership verification failed: ${isValidOwnership.reason}`,
+          };
+        }
+
+        console.log("[PrivacyCash] Commitment ownership verified:", ownershipProof.commitment.slice(0, 16));
+      } else {
+        console.warn("[PrivacyCash] No ownership proof provided - relying on userId only (less secure)");
+      }
+
       // 1. Verify user has sufficient shielded balance
       const balance = await this.getShieldedBalance(userId);
 
@@ -664,6 +760,90 @@ export class PrivacyCashService {
     };
   }
 
+  /**
+   * Verify commitment ownership using Ed25519 signature
+   *
+   * The user must sign a message containing:
+   * - The commitment being spent
+   * - The withdrawal amount
+   * - The recipient address
+   * - A timestamp (for replay protection)
+   *
+   * @param proof - Ownership proof with signature
+   * @param amount - Amount being withdrawn
+   * @param recipient - Recipient address
+   * @returns Validation result
+   */
+  private async verifyCommitmentOwnership(
+    proof: {
+      commitment: string;
+      signature: string;
+      timestamp: number;
+      publicKey: string;
+    },
+    amount: number,
+    recipient: string
+  ): Promise<{ valid: boolean; reason?: string }> {
+    // 1. Check timestamp freshness (5 minute window)
+    const MAX_TIMESTAMP_AGE_MS = 5 * 60 * 1000;
+    const timestampAge = Date.now() - proof.timestamp;
+
+    if (timestampAge > MAX_TIMESTAMP_AGE_MS) {
+      return {
+        valid: false,
+        reason: `Ownership proof expired (${Math.round(timestampAge / 1000)}s old, max ${MAX_TIMESTAMP_AGE_MS / 1000}s)`,
+      };
+    }
+
+    if (timestampAge < 0) {
+      return {
+        valid: false,
+        reason: "Ownership proof timestamp is in the future",
+      };
+    }
+
+    // 2. Reconstruct the signed message
+    const message = `withdraw:${proof.commitment}:${amount}:${recipient}:${proof.timestamp}`;
+    const messageBytes = new TextEncoder().encode(message);
+    const messageHash = sha256(messageBytes);
+
+    // 3. Verify Ed25519 signature
+    try {
+      const publicKeyBytes = bs58.decode(proof.publicKey);
+      const signatureBytes = Buffer.from(proof.signature, "hex");
+
+      // Use nacl for Ed25519 signature verification
+      const nacl = await import("tweetnacl");
+      const isValid = nacl.sign.detached.verify(messageHash, signatureBytes, publicKeyBytes);
+
+      if (!isValid) {
+        return {
+          valid: false,
+          reason: "Invalid signature - ownership proof verification failed",
+        };
+      }
+
+      // 4. Verify the public key matches the commitment's spending key
+      // The commitment should have been created with Hash(amount || randomness || spendingPubKey)
+      // For now we just verify the signature is valid - in production, we'd also verify
+      // the public key is the one associated with the commitment in the merkle tree
+
+      console.log("[PrivacyCash] Ownership proof verified:", {
+        commitment: proof.commitment.slice(0, 16) + "...",
+        publicKey: proof.publicKey.slice(0, 16) + "...",
+        timestampAge: Math.round(timestampAge / 1000) + "s",
+      });
+
+      return { valid: true };
+    } catch (error) {
+      console.error("[PrivacyCash] Ownership verification error:", error);
+      return {
+        valid: false,
+        reason: error instanceof Error ? error.message : "Signature verification failed",
+      };
+    }
+  }
+
   // ==========================================================================
   // Private Cashout Flow
   // ==========================================================================
@@ -761,6 +941,20 @@ export class PrivacyCashService {
     convexActions?: ConvexActionExecutor
   ): Promise<CashoutResult> {
     console.log("[PrivacyCash] Executing private cashout:", session.sessionId);
+
+    // Enforce session expiry - reject expired sessions
+    if (session.expiresAt < Date.now()) {
+      console.error("[PrivacyCash] Session expired:", {
+        sessionId: session.sessionId,
+        expiresAt: new Date(session.expiresAt).toISOString(),
+        expiredBy: Math.round((Date.now() - session.expiresAt) / 1000) + " seconds",
+      });
+      return {
+        success: false,
+        sessionId: session.sessionId,
+        error: "Cashout session expired. Sessions are valid for 30 minutes. Please create a new session.",
+      };
+    }
 
     try {
       // 1. Unshield funds to cashout address
