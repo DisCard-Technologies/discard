@@ -839,7 +839,7 @@ export const signSolanaTransaction = action({
  * NON-CUSTODIAL: User's passkey still controls the sub-org, but session key
  * enables automated operations with restricted permissions.
  */
-export const createDepositWallet = action({
+export const createDepositWallet = internalAction({
   args: {
     subOrganizationId: v.string(),
     walletName: v.string(),
@@ -1095,14 +1095,14 @@ export const createCashoutWallet = action({
 /**
  * Sign a transaction using a session key (server-side, no passkey required)
  */
-export const signWithSessionKey = action({
+export const signWithSessionKey = internalAction({
   args: {
     subOrganizationId: v.string(),
     sessionKeyId: v.string(),
     walletAddress: v.string(),
     unsignedTransaction: v.string(),
   },
-  handler: async (ctx, args): Promise<{ signature: string }> => {
+  handler: async (ctx, args): Promise<{ signature: string; signedTransaction: string }> => {
     if (!TURNKEY_API_PUBLIC_KEY || !TURNKEY_API_PRIVATE_KEY || !TURNKEY_ORGANIZATION_ID) {
       throw new Error("Turnkey API credentials not configured");
     }
@@ -1134,16 +1134,21 @@ export const signWithSessionKey = action({
 
     const signature = response.r + response.s;
 
+    // Combine the signature with the unsigned transaction to create the signed transaction
+    // For Solana, this involves prepending the signature to the transaction message
+    // The signature format is: signature (64 bytes) + message
+    const signedTransaction = signature + args.unsignedTransaction;
+
     console.log("[Turnkey] Session key signature complete");
 
-    return { signature };
+    return { signature, signedTransaction };
   },
 });
 
 /**
  * Revoke a session key (for security or after use)
  */
-export const revokeSessionKey = action({
+export const revokeSessionKey = internalAction({
   args: {
     subOrganizationId: v.string(),
     sessionKeyId: v.string(),

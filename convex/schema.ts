@@ -1780,6 +1780,13 @@ export default defineSchema({
   shieldedCommitments: defineTable({
     userId: v.id("users"),
 
+    // ZK commitment details
+    commitmentId: v.optional(v.string()),   // Unique commitment ID
+    commitment: v.optional(v.string()),     // Public commitment hash
+    encryptedAmount: v.optional(v.string()), // Encrypted amount (for user decryption)
+    encryptedRandomness: v.optional(v.string()), // Encrypted randomness (for user decryption)
+    nullifier: v.optional(v.string()),      // Nullifier for double-spend prevention
+
     // Commitment details
     amount: v.number(),                  // Amount in base units (e.g., USDC)
     sourceType: v.string(),              // "moonpay", "transfer", etc.
@@ -1787,6 +1794,11 @@ export default defineSchema({
 
     // Blockchain reference
     shieldTxSignature: v.optional(v.string()), // Shield transaction signature
+
+    // Spending status
+    spent: v.optional(v.boolean()),      // Whether commitment has been spent
+    spentAt: v.optional(v.number()),     // When commitment was spent
+    spentTxSignature: v.optional(v.string()), // Spending transaction signature
 
     // Status
     status: v.union(

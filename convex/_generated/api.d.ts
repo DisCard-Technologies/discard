@@ -12,6 +12,7 @@ import type * as attestations_sas from "../attestations/sas.js";
 import type * as auth_passkeys from "../auth/passkeys.js";
 import type * as auth_phoneVerification from "../auth/phoneVerification.js";
 import type * as auth_sessions from "../auth/sessions.js";
+import type * as backup_backups from "../backup/backups.js";
 import type * as bridge_financialArmorClient from "../bridge/financialArmorClient.js";
 import type * as bridge_settlement from "../bridge/settlement.js";
 import type * as bridge_turnkeyBridge from "../bridge/turnkeyBridge.js";
@@ -51,6 +52,9 @@ import type * as intents_handlers_questionHandler from "../intents/handlers/ques
 import type * as intents_intents from "../intents/intents.js";
 import type * as intents_rateLimiter from "../intents/rateLimiter.js";
 import type * as intents_solver from "../intents/solver.js";
+import type * as nullifiers from "../nullifiers.js";
+import type * as privacy from "../privacy.js";
+import type * as privacy_keyImages from "../privacy/keyImages.js";
 import type * as privacy_stealthAddresses from "../privacy/stealthAddresses.js";
 import type * as privacy_umbra from "../privacy/umbra.js";
 import type * as privacy_zkProofs from "../privacy/zkProofs.js";
@@ -85,6 +89,7 @@ declare const fullApi: ApiFromModules<{
   "auth/passkeys": typeof auth_passkeys;
   "auth/phoneVerification": typeof auth_phoneVerification;
   "auth/sessions": typeof auth_sessions;
+  "backup/backups": typeof backup_backups;
   "bridge/financialArmorClient": typeof bridge_financialArmorClient;
   "bridge/settlement": typeof bridge_settlement;
   "bridge/turnkeyBridge": typeof bridge_turnkeyBridge;
@@ -124,6 +129,9 @@ declare const fullApi: ApiFromModules<{
   "intents/intents": typeof intents_intents;
   "intents/rateLimiter": typeof intents_rateLimiter;
   "intents/solver": typeof intents_solver;
+  nullifiers: typeof nullifiers;
+  privacy: typeof privacy;
+  "privacy/keyImages": typeof privacy_keyImages;
   "privacy/stealthAddresses": typeof privacy_stealthAddresses;
   "privacy/umbra": typeof privacy_umbra;
   "privacy/zkProofs": typeof privacy_zkProofs;

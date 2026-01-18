@@ -172,7 +172,7 @@ export const createFundingRequest = mutation({
 
     // Get user's Turnkey organization for creating deposit wallet
     const turnkeyOrg = await ctx.db
-      .query("turnkeyOrgs")
+      .query("turnkeyOrganizations")
       .withIndex("by_user", (q) => q.eq("userId", user._id))
       .first();
 

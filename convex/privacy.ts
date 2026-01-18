@@ -254,12 +254,13 @@ export const addShieldedCommitment = mutation({
     encryptedAmount: v.string(),      // Amount (encrypted)
     encryptedRandomness: v.string(),  // Randomness (encrypted)
     nullifier: v.string(),            // For spending detection
+    amount: v.number(),               // Amount in base units
     sourceType: v.string(),
     sourceId: v.string(),
   },
   handler: async (ctx, args) => {
-    const { userId, commitmentId, commitment, encryptedAmount, encryptedRandomness, nullifier, sourceType, sourceId } = args;
-    
+    const { userId, commitmentId, commitment, encryptedAmount, encryptedRandomness, nullifier, amount, sourceType, sourceId } = args;
+
     await ctx.db.insert("shieldedCommitments", {
       userId,
       commitmentId,
@@ -267,9 +268,11 @@ export const addShieldedCommitment = mutation({
       encryptedAmount,
       encryptedRandomness,
       nullifier,
+      amount,
       spent: false,
       sourceType,
       sourceId,
+      status: "shielded",
       createdAt: Date.now(),
     });
     
@@ -369,7 +372,11 @@ export const recordStealthAddress = mutation({
     userId: v.id("users"),
     stealthAddress: v.string(),
     ephemeralPubKey: v.string(),
-    purpose: v.string(),
+    purpose: v.union(
+      v.literal("card_funding"),
+      v.literal("merchant_payment"),
+      v.literal("p2p_transfer")
+    ),
   },
   handler: async (ctx, args) => {
     const { userId, stealthAddress, ephemeralPubKey, purpose } = args;

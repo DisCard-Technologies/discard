@@ -1002,9 +1002,14 @@ async function verifyWebAuthnSignatureInAction(
   }
 }
 
-function convertDerToRawInAction(derSignature: Uint8Array): Uint8Array | null {
+function convertDerToRawInAction(derSignature: Uint8Array): Uint8Array<ArrayBuffer> | null {
   if (derSignature.length < 8 || derSignature[0] !== 0x30) {
-    if (derSignature.length === 64) return derSignature;
+    // May already be raw format (64 bytes for P-256)
+    if (derSignature.length === 64) {
+      const result = new Uint8Array(64);
+      result.set(derSignature);
+      return result;
+    }
     return null;
   }
 
@@ -1023,7 +1028,7 @@ function convertDerToRawInAction(derSignature: Uint8Array): Uint8Array | null {
   let s = derSignature.slice(offset, offset + sLength);
 
   // Normalize to 32 bytes
-  const normalizeInt = (bytes: Uint8Array): Uint8Array => {
+  const normalizeInt = (bytes: Uint8Array): Uint8Array<ArrayBuffer> => {
     let start = 0;
     while (start < bytes.length - 1 && bytes[start] === 0) start++;
     const trimmed = bytes.slice(start);
@@ -1036,12 +1041,12 @@ function convertDerToRawInAction(derSignature: Uint8Array): Uint8Array | null {
     return result;
   };
 
-  r = normalizeInt(r);
-  s = normalizeInt(s);
+  const rNorm = normalizeInt(r);
+  const sNorm = normalizeInt(s);
 
   const rawSignature = new Uint8Array(64);
-  rawSignature.set(r, 0);
-  rawSignature.set(s, 32);
+  rawSignature.set(rNorm, 0);
+  rawSignature.set(sNorm, 32);
   return rawSignature;
 }
 
@@ -1298,13 +1303,15 @@ async function verifyWebAuthnSignatureAsync(
  * DER format: 0x30 [total-length] 0x02 [r-length] [r] 0x02 [s-length] [s]
  * Raw format: [r (32 bytes)] [s (32 bytes)]
  */
-function convertDerToRaw(derSignature: Uint8Array): Uint8Array | null {
+function convertDerToRaw(derSignature: Uint8Array): Uint8Array<ArrayBuffer> | null {
   try {
     // Check minimum length and sequence tag
     if (derSignature.length < 8 || derSignature[0] !== 0x30) {
       // May already be raw format (64 bytes for P-256)
       if (derSignature.length === 64) {
-        return derSignature;
+        const result = new Uint8Array(64);
+        result.set(derSignature);
+        return result;
       }
       console.warn("[WebAuthn] Invalid DER signature format");
       return null;
@@ -1333,13 +1340,13 @@ function convertDerToRaw(derSignature: Uint8Array): Uint8Array | null {
 
     // Remove leading zeros if present (DER uses minimum bytes)
     // and pad to 32 bytes for P-256
-    r = normalizeInteger(r, 32);
-    s = normalizeInteger(s, 32);
+    const rNorm = normalizeInteger(r, 32);
+    const sNorm = normalizeInteger(s, 32);
 
     // Concatenate r and s
     const rawSignature = new Uint8Array(64);
-    rawSignature.set(r, 0);
-    rawSignature.set(s, 32);
+    rawSignature.set(rNorm, 0);
+    rawSignature.set(sNorm, 32);
 
     return rawSignature;
   } catch (error) {
@@ -1352,7 +1359,7 @@ function convertDerToRaw(derSignature: Uint8Array): Uint8Array | null {
  * Normalize an integer to exactly targetLength bytes
  * Removes leading zeros or pads with zeros as needed
  */
-function normalizeInteger(bytes: Uint8Array, targetLength: number): Uint8Array {
+function normalizeInteger(bytes: Uint8Array, targetLength: number): Uint8Array<ArrayBuffer> {
   // Remove leading zeros
   let start = 0;
   while (start < bytes.length - 1 && bytes[start] === 0) {
