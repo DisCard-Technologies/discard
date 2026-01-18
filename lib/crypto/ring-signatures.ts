@@ -14,9 +14,12 @@
  */
 
 import { ed25519 } from '@noble/curves/ed25519';
-import { sha512 } from '@noble/hashes/sha512';
+import { sha512 } from '@noble/hashes/sha2';
 import { sha256 } from '@noble/hashes/sha2';
 import { bytesToHex, hexToBytes } from '@noble/hashes/utils';
+
+// Get curve order from @noble/curves v2 API
+const CURVE_ORDER = ed25519.Point.Fn.ORDER;
 
 // ============================================================================
 // Types
@@ -84,47 +87,47 @@ export function generateRingSignature(params: RingSignatureParams): RingSignatur
   // 5. Generate random responses for all positions except signer
   for (let i = 0; i < ringSize; i++) {
     if (i !== signerIndex) {
-      responses[i] = bytesToBigInt(randomScalar());
+      responses[i] = bytesToValidScalar(randomScalar());
     }
   }
-  
+
   // 6. Compute initial challenge at signer position
   // L_s = G^alpha
-  const L_s = ed25519.ExtendedPoint.BASE.multiply(bytesToBigInt(alpha));
+  const alphaScalar = bytesToValidScalar(alpha);
+  const L_s = ed25519.Point.BASE.multiply(alphaScalar);
   // R_s = H_p(P_s)^alpha
   const H_p_s = hashToPoint(signerPublicKey);
-  const R_s = H_p_s.multiply(bytesToBigInt(alpha));
-  
+  const R_s = H_p_s.multiply(alphaScalar);
+
   // Hash to get initial challenge
   const c_next = hashPoints(messageHash, L_s, R_s);
   challenges[(signerIndex + 1) % ringSize] = c_next;
   
   // 7. Loop through ring computing challenges
   for (let i = (signerIndex + 1) % ringSize; i !== signerIndex; i = (i + 1) % ringSize) {
-    const pubKey = ed25519.ExtendedPoint.fromHex(bytesToHex(ringPublicKeys[i]));
-    const c_i = challenges[i];
-    const r_i = responses[i];
-    
+    const pubKey = ed25519.Point.fromHex(bytesToHex(ringPublicKeys[i]));
+    const c_i = ensureValidScalar(challenges[i]);
+    const r_i = ensureValidScalar(responses[i]);
+
     // L_i = G^r_i + P_i^c_i
-    const L_i = ed25519.ExtendedPoint.BASE.multiply(r_i).add(pubKey.multiply(c_i));
-    
+    const L_i = ed25519.Point.BASE.multiply(r_i).add(pubKey.multiply(c_i));
+
     // R_i = H_p(P_i)^r_i + I^c_i
     const H_p_i = hashToPoint(ringPublicKeys[i]);
-    const keyImagePoint = ed25519.ExtendedPoint.fromHex(keyImage);
+    const keyImagePoint = ed25519.Point.fromHex(keyImage);
     const R_i = H_p_i.multiply(r_i).add(keyImagePoint.multiply(c_i));
-    
-    // Next challenge
+
+    // Next challenge (already reduced by hashPoints)
     challenges[(i + 1) % ringSize] = hashPoints(messageHash, L_i, R_i);
   }
-  
+
   // 8. Close the ring: compute response for signer
   const c_s = challenges[signerIndex];
-  const x = bytesToBigInt(signerPrivateKey);
-  const alphaBig = bytesToBigInt(alpha);
-  
+  const x = bytesToValidScalar(signerPrivateKey);
+
   // r_s = alpha - c_s * x (mod order)
-  const order = ed25519.CURVE.n;
-  responses[signerIndex] = mod(alphaBig - c_s * x, order);
+  // Note: c_s might be 0, so we use mod directly without ensureValidScalar
+  responses[signerIndex] = mod(alphaScalar - mod(c_s, CURVE_ORDER) * x, CURVE_ORDER);
   
   // 9. Return ring signature
   return {
@@ -154,35 +157,39 @@ export function verifyRingSignature(signature: RingSignature, message: Uint8Arra
     }
     
     const ringSize = ring.length;
-    const keyImagePoint = ed25519.ExtendedPoint.fromHex(keyImage);
+    const keyImagePoint = ed25519.Point.fromHex(keyImage);
     
     // Verify ring equation for all members
     let c_next = BigInt('0x' + challenges[0]);
     
     for (let i = 0; i < ringSize; i++) {
-      const pubKey = ed25519.ExtendedPoint.fromHex(ring[i]);
+      const pubKey = ed25519.Point.fromHex(ring[i]);
       const c_i = BigInt('0x' + challenges[i]);
       const r_i = BigInt('0x' + responses[i]);
-      
+
+      // Ensure scalars are valid for point multiplication
+      const c_i_valid = ensureValidScalar(c_i);
+      const r_i_valid = ensureValidScalar(r_i);
+
       // Compute L_i = G^r_i + P_i^c_i
-      const L_i = ed25519.ExtendedPoint.BASE.multiply(r_i).add(pubKey.multiply(c_i));
-      
+      const L_i = ed25519.Point.BASE.multiply(r_i_valid).add(pubKey.multiply(c_i_valid));
+
       // Compute R_i = H_p(P_i)^r_i + I^c_i
       const H_p_i = hashToPoint(hexToBytes(ring[i]));
-      const R_i = H_p_i.multiply(r_i).add(keyImagePoint.multiply(c_i));
-      
+      const R_i = H_p_i.multiply(r_i_valid).add(keyImagePoint.multiply(c_i_valid));
+
       // Compute next challenge
       c_next = hashPoints(messageHash, L_i, R_i);
-      
-      // Verify it matches stored challenge
-      const expectedChallenge = BigInt('0x' + challenges[(i + 1) % ringSize]);
+
+      // Verify it matches stored challenge (compare reduced values)
+      const expectedChallenge = mod(BigInt('0x' + challenges[(i + 1) % ringSize]), CURVE_ORDER);
       if (c_next !== expectedChallenge && i !== ringSize - 1) {
         return false;
       }
     }
     
-    // Ring closes: last challenge should match first
-    const firstChallenge = BigInt('0x' + challenges[0]);
+    // Ring closes: last challenge should match first (compare reduced values)
+    const firstChallenge = mod(BigInt('0x' + challenges[0]), CURVE_ORDER);
     return c_next === firstChallenge;
     
   } catch (error) {
@@ -208,14 +215,14 @@ export function isKeyImageUsed(keyImage: string, usedKeyImages: Set<string>): bo
 
 /**
  * Compute key image: I = x * H_p(P)
- * 
+ *
  * Key image proves ownership without revealing public key.
  */
 function computeKeyImage(privateKey: Uint8Array, publicKey: Uint8Array): string {
-  const x = bytesToBigInt(privateKey);
+  const x = bytesToValidScalar(privateKey);
   const H_p = hashToPoint(publicKey);
   const keyImage = H_p.multiply(x);
-  return bytesToHex(keyImage.toRawBytes());
+  return bytesToHex(keyImage.toBytes());
 }
 
 /**
@@ -223,13 +230,15 @@ function computeKeyImage(privateKey: Uint8Array, publicKey: Uint8Array): string 
  * 
  * Deterministically maps bytes to curve point.
  */
-function hashToPoint(data: Uint8Array): typeof ed25519.ExtendedPoint {
+function hashToPoint(data: Uint8Array): typeof ed25519.Point {
   // Hash data to get point seed
   const hash = sha512(new Uint8Array([...data, 0x00]));
-  
-  // Use first 32 bytes as scalar, multiply base point
-  const scalar = bytesToBigInt(hash.slice(0, 32));
-  return ed25519.ExtendedPoint.BASE.multiply(scalar);
+
+  // Use first 32 bytes as scalar, reduce modulo curve order, multiply base point
+  const rawScalar = bytesToBigInt(hash.slice(0, 32));
+  // Ensure scalar is in valid range: 1 <= scalar < CURVE_ORDER
+  const scalar = mod(rawScalar, CURVE_ORDER - 1n) + 1n;
+  return ed25519.Point.BASE.multiply(scalar);
 }
 
 /**
@@ -237,14 +246,15 @@ function hashToPoint(data: Uint8Array): typeof ed25519.ExtendedPoint {
  */
 function hashPoints(
   messageHash: string,
-  L: typeof ed25519.ExtendedPoint,
-  R: typeof ed25519.ExtendedPoint
+  L: typeof ed25519.Point,
+  R: typeof ed25519.Point
 ): bigint {
   const data = new TextEncoder().encode(
-    `${messageHash}:${bytesToHex(L.toRawBytes())}:${bytesToHex(R.toRawBytes())}`
+    `${messageHash}:${bytesToHex(L.toBytes())}:${bytesToHex(R.toBytes())}`
   );
   const hash = sha256(data);
-  return bytesToBigInt(hash);
+  // Reduce modulo curve order to ensure valid scalar for point multiplication
+  return mod(bytesToBigInt(hash), CURVE_ORDER);
 }
 
 /**
@@ -254,6 +264,26 @@ function randomScalar(): Uint8Array {
   const bytes = new Uint8Array(32);
   crypto.getRandomValues(bytes);
   return bytes;
+}
+
+/**
+ * Convert bytes to a valid scalar (reduced modulo curve order)
+ * For @noble/curves, scalars must be in range [1, CURVE_ORDER)
+ */
+function bytesToValidScalar(bytes: Uint8Array): bigint {
+  const raw = bytesToBigInt(bytes);
+  // Reduce modulo curve order
+  const reduced = mod(raw, CURVE_ORDER);
+  // If zero, return 1 (rare edge case)
+  return reduced === 0n ? 1n : reduced;
+}
+
+/**
+ * Ensure a bigint is a valid scalar for point multiplication
+ */
+function ensureValidScalar(n: bigint): bigint {
+  const reduced = mod(n, CURVE_ORDER);
+  return reduced === 0n ? 1n : reduced;
 }
 
 /**

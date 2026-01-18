@@ -273,8 +273,8 @@ function decodeAmount(point: RistrettoPoint, maxAmount: bigint = 2n ** 24n): big
  */
 export function serializeCiphertext(ciphertext: ElGamalCiphertext): SerializedCiphertext {
   return {
-    ephemeral: bytesToHex(ciphertext.ephemeral.toRawBytes()),
-    encrypted: bytesToHex(ciphertext.encrypted.toRawBytes()),
+    ephemeral: bytesToHex(ciphertext.ephemeral.toBytes()),
+    encrypted: bytesToHex(ciphertext.encrypted.toBytes()),
   };
 }
 
@@ -292,7 +292,7 @@ export function deserializeCiphertext(serialized: SerializedCiphertext): ElGamal
  * Serialize public key
  */
 export function serializePublicKey(publicKey: ElGamalPublicKey): string {
-  return bytesToHex(publicKey.point.toRawBytes());
+  return bytesToHex(publicKey.point.toBytes());
 }
 
 /**
@@ -339,7 +339,7 @@ function bigintToScalar(value: bigint): Uint8Array {
  * Convert point to string key for map
  */
 function pointToString(point: RistrettoPoint): string {
-  return bytesToHex(point.toRawBytes());
+  return bytesToHex(point.toBytes());
 }
 
 // ============================================================================

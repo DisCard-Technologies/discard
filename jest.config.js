@@ -5,6 +5,11 @@ module.exports = {
   testMatch: ['<rootDir>/__tests__/**/*.test.{ts,tsx}'],
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/$1',
+    // Handle @noble ESM packages
+    '^@noble/curves/ed25519$': '<rootDir>/node_modules/@noble/curves/ed25519.js',
+    '^@noble/curves/ed25519.js$': '<rootDir>/node_modules/@noble/curves/ed25519.js',
+    '^@noble/hashes/sha2$': '<rootDir>/node_modules/@noble/hashes/sha2.js',
+    '^@noble/hashes/utils$': '<rootDir>/node_modules/@noble/hashes/utils.js',
   },
   transformIgnorePatterns: [
     'node_modules/(?!((jest-)?react-native|@react-native(-community)?)|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|react-navigation|@react-navigation/.*|@unimodules/.*|unimodules|sentry-expo|native-base|react-native-svg|@lightprotocol|@solana|convex|bs58|@noble|tweetnacl|poseidon-lite)',
