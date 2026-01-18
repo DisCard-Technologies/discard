@@ -2,12 +2,19 @@
  * Jupiter Holdings Convex Functions
  *
  * Provides caching and real-time subscriptions for token holdings
- * fetched from Jupiter Ultra API.
+ * fetched from Jupiter Ultra API (mainnet) or direct RPC (devnet).
  */
 import { v } from "convex/values";
 import { query, mutation, action, internalMutation } from "../_generated/server";
 import { internal } from "../_generated/api";
 import type { Doc } from "../_generated/dataModel";
+
+// Network configuration - log on load for debugging
+const SOLANA_NETWORK = process.env.SOLANA_NETWORK || "mainnet-beta";
+const SOLANA_RPC_URL = process.env.HELIUS_RPC_URL || process.env.SOLANA_RPC_URL || "https://api.mainnet-beta.solana.com";
+const IS_DEVNET = SOLANA_NETWORK === "devnet" || SOLANA_RPC_URL.includes("devnet");
+
+console.log(`[Holdings] Network config: SOLANA_NETWORK=${SOLANA_NETWORK}, IS_DEVNET=${IS_DEVNET}, RPC=${SOLANA_RPC_URL.slice(0, 50)}...`);
 
 // Known RWA token mints for classification
 const RWA_MINTS = new Set([
@@ -167,15 +174,194 @@ export const getPortfolioValue = query({
 });
 
 // ============================================================================
+// Devnet Balance Fetching (Direct RPC)
+// ============================================================================
+
+/**
+ * Fetch holdings directly from Solana RPC (for devnet)
+ * Uses getBalance for SOL and getTokenAccountsByOwner for SPL tokens
+ */
+async function fetchDevnetHoldings(walletAddress: string): Promise<{
+  holdings: Array<{
+    mint: string;
+    symbol: string;
+    name: string;
+    decimals: number;
+    balance: string;
+    balanceFormatted: number;
+    valueUsd: number;
+    priceUsd: number;
+    change24h: number;
+    logoUri?: string;
+    isRwa?: boolean;
+    rwaMetadata?: { issuer: string; type: string; expectedYield?: number };
+  }>;
+  totalValueUsd: number;
+}> {
+  console.log(`[Holdings] fetchDevnetHoldings called for ${walletAddress}`);
+  console.log(`[Holdings] Using RPC: ${SOLANA_RPC_URL}`);
+
+  const holdings: Array<{
+    mint: string;
+    symbol: string;
+    name: string;
+    decimals: number;
+    balance: string;
+    balanceFormatted: number;
+    valueUsd: number;
+    priceUsd: number;
+    change24h: number;
+    logoUri?: string;
+    isRwa?: boolean;
+    rwaMetadata?: { issuer: string; type: string; expectedYield?: number };
+  }> = [];
+
+  // Fetch SOL balance
+  const balanceResponse = await fetch(SOLANA_RPC_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "getBalance",
+      params: [walletAddress],
+    }),
+  });
+
+  const balanceData = await balanceResponse.json();
+  console.log(`[Holdings] Balance response:`, JSON.stringify(balanceData));
+  const lamports = balanceData.result?.value || 0;
+  const solBalance = lamports / 1e9;
+  console.log(`[Holdings] SOL balance: ${solBalance} (${lamports} lamports)`);
+
+  if (solBalance > 0) {
+    // Fetch SOL price from CoinGecko (works for devnet testing)
+    let solPrice = 0;
+    let change24h = 0;
+    try {
+      const priceResponse = await fetch(
+        "https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd&include_24hr_change=true"
+      );
+      const priceData = await priceResponse.json();
+      console.log(`[Holdings] CoinGecko response:`, JSON.stringify(priceData));
+      solPrice = priceData.solana?.usd || 0;
+      change24h = priceData.solana?.usd_24h_change || 0;
+      console.log(`[Holdings] SOL price: $${solPrice}, 24h change: ${change24h}%`);
+    } catch (err) {
+      console.error(`[Holdings] CoinGecko price fetch failed:`, err);
+    }
+
+    // Use fallback price if CoinGecko failed or was rate limited
+    if (solPrice === 0) {
+      solPrice = 150; // Fallback price for devnet testing
+      console.log(`[Holdings] Using fallback SOL price: $${solPrice}`);
+    }
+
+    const valueUsd = solBalance * solPrice;
+    console.log(`[Holdings] Adding SOL holding: ${solBalance} SOL = $${valueUsd}`);
+
+    holdings.push({
+      mint: "So11111111111111111111111111111111111111112",
+      symbol: "SOL",
+      name: "Solana",
+      decimals: 9,
+      balance: lamports.toString(),
+      balanceFormatted: solBalance,
+      valueUsd,
+      priceUsd: solPrice,
+      change24h,
+      logoUri: "https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png",
+      isRwa: false,
+    });
+  }
+
+  // Fetch SPL token accounts
+  const tokenResponse = await fetch(SOLANA_RPC_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: 2,
+      method: "getTokenAccountsByOwner",
+      params: [
+        walletAddress,
+        { programId: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA" },
+        { encoding: "jsonParsed" },
+      ],
+    }),
+  });
+
+  const tokenData = await tokenResponse.json();
+  const tokenAccounts = tokenData.result?.value || [];
+
+  for (const account of tokenAccounts) {
+    const info = account.account?.data?.parsed?.info;
+    if (!info) continue;
+
+    const mint = info.mint;
+    const balance = info.tokenAmount?.amount || "0";
+    const decimals = info.tokenAmount?.decimals || 0;
+    const uiAmount = info.tokenAmount?.uiAmount || 0;
+
+    if (uiAmount === 0) continue;
+
+    const isRwa = RWA_MINTS.has(mint);
+    const rwaMetadata = isRwa ? RWA_METADATA[mint] : undefined;
+    const meta = await fetchTokenMetadata(mint);
+
+    holdings.push({
+      mint,
+      symbol: meta?.symbol || mint.slice(0, 4).toUpperCase(),
+      name: meta?.name || mint.slice(0, 8),
+      decimals,
+      balance,
+      balanceFormatted: uiAmount,
+      valueUsd: 0, // No price data for devnet tokens
+      priceUsd: 0,
+      change24h: 0,
+      logoUri: meta?.logoUri,
+      isRwa,
+      rwaMetadata,
+    });
+  }
+
+  const totalValueUsd = holdings.reduce((sum, h) => sum + h.valueUsd, 0);
+
+  console.log(`[Holdings] Devnet fetch complete: ${holdings.length} holdings, total value: $${totalValueUsd}`);
+  return { holdings, totalValueUsd };
+}
+
+// ============================================================================
 // Actions (External API calls)
 // ============================================================================
 
 /**
- * Refresh holdings from Jupiter Ultra API
+ * Refresh holdings from Jupiter Ultra API (mainnet) or direct RPC (devnet)
  */
 export const refreshHoldings = action({
   args: { walletAddress: v.string() },
   handler: async (ctx, args) => {
+    // Use devnet path if on devnet (Jupiter Ultra only supports mainnet)
+    if (IS_DEVNET) {
+      console.log(`[Holdings] Using devnet RPC for ${args.walletAddress.slice(0, 8)}...`);
+      const { holdings, totalValueUsd } = await fetchDevnetHoldings(args.walletAddress);
+
+      // Update cache via mutation
+      await ctx.runMutation(internal.holdings.jupiter.updateCache, {
+        walletAddress: args.walletAddress,
+        holdings,
+        totalValueUsd,
+      });
+
+      return {
+        holdings,
+        totalValueUsd,
+        lastUpdated: Date.now(),
+        network: "devnet",
+      };
+    }
+
+    // Mainnet path: Use Jupiter Ultra API
     const JUPITER_ULTRA_URL = "https://api.jup.ag/ultra/v1";
     const JUPITER_API_KEY = process.env.JUPITER_API_KEY;
 

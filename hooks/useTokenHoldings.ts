@@ -4,7 +4,7 @@
  * Fetches and subscribes to user's token holdings via Jupiter Ultra API.
  * Uses Convex for caching and real-time subscriptions.
  */
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useQuery, useAction } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type {
@@ -15,7 +15,7 @@ import type {
 interface UseTokenHoldingsOptions {
   /** Whether to auto-refresh periodically */
   autoRefresh?: boolean;
-  /** Refresh interval in milliseconds (default: 30000 = 30s) */
+  /** Refresh interval in milliseconds (default: 60000 = 60s) */
   refreshInterval?: number;
   /** Whether to fetch immediately on mount */
   fetchOnMount?: boolean;
@@ -39,13 +39,14 @@ export function useTokenHoldings(
 ): UseTokenHoldingsReturn {
   const {
     autoRefresh = true,
-    refreshInterval = 30000,
+    refreshInterval = 60000, // 60s to avoid race conditions
     fetchOnMount = true,
   } = options;
 
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const refreshLockRef = useRef(false); // Prevent concurrent refreshes
 
   // Subscribe to cached holdings from Convex
   const cachedHoldings = useQuery(
@@ -56,10 +57,17 @@ export function useTokenHoldings(
   // Action to refresh from Jupiter API
   const refreshAction = useAction(api.holdings.jupiter.refreshHoldings);
 
-  // Refresh function
+  // Refresh function with lock to prevent concurrent calls
   const refresh = useCallback(async () => {
     if (!walletAddress) return;
 
+    // Prevent concurrent refreshes (causes Convex OCC errors)
+    if (refreshLockRef.current) {
+      console.log("[useTokenHoldings] Refresh already in progress, skipping");
+      return;
+    }
+
+    refreshLockRef.current = true;
     setIsRefreshing(true);
     setError(null);
 
@@ -73,6 +81,7 @@ export function useTokenHoldings(
       console.error("[useTokenHoldings] Refresh error:", err);
     } finally {
       setIsRefreshing(false);
+      refreshLockRef.current = false;
     }
   }, [walletAddress, refreshAction]);
 
