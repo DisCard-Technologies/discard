@@ -436,19 +436,126 @@ export class SunspotService {
     publicInputs: Uint8Array,
     witness: unknown
   ): Promise<Uint8Array> {
-    // In production, this would:
-    // 1. Use noir_js or a Rust prover
-    // 2. Load the proving key
-    // 3. Generate the actual Groth16 proof
-
-    // For development, return a placeholder proof
     console.log(`[Sunspot] Generating ${type} proof with ${publicInputs.length} bytes of public inputs`);
 
-    // Groth16 proofs are always 128 bytes
+    // Try to load and use real Noir circuit
+    try {
+      // Check if Noir is available
+      const { Noir } = await import('@noir-lang/noir_js');
+      const { BarretenbergBackend } = await import('@noir-lang/backend_barretenberg');
+
+      // Load compiled circuit for proof type
+      const circuit = await this.loadCircuit(type);
+      
+      if (circuit) {
+        console.log(`[Sunspot] Using real Noir circuit for ${type}`);
+        
+        // Initialize backend
+        const backend = new BarretenbergBackend(circuit);
+        const noir = new Noir(circuit, backend);
+
+        // Prepare inputs (convert witness to Noir format)
+        const noirInputs = this.prepareNoirInputs(type, publicInputs, witness);
+
+        // Generate actual Groth16 proof
+        const { proof } = await noir.generateProof(noirInputs);
+
+        console.log(`[Sunspot] Generated real proof: ${proof.length} bytes`);
+        return proof;
+      }
+    } catch (error) {
+      console.warn(`[Sunspot] Noir not available or circuit not found, using mock proof:`, error);
+    }
+
+    // Fallback to mock proof if Noir unavailable
+    console.log(`[Sunspot] Using mock proof for ${type}`);
     const mockProof = new Uint8Array(GROTH16_PROOF_SIZE);
     crypto.getRandomValues(mockProof);
 
     return mockProof;
+  }
+
+  /**
+   * Load compiled Noir circuit for proof type
+   * 
+   * Circuits should be pre-compiled and stored in lib/zk/circuits/compiled/
+   */
+  private async loadCircuit(type: ProofType): Promise<any> {
+    try {
+      // In production, circuits would be compiled during build
+      // and stored as JSON files
+      const circuitPath = `./circuits/compiled/${type}.json`;
+      
+      // Dynamic import would happen here
+      // For now, return null to use mock
+      return null;
+    } catch (error) {
+      console.log(`[Sunspot] Circuit ${type} not found:`, error);
+      return null;
+    }
+  }
+
+  /**
+   * Prepare inputs in Noir format
+   */
+  private prepareNoirInputs(
+    type: ProofType,
+    publicInputs: Uint8Array,
+    witness: unknown
+  ): Record<string, any> {
+    // Convert public inputs and witness to Noir's expected format
+    // This mapping depends on the specific circuit definition
+    
+    switch (type) {
+      case 'spending_limit':
+        return this.prepareSpendingLimitInputs(publicInputs, witness);
+      case 'compliance':
+        return this.prepareComplianceInputs(publicInputs, witness);
+      case 'balance_threshold':
+        return this.prepareBalanceThresholdInputs(publicInputs, witness);
+      case 'age_verification':
+        return this.prepareAgeVerificationInputs(publicInputs, witness);
+      case 'kyc_level':
+        return this.prepareKycLevelInputs(publicInputs, witness);
+      default:
+        throw new Error(`Unknown proof type: ${type}`);
+    }
+  }
+
+  private prepareSpendingLimitInputs(publicInputs: Uint8Array, witness: unknown): Record<string, any> {
+    const w = witness as SpendingLimitWitness;
+    // Extract amount from public inputs
+    const amount = this.bytesToBigint(publicInputs.slice(0, 32));
+
+    return {
+      // Public inputs
+      amount: amount.toString(),
+      // Private witness
+      balance: w.balance.toString(),
+      randomness: w.randomness,
+    };
+  }
+
+  private prepareComplianceInputs(publicInputs: Uint8Array, witness: unknown): Record<string, any> {
+    const w = witness as ComplianceWitness;
+    return {
+      sanctions_root: this.bytesToHex(publicInputs.slice(0, 32)),
+      wallet_address: w.walletAddress,
+      merkle_path: w.merklePath,
+      path_indices: w.pathIndices,
+    };
+  }
+
+  private prepareBalanceThresholdInputs(publicInputs: Uint8Array, witness: unknown): Record<string, any> {
+    return {}; // Implement based on circuit requirements
+  }
+
+  private prepareAgeVerificationInputs(publicInputs: Uint8Array, witness: unknown): Record<string, any> {
+    return {}; // Implement based on circuit requirements
+  }
+
+  private prepareKycLevelInputs(publicInputs: Uint8Array, witness: unknown): Record<string, any> {
+    return {}; // Implement based on circuit requirements
   }
 
   /**

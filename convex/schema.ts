@@ -1922,6 +1922,28 @@ export default defineSchema({
     .index("by_used", ["used"]),
 
   // ============================================================================
+  // KEY IMAGES - Ring signature double-spend prevention (ShadowWire)
+  // ============================================================================
+  keyImages: defineTable({
+    keyImageHash: v.string(),            // Hash of the key image (prevents double-signing)
+    userId: v.optional(v.id("users")),   // User who used this key image (for audit)
+    
+    // Transaction reference
+    txSignature: v.optional(v.string()), // Solana transaction signature
+    messageHash: v.string(),             // Message that was signed
+    
+    // Ring signature metadata
+    ringSize: v.number(),                // Number of members in ring
+    
+    // Timestamps
+    createdAt: v.number(),               // When key image was first used
+    expiresAt: v.optional(v.number()),   // Optional expiry for cleanup
+  })
+    .index("by_key_image", ["keyImageHash"])
+    .index("by_user", ["userId"])
+    .index("by_created", ["createdAt"]),
+
+  // ============================================================================
   // UMBRA POOL TRANSFERS - Shielded pool transfers via Arcium
   // ============================================================================
   umbraTransfers: defineTable({
