@@ -28,6 +28,7 @@ lerna-debug.log*
 .bmad-core/
 _bmad/
 _bmad-output/
+flattened-codebase.xml
 .gemini/
 
 # OS
