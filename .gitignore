@@ -27,6 +27,7 @@ lerna-debug.log*
 .bmad/
 .bmad-core/
 _bmad/
+_bmad-output/
 .gemini/
 
 # OS
