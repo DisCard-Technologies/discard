@@ -393,6 +393,77 @@ isOwnStealthAddress(address, privKey, ephemeralPubKey): boolean
 
 ---
 
+### SilentSwap
+
+**Purpose:** Non-custodial privacy swaps using shielded transactions with cross-chain support.
+
+**Features Used:**
+- Shielded token swaps (amounts hidden from observers)
+- Cross-chain swaps (Solana <-> Ethereum, Polygon, Avalanche)
+- CAIP-10/CAIP-19 standards for address and asset identification
+- Non-custodial design (user controls keys throughout)
+
+**Integration Points:**
+```
+services/silentSwapClient.ts          # SDK client
+hooks/useSilentSwap.ts               # React hook for swap UI
+hooks/usePrivacySwap.ts              # Privacy-aware swap selection
+app/swap.tsx                         # Swap interface
+```
+
+**Architecture:**
+```
+SilentSwap Privacy Flow:
+┌─────────────────────────────────────────┐
+│ User: Swap 100 USDC → SOL privately     │
+└──────────────────┬──────────────────────┘
+                   ▼
+┌─────────────────────────────────────────┐
+│ SilentSwap: Generate quote              │
+│                                         │
+│ • Convert to CAIP-19 asset format       │
+│ • Calculate output with fees            │
+│ • Set 1-minute quote expiry             │
+└──────────────────┬──────────────────────┘
+                   ▼
+┌─────────────────────────────────────────┐
+│ Execute: Shielded transaction           │
+│                                         │
+│ • Amount encrypted in privacy pool      │
+│ • Addresses unlinkable                  │
+│ • Cross-chain: bridge via privacy pool  │
+└──────────────────┬──────────────────────┘
+                   ▼
+┌─────────────────────────────────────────┐
+│ Result: Tokens at destination           │
+│                                         │
+│ • No public link between input/output   │
+│ • Privacy metrics returned              │
+└─────────────────────────────────────────┘
+```
+
+**Supported Chains:**
+| Chain | Chain ID | Native Token |
+|-------|----------|--------------|
+| Solana | mainnet | SOL |
+| Ethereum | 1 | ETH |
+| Polygon | 137 | MATIC |
+| Avalanche | 43114 | AVAX |
+
+**Privacy Advantages:**
+- Swap amounts hidden from on-chain observers
+- No correlation between source and destination addresses
+- Cross-chain swaps break chain-analysis linkage
+- Non-custodial throughout (user signs all transactions)
+
+**Environment Variables:**
+```env
+# SilentSwap uses client-side SDK - no server config needed
+# Optional: EXPO_PUBLIC_SILENTSWAP_NETWORK=mainnet
+```
+
+---
+
 ### Umbra
 
 **Purpose:** Shielded liquidity pools for large transfers and cross-card movements.

@@ -25,6 +25,12 @@ DisCard is your autonomous financial agent that works 24/7. Set strategies, goal
 - **Smart Disambiguation**: Handles ambiguous commands with contextual follow-up questions
 - **Guided Flows**: Step-by-step assistance for complex operations, explanations when you need them
 
+### Frictionless Onboarding
+- **No passwords**: Passkey and biometric authentication only
+- **No seed phrases**: Turnkey handles key management securely
+- **No KYC required**: Start instantly with Starpay prepaid cards
+- **Natural language**: No crypto jargon to learn
+
 ### Autonomous Financial Agents
 - **24/7 Execution**: Set strategies that run continuously - your wallet never sleeps
 - **Goal-Based Automation**: "Stack 1 BTC by December" - agents find opportunities automatically
