@@ -41,7 +41,7 @@ DisCard is a mobile-first crypto wallet that combines disposable virtual debit c
 ### DeFi Native
 - **Auto-Yield**: Idle funds automatically deployed to DeFi protocols, withdrawn seamlessly when needed
 - **MEV-Protected Trading**: Jupiter DEX integration with DFlow order flow for best execution
-- **Confidential Swaps**: Encrypted order execution via Anoncoin
+- **Confidential Swaps**: Anoncoin for Solana swaps, SilentSwap for private cross-chain
 - **Prediction Markets**: Private betting with encrypted amounts via PNP Exchange
 
 ## Design Philosophy
@@ -128,7 +128,8 @@ DisCard packs sophisticated technology under the hood, but the AI co-pilot trans
 | Feature | Technology | Integration |
 |---------|------------|-------------|
 | **Token Swaps** | MEV-protected execution | Jupiter + DFlow |
-| **Confidential Swaps** | Encrypted order amounts | Anoncoin |
+| **Confidential Swaps** | Encrypted order amounts | Anoncoin (Solana) |
+| **Cross-Chain Swaps** | Shielded cross-chain transfers | SilentSwap |
 | **Auto-Yield** | Idle fund deployment | DeFi protocols |
 | **Shielded Yield** | MPC-encrypted positions | Arcium |
 | **Prediction Markets** | Private bet amounts | PNP Exchange |
@@ -223,7 +224,8 @@ discard/
 |                                                             |
 |  SPENDING (Shielded Balance -> Cards/Swaps/Bets/RWA)        |
 |  +-- Light Protocol: ZK-compressed card state               |
-|  +-- Anoncoin: Confidential swaps + RWA purchases           |
+|  +-- Anoncoin: Confidential swaps (Solana)                  |
+|  +-- SilentSwap: Private cross-chain swaps                  |
 |  +-- PNP Exchange: Private prediction bets                  |
 |  +-- Arcium: Confidential yield vaults + RWA storage        |
 |                                                             |
@@ -271,6 +273,7 @@ discard/
 - **ShadowWire** - ZK-proof P2P transfers
 - **Light Protocol** - ZK state compression
 - **Anoncoin** - Confidential token swaps
+- **SilentSwap** - Private cross-chain swaps (Solana, Ethereum, Polygon, Avalanche)
 - **Arcium** - MPC-encrypted DeFi + credential storage
 - **Aztec** - Noir ZK circuits for private identity proofs + selective disclosure
 - **Token-2022** - Confidential transfers via SPL Token Wrap
@@ -419,14 +422,15 @@ The command bar understands natural language:
 - "Show me my IBAN for bank transfers"
 
 **Transfers & P2P**
-- "Send $25 to @alice privately"
+- "Send $25 to @alice"
 - "Transfer $50 from shopping to groceries card"
 
 **Trading & DeFi**
 - "Swap 100 USDC for SOL"
+- "Swap 100 USDC from Solana to Ethereum" - Private cross-chain via SilentSwap
 - "Show me trending tokens"
 - "Buy $100 of ETH"
-- "Buy $1000 USDY privately" - Private RWA purchase
+- "Buy $1000 USDY" - Private RWA purchase
 
 **Predictions**
 - "Bet $10 on SOL hitting $300"
@@ -440,6 +444,7 @@ DisCard integrates with the following sponsors and technologies:
 | **Private Payments** | Privacy Cash | Deposit shielding + cashout unshielding |
 | **Private P2P** | Radr Labs (ShadowWire) | Zero-knowledge proof transfers |
 | **Private Swaps** | Anoncoin | Confidential swap execution + RWA purchases |
+| **Private Cross-Chain** | SilentSwap | Shielded cross-chain swaps |
 | **Private DeFi** | Arcium | Shielded yield vaults + encrypted credential storage |
 | **Private Identity** | Aztec | Noir ZK proofs for selective disclosure |
 | **ZK Compression** | Light Protocol | Compressed wallet state on Solana |
@@ -488,6 +493,7 @@ MIT License - see [LICENSE](LICENSE)
 - [Light Protocol](https://lightprotocol.com) - ZK compression
 - [Arcium](https://arcium.com) - Confidential DeFi + encrypted credential storage
 - [Anoncoin](https://anoncoin.io) - Private swaps + RWA purchases
+- [SilentSwap](https://silentswap.io) - Private cross-chain swaps
 - [Aztec](https://aztec.network) - Private Identity ZK proofs + selective disclosure
 - [PNP Exchange](https://pnp.exchange) - Private predictions
 - [Starpay](https://starpay.com) - Privacy payment rails
