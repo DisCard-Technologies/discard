@@ -8,8 +8,8 @@
 [![Built with Expo](https://img.shields.io/badge/Built%20with-Expo-blue)](https://expo.dev)
 [![Convex](https://img.shields.io/badge/Backend-Convex-orange)](https://convex.dev)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue)](https://typescriptlang.org)
-[![Firedancer Ready](https://img.shields.io/badge/Firedancer-Ready-9945FF)](https://jumpcrypto.com/firedancer/)
-[![Alpenglow](https://img.shields.io/badge/Alpenglow-150ms-14F195)](https://solana.com/news/solana-validator-client-firedancer)
+[![Firedancer Ready](https://img.shields.io/badge/Firedancer-Ready-9945FF)](https://github.com/firedancer-io/firedancer)
+[![Alpenglow](https://img.shields.io/badge/Alpenglow-150ms-14F195)](https://forum.solana.com/t/simd-0326-proposal-for-the-new-alpenglow-consensus-protocol/4236)
 
 DisCard is your autonomous financial agent that works 24/7. Set strategies, goals, and rules that your AI agents execute continuously in the background. Buy every dip, rebalance weekly, fund cards automatically, harvest yield; all while you sleep. When you need control, interact through natural language. Powered by dual-LLM security in TEE, DisCard combines privacy-by-default with always-on financial automation.
 
