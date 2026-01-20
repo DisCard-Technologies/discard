@@ -1,6 +1,6 @@
 # DisCard
 
-> Privacy-First Intent-Centric Super Wallet with Virtual Global Cards and AI Co-Pilot
+> Privacy-First Intent-Centric Super Wallet with Virtual Global Cards and Autonomous Financial Agents
 
 ![DisCard Home Screen](assets/discard-mobile-homescreen.png)
 
