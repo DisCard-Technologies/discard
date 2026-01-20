@@ -35,6 +35,7 @@
   "license": "ISC",
   "dependencies": {
     "@arcium-hq/client": "^0.6.1",
+    "@silentswap/sdk": "^1.0.0",
     "@bonfida/spl-name-service": "^3.0.16",
     "@civic/solana-gateway-ts": "^0.13.0",
     "@expo/metro-runtime": "~6.1.2",

@@ -14,7 +14,7 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useAuth } from '@/stores/authConvex';
 import { useTokenHoldings } from '@/hooks/useTokenHoldings';
 import { useCrossCurrencyTransfer } from '@/hooks/useCrossCurrencyTransfer';
-import { useAnoncoinSwap } from '@/hooks/useAnoncoinSwap';
+import { usePrivacySwap, type PrivacyProvider, type Chain } from '@/hooks/usePrivacySwap';
 import { useTurnkeySigner } from '@/hooks/useTurnkeySigner';
 import { DFlowSwapClient } from '@/services/dflowSwapClient';
 import { Connection, Transaction, PublicKey } from '@solana/web3.js';
@@ -99,15 +99,32 @@ export default function SwapScreen() {
   const [slippage, setSlippage] = useState(3.0); // 3%
   const [usePrivateMode, setUsePrivateMode] = useState(true); // Privacy by default
 
-  // Confidential swap hook
+  // Privacy swap hook (unified Anoncoin + SilentSwap)
   const {
-    state: anonSwapState,
-    isLoading: anonSwapLoading,
-    isConfidentialAvailable,
-    quickSwap: executeConfidentialSwap,
+    state: privacySwapState,
+    isLoading: privacySwapLoading,
+    activeProvider,
+    availableProviders,
+    setActiveProvider,
+    canSwitchProvider,
+    isAnyProviderAvailable,
+    isCrossChain,
+    sourceChain,
+    setSourceChain,
+    destChain,
+    setDestChain,
+    supportedChains,
+    getChainName,
+    getProviderName,
+    quickSwap: executePrivacySwap,
     getQuote,
     getPrivacyLevel,
-  } = useAnoncoinSwap();
+    formatCrossChainInfo,
+  } = usePrivacySwap();
+
+  // Chain selector state
+  const [showFromChainSelector, setShowFromChainSelector] = useState(false);
+  const [showToChainSelector, setShowToChainSelector] = useState(false);
 
   // Available tokens for selection (merge held tokens with swappable list)
   const availableTokens = useMemo((): DisplayToken[] => {
@@ -277,13 +294,15 @@ export default function SwapScreen() {
     }
 
     try {
-      // Use confidential swap if available and private mode enabled
-      if (usePrivateMode && isConfidentialAvailable) {
-        console.log('[Swap] Executing confidential swap with Turnkey signer:', {
+      // Use privacy swap if available and private mode enabled
+      if (usePrivateMode && isAnyProviderAvailable) {
+        console.log('[Swap] Executing privacy swap with Turnkey signer:', {
           from: fromToken.symbol,
           to: toToken.symbol,
           amount: fromAmount,
           privateMode: true,
+          provider: activeProvider,
+          isCrossChain,
         });
 
         // Convert to base units
@@ -307,8 +326,9 @@ export default function SwapScreen() {
 
         // Sign the swap transaction via Turnkey
         // The anoncoin service will prepare the transaction, and we sign it
+        const encryptedTx = 'encryptedTransaction' in quote ? quote.encryptedTransaction : '';
         const signResult = await signTransaction({
-          unsignedTransaction: quote.encryptedTransaction || '',
+          unsignedTransaction: encryptedTx || '',
         });
 
         if (!signResult.success) {
@@ -319,34 +339,39 @@ export default function SwapScreen() {
         }
 
         // Execute the swap with the signed transaction
-        // For now, we'll use a placeholder that works with the confidential swap service
+        // For now, we'll use a placeholder that works with the privacy swap service
         // The service will handle the actual on-chain submission
-        const placeholderKey = new Uint8Array(32); // Not used for actual signing
-        const result = await executeConfidentialSwap(
+        const walletAdapter = {
+          signTransaction: signTransaction,
+          signMessage: async (msg: Uint8Array) => msg, // Placeholder
+        };
+        const result = await executePrivacySwap(
           fromToken.mint,
           toToken.mint,
           amountBaseUnits,
           walletAddress,
-          placeholderKey, // Signing handled by Turnkey
+          walletAdapter,
           true // useStealthOutput
         );
 
         if (result?.success) {
           const privacyLevel = getPrivacyLevel(result);
-          console.log('[Swap] Confidential swap completed:', {
+          const providerName = getProviderName(activeProvider);
+          console.log('[Swap] Privacy swap completed:', {
             signature: result.signature,
             privacyLevel,
+            provider: providerName,
             metrics: result.privacyMetrics,
           });
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
           Alert.alert(
             'Swap Successful',
-            `Swapped ${fromAmount} ${fromToken.symbol} for ${toToken.symbol}\n\nPrivacy Level: ${privacyLevel.toUpperCase()}`,
+            `Swapped ${fromAmount} ${fromToken.symbol} for ${toToken.symbol}\n\nProvider: ${providerName}\nPrivacy Level: ${privacyLevel.toUpperCase()}${isCrossChain ? '\nCross-chain: Yes' : ''}`,
             [{ text: 'OK', onPress: () => router.back() }]
           );
           return;
         } else {
-          console.error('[Swap] Confidential swap failed:', result?.error);
+          console.error('[Swap] Privacy swap failed:', result?.error);
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
           Alert.alert('Swap Failed', result?.error || 'Unknown error occurred.');
         }
@@ -448,9 +473,9 @@ export default function SwapScreen() {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       Alert.alert('Swap Error', error instanceof Error ? error.message : 'An error occurred');
     }
-  }, [fromToken, toToken, fromAmount, swapQuote, walletAddress, usePrivateMode, isConfidentialAvailable, executeConfidentialSwap, getPrivacyLevel, signerReady, signerError, signTransaction, getQuote]);
+  }, [fromToken, toToken, fromAmount, swapQuote, walletAddress, usePrivateMode, isAnyProviderAvailable, executePrivacySwap, getPrivacyLevel, signerReady, signerError, signTransaction, getQuote, activeProvider, isCrossChain, getProviderName]);
 
-  const canContinue = fromToken && toToken && fromAmount && parseFloat(fromAmount) > 0 && !isLoadingQuote && !anonSwapLoading && !isSigning && signerReady && (swapQuote || (usePrivateMode && isConfidentialAvailable));
+  const canContinue = fromToken && toToken && fromAmount && parseFloat(fromAmount) > 0 && !isLoadingQuote && !privacySwapLoading && !isSigning && signerReady && (swapQuote || (usePrivateMode && isAnyProviderAvailable));
 
   // Estimated network fee (simplified)
   const networkFee = useMemo(() => {
@@ -546,11 +571,23 @@ export default function SwapScreen() {
         {/* From Token Section */}
         <View style={[styles.tokenSection, { backgroundColor: cardColor }]}>
           <View style={styles.tokenHeader}>
-            <View style={styles.networkBadge}>
-              <ThemedText style={[styles.networkLabel, { color: mutedColor }]}>
-                From: Solana
-              </ThemedText>
-            </View>
+            {activeProvider === 'silentswap' && usePrivateMode ? (
+              <Pressable
+                onPress={() => setShowFromChainSelector(true)}
+                style={[styles.networkBadge, styles.networkBadgeActive]}
+              >
+                <ThemedText style={[styles.networkLabel, { color: primaryColor }]}>
+                  From: {getChainName(sourceChain)}
+                </ThemedText>
+                <Ionicons name="chevron-down" size={12} color={primaryColor} />
+              </Pressable>
+            ) : (
+              <View style={styles.networkBadge}>
+                <ThemedText style={[styles.networkLabel, { color: mutedColor }]}>
+                  From: Solana
+                </ThemedText>
+              </View>
+            )}
             <View style={styles.balanceContainer}>
               <ThemedText style={[styles.balanceLabel, { color: mutedColor }]}>
                 ◎ {fromToken?.balanceFormatted || '0'}
@@ -612,11 +649,23 @@ export default function SwapScreen() {
         {/* To Token Section */}
         <View style={[styles.tokenSection, { backgroundColor: cardColor }]}>
           <View style={styles.tokenHeader}>
-            <View style={styles.networkBadge}>
-              <ThemedText style={[styles.networkLabel, { color: mutedColor }]}>
-                To: Solana
-              </ThemedText>
-            </View>
+            {activeProvider === 'silentswap' && usePrivateMode ? (
+              <Pressable
+                onPress={() => setShowToChainSelector(true)}
+                style={[styles.networkBadge, styles.networkBadgeActive]}
+              >
+                <ThemedText style={[styles.networkLabel, { color: primaryColor }]}>
+                  To: {getChainName(destChain)}
+                </ThemedText>
+                <Ionicons name="chevron-down" size={12} color={primaryColor} />
+              </Pressable>
+            ) : (
+              <View style={styles.networkBadge}>
+                <ThemedText style={[styles.networkLabel, { color: mutedColor }]}>
+                  To: Solana
+                </ThemedText>
+              </View>
+            )}
           </View>
 
           <View style={styles.tokenInputRow}>
@@ -681,7 +730,7 @@ export default function SwapScreen() {
         )}
 
         {/* Privacy Mode Toggle */}
-        {isConfidentialAvailable && (
+        {isAnyProviderAvailable && (
           <Pressable
             onPress={() => setUsePrivateMode(!usePrivateMode)}
             style={[styles.infoRow, { borderColor }]}
@@ -696,7 +745,7 @@ export default function SwapScreen() {
                 styles.infoLabelText,
                 { color: usePrivateMode ? '#22c55e' : mutedColor }
               ]}>
-                {usePrivateMode ? 'Confidential Swap' : 'Standard Swap'}
+                {usePrivateMode ? 'Privacy Swap' : 'Standard Swap'}
               </ThemedText>
             </View>
             <View style={styles.infoValue}>
@@ -715,6 +764,54 @@ export default function SwapScreen() {
           </Pressable>
         )}
 
+        {/* Privacy Provider Selection - only show when switchable (same-chain) */}
+        {usePrivateMode && canSwitchProvider && (
+          <View style={[styles.infoRow, { borderColor }]}>
+            <View style={styles.infoLabel}>
+              <Ionicons name="shield-checkmark-outline" size={16} color={mutedColor} />
+              <ThemedText style={[styles.infoLabelText, { color: mutedColor }]}>
+                Privacy Provider
+              </ThemedText>
+            </View>
+            <View style={styles.providerToggle}>
+              {availableProviders.map((provider) => (
+                <Pressable
+                  key={provider}
+                  onPress={() => {
+                    setActiveProvider(provider);
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  }}
+                  style={[
+                    styles.providerPill,
+                    { borderColor },
+                    activeProvider === provider && { backgroundColor: `${primaryColor}20`, borderColor: primaryColor },
+                  ]}
+                >
+                  <ThemedText style={[
+                    styles.providerPillText,
+                    { color: mutedColor },
+                    activeProvider === provider && { color: primaryColor },
+                  ]}>
+                    {getProviderName(provider)}
+                  </ThemedText>
+                </Pressable>
+              ))}
+            </View>
+          </View>
+        )}
+
+        {/* Cross-chain indicator - show when cross-chain is active */}
+        {usePrivateMode && isCrossChain && (
+          <View style={[styles.infoRow, { borderColor }]}>
+            <View style={styles.infoLabel}>
+              <Ionicons name="git-branch-outline" size={16} color={primaryColor} />
+              <ThemedText style={[styles.infoLabelText, { color: primaryColor }]}>
+                Cross-Chain via SilentSwap
+              </ThemedText>
+            </View>
+          </View>
+        )}
+
         {/* Provider */}
         <View style={[styles.infoRow, { borderColor }]}>
           <View style={styles.infoLabel}>
@@ -724,8 +821,11 @@ export default function SwapScreen() {
           <View style={styles.infoValue}>
             <View style={[styles.providerBadge, { backgroundColor: `${primaryColor}20` }]}>
               <ThemedText style={[styles.providerText, { color: primaryColor }]}>
-                {usePrivateMode && isConfidentialAvailable ? 'Anoncoin' : 'Jupiter'}
+                {usePrivateMode && isAnyProviderAvailable ? getProviderName(activeProvider) : 'Jupiter'}
               </ThemedText>
+              {activeProvider === 'silentswap' && usePrivateMode && (
+                <Ionicons name="git-branch-outline" size={14} color={primaryColor} style={{ marginLeft: 4 }} />
+              )}
             </View>
             {!usePrivateMode && <ThemedText style={[styles.providerPlus, { color: mutedColor }]}>+2</ThemedText>}
           </View>
@@ -884,6 +984,94 @@ export default function SwapScreen() {
             >
               <ThemedText style={styles.settingsDoneText}>Done</ThemedText>
             </Pressable>
+          </Animated.View>
+        </Pressable>
+      )}
+
+      {/* From Chain Selector Modal */}
+      {showFromChainSelector && (
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => setShowFromChainSelector(false)}
+        >
+          <Animated.View
+            entering={FadeIn.duration(200)}
+            style={[styles.chainModal, { backgroundColor: cardColor }]}
+          >
+            <ThemedText style={styles.chainModalTitle}>Select Source Chain</ThemedText>
+            <ScrollView style={styles.chainList}>
+              {supportedChains.map((chain) => (
+                <Pressable
+                  key={chain.id}
+                  onPress={() => {
+                    setSourceChain(chain.id);
+                    setShowFromChainSelector(false);
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  }}
+                  style={({ pressed }) => [
+                    styles.chainItem,
+                    pressed && styles.pressed,
+                    sourceChain === chain.id && { backgroundColor: `${primaryColor}15` },
+                  ]}
+                >
+                  <View style={styles.chainItemLeft}>
+                    <View style={[styles.chainIcon, { backgroundColor: primaryColor }]}>
+                      <ThemedText style={styles.chainIconText}>
+                        {chain.name.charAt(0)}
+                      </ThemedText>
+                    </View>
+                    <ThemedText style={styles.chainItemName}>{chain.name}</ThemedText>
+                  </View>
+                  {sourceChain === chain.id && (
+                    <Ionicons name="checkmark-circle" size={24} color={primaryColor} />
+                  )}
+                </Pressable>
+              ))}
+            </ScrollView>
+          </Animated.View>
+        </Pressable>
+      )}
+
+      {/* To Chain Selector Modal */}
+      {showToChainSelector && (
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => setShowToChainSelector(false)}
+        >
+          <Animated.View
+            entering={FadeIn.duration(200)}
+            style={[styles.chainModal, { backgroundColor: cardColor }]}
+          >
+            <ThemedText style={styles.chainModalTitle}>Select Destination Chain</ThemedText>
+            <ScrollView style={styles.chainList}>
+              {supportedChains.map((chain) => (
+                <Pressable
+                  key={chain.id}
+                  onPress={() => {
+                    setDestChain(chain.id);
+                    setShowToChainSelector(false);
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  }}
+                  style={({ pressed }) => [
+                    styles.chainItem,
+                    pressed && styles.pressed,
+                    destChain === chain.id && { backgroundColor: `${primaryColor}15` },
+                  ]}
+                >
+                  <View style={styles.chainItemLeft}>
+                    <View style={[styles.chainIcon, { backgroundColor: '#8B5CF6' }]}>
+                      <ThemedText style={styles.chainIconText}>
+                        {chain.name.charAt(0)}
+                      </ThemedText>
+                    </View>
+                    <ThemedText style={styles.chainItemName}>{chain.name}</ThemedText>
+                  </View>
+                  {destChain === chain.id && (
+                    <Ionicons name="checkmark-circle" size={24} color={primaryColor} />
+                  )}
+                </Pressable>
+              ))}
+            </ScrollView>
           </Animated.View>
         </Pressable>
       )}
@@ -1236,5 +1424,73 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  // Provider Toggle Styles
+  providerToggle: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  providerPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+  },
+  providerPillText: {
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  // Network Badge Active Style
+  networkBadgeActive: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  // Chain Selector Modal Styles
+  chainModal: {
+    width: '100%',
+    maxHeight: '50%',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+  },
+  chainModalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  chainList: {
+    maxHeight: 300,
+  },
+  chainItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    marginBottom: 4,
+  },
+  chainItemLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  chainIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  chainIconText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  chainItemName: {
+    fontSize: 16,
+    fontWeight: '500',
   },
 });
