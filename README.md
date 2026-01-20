@@ -11,7 +11,7 @@
 [![Firedancer Ready](https://img.shields.io/badge/Firedancer-Ready-9945FF)](https://jumpcrypto.com/firedancer/)
 [![Alpenglow](https://img.shields.io/badge/Alpenglow-150ms-14F195)](https://solana.com/news/solana-validator-client-firedancer)
 
-DisCard is a mobile-first crypto wallet that combines disposable virtual debit cards with DeFi trading capabilities. Powered by conversational AI, users interact through natural language - describe what you want and the system parses your intent, clarifies ambiguity, and executes complex multi-step operations automatically.
+DisCard is your autonomous financial agent that works 24/7. Set strategies, goals, and rules that your AI agents execute continuously in the background. Buy every dip, rebalance weekly, fund cards automatically, harvest yield; all while you sleep. When you need control, interact through natural language. Powered by dual-LLM security in TEE, DisCard combines privacy-by-default with always-on financial automation.
 
 **Advanced tech, simple experience.** Despite sophisticated privacy tech (ZK proofs, MPC encryption, confidential transactions), DisCard abstracts complexity through AI and intuitive design, making it accessible to crypto newcomers and power users alike.
 
@@ -24,6 +24,12 @@ DisCard is a mobile-first crypto wallet that combines disposable virtual debit c
 - **Dual AI Security**: Two LLMs in Phala TEE - "Brain" (orchestrator) parses intents, "Soul" (your financial persona) executes - each validates the other
 - **Smart Disambiguation**: Handles ambiguous commands with contextual follow-up questions
 - **Guided Flows**: Step-by-step assistance for complex operations, explanations when you need them
+
+### Autonomous Financial Agents
+- **24/7 Execution**: Set strategies that run continuously - your wallet never sleeps
+- **Goal-Based Automation**: "Stack 1 BTC by December" - agents find opportunities automatically
+- **Smart Triggers**: Price alerts, rebalancing rules, auto-funding thresholds
+- **Multi-Step Orchestration**: Complex workflows like "harvest → swap → fund card" execute atomically
 
 ### Privacy by Default
 - **Private Deposits**: Auto-shield funds via single-use addresses. No link between KYC and spending
@@ -57,6 +63,8 @@ DisCard packs sophisticated technology under the hood, but the AI co-pilot trans
 | "Create a travel card" | Marqeta virtual Visa creation, KYC verification, JIT funding setup |
 | "Create an instant $200 prepaid card" | Starpay prepaid Mastercard, no KYC, privacy-preserving funding |
 | "Swap my USDC for SOL" | Jupiter routing, MEV protection, DFlow order flow, slippage management |
+| "Save for vacation" | Agent auto-transfers 10% of deposits, optimizes yield, tracks progress |
+| "Stack 1 BTC by December" | Agent monitors prices, buys dips automatically, reports weekly progress |
 
 **Built for everyone:**
 - **Crypto newcomers**: Natural language interface, no jargon, guided flows that explain as they go
@@ -73,6 +81,18 @@ DisCard packs sophisticated technology under the hood, but the AI co-pilot trans
 | **Intent Parsing** | LLM-powered understanding of financial commands |
 | **Dual AI Validation** | Brain + Soul mutual verification in Phala TEE |
 | **Conversational Flows** | Multi-turn clarification for ambiguous requests |
+
+### Autonomous Agents
+
+| Feature | Description |
+|---------|-------------|
+| **24/7 Strategy Execution** | Agents run continuously, executing your DCA, rebalancing, and trading rules |
+| **Goal-Based Planning** | Set financial goals; agents automatically work toward them |
+| **Trigger System** | Price alerts, threshold triggers, time-based automation |
+| **Auto-Funding** | Keep cards funded automatically when balance drops |
+| **Yield Optimization** | Auto-deploy idle funds, harvest and compound automatically |
+| **Multi-Step Workflows** | Chain complex operations that execute atomically |
+| **Smart Monitoring** | Watch positions, alert on anomalies, auto-respond to conditions |
 
 ### Privacy
 
@@ -404,7 +424,7 @@ REDPILL_API_KEY=your_key
 SOLANA_RPC_URL=https://api.mainnet-beta.solana.com
 ```
 
-## Intent Examples
+## Basic Intents
 
 The command bar understands natural language:
 
@@ -434,6 +454,35 @@ The command bar understands natural language:
 
 **Predictions**
 - "Bet $10 on SOL hitting $300"
+
+## Complex Intents
+
+Your wallet works 24/7. Set up strategies, monitoring, and automation that run continuously:
+
+**Trading Bots & DCA**
+- "DCA $100 into SOL every Monday"
+- "Buy SOL whenever it drops 10% from weekly high"
+- "Auto-swap any USDT I receive into USDC"
+
+**Monitoring & Alerts**
+- "Alert me when SOL breaks $200"
+- "Notify me if any card has unusual spending"
+- "Watch my yield positions and alert if APY drops below 5%"
+
+**Auto-Management**
+- "Keep my Netflix card funded with at least $20"
+- "Auto-deploy any balance over $1000 to highest yield"
+- "Rebalance to 60% SOL / 40% stables weekly"
+
+**Goal-Based Automation**
+- "Stack 1 BTC by December - buy dips automatically"
+- "Save $5000 for vacation - auto-transfer 10% of deposits"
+- "Build emergency fund to $10k - optimize for low-risk yield"
+
+**Complex Multi-Step**
+- "Harvest all yield, swap to USDC, fund my travel card"
+- "When I receive over $500: 50% to savings, 30% to yield, 20% to spending card"
+- "Close my smallest 3 DeFi positions and consolidate into SOL"
 
 ## Sponsor Integrations
 
@@ -520,4 +569,4 @@ MIT License - see [LICENSE](LICENSE)
 ---
 
 **DisCard** - Intent-Centric Super Wallet
-*AI-powered. Privacy by default. Cards in seconds. DeFi native.*
+*Autonomous agents. Privacy by default. Cards in seconds. Your wealth on autopilot.*
