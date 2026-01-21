@@ -30,11 +30,29 @@ export const list = query({
   },
 });
 
+// Time period to milliseconds mapping
+const PERIOD_MS: Record<string, number> = {
+  "1H": 60 * 60 * 1000,           // 1 hour
+  "1D": 24 * 60 * 60 * 1000,      // 1 day
+  "1W": 7 * 24 * 60 * 60 * 1000,  // 1 week
+  "1M": 30 * 24 * 60 * 60 * 1000, // 30 days
+  "1Y": 365 * 24 * 60 * 60 * 1000, // 1 year
+  "ALL": 10 * 365 * 24 * 60 * 60 * 1000, // 10 years (effectively all)
+};
+
 // Get historical price data for a symbol
 export const historical = query({
   args: {
     symbol: v.string(),
-    days: v.optional(v.number()),
+    period: v.optional(v.union(
+      v.literal("1H"),
+      v.literal("1D"),
+      v.literal("1W"),
+      v.literal("1M"),
+      v.literal("1Y"),
+      v.literal("ALL")
+    )),
+    days: v.optional(v.number()), // Legacy support
   },
   handler: async (ctx, args) => {
     const rate = await ctx.db
@@ -46,17 +64,57 @@ export const historical = query({
       return null;
     }
 
-    // Generate mock historical data
-    // In production, this would come from a time-series database or external API
-    const days = args.days ?? 30;
+    // Calculate time range
     const now = Date.now();
+    const periodMs = args.period ? PERIOD_MS[args.period] : (args.days ?? 30) * 24 * 60 * 60 * 1000;
+    const startTime = now - periodMs;
+
+    // Query historical data from priceHistory table
+    const historicalData = await ctx.db
+      .query("priceHistory")
+      .withIndex("by_entity_time", (q) =>
+        q.eq("entityType", "crypto").eq("entityId", args.symbol)
+      )
+      .filter((q) => q.gte(q.field("timestamp"), startTime))
+      .collect();
+
+    // Sort by timestamp and map to expected format
+    const sortedData = historicalData
+      .sort((a, b) => a.timestamp - b.timestamp)
+      .map((point) => ({
+        timestamp: point.timestamp,
+        price: point.value,
+        volume: point.volume,
+      }));
+
+    // If we have real data, return it
+    if (sortedData.length > 0) {
+      // Ensure last point reflects current price
+      const history = [...sortedData];
+      if (history.length > 0) {
+        history[history.length - 1] = {
+          ...history[history.length - 1],
+          price: rate.usdPrice,
+        };
+      }
+
+      return {
+        symbol: args.symbol,
+        name: rate.name,
+        currentPrice: rate.usdPrice,
+        history,
+      };
+    }
+
+    // Fallback to generated data if no historical data yet
+    // This ensures charts work before first sync completes
+    const days = args.days ?? (args.period ? Math.ceil(periodMs / (24 * 60 * 60 * 1000)) : 30);
     const dayMs = 24 * 60 * 60 * 1000;
 
     const history = [];
     let price = rate.usdPrice;
 
     for (let i = days; i >= 0; i--) {
-      // Add some random variance (±5%)
       const variance = 1 + (Math.random() - 0.5) * 0.1;
       price = price * variance;
 
@@ -67,7 +125,6 @@ export const historical = query({
       });
     }
 
-    // Make sure the last price matches current
     if (history.length > 0) {
       history[history.length - 1].price = rate.usdPrice;
     }
@@ -77,6 +134,7 @@ export const historical = query({
       name: rate.name,
       currentPrice: rate.usdPrice,
       history,
+      _fallback: true, // Indicator that this is fallback data
     };
   },
 });

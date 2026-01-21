@@ -21,6 +21,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { useThemeColor } from '@/hooks/use-theme-color';
+import { useTokenHistory, TimePeriod } from '@/hooks/useTokenHistory';
 import { primaryColor, positiveColor, negativeColor, Fonts } from '@/constants/theme';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -83,17 +84,17 @@ interface TokenDetailProps {
   onTransactionPress?: (transaction: RecentTransaction) => void;
 }
 
-type TimePeriod = 'H' | 'D' | 'W' | 'M' | 'Y' | 'Max';
-
-// Generate mock chart data
-function generateChartData(): number[] {
+// Generate fallback chart data (used when historical data isn't available yet)
+function generateFallbackChartData(currentPrice: number): number[] {
   const points: number[] = [];
-  let value = 100;
+  let value = currentPrice;
   for (let i = 0; i < 50; i++) {
-    value += (Math.random() - 0.48) * 10;
-    value = Math.max(50, Math.min(150, value));
+    value += (Math.random() - 0.48) * (currentPrice * 0.02);
+    value = Math.max(currentPrice * 0.7, Math.min(currentPrice * 1.3, value));
     points.push(value);
   }
+  // Ensure last point matches current price
+  points[points.length - 1] = currentPrice;
   return points;
 }
 
@@ -165,7 +166,20 @@ export function TokenDetailScreen({
   const [isChartExpanded, setIsChartExpanded] = useState(false);
   const [selectedPeriod, setSelectedPeriod] = useState<TimePeriod>('D');
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-  const [chartData] = useState(() => generateChartData());
+
+  // Fetch historical price data
+  const { prices: historyPrices, isLoading: isHistoryLoading } = useTokenHistory(
+    token.symbol,
+    selectedPeriod
+  );
+
+  // Use historical data if available, otherwise generate fallback
+  const chartData = useMemo(() => {
+    if (historyPrices.length > 0) {
+      return historyPrices;
+    }
+    return generateFallbackChartData(token.price);
+  }, [historyPrices, token.price]);
 
   const mutedColor = useThemeColor({ light: '#687076', dark: '#9BA1A6' }, 'icon');
   const textColor = useThemeColor({}, 'text');
@@ -228,9 +242,12 @@ export function TokenDetailScreen({
   const scrollOffset = useSharedValue(0);
   const isScrolling = useSharedValue(false);
 
-  // Chart paths
-  const { path: linePath, lastPoint } = createChartPath(chartData, CHART_WIDTH, CHART_HEIGHT);
-  const areaPath = createAreaPath(linePath, CHART_WIDTH, CHART_HEIGHT, chartData.length);
+  // Chart paths (memoized since chartData updates with period changes)
+  const { linePath, lastPoint, areaPath } = useMemo(() => {
+    const { path, lastPoint } = createChartPath(chartData, CHART_WIDTH, CHART_HEIGHT);
+    const area = createAreaPath(path, CHART_WIDTH, CHART_HEIGHT, chartData.length);
+    return { linePath: path, lastPoint, areaPath: area };
+  }, [chartData]);
 
   // Drawer gesture handlers
   const triggerHaptic = useCallback(() => {

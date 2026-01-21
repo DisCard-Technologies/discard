@@ -7,6 +7,7 @@ import Svg, { Path, Defs, LinearGradient, Stop, Circle, Line, Text as SvgText } 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { useThemeColor } from '@/hooks/use-theme-color';
+import { useMarketHistory, TimePeriod as TokenTimePeriod } from '@/hooks/useTokenHistory';
 import { positiveColor, negativeColor } from '@/constants/theme';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -101,8 +102,20 @@ export function MarketDetailScreen({
   // Is this a sports match with team data?
   const isSportsMatch = !!(market.homeTeam && market.awayTeam);
 
-  // Generate mock price history for chart
+  // Fetch market history (placeholder - returns null until market history API is implemented)
+  // When prediction market history is available (Kalshi, Polymarket APIs), this will return real data
+  const { data: marketHistoryData } = useMarketHistory(
+    market.marketId || '',
+    selectedPeriod === 'GAME' ? 'D' : (selectedPeriod === '1D' ? 'D' : selectedPeriod === '1W' ? 'W' : selectedPeriod === '1M' ? 'M' : 'D') as TokenTimePeriod
+  );
+
+  // Generate probability history for chart (uses mock data until market history API is implemented)
   const priceHistory = useMemo(() => {
+    // TODO: When marketHistoryData is available, transform it to the expected format
+    // if (marketHistoryData && marketHistoryData.history.length > 0) {
+    //   return marketHistoryData.history.map(point => outcome probability mapping);
+    // }
+
     const points: { [key: string]: number }[] = [];
     const numPoints = 50;
 
@@ -130,7 +143,7 @@ export function MarketDetailScreen({
     points[numPoints - 1] = lastPoint;
 
     return points;
-  }, [outcomes]);
+  }, [outcomes, marketHistoryData]);
 
   // Generate SVG path for an outcome
   const generatePath = (outcomeId: string) => {

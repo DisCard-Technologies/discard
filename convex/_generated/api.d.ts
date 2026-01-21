@@ -28,6 +28,7 @@ import type * as crons_cleanupSessions from "../crons/cleanupSessions.js";
 import type * as crons_expireHolds from "../crons/expireHolds.js";
 import type * as crons_selfHealingCheck from "../crons/selfHealingCheck.js";
 import type * as crons_syncDefi from "../crons/syncDefi.js";
+import type * as crons_syncHistoricalPrices from "../crons/syncHistoricalPrices.js";
 import type * as crons_syncRates from "../crons/syncRates.js";
 import type * as explore_trending from "../explore/trending.js";
 import type * as fraud_detection from "../fraud/detection.js";
@@ -105,6 +106,7 @@ declare const fullApi: ApiFromModules<{
   "crons/expireHolds": typeof crons_expireHolds;
   "crons/selfHealingCheck": typeof crons_selfHealingCheck;
   "crons/syncDefi": typeof crons_syncDefi;
+  "crons/syncHistoricalPrices": typeof crons_syncHistoricalPrices;
   "crons/syncRates": typeof crons_syncRates;
   "explore/trending": typeof explore_trending;
   "fraud/detection": typeof fraud_detection;

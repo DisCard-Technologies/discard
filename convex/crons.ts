@@ -72,6 +72,18 @@ crons.interval(
   internal.crons.syncRates.run
 );
 
+// ============ HISTORICAL PRICE SYNC ============
+
+/**
+ * Sync historical prices every 15 minutes
+ * Fetches price history from CoinGecko for chart displays
+ */
+crons.interval(
+  "sync-historical-prices",
+  { minutes: 15 },
+  internal.crons.syncHistoricalPrices.run
+);
+
 // ============ METRICS CLEANUP ============
 
 /**

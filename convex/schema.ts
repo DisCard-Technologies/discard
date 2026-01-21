@@ -757,6 +757,20 @@ export default defineSchema({
     .index("by_symbol", ["symbol"])
     .index("by_updated", ["updatedAt"]),
 
+  // ============ PRICE HISTORY ============
+  // Historical price data for charts
+  priceHistory: defineTable({
+    entityType: v.union(v.literal("crypto"), v.literal("market")),
+    entityId: v.string(),  // Symbol (BTC, ETH) or marketId
+    timestamp: v.number(), // Unix timestamp ms
+    value: v.number(),     // Price USD or probability 0-1
+    volume: v.optional(v.number()),
+    granularity: v.union(v.literal("1h"), v.literal("1d")),
+    source: v.string(),
+  })
+    .index("by_entity_time", ["entityType", "entityId", "timestamp"])
+    .index("by_entity_granularity", ["entityType", "entityId", "granularity"]),
+
   // ============ FX RATES ============
   // Fiat currency exchange rates (USD base)
   fxRates: defineTable({
