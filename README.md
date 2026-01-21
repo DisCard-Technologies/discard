@@ -4,7 +4,7 @@
 
 ![DisCard Home Screen](assets/discard-mobile-homescreen.png)
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![License: BSL](https://img.shields.io/badge/License-BSL-green.svg)](LICENSE)
 [![Built with Expo](https://img.shields.io/badge/Built%20with-Expo-blue)](https://expo.dev)
 [![Convex](https://img.shields.io/badge/Backend-Convex-orange)](https://convex.dev)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue)](https://typescriptlang.org)
