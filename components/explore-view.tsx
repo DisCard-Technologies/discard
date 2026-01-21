@@ -354,9 +354,6 @@ export function ExploreView() {
                       <Ionicons name="time" size={12} color={mutedColor} />
                       <ThemedText style={[styles.metaText, { color: mutedColor }]}>{getTimeRemaining(market.endDate)}</ThemedText>
                     </View>
-                    <View style={styles.metaItem}>
-                      <ThemedText style={[styles.metaText, { color: mutedColor }]}>{market.ticker}</ThemedText>
-                    </View>
                   </View>
 
                   <View style={styles.marketPrices}>

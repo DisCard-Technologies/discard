@@ -251,8 +251,8 @@ export const refreshTrendingTokens = action({
 
 /**
  * Refresh open markets from Kalshi
+ * Fetches events (not parlays) for cleaner questions and categories
  * Kalshi public API - no auth required for market data
- * Use DFlow/Jupiter for actual trading (Solana tokenized positions)
  */
 export const refreshOpenMarkets = action({
   handler: async (ctx) => {
@@ -260,9 +260,9 @@ export const refreshOpenMarkets = action({
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
 
-      // Fetch open markets from Kalshi public API
+      // Fetch events from Kalshi public API (cleaner than raw markets)
       const response = await fetch(
-        `${KALSHI_API_URL}/markets?status=open&limit=100`,
+        `${KALSHI_API_URL}/events?status=open&limit=100&with_nested_markets=true`,
         {
           headers: {
             "Content-Type": "application/json",
@@ -281,72 +281,120 @@ export const refreshOpenMarkets = action({
       }
 
       const data = await response.json();
-      const rawMarkets = data.markets || [];
+      const rawEvents = data.events || [];
 
-      // Transform Kalshi response to our format
-      const openMarkets = rawMarkets.map(
-        (market: {
-          ticker: string;
+      // Map category identifiers to human-readable names
+      const categoryMap: Record<string, string> = {
+        'politics': 'Politics',
+        'economics': 'Economics',
+        'financials': 'Finance',
+        'crypto': 'Crypto',
+        'climate': 'Climate',
+        'science': 'Science',
+        'tech': 'Tech',
+        'entertainment': 'Entertainment',
+        'sports': 'Sports',
+        'culture': 'Culture',
+        'world': 'World',
+        'health': 'Health',
+      };
+
+      // Transform Kalshi events to our format
+      const openMarkets = rawEvents.flatMap(
+        (event: {
           event_ticker: string;
+          series_ticker: string;
           title: string;
           subtitle?: string;
-          status: string;
-          yes_bid: number;
-          yes_ask: number;
-          no_bid: number;
-          no_ask: number;
-          last_price: number;
-          volume: number;
-          open_interest: number;
-          close_time: string;
-          expiration_time?: string;
-          category?: string;
-          series_ticker?: string;
+          category: string;
+          markets?: Array<{
+            ticker: string;
+            title?: string;
+            subtitle?: string;
+            status: string;
+            yes_bid: number;
+            yes_ask: number;
+            no_bid: number;
+            no_ask: number;
+            last_price: number;
+            volume: number;
+            volume_24h?: number;
+            open_interest: number;
+            close_time: string;
+            expiration_time?: string;
+          }>;
+          strike_date?: string;
+          mutually_exclusive?: boolean;
         }) => {
-          // Calculate mid prices (convert from cents to decimal 0-1)
-          const yesPrice = market.yes_bid && market.yes_ask
-            ? ((market.yes_bid + market.yes_ask) / 2) / 100
-            : (market.last_price || 50) / 100;
-          const noPrice = 1 - yesPrice;
+          // Get category - use the event's category field
+          const rawCategory = event.category?.toLowerCase() || 'general';
+          const category = categoryMap[rawCategory] ||
+            rawCategory.charAt(0).toUpperCase() + rawCategory.slice(1);
 
-          // Extract category from series_ticker or event_ticker
-          const category = market.category ||
-            market.series_ticker?.split("-")[0] ||
-            market.event_ticker?.split("-")[0] ||
-            "General";
+          // If event has nested markets, create entries for each
+          if (event.markets && event.markets.length > 0) {
+            return event.markets
+              .filter(m => m.status === 'open' || m.status === 'active')
+              .map(market => {
+                // Calculate mid prices (convert from cents to decimal 0-1)
+                const yesPrice = market.yes_bid && market.yes_ask
+                  ? ((market.yes_bid + market.yes_ask) / 2) / 100
+                  : (market.last_price || 50) / 100;
+                const noPrice = 1 - yesPrice;
 
-          // Map Kalshi status to our status (Kalshi uses "active" for open markets)
-          let status: "open" | "closed" | "resolved" = "open";
-          if (market.status === "settled" || market.status === "finalized") {
-            status = "resolved";
-          } else if (market.status === "closed" || market.status === "halted") {
-            status = "closed";
+                // Build question from event title + market subtitle if available
+                let question = event.title;
+                if (market.subtitle) {
+                  question = `${event.title}: ${market.subtitle}`;
+                } else if (market.title && market.title !== event.title) {
+                  question = market.title;
+                }
+
+                return {
+                  marketId: market.ticker,
+                  ticker: market.ticker,
+                  eventId: event.event_ticker,
+                  question,
+                  status: "open" as const,
+                  yesPrice,
+                  noPrice,
+                  volume24h: market.volume_24h || market.volume || 0,
+                  endDate: market.close_time || market.expiration_time || event.strike_date || "",
+                  category,
+                  resolutionSource: "Kalshi",
+                };
+              });
           }
-          // "active", "open", "trading" all map to "open"
 
-          return {
-            marketId: market.ticker,
-            ticker: market.ticker,
-            eventId: market.event_ticker,
-            question: market.title + (market.subtitle ? `: ${market.subtitle}` : ""),
-            status,
-            yesPrice,
-            noPrice,
-            volume24h: market.volume || 0,
-            endDate: market.close_time || market.expiration_time || "",
-            category: category.charAt(0).toUpperCase() + category.slice(1).toLowerCase(),
+          // Fallback: create single entry from event info
+          return [{
+            marketId: event.event_ticker,
+            ticker: event.event_ticker,
+            eventId: event.event_ticker,
+            question: event.title + (event.subtitle ? `: ${event.subtitle}` : ""),
+            status: "open" as const,
+            yesPrice: 0.5,
+            noPrice: 0.5,
+            volume24h: 0,
+            endDate: event.strike_date || "",
+            category,
             resolutionSource: "Kalshi",
-          };
+          }];
         }
       );
 
+      // Sort by volume and take top 100
+      const sortedMarkets = openMarkets
+        .sort((a: { volume24h: number }, b: { volume24h: number }) => b.volume24h - a.volume24h)
+        .slice(0, 100);
+
       // Update cache
       await ctx.runMutation(internal.explore.trending.updateMarketsCache, {
-        markets: openMarkets,
+        markets: sortedMarkets,
       });
 
-      console.log(`[Kalshi] Fetched ${openMarkets.length} open markets`);
-      return { markets: openMarkets, count: openMarkets.length };
+      console.log(`[Kalshi] Fetched ${sortedMarkets.length} markets from events`);
+      return { markets: sortedMarkets, count: sortedMarkets.length };
     } catch (error) {
       console.error("[Kalshi] API error:", error);
       return { markets: [], count: 0, error: "Kalshi API unreachable" };
