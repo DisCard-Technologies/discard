@@ -101,11 +101,6 @@ export default function ExploreScreen() {
     });
   };
 
-  const handleDeposit = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    router.push('/buy-crypto?currency=usdc&mode=deposit');
-  };
-
   const handleCategorySelect = (category: CategoryFilter) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setActiveCategory(category);
@@ -137,19 +132,6 @@ export default function ExploreScreen() {
     <ThemedView style={styles.container}>
       <StatusBar style={isDark ? 'light' : 'dark'} />
       <View style={{ height: insets.top }} />
-
-      {/* Deposit Button */}
-      <Pressable
-        onPress={handleDeposit}
-        style={({ pressed }) => [
-          styles.depositButton,
-          { backgroundColor: primaryColor },
-          pressed && styles.depositButtonPressed,
-        ]}
-      >
-        <Ionicons name="add" size={20} color="#fff" />
-        <ThemedText style={styles.depositButtonText}>Deposit / Buy Crypto</ThemedText>
-      </Pressable>
 
       {/* Category Filter Pills - Rounded Pill Container */}
       <View style={[styles.categoryContainer, { backgroundColor: isDark ? '#1c1c1e' : '#f4f4f5' }]}>
@@ -464,23 +446,5 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 18,
     fontWeight: '700',
-  },
-  depositButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginHorizontal: 16,
-    marginBottom: 12,
-    paddingVertical: 14,
-    borderRadius: 12,
-    gap: 8,
-  },
-  depositButtonPressed: {
-    opacity: 0.8,
-  },
-  depositButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
   },
 });

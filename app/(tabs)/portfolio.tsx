@@ -487,7 +487,23 @@ export function PortfolioScreenContent({ topInset = 0 }: PortfolioScreenContentP
                     <Pressable
                       key={token.mint}
                       style={styles.tokenRow}
-                      onPress={() => Haptics.selectionAsync()}
+                      onPress={() => {
+                        Haptics.selectionAsync();
+                        router.push({
+                          pathname: '/token-detail',
+                          params: {
+                            id: token.mint,
+                            symbol: token.symbol,
+                            name: token.name || token.symbol,
+                            price: token.priceUsd.toString(),
+                            change24h: (token.change24h || 0).toString(),
+                            logoUri: token.logoUri || '',
+                            // Owned token data
+                            balance: token.balanceFormatted.toString(),
+                            value: token.valueUsd.toString(),
+                          },
+                        });
+                      }}
                     >
                       <View style={[styles.tokenIcon, { backgroundColor: cardBg }]}>
                         {token.logoUri ? (
