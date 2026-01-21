@@ -15,7 +15,7 @@ export default function TabLayout() {
       <Tabs.Screen name="transfer" />
       <Tabs.Screen name="menu" />
       {/* Hidden screens - embedded in SwipeableMainView pager, accessible via swipe gestures */}
-      <Tabs.Screen name="strategy" options={{ href: null }} />
+      <Tabs.Screen name="portfolio" options={{ href: null }} />
       <Tabs.Screen name="card" options={{ href: null }} />
     </Tabs>
   );

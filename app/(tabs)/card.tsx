@@ -44,7 +44,7 @@ const CARD_MARGIN = 12;
 
 // Props for the content component when used in pager
 export interface CardScreenContentProps {
-  onNavigateToStrategy?: () => void;
+  onNavigateToPortfolio?: () => void;
   onNavigateToHome?: () => void;
 }
 
@@ -100,7 +100,7 @@ interface DisplayTransaction {
 const DRAWER_CLOSED_HEIGHT = 220;
 const DRAWER_OPEN_HEIGHT = 380;
 
-export function CardScreenContent({ onNavigateToStrategy, onNavigateToHome }: CardScreenContentProps) {
+export function CardScreenContent({ onNavigateToPortfolio, onNavigateToHome }: CardScreenContentProps) {
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
@@ -115,6 +115,9 @@ export function CardScreenContent({ onNavigateToStrategy, onNavigateToHome }: Ca
   const { user } = useAuth();
   const { state: cardsState } = useCards();
   const { freezeCard, unfreezeCard, createCard, getCardSecrets } = useCardOperations();
+
+  // Count of user's cards
+  const cardCount = cardsState?.cards?.length || 0;
 
   // Card carousel state
   const [activeCardIndex, setActiveCardIndex] = useState(0);
@@ -237,7 +240,7 @@ export function CardScreenContent({ onNavigateToStrategy, onNavigateToHome }: Ca
   const isLoadingCards = cardsState?.isLoading === true;
 
   // Navigation handlers for top bar - use callbacks if provided, otherwise use router
-  const handlePortfolioTap = onNavigateToStrategy || (() => router.push('/strategy'));
+  const handlePortfolioTap = onNavigateToPortfolio || (() => router.push('/portfolio'));
   const handleCardTap = onNavigateToHome || (() => {});
 
   const walletAddress = user?.solanaAddress || '';
@@ -433,6 +436,7 @@ export function CardScreenContent({ onNavigateToStrategy, onNavigateToHome }: Ca
         walletAddress={walletAddress}
         onPortfolioTap={handlePortfolioTap}
         onCardTap={handleCardTap}
+        cardCount={cardCount}
       />
 
       {/* Loading State */}

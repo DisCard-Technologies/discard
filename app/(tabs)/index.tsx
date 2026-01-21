@@ -15,27 +15,34 @@ import { AnimatedCounter } from '@/components/animated-counter';
 import { TransactionStack, StackTransaction } from '@/components/transaction-stack';
 import { QuickActions } from '@/components/quick-actions';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useThemeColor } from '@/hooks/use-theme-color';
 import { useAuth } from '@/stores/authConvex';
 import { useFunding } from '@/stores/fundingConvex';
 import { useTokenHoldings } from '@/hooks/useTokenHoldings';
+import { useCards } from '@/stores/cardsConvex';
 import { positiveColor, negativeColor } from '@/constants/theme';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 // Props for the content component when used in pager
 export interface HomeScreenContentProps {
-  onNavigateToStrategy?: () => void;
+  onNavigateToPortfolio?: () => void;
   onNavigateToCard?: () => void;
 }
 
-export function HomeScreenContent({ onNavigateToStrategy, onNavigateToCard }: HomeScreenContentProps) {
+export function HomeScreenContent({ onNavigateToPortfolio, onNavigateToCard }: HomeScreenContentProps) {
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme();
+  const mutedColor = useThemeColor({ light: '#687076', dark: '#9BA1A6' }, 'icon');
 
   // Real data from stores
   const { user } = useAuth();
   const { state: fundingState } = useFunding();
   const { totalValue: cryptoValue } = useTokenHoldings(user?.solanaAddress || null);
+  const { state: cardsState } = useCards();
+
+  // Count of user's cards
+  const cardCount = cardsState?.cards?.length || 0;
 
   // Calculate net worth from funding balance + crypto holdings
   const netWorth = useMemo(() => {
@@ -137,7 +144,7 @@ export function HomeScreenContent({ onNavigateToStrategy, onNavigateToCard }: Ho
   const walletAddress = user?.solanaAddress || '7F3a...8b2E';
 
   // Navigation handlers for top bar - use callbacks if provided, otherwise use router
-  const handlePortfolioTap = onNavigateToStrategy || (() => router.push('/strategy'));
+  const handlePortfolioTap = onNavigateToPortfolio || (() => router.push('/portfolio'));
   const handleCardTap = onNavigateToCard || (() => router.push('/card'));
 
   // Quick action handlers
@@ -182,12 +189,16 @@ export function HomeScreenContent({ onNavigateToStrategy, onNavigateToCard }: Ho
         walletAddress={walletAddress}
         onPortfolioTap={handlePortfolioTap}
         onCardTap={handleCardTap}
+        cardCount={cardCount}
       />
 
       {/* Main Content */}
       <View style={styles.content}>
         {/* Hero Section - Balance Display */}
         <View style={styles.heroSection}>
+          <ThemedText style={[styles.balanceLabel, { color: mutedColor }]}>
+            Spendable Balance
+          </ThemedText>
           <AnimatedCounter value={netWorth} prefix="$" style={styles.balanceText} />
 
           {/* Daily Change Badge */}
@@ -233,7 +244,7 @@ export function HomeScreenContent({ onNavigateToStrategy, onNavigateToCard }: Ho
 
 export default function HomeScreen() {
   // Use SwipeableMainView for the main home screen with pager navigation
-  // This enables swiping between Card <-> Home <-> Strategy
+  // This enables swiping between Card <-> Home <-> Portfolio
   const { SwipeableMainView } = require('@/components/swipeable-main-view');
   return <SwipeableMainView />;
 }
@@ -262,6 +273,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingTop: 40,
     paddingBottom: 24,
+  },
+  balanceLabel: {
+    fontSize: 14,
+    marginBottom: 4,
   },
   balanceText: {
     fontSize: 56,

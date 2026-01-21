@@ -3,7 +3,7 @@ import { StyleSheet, View } from 'react-native';
 
 import { HomeScreenContent } from '@/app/(tabs)/index';
 import { CardScreenContent } from '@/app/(tabs)/card';
-import { StrategyScreenContent } from '@/app/(tabs)/strategy';
+import { PortfolioScreenContent } from '@/app/(tabs)/portfolio';
 
 // Try to load PagerView - it's not available in Expo Go
 let PagerView: typeof import('react-native-pager-view').default | null = null;
@@ -14,7 +14,7 @@ try {
 }
 
 // Page indices
-const PAGE_STRATEGY = 0;
+const PAGE_PORTFOLIO = 0;
 const PAGE_HOME = 1;
 const PAGE_CARD = 2;
 
@@ -31,8 +31,8 @@ export function SwipeableMainView() {
     pagerRef.current?.setPage(PAGE_HOME);
   }, []);
 
-  const navigateToStrategy = useCallback(() => {
-    pagerRef.current?.setPage(PAGE_STRATEGY);
+  const navigateToPortfolio = useCallback(() => {
+    pagerRef.current?.setPage(PAGE_PORTFOLIO);
   }, []);
 
   const handlePageSelected = useCallback((e: { nativeEvent: { position: number } }) => {
@@ -56,9 +56,9 @@ export function SwipeableMainView() {
       onPageSelected={handlePageSelected}
       overdrag
     >
-      {/* Page 0: Strategy Screen (swipe right from home) */}
-      <View key="strategy" style={styles.page}>
-        <StrategyScreenContent
+      {/* Page 0: Portfolio Screen (swipe right from home) */}
+      <View key="portfolio" style={styles.page}>
+        <PortfolioScreenContent
           onNavigateToHome={navigateToHome}
           onNavigateToCard={navigateToCard}
         />
@@ -67,7 +67,7 @@ export function SwipeableMainView() {
       {/* Page 1: Home Screen (Initial) */}
       <View key="home" style={styles.page}>
         <HomeScreenContent
-          onNavigateToStrategy={navigateToStrategy}
+          onNavigateToPortfolio={navigateToPortfolio}
           onNavigateToCard={navigateToCard}
         />
       </View>
@@ -75,7 +75,7 @@ export function SwipeableMainView() {
       {/* Page 2: Card Screen (swipe left from home) */}
       <View key="card" style={styles.page}>
         <CardScreenContent
-          onNavigateToStrategy={navigateToStrategy}
+          onNavigateToPortfolio={navigateToPortfolio}
           onNavigateToHome={navigateToHome}
         />
       </View>

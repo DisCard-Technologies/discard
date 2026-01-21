@@ -13,9 +13,10 @@ interface TopBarProps {
   walletAddress: string;
   onPortfolioTap?: () => void;
   onCardTap?: () => void;
+  cardCount?: number;
 }
 
-export function TopBar({ walletAddress, onPortfolioTap, onCardTap }: TopBarProps) {
+export function TopBar({ walletAddress, onPortfolioTap, onCardTap, cardCount = 0 }: TopBarProps) {
   const [copied, setCopied] = useState(false);
 
   const primaryColor = useThemeColor({}, 'tint');
@@ -85,7 +86,7 @@ export function TopBar({ walletAddress, onPortfolioTap, onCardTap }: TopBarProps
         />
       </Pressable>
 
-      {/* Right: Card Icon */}
+      {/* Right: Card Icon with Badge */}
       <Pressable
         onPress={handleCardTap}
         style={({ pressed }) => [
@@ -95,6 +96,11 @@ export function TopBar({ walletAddress, onPortfolioTap, onCardTap }: TopBarProps
         ]}
       >
         <Ionicons name="card-outline" size={20} color={mutedColor} />
+        {cardCount > 0 && (
+          <View style={styles.cardBadge}>
+            <ThemedText style={styles.cardBadgeText}>{cardCount > 9 ? '9+' : cardCount}</ThemedText>
+          </View>
+        )}
       </Pressable>
     </View>
   );
@@ -142,5 +148,22 @@ const styles = StyleSheet.create({
   pressed: {
     opacity: 0.7,
     transform: [{ scale: 0.95 }],
+  },
+  cardBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#10b981',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  cardBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#fff',
   },
 });
