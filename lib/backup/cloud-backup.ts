@@ -8,10 +8,18 @@
  */
 
 import { Platform } from 'react-native';
-import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { EncryptedBackup, serializeBackup, parseBackup, createBackupFilename } from './backup-encryption';
+
+// Lazy load DocumentPicker to avoid native module errors in Expo Go
+let DocumentPicker: typeof import('expo-document-picker') | null = null;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  DocumentPicker = require('expo-document-picker');
+} catch {
+  console.log('[CloudBackup] expo-document-picker not available (Expo Go)');
+}
 
 /**
  * Cloud provider types
@@ -390,6 +398,14 @@ async function saveToLocalFile(backup: EncryptedBackup): Promise<CloudBackupResu
  * Load backup from a local file (file picker)
  */
 async function loadFromLocalFile(): Promise<CloudRestoreResult> {
+  if (!DocumentPicker) {
+    return {
+      success: false,
+      provider: 'local_file',
+      error: 'Document picker not available. Please use a development build.',
+    };
+  }
+
   try {
     const result = await DocumentPicker.getDocumentAsync({
       type: 'application/json',

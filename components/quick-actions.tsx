@@ -17,6 +17,7 @@ interface QuickActionsProps {
   onReceive?: () => void;
   onSwap?: () => void;
   onScanQR?: () => void;
+  onFund?: () => void;
 }
 
 export function QuickActions({
@@ -24,6 +25,7 @@ export function QuickActions({
   onReceive,
   onSwap,
   onScanQR,
+  onFund,
 }: QuickActionsProps) {
   const borderColor = useThemeColor({}, 'border');
   const textColor = useThemeColor({}, 'text');
@@ -43,16 +45,22 @@ export function QuickActions({
       onPress: onReceive || (() => {}),
     },
     {
+      id: 'scan',
+      icon: 'qr-code-outline',
+      label: 'Scan QR',
+      onPress: onScanQR || (() => {}),
+    },
+    {
       id: 'swap',
       icon: 'swap-horizontal-outline',
       label: 'Swap',
       onPress: onSwap || (() => {}),
     },
     {
-      id: 'scan',
-      icon: 'qr-code-outline',
-      label: 'Scan QR',
-      onPress: onScanQR || (() => {}),
+      id: 'fund',
+      icon: 'card-outline',
+      label: 'Fund',
+      onPress: onFund || (() => {}),
     },
   ];
 

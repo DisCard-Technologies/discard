@@ -2,34 +2,31 @@ import { View, Pressable, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
+import { BlurView } from 'expo-blur';
 import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 
-import { ThemedText } from '@/components/themed-text';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 
-type IconName = 'home' | 'swap-horizontal' | 'search' | 'grid';
+type IconName = keyof typeof Ionicons.glyphMap;
 
 interface TabConfig {
   icon: IconName;
-  label: string;
+  iconActive: IconName;
 }
 
-// Tab configuration for navigation items
+// Tab configuration - icons only (no labels in new design)
 const navTabConfig: Record<string, TabConfig> = {
-  index: { icon: 'home', label: 'Home' },
-  transfer: { icon: 'swap-horizontal', label: 'Transfer' },
-  explore: { icon: 'search', label: 'Explore' },
-  menu: { icon: 'grid', label: 'Menu' },
+  index: { icon: 'home-outline', iconActive: 'home' },
+  explore: { icon: 'search-outline', iconActive: 'search' },
+  transfer: { icon: 'swap-horizontal-outline', iconActive: 'swap-horizontal' },
+  menu: { icon: 'grid-outline', iconActive: 'grid' },
 };
 
-// Colors matching the design
-const DOCK_BG_LIGHT = 'rgba(0,0,0,0.05)';
-const DOCK_BG_DARK = 'rgba(255,255,255,0.08)';
-const BORDER_LIGHT = 'rgba(0,0,0,0.08)';
-const BORDER_DARK = 'rgba(255,255,255,0.1)';
+// Colors
+const ACTIVE_BG = 'rgba(255, 255, 255, 0.12)';
 const ACTIVE_COLOR = '#10B981';
-const INACTIVE_ICON_COLOR = '#6B7280';
-const INACTIVE_ICON_COLOR_DARK = '#9BA1A6';
+const INACTIVE_COLOR_LIGHT = '#6B7280';
+const INACTIVE_COLOR_DARK = '#9BA1A6';
 
 export interface FloatingNavBarProps extends BottomTabBarProps {}
 
@@ -37,11 +34,7 @@ export function FloatingNavBar({ state, descriptors, navigation }: FloatingNavBa
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
-
-  // Theme-aware colors
-  const dockBg = isDark ? DOCK_BG_DARK : DOCK_BG_LIGHT;
-  const borderColor = isDark ? BORDER_DARK : BORDER_LIGHT;
-  const iconColor = isDark ? INACTIVE_ICON_COLOR_DARK : INACTIVE_ICON_COLOR;
+  const iconColor = isDark ? INACTIVE_COLOR_DARK : INACTIVE_COLOR_LIGHT;
 
   // Filter routes for nav items that have config
   const navRoutes = state.routes.filter((route) => navTabConfig[route.name]);
@@ -74,20 +67,32 @@ export function FloatingNavBar({ state, descriptors, navigation }: FloatingNavBa
         accessibilityState={isFocused ? { selected: true } : {}}
         accessibilityLabel={options.tabBarAccessibilityLabel}
         onPress={onPress}
-        style={({ pressed }) => [styles.navItem, isFocused && styles.navItemActive, pressed && styles.pressed]}
+        style={({ pressed }) => [
+          styles.navItem,
+          isFocused && styles.navItemActive,
+          pressed && styles.pressed,
+        ]}
       >
-        <Ionicons name={config.icon} size={20} color={isFocused ? '#FFFFFF' : iconColor} />
-        <ThemedText style={[styles.navLabel, isFocused && styles.navLabelActive, !isFocused && { color: iconColor }]}>
-          {config.label}
-        </ThemedText>
+        <Ionicons
+          name={isFocused ? config.iconActive : config.icon}
+          size={22}
+          color={isFocused ? '#FFFFFF' : iconColor}
+        />
+
+        {/* Active indicator dot */}
+        {isFocused && <View style={styles.activeIndicator} />}
       </Pressable>
     );
   };
 
   return (
-    <View style={[styles.container, { paddingBottom: Math.max(insets.bottom, 8) }]}>
-      <View style={[styles.navPill, { backgroundColor: dockBg, borderColor }]}>
-        {navRoutes.map((route) => renderNavItem(route))}
+    <View style={[styles.container, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+      <View style={styles.navPill}>
+        <BlurView intensity={40} tint="dark" style={styles.blurContainer}>
+          <View style={styles.navContent}>
+            {navRoutes.map((route) => renderNavItem(route))}
+          </View>
+        </BlurView>
       </View>
     </View>
   );
@@ -99,42 +104,57 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
+    alignItems: 'center',
     paddingHorizontal: 16,
     paddingTop: 8,
     backgroundColor: 'transparent',
+    pointerEvents: 'box-none',
   },
 
-  // Navigation Pill - static 4-item navbar
   navPill: {
+    borderRadius: 32,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+
+  blurContainer: {
+    overflow: 'hidden',
+  },
+
+  navContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-around',
-    borderRadius: 28,
-    borderWidth: 1,
-    paddingVertical: 6,
-    paddingHorizontal: 8,
+    gap: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: 'rgba(30, 30, 30, 0.8)',
   },
+
   navItem: {
+    position: 'relative',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 2,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    width: 48,
+    height: 40,
     borderRadius: 20,
   },
+
   navItemActive: {
+    backgroundColor: ACTIVE_BG,
+  },
+
+  activeIndicator: {
+    position: 'absolute',
+    bottom: 2,
+    width: 4,
+    height: 4,
+    borderRadius: 2,
     backgroundColor: ACTIVE_COLOR,
-  },
-  navLabel: {
-    fontSize: 10,
-    fontWeight: '600',
-  },
-  navLabelActive: {
-    color: '#FFFFFF',
   },
 
   pressed: {
     opacity: 0.7,
-    transform: [{ scale: 0.96 }],
+    transform: [{ scale: 0.95 }],
   },
 });

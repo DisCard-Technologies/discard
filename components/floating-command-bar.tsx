@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import { BlurView } from 'expo-blur';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -19,20 +20,16 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { ThemedText } from '@/components/themed-text';
-import { useColorScheme } from '@/hooks/use-color-scheme';
 
-// Colors matching the design
-const DOCK_BG_LIGHT = 'rgba(0,0,0,0.05)';
-const DOCK_BG_DARK = 'rgba(255,255,255,0.08)';
-const BORDER_LIGHT = 'rgba(0,0,0,0.08)';
-const BORDER_DARK = 'rgba(255,255,255,0.1)';
+// Colors matching the navbar design
+const CONTAINER_BG = 'rgba(30, 30, 30, 0.8)';
+const BORDER_COLOR = 'rgba(255, 255, 255, 0.1)';
 const ACTIVE_COLOR = '#10B981';
-const INACTIVE_ICON_COLOR = '#6B7280';
-const INACTIVE_ICON_COLOR_DARK = '#9BA1A6';
+const INACTIVE_ICON_COLOR = '#9BA1A6';
 const PLACEHOLDER_COLOR = '#6B7280';
 const SPARKLE_COLOR = '#10B981';
 const USER_BUBBLE_COLOR = '#10B981';
-const AI_BUBBLE_COLOR = '#374151';
+const AI_BUBBLE_COLOR = 'rgba(255, 255, 255, 0.08)';
 
 // Suggestions for command bar
 const SUGGESTIONS = [
@@ -73,13 +70,6 @@ export function FloatingCommandBar({
   onMicPress,
   bottomOffset = 72,
 }: FloatingCommandBarProps) {
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
-
-  // Theme-aware colors
-  const dockBg = isDark ? DOCK_BG_DARK : DOCK_BG_LIGHT;
-  const borderColor = isDark ? BORDER_DARK : BORDER_LIGHT;
-  const iconColor = isDark ? INACTIVE_ICON_COLOR_DARK : INACTIVE_ICON_COLOR;
 
   // Command bar state
   const [isExpanded, setIsExpanded] = useState(false);
@@ -209,123 +199,127 @@ export function FloatingCommandBar({
     <Animated.View
       style={[
         styles.container,
-        { bottom: bottomOffset, backgroundColor: dockBg, borderColor, zIndex },
+        { bottom: bottomOffset, zIndex },
         containerAnimatedStyle,
       ]}
     >
-      {isExpanded ? (
-        // Expanded State
-        <View style={styles.expandedContent}>
-          {/* Header with close button */}
-          <View style={styles.expandedHeader}>
-            <View style={styles.headerLeft}>
-              <Ionicons name="sparkles" size={16} color={SPARKLE_COLOR} />
-              <ThemedText style={styles.headerTitle}>DisCard Assistant</ThemedText>
-            </View>
-            <Pressable onPress={handleClose} style={styles.closeButton}>
-              <Ionicons name="close" size={20} color={INACTIVE_ICON_COLOR} />
-            </Pressable>
-          </View>
+      <BlurView intensity={40} tint="dark" style={styles.blurContainer}>
+        <View style={styles.innerContainer}>
+          {isExpanded ? (
+            // Expanded State
+            <View style={styles.expandedContent}>
+              {/* Header with close button */}
+              <View style={styles.expandedHeader}>
+                <View style={styles.headerLeft}>
+                  <Ionicons name="sparkles" size={16} color={SPARKLE_COLOR} />
+                  <ThemedText style={styles.headerTitle}>DisCard Assistant</ThemedText>
+                </View>
+                <Pressable onPress={handleClose} style={styles.closeButton}>
+                  <Ionicons name="close" size={20} color={INACTIVE_ICON_COLOR} />
+                </Pressable>
+              </View>
 
-          {/* Chat Messages or Suggestions */}
-          <ScrollView
-            ref={scrollViewRef}
-            style={styles.chatArea}
-            contentContainerStyle={styles.chatContent}
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-          >
-            {chatMessages.length === 0 ? (
-              // Show suggestions when no messages
-              <View style={styles.suggestionsContainer}>
-                <ThemedText style={styles.suggestionsLabel}>Try saying</ThemedText>
-                <View style={styles.suggestionsWrap}>
-                  {SUGGESTIONS.map((suggestion, index) => (
-                    <Pressable
-                      key={index}
-                      onPress={() => handleSuggestionPress(suggestion)}
-                      style={({ pressed }) => [styles.suggestionChip, pressed && styles.pressed]}
+              {/* Chat Messages or Suggestions */}
+              <ScrollView
+                ref={scrollViewRef}
+                style={styles.chatArea}
+                contentContainerStyle={styles.chatContent}
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+              >
+                {chatMessages.length === 0 ? (
+                  // Show suggestions when no messages
+                  <View style={styles.suggestionsContainer}>
+                    <ThemedText style={styles.suggestionsLabel}>Try saying</ThemedText>
+                    <View style={styles.suggestionsWrap}>
+                      {SUGGESTIONS.map((suggestion, index) => (
+                        <Pressable
+                          key={index}
+                          onPress={() => handleSuggestionPress(suggestion)}
+                          style={({ pressed }) => [styles.suggestionChip, pressed && styles.pressed]}
+                        >
+                          <ThemedText style={styles.suggestionText}>{suggestion}</ThemedText>
+                        </Pressable>
+                      ))}
+                    </View>
+                  </View>
+                ) : (
+                  // Show chat messages
+                  chatMessages.map((msg) => (
+                    <View
+                      key={msg.id}
+                      style={[styles.messageBubble, msg.role === 'user' ? styles.userBubble : styles.aiBubble]}
                     >
-                      <ThemedText style={styles.suggestionText}>{suggestion}</ThemedText>
-                    </Pressable>
-                  ))}
-                </View>
-              </View>
-            ) : (
-              // Show chat messages
-              chatMessages.map((msg) => (
-                <View
-                  key={msg.id}
-                  style={[styles.messageBubble, msg.role === 'user' ? styles.userBubble : styles.aiBubble]}
+                      {msg.role === 'assistant' && (
+                        <Ionicons name="sparkles" size={14} color={SPARKLE_COLOR} style={styles.bubbleIcon} />
+                      )}
+                      <ThemedText style={styles.messageText}>{msg.content}</ThemedText>
+                    </View>
+                  ))
+                )}
+
+                {isProcessing && (
+                  <View style={[styles.messageBubble, styles.aiBubble]}>
+                    <ActivityIndicator size="small" color={SPARKLE_COLOR} />
+                    <ThemedText style={[styles.messageText, { marginLeft: 8 }]}>Thinking...</ThemedText>
+                  </View>
+                )}
+              </ScrollView>
+
+              {/* Input Row */}
+              <View style={styles.inputRow}>
+                <TextInput
+                  ref={inputRef}
+                  value={commandText}
+                  onChangeText={setCommandText}
+                  placeholder="Ask anything or give a command..."
+                  placeholderTextColor={PLACEHOLDER_COLOR}
+                  style={styles.expandedInput}
+                  returnKeyType="send"
+                  onSubmitEditing={handleCommandSubmit}
+                  editable={!isProcessing}
+                />
+                <Pressable
+                  onPress={handleMicPress}
+                  style={({ pressed }) => [
+                    styles.inputButton,
+                    isListening && styles.inputButtonActive,
+                    pressed && styles.pressed,
+                  ]}
                 >
-                  {msg.role === 'assistant' && (
-                    <Ionicons name="sparkles" size={14} color={SPARKLE_COLOR} style={styles.bubbleIcon} />
-                  )}
-                  <ThemedText style={styles.messageText}>{msg.content}</ThemedText>
-                </View>
-              ))
-            )}
-
-            {isProcessing && (
-              <View style={[styles.messageBubble, styles.aiBubble]}>
-                <ActivityIndicator size="small" color={SPARKLE_COLOR} />
-                <ThemedText style={[styles.messageText, { marginLeft: 8 }]}>Thinking...</ThemedText>
+                  <Ionicons name="mic" size={20} color={isListening ? '#FFFFFF' : INACTIVE_ICON_COLOR} />
+                </Pressable>
+                <Pressable
+                  onPress={handleCommandSubmit}
+                  disabled={!commandText.trim() || isProcessing}
+                  style={({ pressed }) => [
+                    styles.sendButton,
+                    (!commandText.trim() || isProcessing) && styles.sendButtonDisabled,
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <Ionicons name="send" size={18} color="#FFFFFF" />
+                </Pressable>
               </View>
-            )}
-          </ScrollView>
-
-          {/* Input Row */}
-          <View style={styles.inputRow}>
-            <TextInput
-              ref={inputRef}
-              value={commandText}
-              onChangeText={setCommandText}
-              placeholder="Ask anything or give a command..."
-              placeholderTextColor={PLACEHOLDER_COLOR}
-              style={styles.expandedInput}
-              returnKeyType="send"
-              onSubmitEditing={handleCommandSubmit}
-              editable={!isProcessing}
-            />
-            <Pressable
-              onPress={handleMicPress}
-              style={({ pressed }) => [
-                styles.inputButton,
-                isListening && styles.inputButtonActive,
-                pressed && styles.pressed,
-              ]}
-            >
-              <Ionicons name="mic" size={20} color={isListening ? '#FFFFFF' : INACTIVE_ICON_COLOR} />
+            </View>
+          ) : (
+            // Collapsed State - Mini bar with sparkle + "Ask anything..." + mic
+            <Pressable onPress={handleBarPress} style={styles.collapsedBar}>
+              <Ionicons name="sparkles" size={18} color={SPARKLE_COLOR} />
+              <ThemedText style={styles.collapsedText}>Ask anything...</ThemedText>
+              <Pressable
+                onPress={(e) => {
+                  e.stopPropagation();
+                  handleMicPress();
+                }}
+                hitSlop={8}
+              >
+                <Ionicons name="mic-outline" size={20} color={INACTIVE_ICON_COLOR} />
+              </Pressable>
             </Pressable>
-            <Pressable
-              onPress={handleCommandSubmit}
-              disabled={!commandText.trim() || isProcessing}
-              style={({ pressed }) => [
-                styles.sendButton,
-                (!commandText.trim() || isProcessing) && styles.sendButtonDisabled,
-                pressed && styles.pressed,
-              ]}
-            >
-              <Ionicons name="send" size={18} color="#FFFFFF" />
-            </Pressable>
-          </View>
+          )}
         </View>
-      ) : (
-        // Collapsed State - Mini bar with sparkle + "Ask anything..." + mic
-        <Pressable onPress={handleBarPress} style={styles.collapsedBar}>
-          <Ionicons name="sparkles" size={18} color={SPARKLE_COLOR} />
-          <ThemedText style={[styles.collapsedText, { color: iconColor }]}>Ask anything...</ThemedText>
-          <Pressable
-            onPress={(e) => {
-              e.stopPropagation();
-              handleMicPress();
-            }}
-            hitSlop={8}
-          >
-            <Ionicons name="mic-outline" size={20} color={iconColor} />
-          </Pressable>
-        </Pressable>
-      )}
+      </BlurView>
     </Animated.View>
   );
 }
@@ -337,7 +331,18 @@ const styles = StyleSheet.create({
     right: 16,
     overflow: 'hidden',
     borderWidth: 1,
+    borderColor: BORDER_COLOR,
     borderRadius: 28,
+  },
+
+  blurContainer: {
+    flex: 1,
+    overflow: 'hidden',
+  },
+
+  innerContainer: {
+    flex: 1,
+    backgroundColor: CONTAINER_BG,
   },
 
   // Collapsed State
@@ -351,6 +356,7 @@ const styles = StyleSheet.create({
   collapsedText: {
     flex: 1,
     fontSize: 14,
+    color: INACTIVE_ICON_COLOR,
   },
 
   // Expanded State
@@ -372,13 +378,13 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 12,
     fontWeight: '500',
-    color: INACTIVE_ICON_COLOR,
+    color: '#9BA1A6',
   },
   closeButton: {
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: 'rgba(255,255,255,0.1)',
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -399,7 +405,7 @@ const styles = StyleSheet.create({
   suggestionsLabel: {
     fontSize: 10,
     fontWeight: '500',
-    color: INACTIVE_ICON_COLOR,
+    color: '#9BA1A6',
     textTransform: 'uppercase',
     letterSpacing: 1,
     marginBottom: 10,
@@ -410,7 +416,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   suggestionChip: {
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 16,
@@ -456,7 +462,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
     borderRadius: 24,
     paddingHorizontal: 16,
     paddingVertical: 8,

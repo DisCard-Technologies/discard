@@ -9,20 +9,27 @@ import { ThemedText } from '@/components/themed-text';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { Fonts } from '@/constants/theme';
 
+export type ActivePage = 'portfolio' | 'home' | 'card';
+
 interface TopBarProps {
   walletAddress: string;
   onPortfolioTap?: () => void;
   onCardTap?: () => void;
   cardCount?: number;
+  activePage?: ActivePage;
 }
 
-export function TopBar({ walletAddress, onPortfolioTap, onCardTap, cardCount = 0 }: TopBarProps) {
+export function TopBar({ walletAddress, onPortfolioTap, onCardTap, cardCount = 0, activePage = 'home' }: TopBarProps) {
   const [copied, setCopied] = useState(false);
 
   const primaryColor = useThemeColor({}, 'tint');
   const mutedColor = useThemeColor({ light: '#687076', dark: '#9BA1A6' }, 'icon');
   const cardBg = useThemeColor({ light: 'rgba(0,0,0,0.05)', dark: 'rgba(255,255,255,0.08)' }, 'background');
   const borderColor = useThemeColor({ light: 'rgba(0,0,0,0.08)', dark: 'rgba(255,255,255,0.1)' }, 'background');
+
+  // Active states for icons
+  const isPortfolioActive = activePage === 'portfolio';
+  const isCardActive = activePage === 'card';
 
   const truncatedAddress = walletAddress
     ? `${walletAddress.slice(0, 4)}...${walletAddress.slice(-4)}`
@@ -53,11 +60,18 @@ export function TopBar({ walletAddress, onPortfolioTap, onCardTap, cardCount = 0
         onPress={handlePortfolioTap}
         style={({ pressed }) => [
           styles.iconButton,
-          { backgroundColor: cardBg, borderColor },
+          {
+            backgroundColor: isPortfolioActive ? `${primaryColor}15` : cardBg,
+            borderColor: isPortfolioActive ? primaryColor : borderColor,
+          },
           pressed && styles.pressed,
         ]}
       >
-        <Ionicons name="layers-outline" size={20} color={mutedColor} />
+        <Ionicons
+          name={isPortfolioActive ? "layers" : "layers-outline"}
+          size={20}
+          color={isPortfolioActive ? primaryColor : mutedColor}
+        />
       </Pressable>
 
       {/* Center: Wallet Address Pill */}
@@ -91,12 +105,19 @@ export function TopBar({ walletAddress, onPortfolioTap, onCardTap, cardCount = 0
         onPress={handleCardTap}
         style={({ pressed }) => [
           styles.iconButton,
-          { backgroundColor: cardBg, borderColor },
+          {
+            backgroundColor: isCardActive ? `${primaryColor}15` : cardBg,
+            borderColor: isCardActive ? primaryColor : borderColor,
+          },
           pressed && styles.pressed,
         ]}
       >
-        <Ionicons name="card-outline" size={20} color={mutedColor} />
-        {cardCount > 0 && (
+        <Ionicons
+          name={isCardActive ? "card" : "card-outline"}
+          size={20}
+          color={isCardActive ? primaryColor : mutedColor}
+        />
+        {cardCount > 0 && !isCardActive && (
           <View style={styles.cardBadge}>
             <ThemedText style={styles.cardBadgeText}>{cardCount > 9 ? '9+' : cardCount}</ThemedText>
           </View>

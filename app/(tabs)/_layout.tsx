@@ -9,8 +9,9 @@ export default function TabLayout() {
   const insets = useSafeAreaInsets();
 
   // Calculate bottom offset for command bar:
-  // navbar height (56) + gap (8) + safe area bottom or minimum padding
-  const commandBarBottomOffset = 56 + 8 + Math.max(insets.bottom, 8);
+  // New compact navbar: content (56) + paddingTop (8) + paddingBottom + gap
+  const navbarHeight = 56 + 8 + Math.max(insets.bottom, 12);
+  const commandBarBottomOffset = navbarHeight + 8;
 
   return (
     <View style={styles.container}>

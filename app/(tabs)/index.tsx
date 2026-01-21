@@ -2,7 +2,6 @@ import { useState, useMemo } from 'react';
 import { StyleSheet, View, Pressable, Keyboard } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, { useSharedValue, useAnimatedStyle, withTiming } from 'react-native-reanimated';
 import { useQuery } from 'convex/react';
@@ -10,7 +9,6 @@ import { api } from '@/convex/_generated/api';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { TopBar } from '@/components/top-bar';
 import { AnimatedCounter } from '@/components/animated-counter';
 import { TransactionStack, StackTransaction } from '@/components/transaction-stack';
 import { QuickActions } from '@/components/quick-actions';
@@ -19,7 +17,6 @@ import { useThemeColor } from '@/hooks/use-theme-color';
 import { useAuth } from '@/stores/authConvex';
 import { useFunding } from '@/stores/fundingConvex';
 import { useTokenHoldings } from '@/hooks/useTokenHoldings';
-import { useCards } from '@/stores/cardsConvex';
 import { positiveColor, negativeColor } from '@/constants/theme';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
@@ -28,10 +25,10 @@ const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 export interface HomeScreenContentProps {
   onNavigateToPortfolio?: () => void;
   onNavigateToCard?: () => void;
+  topInset?: number;
 }
 
-export function HomeScreenContent({ onNavigateToPortfolio, onNavigateToCard }: HomeScreenContentProps) {
-  const insets = useSafeAreaInsets();
+export function HomeScreenContent({ topInset = 0 }: HomeScreenContentProps) {
   const colorScheme = useColorScheme();
   const mutedColor = useThemeColor({ light: '#687076', dark: '#9BA1A6' }, 'icon');
 
@@ -39,10 +36,6 @@ export function HomeScreenContent({ onNavigateToPortfolio, onNavigateToCard }: H
   const { user } = useAuth();
   const { state: fundingState } = useFunding();
   const { totalValue: cryptoValue } = useTokenHoldings(user?.solanaAddress || null);
-  const { state: cardsState } = useCards();
-
-  // Count of user's cards
-  const cardCount = cardsState?.cards?.length || 0;
 
   // Calculate net worth from funding balance + crypto holdings
   const netWorth = useMemo(() => {
@@ -140,18 +133,12 @@ export function HomeScreenContent({ onNavigateToPortfolio, onNavigateToCard }: H
     pointerEvents: backdropOpacity.value > 0 ? 'auto' : 'none',
   }));
 
-  // Real wallet address from auth
-  const walletAddress = user?.solanaAddress || '7F3a...8b2E';
-
-  // Navigation handlers for top bar - use callbacks if provided, otherwise use router
-  const handlePortfolioTap = onNavigateToPortfolio || (() => router.push('/portfolio'));
-  const handleCardTap = onNavigateToCard || (() => router.push('/card'));
-
   // Quick action handlers
   const handleSend = () => router.push('/(tabs)/transfer');
   const handleReceive = () => router.push('/receive');
-  const handleSwap = () => router.push('/swap');
   const handleScanQR = () => router.push('/transfer/scan');
+  const handleSwap = () => router.push('/swap');
+  const handleFund = () => router.push('/buy-crypto');
 
   const handleTransactionTap = (tx: StackTransaction) => {
     // Transaction details - could navigate to explorer or detail page
@@ -180,22 +167,11 @@ export function HomeScreenContent({ onNavigateToPortfolio, onNavigateToCard }: H
           end={{ x: 0.5, y: 1 }}
         />
       </View>
-      
-      {/* Safe area for top (status bar) */}
-      <View style={{ height: insets.top }} />
-
-      {/* Top Bar */}
-      <TopBar
-        walletAddress={walletAddress}
-        onPortfolioTap={handlePortfolioTap}
-        onCardTap={handleCardTap}
-        cardCount={cardCount}
-      />
 
       {/* Main Content */}
       <View style={styles.content}>
         {/* Hero Section - Balance Display */}
-        <View style={styles.heroSection}>
+        <View style={[styles.heroSection, { paddingTop: topInset + 16 }]}>
           <ThemedText style={[styles.balanceLabel, { color: mutedColor }]}>
             Spendable Balance
           </ThemedText>
@@ -228,8 +204,9 @@ export function HomeScreenContent({ onNavigateToPortfolio, onNavigateToCard }: H
         <QuickActions
           onSend={handleSend}
           onReceive={handleReceive}
-          onSwap={handleSwap}
           onScanQR={handleScanQR}
+          onSwap={handleSwap}
+          onFund={handleFund}
         />
       </View>
 

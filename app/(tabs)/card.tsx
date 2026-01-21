@@ -31,7 +31,6 @@ import type { Doc } from '@/convex/_generated/dataModel';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { TopBar } from '@/components/top-bar';
 import { CreateCardModal } from '@/components/create-card-modal';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { useColorScheme } from '@/hooks/use-color-scheme';
@@ -46,6 +45,7 @@ const CARD_MARGIN = 12;
 export interface CardScreenContentProps {
   onNavigateToPortfolio?: () => void;
   onNavigateToHome?: () => void;
+  topInset?: number;
 }
 
 // MCC code to category mapping
@@ -100,7 +100,7 @@ interface DisplayTransaction {
 const DRAWER_CLOSED_HEIGHT = 220;
 const DRAWER_OPEN_HEIGHT = 380;
 
-export function CardScreenContent({ onNavigateToPortfolio, onNavigateToHome }: CardScreenContentProps) {
+export function CardScreenContent({ topInset = 0 }: CardScreenContentProps) {
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
@@ -115,9 +115,6 @@ export function CardScreenContent({ onNavigateToPortfolio, onNavigateToHome }: C
   const { user } = useAuth();
   const { state: cardsState } = useCards();
   const { freezeCard, unfreezeCard, createCard, getCardSecrets } = useCardOperations();
-
-  // Count of user's cards
-  const cardCount = cardsState?.cards?.length || 0;
 
   // Card carousel state
   const [activeCardIndex, setActiveCardIndex] = useState(0);
@@ -238,12 +235,6 @@ export function CardScreenContent({ onNavigateToPortfolio, onNavigateToHome }: C
   const hasCards = cardsState?.cards && cardsState.cards.length > 0;
   // Only show loading if cardsState exists and isLoading is explicitly true
   const isLoadingCards = cardsState?.isLoading === true;
-
-  // Navigation handlers for top bar - use callbacks if provided, otherwise use router
-  const handlePortfolioTap = onNavigateToPortfolio || (() => router.push('/portfolio'));
-  const handleCardTap = onNavigateToHome || (() => {});
-
-  const walletAddress = user?.solanaAddress || '';
 
   // Stacked transactions helpers
   const getStackedTransactions = useCallback(() => {
@@ -418,13 +409,12 @@ export function CardScreenContent({ onNavigateToPortfolio, onNavigateToHome }: C
   return (
     <ThemedView style={styles.container}>
       <StatusBar style={isDark ? 'light' : 'dark'} />
-      <View style={{ height: insets.top }} />
 
       {/* Ambient gradient background */}
       <View style={styles.ambientGradient}>
         <LinearGradient
-          colors={isDark 
-            ? ['rgba(16, 185, 129, 0.08)', 'transparent'] 
+          colors={isDark
+            ? ['rgba(16, 185, 129, 0.08)', 'transparent']
             : ['rgba(16, 185, 129, 0.05)', 'transparent']}
           style={StyleSheet.absoluteFill}
           start={{ x: 0.5, y: 0 }}
@@ -432,16 +422,9 @@ export function CardScreenContent({ onNavigateToPortfolio, onNavigateToHome }: C
         />
       </View>
 
-      <TopBar
-        walletAddress={walletAddress}
-        onPortfolioTap={handlePortfolioTap}
-        onCardTap={handleCardTap}
-        cardCount={cardCount}
-      />
-
       {/* Loading State */}
       {isLoadingCards && (
-        <View style={styles.emptyStateOverlay}>
+        <View style={[styles.emptyStateOverlay, { paddingTop: topInset }]}>
           <ActivityIndicator size="large" color={primaryColor} />
           <ThemedText style={[styles.loadingCardsText, { color: mutedColor }]}>
             Loading cards...
@@ -451,7 +434,7 @@ export function CardScreenContent({ onNavigateToPortfolio, onNavigateToHome }: C
 
       {/* Empty State - No Cards */}
       {!hasCards && !isLoadingCards ? (
-        <View style={styles.emptyStateOverlay}>
+        <View style={[styles.emptyStateOverlay, { paddingTop: topInset }]}>
           <View style={styles.emptyStateContent}>
             <View style={[styles.emptyStateIconContainer, { backgroundColor: `${primaryColor}20` }]}>
               <Ionicons name="card-outline" size={48} color={primaryColor} />
@@ -474,7 +457,7 @@ export function CardScreenContent({ onNavigateToPortfolio, onNavigateToHome }: C
           </View>
         </View>
       ) : !isLoadingCards && (
-        <View style={styles.mainContent}>
+        <View style={[styles.mainContent, { paddingTop: topInset }]}>
           {/* Card Carousel */}
           <View style={styles.carouselContainer}>
             {/* Side peek indicators */}

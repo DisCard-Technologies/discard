@@ -1,26 +1,41 @@
 /**
  * DisCard 2035 - Local Contacts Storage
  *
- * Persistent local storage for contacts using AsyncStorage.
+ * Persistent local storage for contacts using expo-file-system.
  * This stores contacts on the user's device for offline access
  * and reduces server storage costs.
  */
 
-// AsyncStorage may not be available in all environments (Expo Go sometimes)
-type AsyncStorageType = {
-  getItem: (key: string) => Promise<string | null>;
-  setItem: (key: string, value: string) => Promise<void>;
-  removeItem: (key: string) => Promise<void>;
+import * as FileSystem from 'expo-file-system/legacy';
+
+// Storage adapter using expo-file-system (always available in Expo Go)
+const Storage = {
+  async getItem(key: string): Promise<string | null> {
+    try {
+      const fileUri = `${FileSystem.documentDirectory}${key}.json`;
+      const info = await FileSystem.getInfoAsync(fileUri);
+      if (!info.exists) return null;
+      return await FileSystem.readAsStringAsync(fileUri);
+    } catch {
+      return null;
+    }
+  },
+  async setItem(key: string, value: string): Promise<void> {
+    const fileUri = `${FileSystem.documentDirectory}${key}.json`;
+    await FileSystem.writeAsStringAsync(fileUri, value);
+  },
+  async removeItem(key: string): Promise<void> {
+    try {
+      const fileUri = `${FileSystem.documentDirectory}${key}.json`;
+      const info = await FileSystem.getInfoAsync(fileUri);
+      if (info.exists) {
+        await FileSystem.deleteAsync(fileUri);
+      }
+    } catch {
+      // Ignore errors on removal
+    }
+  },
 };
-
-let AsyncStorage: AsyncStorageType | null = null;
-
-try {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  AsyncStorage = require("@react-native-async-storage/async-storage").default;
-} catch {
-  console.warn("[ContactsStorage] AsyncStorage not available");
-}
 
 // ============================================================================
 // Types
@@ -113,12 +128,8 @@ function generateAvatarColor(name: string): string {
 // ============================================================================
 
 async function loadContacts(): Promise<LocalContact[]> {
-  if (!AsyncStorage) {
-    console.warn("[ContactsStorage] AsyncStorage not available, returning empty contacts");
-    return [];
-  }
   try {
-    const data = await AsyncStorage.getItem(STORAGE_KEY);
+    const data = await Storage.getItem(STORAGE_KEY);
     if (!data) return [];
 
     const parsed: ContactsData = JSON.parse(data);
@@ -134,17 +145,13 @@ async function loadContacts(): Promise<LocalContact[]> {
 }
 
 async function saveContacts(contacts: LocalContact[]): Promise<void> {
-  if (!AsyncStorage) {
-    console.warn("[ContactsStorage] AsyncStorage not available, cannot save contacts");
-    return;
-  }
   try {
     const data: ContactsData = {
       version: CURRENT_VERSION,
       contacts,
       lastUpdated: Date.now(),
     };
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    await Storage.setItem(STORAGE_KEY, JSON.stringify(data));
   } catch (error) {
     console.error("[ContactsStorage] Failed to save contacts:", error);
     throw error;
@@ -511,8 +518,7 @@ export const ContactsStorage = {
    * Clear all contacts (for testing/reset)
    */
   async clearAll(): Promise<void> {
-    if (!AsyncStorage) return;
-    await AsyncStorage.removeItem(STORAGE_KEY);
+    await Storage.removeItem(STORAGE_KEY);
   },
 
   /**

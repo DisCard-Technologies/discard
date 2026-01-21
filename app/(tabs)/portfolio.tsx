@@ -17,12 +17,10 @@ import { LinearGradient } from 'expo-linear-gradient';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { TopBar } from '@/components/top-bar';
 import { AnimatedCounter } from '@/components/animated-counter';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { useAuth, useCurrentUserId } from '@/stores/authConvex';
-import { useCards } from '@/stores/cardsConvex';
+import { useAuth } from '@/stores/authConvex';
 import { useTokenHoldings } from '@/hooks/useTokenHoldings';
 import { positiveColor, negativeColor } from '@/constants/theme';
 
@@ -30,6 +28,7 @@ import { positiveColor, negativeColor } from '@/constants/theme';
 export interface PortfolioScreenContentProps {
   onNavigateToHome?: () => void;
   onNavigateToCard?: () => void;
+  topInset?: number;
 }
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -95,7 +94,7 @@ const DRAWER_CLOSED_HEIGHT = 340;
 const DRAWER_OPEN_HEIGHT = SCREEN_HEIGHT - 100;
 const SPRING_CONFIG = { damping: 30, stiffness: 300, mass: 1 };
 
-export function PortfolioScreenContent({ onNavigateToHome, onNavigateToCard }: PortfolioScreenContentProps) {
+export function PortfolioScreenContent({ topInset = 0 }: PortfolioScreenContentProps) {
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
@@ -109,9 +108,7 @@ export function PortfolioScreenContent({ onNavigateToHome, onNavigateToCard }: P
 
   // Real data from hooks
   const { user } = useAuth();
-  const { state: cardsState } = useCards();
   const walletAddress = user?.solanaAddress || null;
-  const cardCount = cardsState?.cards?.length || 0;
 
   const {
     holdings: tokenHoldings,
@@ -248,10 +245,6 @@ export function PortfolioScreenContent({ onNavigateToHome, onNavigateToCard }: P
     }
   };
 
-  // Navigation handlers
-  const handlePortfolioTap = onNavigateToHome || (() => {});
-  const handleCardTap = onNavigateToCard || (() => router.push('/card'));
-
   const timePeriods: TimePeriod[] = ['H', 'D', 'W', 'M', 'Y', 'Max'];
 
   return (
@@ -269,18 +262,8 @@ export function PortfolioScreenContent({ onNavigateToHome, onNavigateToCard }: P
         end={{ x: 0.5, y: 1 }}
       />
 
-      <View style={{ height: insets.top }} />
-
-      {/* Top Bar */}
-      <TopBar
-        walletAddress={walletAddress || ''}
-        onPortfolioTap={handlePortfolioTap}
-        onCardTap={handleCardTap}
-        cardCount={cardCount}
-      />
-
       {/* Hero Section - Above Drawer */}
-      <View style={styles.heroSection}>
+      <View style={[styles.heroSection, { paddingTop: topInset + 24 }]}>
         <ThemedText style={[styles.portfolioLabel, { color: mutedColor }]}>
           Your Portfolio
         </ThemedText>
