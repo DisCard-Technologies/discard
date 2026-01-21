@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useState } from 'react';
+import { useEffect, useCallback, useState, useMemo } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Alert } from 'react-native';
 import { MarketDetailScreen } from '@/components/market-detail-screen';
@@ -25,6 +25,15 @@ const formatVolume = (volume: number): string => {
   return `$${volume.toFixed(0)}`;
 };
 
+// Helper to check if market is live (ending within 7 days and status open)
+const isMarketLive = (endDate: string): boolean => {
+  const end = new Date(endDate);
+  const now = new Date();
+  const diffMs = end.getTime() - now.getTime();
+  const diffDays = diffMs / (1000 * 60 * 60 * 24);
+  return diffDays > 0 && diffDays <= 7;
+};
+
 export default function MarketDetailRoute() {
   const params = useLocalSearchParams<{
     id: string; // DFlow market ID
@@ -36,6 +45,18 @@ export default function MarketDetailRoute() {
     endDate?: string;
     ticker?: string;
     resolutionSource?: string;
+    description?: string;
+    // Sports match fields
+    isLive?: string;
+    liveMinutes?: string;
+    homeTeamName?: string;
+    homeTeamShort?: string;
+    homeTeamScore?: string;
+    awayTeamName?: string;
+    awayTeamShort?: string;
+    awayTeamScore?: string;
+    // Multi-outcome support (JSON stringified)
+    outcomes?: string;
   }>();
 
   // Auth and user info
@@ -63,6 +84,18 @@ export default function MarketDetailRoute() {
 
   const [isBetting, setIsBetting] = useState(false);
 
+  // Parse outcomes if provided
+  const parsedOutcomes = useMemo(() => {
+    if (params.outcomes) {
+      try {
+        return JSON.parse(params.outcomes);
+      } catch {
+        return undefined;
+      }
+    }
+    return undefined;
+  }, [params.outcomes]);
+
   // Build market data from route params (real API data)
   const marketData = params.question ? {
     marketId: params.id,
@@ -74,7 +107,24 @@ export default function MarketDetailRoute() {
     expiresIn: params.endDate ? getTimeRemaining(params.endDate) : 'TBD',
     ticker: params.ticker,
     resolutionSource: params.resolutionSource,
+    description: params.description,
     traders: 0, // Would come from API
+    // Live status
+    isLive: params.isLive === 'true' || (params.endDate ? isMarketLive(params.endDate) : false),
+    liveMinutes: params.liveMinutes ? parseInt(params.liveMinutes, 10) : undefined,
+    // Sports match data
+    homeTeam: params.homeTeamName ? {
+      name: params.homeTeamName,
+      shortName: params.homeTeamShort || params.homeTeamName.substring(0, 3).toUpperCase(),
+      score: params.homeTeamScore ? parseInt(params.homeTeamScore, 10) : undefined,
+    } : undefined,
+    awayTeam: params.awayTeamName ? {
+      name: params.awayTeamName,
+      shortName: params.awayTeamShort || params.awayTeamName.substring(0, 3).toUpperCase(),
+      score: params.awayTeamScore ? parseInt(params.awayTeamScore, 10) : undefined,
+    } : undefined,
+    // Multi-outcome support
+    outcomes: parsedOutcomes,
   } : null;
 
   // Handle private bet placement - all bets are private by default
@@ -221,10 +271,27 @@ export default function MarketDetailRoute() {
     return null;
   }
 
+  // Handle multi-outcome bet placement
+  const handleBuyOutcome = useCallback(async (outcomeId: string, amountDollars: number = 10) => {
+    // Map outcomeId to yes/no for binary markets, or handle custom outcomes
+    if (outcomeId === 'yes' || outcomeId === 'no') {
+      await handlePlaceBet(outcomeId, amountDollars);
+    } else {
+      // For multi-outcome markets, we'd need a different API call
+      // For now, just show an alert
+      Alert.alert(
+        'Multi-Outcome Betting',
+        `Betting on "${outcomeId}" is coming soon!`,
+        [{ text: 'OK' }]
+      );
+    }
+  }, [handlePlaceBet]);
+
   return (
     <MarketDetailScreen
       market={marketData}
       onBack={() => router.back()}
+      onBuyOutcome={handleBuyOutcome}
       onBuyYes={(amount) => handlePlaceBet('yes', amount)}
       onBuyNo={(amount) => handlePlaceBet('no', amount)}
       onSell={handleSell}

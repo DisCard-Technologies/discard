@@ -116,11 +116,19 @@ export default function ExploreScreen() {
     router.push({
       pathname: '/market-detail',
       params: {
+        id: market.marketId,
         marketId: market.marketId,
         ticker: market.ticker,
         question: market.question,
+        category: market.category,
         yesPrice: market.yesPrice.toString(),
         noPrice: market.noPrice.toString(),
+        volume24h: market.volume24h.toString(),
+        endDate: market.endDate,
+        resolutionSource: market.resolutionSource || '',
+        isLive: market.isLive ? 'true' : 'false',
+        // Pass outcomes if available
+        outcomes: market.outcomes ? JSON.stringify(market.outcomes) : '',
       },
     });
   };

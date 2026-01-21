@@ -333,6 +333,8 @@ export function ExploreView() {
                       endDate: market.endDate,
                       ticker: market.ticker,
                       resolutionSource: market.resolutionSource || '',
+                      isLive: market.isLive ? 'true' : 'false',
+                      outcomes: market.outcomes ? JSON.stringify(market.outcomes) : '',
                     },
                   })}
                   style={({ pressed }) => [styles.marketCard, { backgroundColor: cardBg }, pressed && styles.rowPressed]}

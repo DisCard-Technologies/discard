@@ -1,29 +1,49 @@
 import { useState, useMemo } from 'react';
-import { StyleSheet, View, Pressable, ScrollView } from 'react-native';
+import { StyleSheet, View, Pressable, ScrollView, Dimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import Svg, { Path, Defs, LinearGradient, Stop, Circle } from 'react-native-svg';
+import Svg, { Path, Defs, LinearGradient, Stop, Circle, Line, Text as SvgText } from 'react-native-svg';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { useThemeColor } from '@/hooks/use-theme-color';
+import { positiveColor, negativeColor } from '@/constants/theme';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
+interface MarketOutcome {
+  id: string;
+  label: string;
+  probability: number;
+  icon?: string;
+  scoreBadge?: string;
+  color?: string;
+}
 
 interface MarketDetailProps {
   market: {
+    marketId?: string;
     question: string;
     category: string;
     volume: string;
     yesPrice: number;
     noPrice: number;
     expiresIn: string;
-    traders: number;
+    traders?: number;
     trending?: boolean;
     description?: string;
     resolutionSource?: string;
     createdAt?: string;
+    // Sports match specific
+    isLive?: boolean;
+    liveMinutes?: number;
+    homeTeam?: { name: string; shortName: string; score?: number };
+    awayTeam?: { name: string; shortName: string; score?: number };
+    // Multi-outcome support
+    outcomes?: MarketOutcome[];
   };
   position?: {
-    side: 'yes' | 'no';
+    side: string;
     shares: number;
     avgPrice: number;
     currentValue: number;
@@ -31,23 +51,27 @@ interface MarketDetailProps {
     pnlPercent: number;
   };
   onBack: () => void;
+  onBuyOutcome?: (outcomeId: string, amount: number) => void;
   onBuyYes?: (amount: number) => void;
   onBuyNo?: (amount: number) => void;
   onSell?: () => void;
 }
 
+// Chart time periods
+type TimePeriod = 'GAME' | '1D' | '1W' | '1M' | 'ALL';
+
 export function MarketDetailScreen({
   market,
   position,
   onBack,
+  onBuyOutcome,
   onBuyYes,
   onBuyNo,
   onSell,
 }: MarketDetailProps) {
   const insets = useSafeAreaInsets();
-  const [isWatchlisted, setIsWatchlisted] = useState(false);
-  const [selectedAmount, setSelectedAmount] = useState<number>(10);
-  const [selectedSide, setSelectedSide] = useState<'yes' | 'no'>('yes');
+  const [selectedPeriod, setSelectedPeriod] = useState<TimePeriod>('1D');
+  const [selectedOutcomeId, setSelectedOutcomeId] = useState<string | null>(null);
 
   const hasPosition = !!position;
 
@@ -55,329 +79,470 @@ export function MarketDetailScreen({
   const mutedColor = useThemeColor({ light: '#687076', dark: '#9BA1A6' }, 'icon');
   const textColor = useThemeColor({}, 'text');
   const cardBg = useThemeColor({ light: '#f4f4f5', dark: '#1c1c1e' }, 'background');
+  const borderColor = useThemeColor({ light: 'rgba(0,0,0,0.08)', dark: 'rgba(255,255,255,0.1)' }, 'background');
 
-  // Calculate potential payout
-  const potentialPayout =
-    selectedSide === 'yes'
-      ? (selectedAmount / market.yesPrice).toFixed(2)
-      : (selectedAmount / market.noPrice).toFixed(2);
-
-  // Mock price history for chart
-  const priceHistory = useMemo(() => {
-    const points: { yes: number; no: number }[] = [];
-    let yesBase = market.yesPrice - 0.15;
-    for (let i = 0; i < 30; i++) {
-      const variance = (Math.random() - 0.5) * 0.1;
-      yesBase = Math.max(0.05, Math.min(0.95, yesBase + variance));
-      points.push({ yes: yesBase, no: 1 - yesBase });
+  // Convert binary yes/no to outcomes if not provided
+  const outcomes: MarketOutcome[] = useMemo(() => {
+    if (market.outcomes && market.outcomes.length > 0) {
+      return market.outcomes;
     }
-    points[points.length - 1] = { yes: market.yesPrice, no: market.noPrice };
-    return points;
-  }, [market.yesPrice, market.noPrice]);
+    // Default binary market
+    return [
+      { id: 'yes', label: 'Yes', probability: market.yesPrice, color: positiveColor },
+      { id: 'no', label: 'No', probability: market.noPrice, color: negativeColor },
+    ];
+  }, [market.outcomes, market.yesPrice, market.noPrice]);
 
-  // Generate SVG path for yes price
-  const generatePath = () => {
-    const width = 300;
-    const height = 80;
-    const padding = 5;
+  // Find leading outcome
+  const leadingOutcome = useMemo(() => {
+    return outcomes.reduce((max, o) => (o.probability > max.probability ? o : max));
+  }, [outcomes]);
+
+  // Is this a sports match with team data?
+  const isSportsMatch = !!(market.homeTeam && market.awayTeam);
+
+  // Generate mock price history for chart
+  const priceHistory = useMemo(() => {
+    const points: { [key: string]: number }[] = [];
+    const numPoints = 50;
+
+    // Initialize starting values for each outcome
+    const startValues: { [key: string]: number } = {};
+    outcomes.forEach((o) => {
+      startValues[o.id] = o.probability - 0.1 + Math.random() * 0.05;
+    });
+
+    for (let i = 0; i < numPoints; i++) {
+      const point: { [key: string]: number } = {};
+      outcomes.forEach((o) => {
+        const prev = i === 0 ? startValues[o.id] : points[i - 1][o.id];
+        const variance = (Math.random() - 0.5) * 0.03;
+        point[o.id] = Math.max(0.01, Math.min(0.99, prev + variance));
+      });
+      points.push(point);
+    }
+
+    // Ensure last point matches current probabilities
+    const lastPoint: { [key: string]: number } = {};
+    outcomes.forEach((o) => {
+      lastPoint[o.id] = o.probability;
+    });
+    points[numPoints - 1] = lastPoint;
+
+    return points;
+  }, [outcomes]);
+
+  // Generate SVG path for an outcome
+  const generatePath = (outcomeId: string) => {
+    const width = SCREEN_WIDTH - 48;
+    const height = 160;
+    const padding = 16;
 
     return priceHistory
       .map((point, i) => {
         const x = padding + (i / (priceHistory.length - 1)) * (width - 2 * padding);
-        const y = height - padding - point.yes * (height - 2 * padding);
+        const y = height - padding - (point[outcomeId] || 0) * (height - 2 * padding);
         return `${i === 0 ? 'M' : 'L'} ${x} ${y}`;
       })
       .join(' ');
   };
 
-  const lastYPrice = priceHistory[priceHistory.length - 1]?.yes || market.yesPrice;
-  const chartY = 80 - 5 - lastYPrice * 70;
+  // Get outcome color
+  const getOutcomeColor = (outcome: MarketOutcome, isLeading: boolean): string => {
+    if (outcome.color) return outcome.color;
+    if (outcome.id === 'yes') return positiveColor;
+    if (outcome.id === 'no') return negativeColor;
+    if (isLeading) return '#F87171'; // Coral for leading
+    return mutedColor;
+  };
+
+  // Handle outcome selection for betting
+  const handleOutcomePress = (outcomeId: string) => {
+    setSelectedOutcomeId(outcomeId === selectedOutcomeId ? null : outcomeId);
+  };
+
+  // Handle bet placement
+  const handlePlaceBet = (amount: number = 10) => {
+    if (!selectedOutcomeId) return;
+
+    if (onBuyOutcome) {
+      onBuyOutcome(selectedOutcomeId, amount);
+    } else if (selectedOutcomeId === 'yes' && onBuyYes) {
+      onBuyYes(amount);
+    } else if (selectedOutcomeId === 'no' && onBuyNo) {
+      onBuyNo(amount);
+    }
+  };
 
   return (
     <ThemedView style={styles.container}>
       {/* Header */}
-      <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
+      <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
         <Pressable onPress={onBack} style={styles.backButton}>
           <Ionicons name="arrow-back" size={20} color={textColor} />
         </Pressable>
-        <View style={[styles.categoryBadge, { backgroundColor: cardBg }]}>
-          <ThemedText style={[styles.categoryText, { color: mutedColor }]}>{market.category}</ThemedText>
-        </View>
-        <Pressable onPress={() => setIsWatchlisted(!isWatchlisted)} style={styles.watchlistButton}>
-          <Ionicons
-            name={isWatchlisted ? 'star' : 'star-outline'}
-            size={20}
-            color={isWatchlisted ? '#f59e0b' : mutedColor}
-          />
-        </Pressable>
+
+        {/* Live Badge */}
+        {market.isLive && (
+          <View style={styles.liveBadge}>
+            <View style={styles.liveDot} />
+            <ThemedText style={styles.liveText}>LIVE</ThemedText>
+            {market.liveMinutes && (
+              <ThemedText style={styles.liveMinutes}>• {market.liveMinutes}'</ThemedText>
+            )}
+          </View>
+        )}
+
+        <View style={{ width: 40 }} />
       </View>
 
       <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 20 }]}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 100 }]}
         showsVerticalScrollIndicator={false}
       >
-        {/* Question */}
-        <ThemedText style={styles.questionText}>{market.question}</ThemedText>
-
-        {/* Current Prices */}
-        <View style={styles.pricesRow}>
-          <View style={[styles.priceCard, { backgroundColor: 'rgba(34,197,94,0.1)', borderColor: 'rgba(34,197,94,0.2)' }]}>
-            <View style={styles.priceCardHeader}>
-              <ThemedText style={[styles.priceCardLabel, { color: '#22c55e' }]}>YES</ThemedText>
-              <Ionicons name="checkmark-circle" size={16} color="#22c55e" />
+        {/* Sports Match Header */}
+        {isSportsMatch ? (
+          <View style={styles.matchHeader}>
+            {/* Home Team */}
+            <View style={styles.teamContainer}>
+              <ThemedText style={[styles.teamShortName, { color: primaryColor }]}>
+                {market.homeTeam!.shortName}
+              </ThemedText>
+              <ThemedText style={[styles.teamFullName, { color: mutedColor }]}>
+                {market.homeTeam!.name}
+              </ThemedText>
             </View>
-            <ThemedText style={[styles.priceCardValue, { color: '#22c55e' }]}>
-              ${market.yesPrice.toFixed(2)}
-            </ThemedText>
-            <ThemedText style={[styles.priceCardChance, { color: mutedColor }]}>
-              {(market.yesPrice * 100).toFixed(0)}% chance
+
+            {/* Score */}
+            <View style={styles.scoreContainer}>
+              <ThemedText style={styles.scoreText}>
+                {market.homeTeam!.score ?? '-'} - {market.awayTeam!.score ?? '-'}
+              </ThemedText>
+              <View style={[styles.volumeBadge, { backgroundColor: cardBg }]}>
+                <ThemedText style={[styles.volumeText, { color: mutedColor }]}>
+                  {market.volume} Vol.
+                </ThemedText>
+              </View>
+            </View>
+
+            {/* Away Team */}
+            <View style={styles.teamContainer}>
+              <ThemedText style={[styles.teamShortName, { color: '#F87171' }]}>
+                {market.awayTeam!.shortName}
+              </ThemedText>
+              <ThemedText style={[styles.teamFullName, { color: mutedColor }]}>
+                {market.awayTeam!.name}
+              </ThemedText>
+            </View>
+          </View>
+        ) : (
+          /* Regular Market Header */
+          <View style={styles.questionHeader}>
+            <ThemedText style={styles.questionText}>{market.question}</ThemedText>
+            <View style={[styles.volumeBadge, { backgroundColor: cardBg }]}>
+              <ThemedText style={[styles.volumeText, { color: mutedColor }]}>
+                {market.volume} Vol.
+              </ThemedText>
+            </View>
+          </View>
+        )}
+
+        {/* Outcome Probabilities */}
+        <View style={styles.outcomesRow}>
+          {outcomes.map((outcome) => {
+            const isLeading = outcome.id === leadingOutcome.id;
+            const color = getOutcomeColor(outcome, isLeading);
+            return (
+              <View key={outcome.id} style={styles.outcomeItem}>
+                <View style={[styles.outcomeDot, { backgroundColor: color }]} />
+                <ThemedText style={[styles.outcomeLabel, { color: mutedColor }]}>
+                  {outcome.label} {(outcome.probability * 100).toFixed(0)}%
+                </ThemedText>
+              </View>
+            );
+          })}
+        </View>
+
+        {/* Position P&L (if has position) */}
+        {hasPosition && position && (
+          <View style={styles.pnlContainer}>
+            <ThemedText
+              style={[
+                styles.pnlText,
+                { color: position.pnl >= 0 ? positiveColor : negativeColor },
+              ]}
+            >
+              {position.pnl >= 0 ? '+' : ''}${position.pnl.toFixed(2)}
             </ThemedText>
           </View>
-          <View style={[styles.priceCard, { backgroundColor: 'rgba(239,68,68,0.1)', borderColor: 'rgba(239,68,68,0.2)' }]}>
-            <View style={styles.priceCardHeader}>
-              <ThemedText style={[styles.priceCardLabel, { color: '#ef4444' }]}>NO</ThemedText>
-              <Ionicons name="close-circle" size={16} color="#ef4444" />
-            </View>
-            <ThemedText style={[styles.priceCardValue, { color: '#ef4444' }]}>
-              ${market.noPrice.toFixed(2)}
-            </ThemedText>
-            <ThemedText style={[styles.priceCardChance, { color: mutedColor }]}>
-              {(market.noPrice * 100).toFixed(0)}% chance
+        )}
+
+        {/* Price Chart */}
+        <View style={styles.chartContainer}>
+          {/* Y-axis labels */}
+          <View style={styles.yAxisLabels}>
+            <ThemedText style={[styles.axisLabel, { color: mutedColor }]}>+$16</ThemedText>
+            <ThemedText style={[styles.axisLabel, { color: mutedColor }]}>$0</ThemedText>
+          </View>
+
+          {/* Chart SVG */}
+          <Svg width={SCREEN_WIDTH - 48} height={160} style={styles.chartSvg}>
+            <Defs>
+              {outcomes.map((outcome) => (
+                <LinearGradient
+                  key={`gradient-${outcome.id}`}
+                  id={`gradient-${outcome.id}`}
+                  x1="0%"
+                  y1="0%"
+                  x2="0%"
+                  y2="100%"
+                >
+                  <Stop
+                    offset="0%"
+                    stopColor={getOutcomeColor(outcome, outcome.id === leadingOutcome.id)}
+                    stopOpacity={0.2}
+                  />
+                  <Stop
+                    offset="100%"
+                    stopColor={getOutcomeColor(outcome, outcome.id === leadingOutcome.id)}
+                    stopOpacity={0}
+                  />
+                </LinearGradient>
+              ))}
+            </Defs>
+
+            {/* Grid lines */}
+            <Line x1="16" y1="80" x2={SCREEN_WIDTH - 64} y2="80" stroke={borderColor} strokeWidth={1} strokeDasharray="4,4" />
+
+            {/* Outcome paths */}
+            {outcomes.map((outcome) => {
+              const color = getOutcomeColor(outcome, outcome.id === leadingOutcome.id);
+              const path = generatePath(outcome.id);
+              return (
+                <Path
+                  key={`path-${outcome.id}`}
+                  d={path}
+                  fill="none"
+                  stroke={color}
+                  strokeWidth={2}
+                />
+              );
+            })}
+
+            {/* End dots for each outcome */}
+            {outcomes.map((outcome) => {
+              const color = getOutcomeColor(outcome, outcome.id === leadingOutcome.id);
+              const lastY = 160 - 16 - outcome.probability * (160 - 32);
+              return (
+                <Circle
+                  key={`dot-${outcome.id}`}
+                  cx={SCREEN_WIDTH - 64}
+                  cy={lastY}
+                  r={4}
+                  fill={color}
+                />
+              );
+            })}
+          </Svg>
+
+          {/* Bottom value label */}
+          <View style={styles.chartBottomLabel}>
+            <ThemedText style={[styles.chartValueLabel, { color: mutedColor }]}>
+              +${((leadingOutcome.probability - 0.5) * 400 + 211).toFixed(2)}
             </ThemedText>
           </View>
         </View>
 
-        {/* Price Chart */}
-        <ThemedView style={styles.chartCard} lightColor="#f4f4f5" darkColor="#1c1c1e">
-          <View style={styles.chartHeader}>
-            <ThemedText style={[styles.chartTitle, { color: mutedColor }]}>Price History (YES)</ThemedText>
-            <ThemedText style={[styles.chartPeriod, { color: mutedColor }]}>30d</ThemedText>
-          </View>
-          <Svg width="100%" height={80} viewBox="0 0 300 80">
-            <Defs>
-              <LinearGradient id="marketGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                <Stop offset="0%" stopColor="#22c55e" stopOpacity={0.3} />
-                <Stop offset="100%" stopColor="#22c55e" stopOpacity={0} />
-              </LinearGradient>
-            </Defs>
-            <Path d={`${generatePath()} L 295 75 L 5 75 Z`} fill="url(#marketGradient)" />
-            <Path d={generatePath()} fill="none" stroke="#22c55e" strokeWidth={2} />
-            <Circle cx={295} cy={chartY} r={3} fill="#22c55e" />
-          </Svg>
-        </ThemedView>
+        {/* Time Period Selector */}
+        <View style={[styles.periodSelector, { backgroundColor: cardBg }]}>
+          {(['GAME', '1D', '1W', '1M', 'ALL'] as TimePeriod[]).map((period) => (
+            <Pressable
+              key={period}
+              onPress={() => setSelectedPeriod(period)}
+              style={[
+                styles.periodButton,
+                selectedPeriod === period && styles.periodButtonActive,
+              ]}
+            >
+              <ThemedText
+                style={[
+                  styles.periodText,
+                  { color: selectedPeriod === period ? textColor : mutedColor },
+                ]}
+              >
+                {period}
+              </ThemedText>
+            </Pressable>
+          ))}
+        </View>
 
-        {/* Market Stats */}
-        <View style={styles.statsGrid}>
-          <View style={[styles.statCard, { backgroundColor: cardBg }]}>
-            <Ionicons name="bar-chart" size={16} color={mutedColor} style={styles.statIcon} />
-            <ThemedText style={styles.statValue}>{market.volume}</ThemedText>
-            <ThemedText style={[styles.statLabel, { color: mutedColor }]}>Volume</ThemedText>
+        {/* Make your prediction */}
+        <View style={styles.predictionSection}>
+          <ThemedText style={styles.sectionTitle}>Make your prediction</ThemedText>
+
+          <View style={styles.predictionButtons}>
+            {outcomes.map((outcome) => {
+              const isSelected = selectedOutcomeId === outcome.id;
+              const isLeading = outcome.id === leadingOutcome.id;
+              const color = getOutcomeColor(outcome, isLeading);
+
+              return (
+                <Pressable
+                  key={outcome.id}
+                  onPress={() => handleOutcomePress(outcome.id)}
+                  style={[
+                    styles.predictionButton,
+                    { borderColor: isSelected ? color : borderColor },
+                    isSelected && { backgroundColor: `${color}15` },
+                  ]}
+                >
+                  <ThemedText
+                    style={[
+                      styles.predictionButtonText,
+                      { color: isSelected ? color : textColor },
+                    ]}
+                  >
+                    {outcome.label} {(outcome.probability * 100).toFixed(0)}%
+                  </ThemedText>
+                </Pressable>
+              );
+            })}
           </View>
-          <View style={[styles.statCard, { backgroundColor: cardBg }]}>
-            <Ionicons name="people" size={16} color={mutedColor} style={styles.statIcon} />
-            <ThemedText style={styles.statValue}>{market.traders.toLocaleString()}</ThemedText>
-            <ThemedText style={[styles.statLabel, { color: mutedColor }]}>Traders</ThemedText>
-          </View>
-          <View style={[styles.statCard, { backgroundColor: cardBg }]}>
-            <Ionicons name="time" size={16} color={mutedColor} style={styles.statIcon} />
-            <ThemedText style={styles.statValue}>{market.expiresIn}</ThemedText>
-            <ThemedText style={[styles.statLabel, { color: mutedColor }]}>Expires</ThemedText>
-          </View>
+
+          {/* Place bet button (shown when outcome selected) */}
+          {selectedOutcomeId && (
+            <Pressable
+              onPress={() => handlePlaceBet(10)}
+              style={[
+                styles.placeBetButton,
+                {
+                  backgroundColor: getOutcomeColor(
+                    outcomes.find((o) => o.id === selectedOutcomeId)!,
+                    selectedOutcomeId === leadingOutcome.id
+                  ),
+                },
+              ]}
+            >
+              <ThemedText style={styles.placeBetText}>
+                Bet $10 on {outcomes.find((o) => o.id === selectedOutcomeId)?.label}
+              </ThemedText>
+            </Pressable>
+          )}
         </View>
 
         {/* Your Position (if exists) */}
         {hasPosition && position && (
-          <ThemedView
-            style={[styles.positionCard, { borderColor: `${primaryColor}30` }]}
-            lightColor="#f4f4f5"
-            darkColor="#1c1c1e"
-          >
+          <View style={[styles.positionCard, { backgroundColor: cardBg, borderColor }]}>
             <View style={styles.positionHeader}>
-              <ThemedText style={[styles.positionTitle, { color: mutedColor }]}>Your Position</ThemedText>
+              <ThemedText style={[styles.positionTitle, { color: mutedColor }]}>
+                YOUR POSITION
+              </ThemedText>
               <View
                 style={[
-                  styles.sideBadge,
-                  { backgroundColor: position.side === 'yes' ? 'rgba(34,197,94,0.2)' : 'rgba(239,68,68,0.2)' },
+                  styles.positionSideBadge,
+                  {
+                    backgroundColor:
+                      position.side === 'yes'
+                        ? `${positiveColor}20`
+                        : `${negativeColor}20`,
+                  },
                 ]}
               >
                 <ThemedText
-                  style={[styles.sideBadgeText, { color: position.side === 'yes' ? '#22c55e' : '#ef4444' }]}
+                  style={[
+                    styles.positionSideText,
+                    { color: position.side === 'yes' ? positiveColor : negativeColor },
+                  ]}
                 >
                   {position.side.toUpperCase()}
                 </ThemedText>
               </View>
             </View>
+
             <View style={styles.positionGrid}>
               <View style={styles.positionItem}>
-                <ThemedText style={[styles.positionLabel, { color: mutedColor }]}>Shares</ThemedText>
+                <ThemedText style={[styles.positionLabel, { color: mutedColor }]}>
+                  Shares
+                </ThemedText>
                 <ThemedText style={styles.positionValue}>{position.shares}</ThemedText>
               </View>
               <View style={styles.positionItem}>
-                <ThemedText style={[styles.positionLabel, { color: mutedColor }]}>Value</ThemedText>
-                <ThemedText style={styles.positionValue}>${position.currentValue.toFixed(2)}</ThemedText>
-              </View>
-              <View style={styles.positionItem}>
-                <ThemedText style={[styles.positionLabel, { color: mutedColor }]}>Avg Price</ThemedText>
-                <ThemedText style={styles.positionValueSmall}>${position.avgPrice.toFixed(2)}</ThemedText>
-              </View>
-              <View style={styles.positionItem}>
-                <ThemedText style={[styles.positionLabel, { color: mutedColor }]}>P&L</ThemedText>
-                <ThemedText
-                  style={[styles.positionValueSmall, { color: position.pnl >= 0 ? '#22c55e' : '#ef4444' }]}
-                >
-                  {position.pnl >= 0 ? '+' : ''}${position.pnl.toFixed(2)} ({position.pnlPercent.toFixed(1)}%)
+                <ThemedText style={[styles.positionLabel, { color: mutedColor }]}>
+                  Value
+                </ThemedText>
+                <ThemedText style={styles.positionValue}>
+                  ${position.currentValue.toFixed(2)}
                 </ThemedText>
               </View>
-            </View>
-            <Pressable
-              onPress={onSell}
-              style={[styles.sellPositionButton, { backgroundColor: 'rgba(239,68,68,0.1)', borderColor: 'rgba(239,68,68,0.2)' }]}
-            >
-              <ThemedText style={[styles.sellPositionText, { color: '#ef4444' }]}>Sell Position</ThemedText>
-            </Pressable>
-          </ThemedView>
-        )}
-
-        {/* Trade Panel */}
-        <ThemedView style={styles.tradeCard} lightColor="#f4f4f5" darkColor="#1c1c1e">
-          <ThemedText style={[styles.tradeTitle, { color: mutedColor }]}>Place Trade</ThemedText>
-
-          {/* Side Selector */}
-          <View style={styles.sideSelector}>
-            <Pressable
-              onPress={() => setSelectedSide('yes')}
-              style={[
-                styles.sideButton,
-                selectedSide === 'yes'
-                  ? { backgroundColor: '#22c55e' }
-                  : { backgroundColor: 'rgba(34,197,94,0.1)', borderColor: 'rgba(34,197,94,0.2)', borderWidth: 1 },
-              ]}
-            >
-              <ThemedText
-                style={[styles.sideButtonText, { color: selectedSide === 'yes' ? '#fff' : '#22c55e' }]}
-              >
-                Yes ${market.yesPrice.toFixed(2)}
-              </ThemedText>
-            </Pressable>
-            <Pressable
-              onPress={() => setSelectedSide('no')}
-              style={[
-                styles.sideButton,
-                selectedSide === 'no'
-                  ? { backgroundColor: '#ef4444' }
-                  : { backgroundColor: 'rgba(239,68,68,0.1)', borderColor: 'rgba(239,68,68,0.2)', borderWidth: 1 },
-              ]}
-            >
-              <ThemedText
-                style={[styles.sideButtonText, { color: selectedSide === 'no' ? '#fff' : '#ef4444' }]}
-              >
-                No ${market.noPrice.toFixed(2)}
-              </ThemedText>
-            </Pressable>
-          </View>
-
-          {/* Amount Selector */}
-          <View style={styles.amountRow}>
-            <ThemedText style={[styles.amountLabel, { color: mutedColor }]}>Amount</ThemedText>
-            <View style={styles.amountControls}>
-              <Pressable
-                onPress={() => setSelectedAmount(Math.max(1, selectedAmount - 10))}
-                style={[styles.amountButton, { backgroundColor: cardBg }]}
-              >
-                <Ionicons name="remove" size={16} color={textColor} />
-              </Pressable>
-              <ThemedText style={styles.amountValue}>${selectedAmount}</ThemedText>
-              <Pressable
-                onPress={() => setSelectedAmount(selectedAmount + 10)}
-                style={[styles.amountButton, { backgroundColor: cardBg }]}
-              >
-                <Ionicons name="add" size={16} color={textColor} />
-              </Pressable>
-            </View>
-          </View>
-
-          {/* Quick Amounts */}
-          <View style={styles.quickAmounts}>
-            {[10, 25, 50, 100].map((amount) => (
-              <Pressable
-                key={amount}
-                onPress={() => setSelectedAmount(amount)}
-                style={[
-                  styles.quickAmountButton,
-                  selectedAmount === amount
-                    ? { backgroundColor: `${primaryColor}20`, borderColor: `${primaryColor}30`, borderWidth: 1 }
-                    : { backgroundColor: cardBg },
-                ]}
-              >
+              <View style={styles.positionItem}>
+                <ThemedText style={[styles.positionLabel, { color: mutedColor }]}>
+                  Avg Price
+                </ThemedText>
+                <ThemedText style={styles.positionValueSmall}>
+                  ${position.avgPrice.toFixed(2)}
+                </ThemedText>
+              </View>
+              <View style={styles.positionItem}>
+                <ThemedText style={[styles.positionLabel, { color: mutedColor }]}>
+                  P&L
+                </ThemedText>
                 <ThemedText
                   style={[
-                    styles.quickAmountText,
-                    { color: selectedAmount === amount ? primaryColor : mutedColor },
+                    styles.positionValueSmall,
+                    { color: position.pnl >= 0 ? positiveColor : negativeColor },
                   ]}
                 >
-                  ${amount}
+                  {position.pnl >= 0 ? '+' : ''}${position.pnl.toFixed(2)} (
+                  {position.pnlPercent.toFixed(1)}%)
                 </ThemedText>
-              </Pressable>
-            ))}
-          </View>
+              </View>
+            </View>
 
-          {/* Payout Info */}
-          <View style={[styles.payoutInfo, { backgroundColor: cardBg }]}>
-            <ThemedText style={[styles.payoutLabel, { color: mutedColor }]}>Potential Payout</ThemedText>
-            <ThemedText style={[styles.payoutValue, { color: '#22c55e' }]}>
-              {potentialPayout} shares → ${Number(potentialPayout).toFixed(2)} if {selectedSide.toUpperCase()}
-            </ThemedText>
+            <Pressable
+              onPress={onSell}
+              style={[styles.sellButton, { borderColor: `${negativeColor}30` }]}
+            >
+              <ThemedText style={[styles.sellButtonText, { color: negativeColor }]}>
+                Sell Position
+              </ThemedText>
+            </Pressable>
           </View>
+        )}
 
-          {/* Buy Button - All bets are private */}
-          <Pressable
-            onPress={() => selectedSide === 'yes' ? onBuyYes?.(selectedAmount) : onBuyNo?.(selectedAmount)}
-            style={[
-              styles.buyTradeButton,
-              { backgroundColor: selectedSide === 'yes' ? '#22c55e' : '#ef4444' },
-            ]}
-          >
-            <View style={styles.buyTradeRow}>
-              <Ionicons name="shield-checkmark" size={16} color="#fff" />
-              <ThemedText style={styles.buyTradeText}>
-                Private Bet: {selectedSide.toUpperCase()} for ${selectedAmount}
+        {/* About Section */}
+        <View style={[styles.aboutSection, { backgroundColor: cardBg }]}>
+          <ThemedText style={styles.sectionTitle}>About</ThemedText>
+          <ThemedText style={[styles.aboutText, { color: mutedColor }]}>
+            {market.description ||
+              `Predict the outcome of "${market.question}". Earn $1 per contract when you're right, or close your position before the event resolves.`}
+          </ThemedText>
+
+          <View style={styles.aboutMeta}>
+            <View style={styles.aboutMetaRow}>
+              <ThemedText style={[styles.aboutMetaLabel, { color: mutedColor }]}>
+                Resolution Source
+              </ThemedText>
+              <ThemedText style={styles.aboutMetaValue}>
+                {market.resolutionSource || 'Official Announcement'}
               </ThemedText>
             </View>
-          </Pressable>
-          <ThemedText style={[styles.privateBetNote, { color: mutedColor }]}>
-            Amount hidden on-chain via zero-knowledge proofs
-          </ThemedText>
-        </ThemedView>
-
-        {/* Market Info */}
-        <ThemedView style={styles.infoCard} lightColor="#f4f4f5" darkColor="#1c1c1e">
-          <ThemedText style={[styles.infoTitle, { color: mutedColor }]}>Market Info</ThemedText>
-
-          {market.description && (
-            <ThemedText style={[styles.infoDescription, { color: mutedColor }]}>
-              {market.description}
-            </ThemedText>
-          )}
-
-          <View style={styles.infoList}>
-            <View style={styles.infoRow}>
-              <ThemedText style={[styles.infoLabel, { color: mutedColor }]}>Resolution Source</ThemedText>
-              <ThemedText style={styles.infoValue}>{market.resolutionSource || 'Official Announcement'}</ThemedText>
-            </View>
-            <View style={styles.infoRow}>
-              <ThemedText style={[styles.infoLabel, { color: mutedColor }]}>Expiration</ThemedText>
-              <ThemedText style={styles.infoValue}>{market.expiresIn}</ThemedText>
+            <View style={styles.aboutMetaRow}>
+              <ThemedText style={[styles.aboutMetaLabel, { color: mutedColor }]}>
+                Expires
+              </ThemedText>
+              <ThemedText style={styles.aboutMetaValue}>{market.expiresIn}</ThemedText>
             </View>
           </View>
+        </View>
 
-          <Pressable style={styles.externalLink}>
-            <Ionicons name="open-outline" size={12} color={primaryColor} />
-            <ThemedText style={[styles.externalLinkText, { color: primaryColor }]}>
-              View on Polymarket
-            </ThemedText>
+        {/* Timeline Section */}
+        <View style={[styles.timelineSection, { borderTopColor: borderColor }]}>
+          <Pressable style={styles.timelineHeader}>
+            <ThemedText style={styles.sectionTitle}>Timeline and Activity</ThemedText>
+            <Ionicons name="chevron-down" size={20} color={mutedColor} />
           </Pressable>
-        </ThemedView>
+        </View>
       </ScrollView>
     </ThemedView>
   );
@@ -392,7 +557,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingBottom: 12,
+    paddingBottom: 8,
   },
   backButton: {
     width: 40,
@@ -401,20 +566,31 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  categoryBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-  },
-  categoryText: {
-    fontSize: 12,
-  },
-  watchlistButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+  liveBadge: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+  },
+  liveDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#EF4444',
+  },
+  liveText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#EF4444',
+    letterSpacing: 0.5,
+  },
+  liveMinutes: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: '#EF4444',
   },
   scrollView: {
     flex: 1,
@@ -422,109 +598,192 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: 16,
   },
+  // Sports Match Header
+  matchHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 20,
+  },
+  teamContainer: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  teamShortName: {
+    fontSize: 28,
+    fontWeight: '700',
+  },
+  teamFullName: {
+    fontSize: 12,
+    marginTop: 4,
+  },
+  scoreContainer: {
+    alignItems: 'center',
+  },
+  scoreText: {
+    fontSize: 32,
+    fontWeight: '600',
+  },
+  volumeBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginTop: 8,
+  },
+  volumeText: {
+    fontSize: 11,
+    fontWeight: '500',
+  },
+  // Regular Question Header
+  questionHeader: {
+    paddingVertical: 16,
+  },
   questionText: {
     fontSize: 20,
     fontWeight: '600',
     lineHeight: 28,
-    marginBottom: 16,
+    marginBottom: 12,
   },
-  pricesRow: {
+  // Outcomes Row
+  outcomesRow: {
     flexDirection: 'row',
-    gap: 12,
-    marginBottom: 16,
+    flexWrap: 'wrap',
+    gap: 16,
+    paddingBottom: 16,
   },
-  priceCard: {
-    flex: 1,
-    padding: 16,
-    borderRadius: 14,
-    borderWidth: 1,
-  },
-  priceCardHeader: {
+  outcomeItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 8,
+    gap: 6,
   },
-  priceCardLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    textTransform: 'uppercase',
+  outcomeDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
   },
-  priceCardValue: {
+  outcomeLabel: {
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  // P&L Display
+  pnlContainer: {
+    paddingBottom: 8,
+  },
+  pnlText: {
     fontSize: 24,
     fontWeight: '600',
   },
-  priceCardChance: {
-    fontSize: 12,
-    marginTop: 4,
+  // Chart
+  chartContainer: {
+    marginBottom: 8,
   },
-  chartCard: {
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 16,
-  },
-  chartHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  yAxisLabels: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 40,
     justifyContent: 'space-between',
-    marginBottom: 12,
+    paddingVertical: 16,
   },
-  chartTitle: {
+  axisLabel: {
     fontSize: 10,
     fontWeight: '500',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
   },
-  chartPeriod: {
-    fontSize: 12,
+  chartSvg: {
+    marginLeft: 32,
   },
-  statsGrid: {
+  chartBottomLabel: {
+    marginTop: 4,
+    marginLeft: 32,
+  },
+  chartValueLabel: {
+    fontSize: 11,
+    fontWeight: '500',
+  },
+  // Period Selector
+  periodSelector: {
     flexDirection: 'row',
-    gap: 8,
+    borderRadius: 12,
+    padding: 4,
+    marginBottom: 24,
+  },
+  periodButton: {
+    flex: 1,
+    paddingVertical: 10,
+    alignItems: 'center',
+    borderRadius: 8,
+  },
+  periodButtonActive: {
+    backgroundColor: 'rgba(255,255,255,0.1)',
+  },
+  periodText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  // Prediction Section
+  predictionSection: {
+    marginBottom: 24,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '700',
     marginBottom: 16,
   },
-  statCard: {
-    flex: 1,
+  predictionButtons: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  predictionButton: {
+    flexGrow: 1,
+    minWidth: 100,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderRadius: 24,
+    borderWidth: 1,
     alignItems: 'center',
-    padding: 12,
-    borderRadius: 14,
   },
-  statIcon: {
-    marginBottom: 4,
-  },
-  statValue: {
+  predictionButtonText: {
     fontSize: 14,
-    fontWeight: '500',
+    fontWeight: '600',
   },
-  statLabel: {
-    fontSize: 10,
-    marginTop: 2,
+  placeBetButton: {
+    marginTop: 16,
+    paddingVertical: 16,
+    borderRadius: 14,
+    alignItems: 'center',
   },
+  placeBetText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  // Position Card
   positionCard: {
     borderRadius: 16,
     padding: 16,
-    marginBottom: 16,
+    marginBottom: 24,
     borderWidth: 1,
   },
   positionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 12,
+    marginBottom: 16,
   },
   positionTitle: {
-    fontSize: 10,
-    fontWeight: '500',
-    textTransform: 'uppercase',
+    fontSize: 11,
+    fontWeight: '600',
     letterSpacing: 1,
   },
-  sideBadge: {
-    paddingHorizontal: 8,
+  positionSideBadge: {
+    paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 8,
   },
-  sideBadgeText: {
-    fontSize: 10,
+  positionSideText: {
+    fontSize: 11,
     fontWeight: '700',
   },
   positionGrid: {
@@ -548,160 +807,51 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
   },
-  sellPositionButton: {
+  sellButton: {
     marginTop: 16,
-    paddingVertical: 12,
+    paddingVertical: 14,
     borderRadius: 14,
     alignItems: 'center',
+    backgroundColor: 'rgba(239, 68, 68, 0.1)',
     borderWidth: 1,
   },
-  sellPositionText: {
+  sellButtonText: {
     fontSize: 14,
-    fontWeight: '500',
+    fontWeight: '600',
   },
-  tradeCard: {
+  // About Section
+  aboutSection: {
     borderRadius: 16,
     padding: 16,
     marginBottom: 16,
   },
-  tradeTitle: {
-    fontSize: 10,
-    fontWeight: '500',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-    marginBottom: 16,
-  },
-  sideSelector: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 16,
-  },
-  sideButton: {
-    flex: 1,
-    paddingVertical: 14,
-    borderRadius: 14,
-    alignItems: 'center',
-  },
-  sideButtonText: {
+  aboutText: {
     fontSize: 14,
+    lineHeight: 22,
+    marginBottom: 16,
+  },
+  aboutMeta: {
+    gap: 8,
+  },
+  aboutMetaRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  aboutMetaLabel: {
+    fontSize: 13,
+  },
+  aboutMetaValue: {
+    fontSize: 13,
     fontWeight: '500',
   },
-  amountRow: {
+  // Timeline Section
+  timelineSection: {
+    borderTopWidth: 1,
+    paddingTop: 16,
+  },
+  timelineHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 16,
-  },
-  amountLabel: {
-    fontSize: 14,
-  },
-  amountControls: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  amountButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  amountValue: {
-    fontSize: 18,
-    fontWeight: '500',
-    width: 64,
-    textAlign: 'center',
-  },
-  quickAmounts: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 16,
-  },
-  quickAmountButton: {
-    flex: 1,
-    paddingVertical: 10,
-    borderRadius: 10,
-    alignItems: 'center',
-  },
-  quickAmountText: {
-    fontSize: 12,
-    fontWeight: '500',
-  },
-  payoutInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 12,
-    borderRadius: 14,
-    marginBottom: 16,
-  },
-  payoutLabel: {
-    fontSize: 12,
-  },
-  payoutValue: {
-    fontSize: 12,
-    fontWeight: '500',
-  },
-  buyTradeButton: {
-    paddingVertical: 14,
-    borderRadius: 14,
-    alignItems: 'center',
-  },
-  buyTradeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  buyTradeText: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#fff',
-  },
-  privateBetNote: {
-    fontSize: 11,
-    textAlign: 'center',
-    marginTop: 8,
-  },
-  infoCard: {
-    borderRadius: 16,
-    padding: 16,
-  },
-  infoTitle: {
-    fontSize: 10,
-    fontWeight: '500',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-    marginBottom: 12,
-  },
-  infoDescription: {
-    fontSize: 14,
-    lineHeight: 20,
-    marginBottom: 16,
-  },
-  infoList: {
-    gap: 8,
-  },
-  infoRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  infoLabel: {
-    fontSize: 12,
-  },
-  infoValue: {
-    fontSize: 12,
-    fontWeight: '500',
-  },
-  externalLink: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginTop: 16,
-  },
-  externalLinkText: {
-    fontSize: 12,
   },
 });
-
