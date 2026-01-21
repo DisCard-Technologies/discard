@@ -176,6 +176,15 @@ export function getRwaInfo(mint: string): RwaTokenInfo | undefined {
 // DFLOW / KALSHI PREDICTION MARKET TYPES
 // ============================================================================
 
+export interface MarketOutcome {
+  id: string;
+  label: string;
+  probability: number;
+  icon?: string;
+  scoreBadge?: string;
+  color?: string;
+}
+
 export interface PredictionMarket {
   marketId: string;
   ticker: string;
@@ -188,6 +197,10 @@ export interface PredictionMarket {
   endDate: string;
   category: string;
   resolutionSource?: string;
+  // Extended fields for card display
+  outcomes?: MarketOutcome[];
+  isLive?: boolean;
+  contextLabel?: string;
 }
 
 export interface PredictionPosition {
