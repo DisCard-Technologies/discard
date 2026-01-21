@@ -6,11 +6,7 @@ import {
   TextInput,
   ScrollView,
   Keyboard,
-  Dimensions,
   ActivityIndicator,
-  LayoutAnimation,
-  Platform,
-  UIManager,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -21,31 +17,26 @@ import Animated, {
   useAnimatedStyle,
   withSpring,
   interpolate,
-  FadeIn,
-  FadeOut,
 } from 'react-native-reanimated';
 
 import { ThemedText } from '@/components/themed-text';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { GoalChipsRow, GoalChipData } from '@/components/goal-chips-row';
+import { GoalOverflowPopover } from '@/components/goal-overflow-popover';
+import { useGoalChips } from '@/hooks/useGoalChips';
 
-// Enable LayoutAnimation on Android
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
-
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-
-type IconName = 'home' | 'swap-horizontal' | 'grid' | 'search';
+type IconName = 'home' | 'swap-horizontal' | 'search' | 'grid';
 
 interface TabConfig {
   icon: IconName;
   label: string;
 }
 
-// Tab configuration for navigation items (left pill)
+// Tab configuration for navigation items - now includes Explore as 4th item
 const navTabConfig: Record<string, TabConfig> = {
   index: { icon: 'home', label: 'Home' },
   transfer: { icon: 'swap-horizontal', label: 'Transfer' },
+  explore: { icon: 'search', label: 'Explore' },
   menu: { icon: 'grid', label: 'Menu' },
 };
 
@@ -68,6 +59,50 @@ const SUGGESTIONS = [
   'Send $50 to alex.eth',
   'Show me trending tokens',
   "What's my portfolio breakdown?",
+];
+
+// Mock goals data for testing - will be replaced with real Convex data
+const MOCK_GOALS: GoalChipData[] = [
+  {
+    id: '1',
+    icon: '🎯',
+    value: 34,
+    type: 'percentage',
+    attention: 'normal',
+    queryPrompt: 'Tell me about my BTC Stack goal',
+  },
+  {
+    id: '2',
+    icon: '🏖️',
+    value: 67,
+    type: 'percentage',
+    attention: 'normal',
+    queryPrompt: 'Tell me about my Vacation Fund goal',
+  },
+  {
+    id: '3',
+    icon: '💳',
+    value: 42,
+    type: 'currency',
+    attention: 'warning',
+    queryPrompt: 'Tell me about my Card Balance goal',
+  },
+  {
+    id: '4',
+    icon: '🚗',
+    value: 12,
+    type: 'percentage',
+    attention: 'normal',
+    queryPrompt: 'Tell me about my New Car goal',
+  },
+  {
+    id: '5',
+    icon: '🏠',
+    value: 8,
+    type: 'percentage',
+    attention: 'critical',
+    queryPrompt: 'Tell me about my House Fund goal',
+  },
 ];
 
 interface ChatMessage {
@@ -93,6 +128,10 @@ export function PillTabBar({ state, descriptors, navigation }: PillTabBarProps) 
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
+
+  // Get real goals data from Convex (falls back to mock data in dev)
+  const { goals: realGoals, isLoading: goalsLoading, isEmpty: noGoals } = useGoalChips();
+  const goals = realGoals.length > 0 ? realGoals : MOCK_GOALS;
   
   // Theme-aware colors matching top bar
   const dockBg = isDark ? DOCK_BG_DARK : DOCK_BG_LIGHT;
@@ -105,24 +144,16 @@ export function PillTabBar({ state, descriptors, navigation }: PillTabBarProps) 
   const [isProcessing, setIsProcessing] = useState(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [isListening, setIsListening] = useState(false);
-  
-  // Search bar state
-  const [isSearchExpanded, setIsSearchExpanded] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  
+  const [isOverflowVisible, setIsOverflowVisible] = useState(false);
+
   const inputRef = useRef<TextInput>(null);
-  const searchInputRef = useRef<TextInput>(null);
   const scrollViewRef = useRef<ScrollView>(null);
 
   // Animation values
   const commandExpandProgress = useSharedValue(0);
 
-  // Filter routes for main nav (index, transfer, menu) and search
+  // Filter routes for nav items that have config
   const navRoutes = state.routes.filter((route) => navTabConfig[route.name]);
-  const searchRoute = state.routes.find((route) => route.name === 'explore');
-
-  // Check if on explore tab
-  const isOnExplore = searchRoute && state.index === state.routes.findIndex((r) => r.key === searchRoute.key);
 
   // Animate command bar expansion
   useEffect(() => {
@@ -136,16 +167,6 @@ export function PillTabBar({ state, descriptors, navigation }: PillTabBarProps) 
     }
   }, [isCommandExpanded]);
 
-  // Don't auto-focus search input - user must tap into it
-
-  // Collapse search when leaving explore view
-  useEffect(() => {
-    if (!isOnExplore && isSearchExpanded) {
-      animateLayout();
-      setIsSearchExpanded(false);
-    }
-  }, [isOnExplore]);
-
   // Scroll to bottom when messages change
   useEffect(() => {
     if (chatMessages.length > 0) {
@@ -153,20 +174,11 @@ export function PillTabBar({ state, descriptors, navigation }: PillTabBarProps) 
     }
   }, [chatMessages.length]);
 
-  const animateLayout = () => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-  };
-
   const handleCommandBarPress = () => {
     if (process.env.EXPO_OS === 'ios') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
     setIsCommandExpanded(true);
-    // Collapse search when command bar opens
-    if (isSearchExpanded) {
-      animateLayout();
-      setIsSearchExpanded(false);
-    }
   };
 
   const handleCommandClose = () => {
@@ -174,41 +186,6 @@ export function PillTabBar({ state, descriptors, navigation }: PillTabBarProps) 
     setIsCommandExpanded(false);
     setChatMessages([]);
     setCommandText('');
-  };
-
-  const handleSearchPress = () => {
-    if (process.env.EXPO_OS === 'ios') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    }
-    
-    if (!isSearchExpanded) {
-      // Navigate to explore and expand search
-      if (searchRoute) {
-        navigation.navigate(searchRoute.name);
-      }
-      animateLayout();
-      setIsSearchExpanded(true);
-      setIsCommandExpanded(false);
-    } else {
-      // Collapse search
-      animateLayout();
-      setIsSearchExpanded(false);
-    }
-  };
-
-  const handleNavExpand = () => {
-    // Navigate to home and collapse search when navbar is clicked
-    if (process.env.EXPO_OS === 'ios') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    }
-    // Navigate to home (index) screen
-    const homeRoute = state.routes.find((r) => r.name === 'index');
-    if (homeRoute) {
-      navigation.navigate(homeRoute.name);
-    }
-    animateLayout();
-    setIsSearchExpanded(false);
-    setIsCommandExpanded(false);
   };
 
   const handleMicPress = () => {
@@ -222,6 +199,34 @@ export function PillTabBar({ state, descriptors, navigation }: PillTabBarProps) 
     setCommandText(suggestion);
     inputRef.current?.focus();
   };
+
+  // Goal chip handlers
+  const handleGoalChipPress = (goal: GoalChipData) => {
+    // Pre-fill the command text with the goal query and expand
+    setCommandText(goal.queryPrompt);
+    setIsCommandExpanded(true);
+    // Auto-submit after a short delay
+    setTimeout(() => {
+      handleCommandSubmit();
+    }, 100);
+  };
+
+  const handleOverflowPress = () => {
+    setIsOverflowVisible(true);
+  };
+
+  const handleOverflowClose = () => {
+    setIsOverflowVisible(false);
+  };
+
+  const handleOverflowGoalPress = (goal: GoalChipData) => {
+    setIsOverflowVisible(false);
+    handleGoalChipPress(goal);
+  };
+
+  // Get overflow goals (goals beyond maxVisible)
+  const MAX_VISIBLE_CHIPS = 3;
+  const overflowGoals = goals.slice(MAX_VISIBLE_CHIPS);
 
   const getAIResponse = (input: string): string => {
     const lowered = input.toLowerCase();
@@ -421,10 +426,26 @@ export function PillTabBar({ state, descriptors, navigation }: PillTabBarProps) 
             </View>
           </View>
         ) : (
-          // Collapsed State
+          // Collapsed State with Goal Chips
           <Pressable onPress={handleCommandBarPress} style={styles.collapsedBar}>
             <Ionicons name="sparkles" size={18} color={SPARKLE_COLOR} />
-            <ThemedText style={[styles.collapsedText, { color: iconColor }]}>Ask anything or give a command...</ThemedText>
+            {goals.length > 0 ? (
+              // Show goal chips when goals exist
+              <View style={styles.collapsedContent}>
+                <ThemedText style={[styles.collapsedTextShort, { color: iconColor }]}>Ask...</ThemedText>
+                <GoalChipsRow
+                  goals={goals}
+                  maxVisible={MAX_VISIBLE_CHIPS}
+                  onChipPress={handleGoalChipPress}
+                  onOverflowPress={handleOverflowPress}
+                />
+              </View>
+            ) : (
+              // Show hint text when no goals
+              <ThemedText style={[styles.collapsedText, { color: iconColor }]}>
+                Ask anything... "Set a savings goal"
+              </ThemedText>
+            )}
             <Pressable onPress={handleMicPress} hitSlop={8}>
               <Ionicons name="mic-outline" size={20} color={iconColor} />
             </Pressable>
@@ -432,64 +453,18 @@ export function PillTabBar({ state, descriptors, navigation }: PillTabBarProps) 
         )}
       </Animated.View>
 
-      {/* Bottom Row: Nav Pill + Search */}
-      <View style={styles.bottomRow}>
-        {/* Navigation Pill - Collapses when search is expanded */}
-        <View style={[styles.navPill, { backgroundColor: dockBg, borderColor }, isSearchExpanded && styles.navPillCollapsed]}>
-          {!isSearchExpanded ? (
-            // Expanded Navbar - Home, Transfer, Menu
-            navRoutes.map((route) => renderNavItem(route))
-          ) : (
-            // Collapsed Navbar - Just Home icon
-            <Pressable
-              onPress={handleNavExpand}
-              style={({ pressed }) => [styles.collapsedNavButton, pressed && styles.pressed]}
-            >
-              <Ionicons 
-                name="home" 
-                size={24} 
-                color={state.index === 0 ? ACTIVE_COLOR : iconColor} 
-              />
-            </Pressable>
-          )}
-        </View>
-
-        {/* Search Button / Expanded Search Bar */}
-        <View style={[styles.searchContainer, { backgroundColor: dockBg, borderColor }, isSearchExpanded && styles.searchContainerExpanded]}>
-          {isSearchExpanded ? (
-            // Expanded Search Bar
-            <View style={styles.searchBarExpanded}>
-              <Ionicons name="search" size={20} color={iconColor} />
-              <TextInput
-                ref={searchInputRef}
-                value={searchQuery}
-                onChangeText={setSearchQuery}
-                placeholder="Search tokens, markets, assets..."
-                placeholderTextColor={iconColor}
-                style={[styles.searchInput, { color: isDark ? '#FFFFFF' : '#11181C' }]}
-              />
-              <Pressable
-                onPress={() => {
-                  animateLayout();
-                  setIsSearchExpanded(false);
-                  setSearchQuery('');
-                }}
-                style={styles.searchCloseButton}
-              >
-                <Ionicons name="close" size={18} color={iconColor} />
-              </Pressable>
-            </View>
-          ) : (
-            // Collapsed Search Button
-            <Pressable
-              onPress={handleSearchPress}
-              style={({ pressed }) => [styles.searchButton, isOnExplore && styles.searchButtonActive, pressed && styles.pressed]}
-            >
-              <Ionicons name="search" size={20} color={isOnExplore ? '#FFFFFF' : iconColor} />
-            </Pressable>
-          )}
-        </View>
+      {/* Bottom Row: Static Navigation */}
+      <View style={[styles.navPill, { backgroundColor: dockBg, borderColor }]}>
+        {navRoutes.map((route) => renderNavItem(route))}
       </View>
+
+      {/* Goal Overflow Popover */}
+      <GoalOverflowPopover
+        visible={isOverflowVisible}
+        goals={overflowGoals}
+        onGoalPress={handleOverflowGoalPress}
+        onClose={handleOverflowClose}
+      />
     </View>
   );
 }
@@ -514,12 +489,21 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    gap: 10,
+    paddingHorizontal: 12,
+    gap: 8,
+  },
+  collapsedContent: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   collapsedText: {
     flex: 1,
     fontSize: 14,
+  },
+  collapsedTextShort: {
+    fontSize: 13,
   },
 
   // Expanded State
@@ -658,16 +642,8 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
 
-  // Bottom Row
-  bottomRow: {
-    flexDirection: 'row',
-    alignItems: 'stretch',
-    gap: 8,
-  },
-
-  // Navigation Pill - matches top bar styling
+  // Navigation Pill - static 4-item navbar
   navPill: {
-    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-around',
@@ -676,22 +652,11 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     paddingHorizontal: 8,
   },
-  navPillCollapsed: {
-    flex: 0,
-    width: 52,
-    paddingHorizontal: 0,
-  },
-  collapsedNavButton: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  // Vertical layout: icon on top, label below, both inside active pill
   navItem: {
     alignItems: 'center',
     justifyContent: 'center',
     gap: 2,
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 20,
   },
@@ -704,49 +669,6 @@ const styles = StyleSheet.create({
   },
   navLabelActive: {
     color: '#FFFFFF',
-  },
-
-  // Search Container - matches top bar styling
-  searchContainer: {
-    borderRadius: 28,
-    borderWidth: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 6,
-  },
-  searchContainerExpanded: {
-    flex: 1,
-  },
-  searchButton: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-  },
-  searchButtonActive: {
-    backgroundColor: ACTIVE_COLOR,
-  },
-  searchBarExpanded: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    gap: 10,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 14,
-    color: '#FFFFFF',
-    paddingVertical: 0,
-  },
-  searchCloseButton: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    alignItems: 'center',
-    justifyContent: 'center',
   },
 
   pressed: {

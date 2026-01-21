@@ -1,5 +1,5 @@
-import { useState, useMemo, useCallback } from 'react';
-import { StyleSheet, View, Pressable, Keyboard, Dimensions } from 'react-native';
+import { useState, useMemo } from 'react';
+import { StyleSheet, View, Pressable, Keyboard } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -7,9 +7,6 @@ import { LinearGradient } from 'expo-linear-gradient';
 import Animated, { useSharedValue, useAnimatedStyle, withTiming } from 'react-native-reanimated';
 import { useQuery } from 'convex/react';
 import { api } from '@/convex/_generated/api';
-import type { Ionicons } from '@expo/vector-icons';
-
-const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -17,8 +14,6 @@ import { TopBar } from '@/components/top-bar';
 import { AnimatedCounter } from '@/components/animated-counter';
 import { TransactionStack, StackTransaction } from '@/components/transaction-stack';
 import { QuickActions } from '@/components/quick-actions';
-import { DraggableDrawer } from '@/components/draggable-drawer';
-import { GoalsSection, Goal } from '@/components/goal-item';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useAuth } from '@/stores/authConvex';
 import { useFunding } from '@/stores/fundingConvex';
@@ -26,10 +21,6 @@ import { useTokenHoldings } from '@/hooks/useTokenHoldings';
 import { positiveColor, negativeColor } from '@/constants/theme';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
-
-// Drawer dimensions
-const DRAWER_CLOSED_HEIGHT = 220;
-const DRAWER_OPEN_HEIGHT = 380;
 
 // Props for the content component when used in pager
 export interface HomeScreenContentProps {
@@ -122,44 +113,6 @@ export function HomeScreenContent({ onNavigateToStrategy, onNavigateToCard }: Ho
     });
   }, [recentTransfers]);
 
-  // Real goals from Convex
-  const convexGoals = useQuery(api.goals.goals.list, {});
-
-  // Transform Convex goals to Goal format for UI
-  const goals = useMemo((): Goal[] => {
-    if (!convexGoals || convexGoals.length === 0) {
-      return [];
-    }
-
-    // Map goal type to icon
-    const typeToIcon: Record<string, keyof typeof Ionicons.glyphMap> = {
-      savings: 'wallet-outline',
-      accumulate: 'analytics-outline',
-      yield: 'trending-up-outline',
-      custom: 'star-outline',
-    };
-
-    // Map goal type to color
-    const typeToColor: Record<string, string> = {
-      savings: '#10B981', // green
-      accumulate: '#f97316', // orange
-      yield: '#3b82f6', // blue
-      custom: '#8b5cf6', // purple
-    };
-
-    return convexGoals.map((g) => ({
-      id: g._id,
-      title: g.title,
-      target: g.targetAmount / 100, // Convert cents to dollars
-      current: g.currentAmount / 100, // Convert cents to dollars
-      icon: typeToIcon[g.type] || 'star-outline',
-      color: typeToColor[g.type] || '#8b5cf6',
-      deadline: g.deadline
-        ? new Date(g.deadline).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
-        : undefined,
-    }));
-  }, [convexGoals]);
-
   // Backdrop overlay animation
   const backdropOpacity = useSharedValue(0);
   const [isCommandBarFocused, setIsCommandBarFocused] = useState(false);
@@ -198,26 +151,17 @@ export function HomeScreenContent({ onNavigateToStrategy, onNavigateToCard }: Ho
     console.log('[Home] Transaction tapped:', tx.id, tx.type);
   };
 
-  const handleGoalPress = (goal: Goal) => {
-    // Goal detail - could show goal progress or edit modal
-    console.log('[Home] Goal tapped:', goal.id, goal.title);
-  };
-
-  const handleAddGoal = () => {
-    // Goal creation is now handled by the unified dock in the tab bar
-  };
-
   const isDark = colorScheme === 'dark';
 
   return (
     <ThemedView style={styles.container}>
       <StatusBar style={isDark ? 'light' : 'dark'} />
 
-      {/* Dynamic ambient gradient - emanates from drawer area based on performance */}
-      <View style={[styles.ambientGradient, { bottom: DRAWER_CLOSED_HEIGHT - 50 }]}>
+      {/* Dynamic ambient gradient based on performance */}
+      <View style={styles.ambientGradient}>
         <LinearGradient
-          colors={isDark 
-            ? isPositive 
+          colors={isDark
+            ? isPositive
               ? ['transparent', 'rgba(16, 185, 129, 0.12)']
               : ['transparent', 'rgba(239, 68, 68, 0.10)']
             : isPositive
@@ -278,18 +222,6 @@ export function HomeScreenContent({ onNavigateToStrategy, onNavigateToCard }: Ho
         />
       </View>
 
-      {/* Gradient overlay before drawer - blends into drawer color */}
-      <LinearGradient
-        colors={isDark ? ['transparent', '#1a1f25'] : ['transparent', '#f4f4f5']}
-        style={[styles.drawerGradient, { bottom: DRAWER_CLOSED_HEIGHT - 40 }]}
-        pointerEvents="none"
-      />
-
-      {/* Draggable Bottom Drawer with Goals */}
-      <DraggableDrawer closedHeight={DRAWER_CLOSED_HEIGHT} openHeight={DRAWER_OPEN_HEIGHT} initiallyOpen>
-        <GoalsSection goals={goals} onGoalPress={handleGoalPress} onAddGoal={handleAddGoal} />
-      </DraggableDrawer>
-
       {/* Backdrop Overlay */}
       <AnimatedPressable
         style={[styles.backdrop, backdropAnimatedStyle]}
@@ -314,7 +246,8 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 0,
     right: 0,
-    height: '70%',
+    bottom: 0,
+    height: '60%',
     pointerEvents: 'none',
   },
   content: {
@@ -324,16 +257,6 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     zIndex: 100,
-  },
-  stickyCommandBar: {
-    zIndex: 200,
-  },
-  drawerGradient: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    height: 80,
-    zIndex: 5,
   },
   heroSection: {
     alignItems: 'center',
