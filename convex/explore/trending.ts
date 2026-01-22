@@ -14,10 +14,89 @@ import { internal } from "../_generated/api";
 const JUPITER_TOKENS_URL = "https://api.jup.ag/tokens";
 // Kalshi public API (no auth required for market data)
 const KALSHI_API_URL = "https://api.elections.kalshi.com/trade-api/v2";
+// Helius DAS API for Metaplex token metadata
+const HELIUS_RPC_URL = "https://mainnet.helius-rpc.com";
 
 // Cache TTL in milliseconds
 const TRENDING_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 const MARKETS_CACHE_TTL = 2 * 60 * 1000; // 2 minutes
+
+// ============================================================================
+// Helius DAS Helper (Metaplex Token Metadata)
+// ============================================================================
+
+interface HeliusDasAsset {
+  id: string;
+  content?: {
+    links?: {
+      image?: string;
+    };
+    files?: Array<{
+      uri?: string;
+      cdn_uri?: string;
+    }>;
+  };
+}
+
+/**
+ * Fetch token images from Helius DAS API (reads from Metaplex Token Metadata Program)
+ * This is the canonical/primary source for all token logos on Solana.
+ * Returns a map of mint address to image URL
+ */
+async function fetchTokenImagesFromHelius(
+  mints: string[]
+): Promise<Map<string, string>> {
+  const HELIUS_API_KEY = process.env.HELIUS_API_KEY;
+  if (!HELIUS_API_KEY || mints.length === 0) {
+    return new Map();
+  }
+
+  try {
+    const rpcUrl = `${HELIUS_RPC_URL}/?api-key=${HELIUS_API_KEY}`;
+
+    // Helius getAssetBatch supports up to 1000 assets per request
+    const response = await fetch(rpcUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: "get-token-metadata",
+        method: "getAssetBatch",
+        params: { ids: mints },
+      }),
+    });
+
+    if (!response.ok) {
+      console.error(`[Helius DAS] API error: ${response.status}`);
+      return new Map();
+    }
+
+    const data = await response.json();
+    const assets: HeliusDasAsset[] = data.result || [];
+
+    const imageMap = new Map<string, string>();
+
+    for (const asset of assets) {
+      if (!asset?.id) continue;
+
+      // Try to get image URL from Metaplex metadata (in priority order)
+      const imageUrl =
+        asset.content?.links?.image ||
+        asset.content?.files?.[0]?.cdn_uri ||
+        asset.content?.files?.[0]?.uri;
+
+      if (imageUrl) {
+        imageMap.set(asset.id, imageUrl);
+      }
+    }
+
+    console.log(`[Helius DAS] Fetched images for ${imageMap.size}/${mints.length} tokens`);
+    return imageMap;
+  } catch (error) {
+    console.error("[Helius DAS] Failed to fetch token metadata:", error);
+    return new Map();
+  }
+}
 
 // ============================================================================
 // Trending Tokens Queries
@@ -232,11 +311,24 @@ export const refreshTrendingTokens = action({
         change24h: token.stats24h?.priceChange ?? 0,
         volume24h: (token.stats24h?.buyVolume ?? 0) + (token.stats24h?.sellVolume ?? 0),
         marketCap: token.mcap ?? token.fdv,
-        logoUri: token.icon,
+        logoUri: undefined as string | undefined, // Will be populated from Helius DAS
         verified: token.isVerified ?? token.tags?.includes("verified") ?? false,
         organicScore: token.organicScore,
       })
     );
+
+    // Fetch ALL token images from Helius DAS (Metaplex Token Metadata Program)
+    // This is the canonical source for token logos on Solana
+    const heliusImages = await fetchTokenImagesFromHelius(
+      tokens.map((t) => t.mint)
+    );
+
+    // Apply Helius images to tokens
+    for (const token of tokens) {
+      if (heliusImages.has(token.mint)) {
+        token.logoUri = heliusImages.get(token.mint);
+      }
+    }
 
     // Update cache
     await ctx.runMutation(internal.explore.trending.updateTrendingCache, {
