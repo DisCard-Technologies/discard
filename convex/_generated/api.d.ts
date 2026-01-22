@@ -30,6 +30,8 @@ import type * as crons_selfHealingCheck from "../crons/selfHealingCheck.js";
 import type * as crons_syncDefi from "../crons/syncDefi.js";
 import type * as crons_syncHistoricalPrices from "../crons/syncHistoricalPrices.js";
 import type * as crons_syncRates from "../crons/syncRates.js";
+import type * as explore_birdeye from "../explore/birdeye.js";
+import type * as explore_tokenDetail from "../explore/tokenDetail.js";
 import type * as explore_trending from "../explore/trending.js";
 import type * as fraud_detection from "../fraud/detection.js";
 import type * as funding_funding from "../funding/funding.js";
@@ -108,6 +110,8 @@ declare const fullApi: ApiFromModules<{
   "crons/syncDefi": typeof crons_syncDefi;
   "crons/syncHistoricalPrices": typeof crons_syncHistoricalPrices;
   "crons/syncRates": typeof crons_syncRates;
+  "explore/birdeye": typeof explore_birdeye;
+  "explore/tokenDetail": typeof explore_tokenDetail;
   "explore/trending": typeof explore_trending;
   "fraud/detection": typeof fraud_detection;
   "funding/funding": typeof funding_funding;
