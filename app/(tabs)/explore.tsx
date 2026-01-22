@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { StyleSheet, View, Pressable, ScrollView, ActivityIndicator, Image } from 'react-native';
+import { StyleSheet, View, Pressable, ScrollView, ActivityIndicator, Image, TextInput, Modal } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
@@ -15,12 +15,50 @@ import { useTrendingTokens } from '@/hooks/useTrendingTokens';
 import { useOpenMarkets } from '@/hooks/useOpenMarkets';
 import { positiveColor, negativeColor } from '@/constants/theme';
 
-type CategoryFilter = 'tokens' | 'markets';
+type TabFilter = 'tokens' | 'markets';
+type TokenSortOption = 'default' | 'price_asc' | 'price_desc' | 'change_asc' | 'change_desc' | 'mcap_asc' | 'mcap_desc';
+type MarketSortOption = 'default' | 'volume_asc' | 'volume_desc' | 'yes_asc' | 'yes_desc';
+type TokenCategoryFilter = 'all' | 'stables' | 'stocks' | 'reward' | 'memes';
 
-const categoryFilters: { id: CategoryFilter; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
+const tokenSortOptions: { id: TokenSortOption; label: string }[] = [
+  { id: 'default', label: 'Default' },
+  { id: 'price_desc', label: 'Price: High to Low' },
+  { id: 'price_asc', label: 'Price: Low to High' },
+  { id: 'change_desc', label: '24H Change: High to Low' },
+  { id: 'change_asc', label: '24H Change: Low to High' },
+  { id: 'mcap_desc', label: 'Market Cap: High to Low' },
+  { id: 'mcap_asc', label: 'Market Cap: Low to High' },
+];
+
+const marketSortOptions: { id: MarketSortOption; label: string }[] = [
+  { id: 'default', label: 'Default' },
+  { id: 'volume_desc', label: 'Volume: High to Low' },
+  { id: 'volume_asc', label: 'Volume: Low to High' },
+  { id: 'yes_desc', label: 'Yes Price: High to Low' },
+  { id: 'yes_asc', label: 'Yes Price: Low to High' },
+];
+
+const tabFilters: { id: TabFilter; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
   { id: 'tokens', label: 'Tokens', icon: 'diamond' },
   { id: 'markets', label: 'Markets', icon: 'pulse' },
 ];
+
+const tokenCategoryOptions: { id: TokenCategoryFilter; label: string }[] = [
+  { id: 'all', label: 'Trending' },
+  { id: 'stables', label: 'Stables' },
+  { id: 'stocks', label: 'Stocks' },
+  { id: 'reward', label: 'Reward-Bearing' },
+  { id: 'memes', label: 'Memes' },
+];
+
+// Token symbols for each category (case-insensitive matching)
+const STABLE_TOKENS = ['USDC', 'USDT', 'PYUSD', 'DAI', 'USDH', 'UXD', 'USDY', 'USDP', 'TUSD', 'FRAX', 'EURC'];
+const STOCK_TOKENS = ['AAPL', 'TSLA', 'GOOGL', 'AMZN', 'MSFT', 'NVDA', 'META', 'NFLX', 'AMD', 'COIN', 'MSTR', 'GME', 'AMC'];
+const REWARD_TOKENS = ['JLP', 'MSOL', 'BSOL', 'JSOL', 'JITOSOL', 'VSOL', 'LST', 'HSOL', 'COMPASSSOL', 'INF', 'PSOL'];
+const MEME_TOKENS = ['BONK', 'WIF', 'POPCAT', 'MEW', 'SAMO', 'MYRO', 'SLERF', 'BOME', 'TREMP', 'TRUMP', 'PNUT', 'GOAT', 'FWOG', 'MOODENG', 'GIGACHAD', 'PENGU', 'AI16Z', 'GRIFFAIN', 'ZEREBRO'];
+
+// Preferred market category order
+const MARKET_CATEGORY_ORDER = ['Sports', 'Politics', 'Economics', 'Finance', 'Crypto', 'Tech', 'Entertainment', 'Science', 'Culture'];
 
 // Format price with appropriate decimals
 const formatPrice = (price: number): string => {
@@ -45,45 +83,118 @@ export default function ExploreScreen() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
 
-  const [searchQuery] = useState('');
-  const [activeCategory, setActiveCategory] = useState<CategoryFilter>('tokens');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [activeTab, setActiveTab] = useState<TabFilter>('tokens');
+  const [tokenSort, setTokenSort] = useState<TokenSortOption>('default');
+  const [marketSort, setMarketSort] = useState<MarketSortOption>('default');
+  const [tokenCategoryFilter, setTokenCategoryFilter] = useState<TokenCategoryFilter>('all');
+  const [marketCategoryFilter, setMarketCategoryFilter] = useState<string>('All');
+  const [showSortMenu, setShowSortMenu] = useState(false);
 
   const primaryColor = useThemeColor({}, 'tint');
   const mutedColor = useThemeColor({ light: '#687076', dark: '#9BA1A6' }, 'icon');
   const cardBg = useThemeColor({ light: '#f4f4f5', dark: '#1c1c1e' }, 'background');
   const borderColor = useThemeColor({ light: 'rgba(0,0,0,0.08)', dark: 'rgba(255,255,255,0.1)' }, 'background');
+  const inputBg = useThemeColor({ light: 'rgba(0,0,0,0.05)', dark: 'rgba(255,255,255,0.08)' }, 'background');
+  const textColor = useThemeColor({}, 'text');
 
   // Fetch trending tokens
   const { tokens, isLoading: tokensLoading, error: tokensError } = useTrendingTokens();
 
   // Fetch prediction markets
-  const { markets, isLoading: marketsLoading, error: marketsError } = useOpenMarkets();
+  const { markets, isLoading: marketsLoading, error: marketsError, categories: marketCategories } = useOpenMarkets();
 
-  // Filter tokens by search
+  // Build market category filter options with preferred order
+  const marketCategoryOptions = useMemo(() => {
+    const orderedCategories = MARKET_CATEGORY_ORDER.filter(cat => marketCategories.includes(cat));
+    const remainingCategories = marketCategories.filter(cat => !MARKET_CATEGORY_ORDER.includes(cat));
+    return ['All', ...orderedCategories, ...remainingCategories];
+  }, [marketCategories]);
+
+  // Filter and sort tokens
   const filteredTokens = useMemo(() => {
-    if (activeCategory !== 'tokens') return [];
-    return tokens.filter((token) => {
+    if (activeTab !== 'tokens') return [];
+    let result = tokens.filter((token) => {
       const matchesSearch =
         token.symbol.toLowerCase().includes(searchQuery.toLowerCase()) ||
         token.name.toLowerCase().includes(searchQuery.toLowerCase());
+
+      // Apply category filter
+      if (tokenCategoryFilter !== 'all') {
+        const symbolUpper = token.symbol.toUpperCase();
+        switch (tokenCategoryFilter) {
+          case 'stables':
+            if (!STABLE_TOKENS.includes(symbolUpper)) return false;
+            break;
+          case 'stocks':
+            if (!STOCK_TOKENS.includes(symbolUpper)) return false;
+            break;
+          case 'reward':
+            if (!REWARD_TOKENS.includes(symbolUpper)) return false;
+            break;
+          case 'memes':
+            if (!MEME_TOKENS.includes(symbolUpper)) return false;
+            break;
+        }
+      }
+
       return matchesSearch;
     });
-  }, [tokens, searchQuery, activeCategory]);
 
-  // Filter markets by search
+    // Apply sorting
+    if (tokenSort !== 'default') {
+      result = [...result].sort((a, b) => {
+        switch (tokenSort) {
+          case 'price_asc': return a.priceUsd - b.priceUsd;
+          case 'price_desc': return b.priceUsd - a.priceUsd;
+          case 'change_asc': return a.change24h - b.change24h;
+          case 'change_desc': return b.change24h - a.change24h;
+          case 'mcap_asc': return (a.marketCap || 0) - (b.marketCap || 0);
+          case 'mcap_desc': return (b.marketCap || 0) - (a.marketCap || 0);
+          default: return 0;
+        }
+      });
+    }
+    return result;
+  }, [tokens, searchQuery, activeTab, tokenSort]);
+
+  // Filter and sort markets
   const filteredMarkets = useMemo(() => {
-    if (activeCategory !== 'markets') return [];
-    return markets.filter((market) => {
+    if (activeTab !== 'markets') return [];
+    let result = markets.filter((market) => {
       const matchesSearch =
         market.question.toLowerCase().includes(searchQuery.toLowerCase()) ||
         market.ticker.toLowerCase().includes(searchQuery.toLowerCase());
-      return matchesSearch;
+      const matchesCategory = marketCategoryFilter === 'All' || market.category === marketCategoryFilter;
+      return matchesSearch && matchesCategory;
     });
-  }, [markets, searchQuery, activeCategory]);
 
-  // Loading and error states based on active category
-  const isLoading = activeCategory === 'tokens' ? tokensLoading : marketsLoading;
-  const error = activeCategory === 'tokens' ? tokensError : marketsError;
+    // Apply sorting
+    if (marketSort !== 'default') {
+      result = [...result].sort((a, b) => {
+        switch (marketSort) {
+          case 'volume_asc': return a.volume24h - b.volume24h;
+          case 'volume_desc': return b.volume24h - a.volume24h;
+          case 'yes_asc': return a.yesPrice - b.yesPrice;
+          case 'yes_desc': return b.yesPrice - a.yesPrice;
+          default: return 0;
+        }
+      });
+    }
+    return result;
+  }, [markets, searchQuery, activeTab, marketCategoryFilter, marketSort]);
+
+  // Loading and error states based on active tab
+  const isLoading = activeTab === 'tokens' ? tokensLoading : marketsLoading;
+  const error = activeTab === 'tokens' ? tokensError : marketsError;
+
+  // Get current sort label for button display
+  const currentSortLabel = useMemo(() => {
+    if (activeTab === 'tokens') {
+      return tokenSortOptions.find(o => o.id === tokenSort)?.label || 'Sort';
+    }
+    return marketSortOptions.find(o => o.id === marketSort)?.label || 'Sort';
+  }, [activeTab, tokenSort, marketSort]);
 
   const handleTokenPress = (token: typeof tokens[0]) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -101,9 +212,19 @@ export default function ExploreScreen() {
     });
   };
 
-  const handleCategorySelect = (category: CategoryFilter) => {
+  const handleTabSelect = (tab: TabFilter) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setActiveCategory(category);
+    setActiveTab(tab);
+  };
+
+  const handleSortSelect = (sortId: TokenSortOption | MarketSortOption) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (activeTab === 'tokens') {
+      setTokenSort(sortId as TokenSortOption);
+    } else {
+      setMarketSort(sortId as MarketSortOption);
+    }
+    setShowSortMenu(false);
   };
 
   const handleMarketPress = (market: typeof markets[0]) => {
@@ -133,33 +254,154 @@ export default function ExploreScreen() {
       <StatusBar style={isDark ? 'light' : 'dark'} />
       <View style={{ height: insets.top }} />
 
-      {/* Category Filter Pills - Rounded Pill Container */}
-      <View style={[styles.categoryContainer, { backgroundColor: isDark ? '#1c1c1e' : '#f4f4f5' }]}>
-        {categoryFilters.map((category) => (
+      {/* Search Bar with Sort Button */}
+      <View style={styles.searchRow}>
+        <View style={[styles.searchBar, { backgroundColor: inputBg, borderColor }]}>
+          <Ionicons name="search" size={16} color={mutedColor} />
+          <TextInput
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholder={activeTab === 'tokens' ? 'Search tokens...' : 'Search markets...'}
+            placeholderTextColor={mutedColor}
+            style={[styles.searchInput, { color: textColor }]}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          {searchQuery.length > 0 && (
+            <Pressable onPress={() => setSearchQuery('')}>
+              <Ionicons name="close-circle" size={18} color={mutedColor} />
+            </Pressable>
+          )}
+        </View>
+        <Pressable
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            setShowSortMenu(true);
+          }}
+          style={[styles.sortButton, { backgroundColor: inputBg, borderColor }]}
+        >
+          <Ionicons name="swap-vertical" size={18} color={tokenSort !== 'default' || marketSort !== 'default' ? primaryColor : mutedColor} />
+        </Pressable>
+      </View>
+
+      {/* Tab Filter Pills - Rounded Pill Container */}
+      <View style={[styles.tabContainer, { backgroundColor: isDark ? '#1c1c1e' : '#f4f4f5' }]}>
+        {tabFilters.map((tab) => (
           <Pressable
-            key={category.id}
-            onPress={() => handleCategorySelect(category.id)}
+            key={tab.id}
+            onPress={() => handleTabSelect(tab.id)}
             style={[
-              styles.categoryPill,
-              activeCategory === category.id && { backgroundColor: primaryColor },
+              styles.tabPill,
+              activeTab === tab.id && { backgroundColor: primaryColor },
             ]}
           >
             <Ionicons
-              name={category.icon}
+              name={tab.icon}
               size={16}
-              color={activeCategory === category.id ? '#fff' : mutedColor}
+              color={activeTab === tab.id ? '#fff' : mutedColor}
             />
             <ThemedText
               style={[
-                styles.categoryPillText,
-                { color: activeCategory === category.id ? '#fff' : mutedColor },
+                styles.tabPillText,
+                { color: activeTab === tab.id ? '#fff' : mutedColor },
               ]}
             >
-              {category.label}
+              {tab.label}
             </ThemedText>
           </Pressable>
         ))}
       </View>
+
+      {/* Category Filters */}
+      <View style={styles.filterContainer}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.filterScrollContent}
+        >
+        {activeTab === 'tokens' ? (
+          tokenCategoryOptions.map((cat) => (
+            <Pressable
+              key={cat.id}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setTokenCategoryFilter(cat.id);
+              }}
+              style={[
+                styles.filterPill,
+                { backgroundColor: tokenCategoryFilter === cat.id ? `${primaryColor}20` : cardBg },
+              ]}
+            >
+              <ThemedText
+                style={[
+                  styles.filterPillText,
+                  { color: tokenCategoryFilter === cat.id ? primaryColor : mutedColor },
+                ]}
+              >
+                {cat.label}
+              </ThemedText>
+            </Pressable>
+          ))
+        ) : (
+          marketCategoryOptions.map((cat) => (
+            <Pressable
+              key={cat}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setMarketCategoryFilter(cat);
+              }}
+              style={[
+                styles.filterPill,
+                { backgroundColor: marketCategoryFilter === cat ? `${primaryColor}20` : cardBg },
+              ]}
+            >
+              <ThemedText
+                style={[
+                  styles.filterPillText,
+                  { color: marketCategoryFilter === cat ? primaryColor : mutedColor },
+                ]}
+              >
+                {cat}
+              </ThemedText>
+            </Pressable>
+          ))
+        )}
+        </ScrollView>
+      </View>
+
+      {/* Sort Menu Modal */}
+      <Modal
+        visible={showSortMenu}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowSortMenu(false)}
+      >
+        <Pressable style={styles.modalOverlay} onPress={() => setShowSortMenu(false)}>
+          <View style={[styles.sortMenu, { backgroundColor: isDark ? '#2c2c2e' : '#fff' }]}>
+            <View style={styles.sortMenuHeader}>
+              <ThemedText style={styles.sortMenuTitle}>Sort By</ThemedText>
+              <Pressable onPress={() => setShowSortMenu(false)}>
+                <Ionicons name="close" size={24} color={mutedColor} />
+              </Pressable>
+            </View>
+            {(activeTab === 'tokens' ? tokenSortOptions : marketSortOptions).map((option) => {
+              const isSelected = activeTab === 'tokens' ? tokenSort === option.id : marketSort === option.id;
+              return (
+                <Pressable
+                  key={option.id}
+                  onPress={() => handleSortSelect(option.id)}
+                  style={[styles.sortMenuItem, isSelected && { backgroundColor: `${primaryColor}15` }]}
+                >
+                  <ThemedText style={[styles.sortMenuItemText, isSelected && { color: primaryColor }]}>
+                    {option.label}
+                  </ThemedText>
+                  {isSelected && <Ionicons name="checkmark" size={20} color={primaryColor} />}
+                </Pressable>
+              );
+            })}
+          </View>
+        </Pressable>
+      </Modal>
 
       {/* Content List */}
       <ScrollView
@@ -171,7 +413,7 @@ export default function ExploreScreen() {
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color={primaryColor} />
             <ThemedText style={[styles.loadingText, { color: mutedColor }]}>
-              Loading {activeCategory === 'tokens' ? 'tokens' : 'markets'}...
+              Loading {activeTab === 'tokens' ? 'tokens' : 'markets'}...
             </ThemedText>
           </View>
         ) : error ? (
@@ -181,7 +423,7 @@ export default function ExploreScreen() {
               Failed to load {activeCategory}
             </ThemedText>
           </View>
-        ) : activeCategory === 'tokens' ? (
+        ) : activeTab === 'tokens' ? (
           // Tokens List
           filteredTokens.length === 0 ? (
             <View style={styles.emptyContainer}>
@@ -288,8 +530,39 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
+  // Search row with search bar and sort button
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginHorizontal: 16,
+    marginBottom: 12,
+  },
+  searchBar: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 24,
+    borderWidth: 1,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 14,
+    paddingVertical: 0,
+  },
+  sortButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   // Rounded pill container for tab selector
-  categoryContainer: {
+  tabContainer: {
     flexDirection: 'row',
     marginHorizontal: 16,
     marginBottom: 12,
@@ -297,7 +570,7 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     gap: 4,
   },
-  categoryPill: {
+  tabPill: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
@@ -306,9 +579,62 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     gap: 6,
   },
-  categoryPillText: {
+  tabPillText: {
     fontSize: 14,
     fontWeight: '600',
+  },
+  // Filter container and scroll for categories
+  filterContainer: {
+    marginBottom: 8,
+  },
+  filterScrollContent: {
+    paddingHorizontal: 16,
+    gap: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  filterPill: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 16,
+  },
+  filterPillText: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  // Sort menu modal
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  sortMenu: {
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingBottom: 34,
+  },
+  sortMenuHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(128,128,128,0.2)',
+  },
+  sortMenuTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  sortMenuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+  },
+  sortMenuItemText: {
+    fontSize: 16,
   },
   tokenList: {
     flex: 1,
