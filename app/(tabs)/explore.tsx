@@ -1,6 +1,6 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { StyleSheet, View, Pressable, ScrollView, ActivityIndicator, TextInput, Modal } from 'react-native';
-import { Image } from 'expo-image';
+import { Image, ImageErrorEventData } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
@@ -102,6 +102,12 @@ export default function ExploreScreen() {
 
   // Fetch trending tokens
   const { tokens, isLoading: tokensLoading, error: tokensError } = useTrendingTokens();
+
+  // Track failed image loads by mint address
+  const [failedImages, setFailedImages] = useState<Set<string>>(new Set());
+  const handleImageError = useCallback((mint: string) => {
+    setFailedImages(prev => new Set(prev).add(mint));
+  }, []);
 
   // Fetch prediction markets
   const { markets, isLoading: marketsLoading, error: marketsError, categories: marketCategories } = useOpenMarkets();
@@ -455,12 +461,13 @@ export default function ExploreScreen() {
                 >
                   {/* Token Icon */}
                   <View style={[styles.tokenIcon, { backgroundColor: cardBg }]}>
-                    {token.logoUri ? (
+                    {token.logoUri && !failedImages.has(token.mint) ? (
                       <Image
                         source={token.logoUri}
                         style={styles.tokenIconImage}
                         contentFit="cover"
                         transition={150}
+                        onError={() => handleImageError(token.mint)}
                       />
                     ) : (
                       <ThemedText style={styles.tokenIconFallback}>
