@@ -99,6 +99,28 @@ async function fetchTokenImagesFromHelius(
 }
 
 // ============================================================================
+// Image Proxy Helper
+// ============================================================================
+
+/**
+ * Proxy all token images through wsrv.nl for reliability
+ * This is how apps like Phantom handle token images - they use a CDN/proxy
+ * that caches images and handles failures gracefully.
+ */
+function toProxiedImageUrl(url: string | undefined): string | undefined {
+  if (!url) return url;
+
+  // Handle ipfs:// protocol URLs first
+  if (url.startsWith('ipfs://')) {
+    const cid = url.replace('ipfs://', '');
+    url = `https://ipfs.io/ipfs/${cid}`;
+  }
+
+  // Proxy through wsrv.nl - handles caching, IPFS, failures, etc.
+  return `https://wsrv.nl/?url=${encodeURIComponent(url)}&w=64&h=64&fit=cover&default=1`;
+}
+
+// ============================================================================
 // Trending Tokens Queries
 // ============================================================================
 
@@ -311,23 +333,29 @@ export const refreshTrendingTokens = action({
         change24h: token.stats24h?.priceChange ?? 0,
         volume24h: (token.stats24h?.buyVolume ?? 0) + (token.stats24h?.sellVolume ?? 0),
         marketCap: token.mcap ?? token.fdv,
-        logoUri: undefined as string | undefined, // Will be populated from Helius DAS
+        // Layer 1: Use Jupiter icon first (often optimized/cached URLs)
+        logoUri: toProxiedImageUrl(token.icon),
         verified: token.isVerified ?? token.tags?.includes("verified") ?? false,
         organicScore: token.organicScore,
       })
     );
 
-    // Fetch ALL token images from Helius DAS (Metaplex Token Metadata Program)
-    // This is the canonical source for token logos on Solana
-    const heliusImages = await fetchTokenImagesFromHelius(
-      tokens.map((t) => t.mint)
-    );
+    // Layer 2: Only fetch from Helius DAS for tokens still missing logos
+    const tokensMissingLogos = tokens.filter((t) => !t.logoUri);
+    if (tokensMissingLogos.length > 0) {
+      console.log(`[Trending] ${tokensMissingLogos.length}/${tokens.length} tokens missing Jupiter icons, fetching from Helius DAS`);
+      const heliusImages = await fetchTokenImagesFromHelius(
+        tokensMissingLogos.map((t) => t.mint)
+      );
 
-    // Apply Helius images to tokens
-    for (const token of tokens) {
-      if (heliusImages.has(token.mint)) {
-        token.logoUri = heliusImages.get(token.mint);
+      // Apply Helius images with IPFS transformation
+      for (const token of tokens) {
+        if (!token.logoUri && heliusImages.has(token.mint)) {
+          token.logoUri = toProxiedImageUrl(heliusImages.get(token.mint));
+        }
       }
+    } else {
+      console.log(`[Trending] All ${tokens.length} tokens have Jupiter icons`);
     }
 
     // Update cache

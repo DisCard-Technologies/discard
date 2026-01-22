@@ -1,5 +1,6 @@
-import { useState, useMemo } from 'react';
-import { StyleSheet, View, Pressable, TextInput, ScrollView, ActivityIndicator, Image } from 'react-native';
+import { useState, useMemo, useCallback } from 'react';
+import { StyleSheet, View, Pressable, TextInput, ScrollView, ActivityIndicator } from 'react-native';
+import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 
@@ -69,6 +70,12 @@ export function ExploreView() {
   const [searchQuery, setSearchQuery] = useState('');
   const [marketCategoryFilter, setMarketCategoryFilter] = useState<string>('All');
   const [rwaCategoryFilter, setRwaCategoryFilter] = useState<string>('All');
+  const [failedImages, setFailedImages] = useState<Set<string>>(new Set());
+
+  // Handle image load errors - fall back to symbol text
+  const handleImageError = useCallback((mint: string) => {
+    setFailedImages(prev => new Set(prev).add(mint));
+  }, []);
 
   // Real data hooks
   const { tokens, isLoading: tokensLoading, error: tokensError } = useTrendingTokens();
@@ -241,8 +248,14 @@ export function ExploreView() {
                 >
                   <View style={styles.tokenInfo}>
                     <View style={[styles.tokenIcon, { backgroundColor: inputBg }]}>
-                      {token.logoUri ? (
-                        <Image source={{ uri: token.logoUri }} style={styles.tokenIconImage} />
+                      {token.logoUri && !failedImages.has(token.mint) ? (
+                        <Image
+                          source={{ uri: token.logoUri }}
+                          style={styles.tokenIconImage}
+                          contentFit="cover"
+                          transition={200}
+                          onError={() => handleImageError(token.mint)}
+                        />
                       ) : (
                         <ThemedText style={styles.tokenIconText}>{token.symbol.slice(0, 2)}</ThemedText>
                       )}
