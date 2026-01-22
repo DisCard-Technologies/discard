@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
-import { StyleSheet, View, Pressable, ScrollView, ActivityIndicator, Image, TextInput, Modal } from 'react-native';
+import { StyleSheet, View, Pressable, ScrollView, ActivityIndicator, TextInput, Modal } from 'react-native';
+import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
@@ -59,6 +60,34 @@ const MEME_TOKENS = ['BONK', 'WIF', 'POPCAT', 'MEW', 'SAMO', 'MYRO', 'SLERF', 'B
 
 // Preferred market category order
 const MARKET_CATEGORY_ORDER = ['Sports', 'Politics', 'Economics', 'Finance', 'Crypto', 'Tech', 'Entertainment', 'Science', 'Culture'];
+
+// Token image component with error fallback
+function TokenImage({ uri, symbol, style, fallbackStyle }: {
+  uri?: string;
+  symbol: string;
+  style: any;
+  fallbackStyle: any;
+}) {
+  const [hasError, setHasError] = useState(false);
+
+  if (!uri || hasError) {
+    return (
+      <ThemedText style={fallbackStyle}>
+        {symbol.slice(0, 2)}
+      </ThemedText>
+    );
+  }
+
+  return (
+    <Image
+      source={{ uri }}
+      style={style}
+      contentFit="cover"
+      transition={200}
+      onError={() => setHasError(true)}
+    />
+  );
+}
 
 // Format price with appropriate decimals
 const formatPrice = (price: number): string => {
@@ -453,13 +482,12 @@ export default function ExploreScreen() {
                 >
                   {/* Token Icon */}
                   <View style={[styles.tokenIcon, { backgroundColor: cardBg }]}>
-                    {token.logoUri ? (
-                      <Image source={{ uri: token.logoUri }} style={styles.tokenIconImage} />
-                    ) : (
-                      <ThemedText style={styles.tokenIconFallback}>
-                        {token.symbol.slice(0, 2)}
-                      </ThemedText>
-                    )}
+                    <TokenImage
+                      uri={token.logoUri}
+                      symbol={token.symbol}
+                      style={styles.tokenIconImage}
+                      fallbackStyle={styles.tokenIconFallback}
+                    />
                   </View>
 
                   {/* Token Info */}
