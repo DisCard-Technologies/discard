@@ -21,7 +21,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { useThemeColor } from '@/hooks/use-theme-color';
-import { useTokenHistory, TimePeriod } from '@/hooks/useTokenHistory';
+import { useTokenHistory, useTokenPerformance, TimePeriod } from '@/hooks/useTokenHistory';
+import { useTokenDetail } from '@/hooks/useTokenDetail';
 import { primaryColor, positiveColor, negativeColor, Fonts } from '@/constants/theme';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -135,19 +136,6 @@ function createAreaPath(linePath: string, width: number, height: number, dataLen
   return `${linePath} L ${lastX} ${height} L 0 ${height} Z`;
 }
 
-// Mock data
-const mockPerformance = [
-  { period: '1 Day', value: null, percent: 50 },
-  { period: '1 Month', value: '-2.77%', percent: 35 },
-  { period: '3 Months', value: '-9.31%', percent: 25 },
-  { period: '1 Year', value: '+30.30%', percent: 75 },
-  { period: 'All Time', value: '+67.15%', percent: 85 },
-];
-
-const mockNews = [
-  { id: '1', source: 'CoinDesk', title: 'Market Analysis: Key Levels to Watch', time: '2m ago', image: null },
-  { id: '2', source: 'CryptoNews', title: 'Institutional Interest Continues to Grow', time: '15m ago', image: null },
-];
 
 export function TokenDetailScreen({
   token,
@@ -171,6 +159,23 @@ export function TokenDetailScreen({
   const { prices: historyPrices, isLoading: isHistoryLoading } = useTokenHistory(
     token.symbol,
     selectedPeriod
+  );
+
+  // Fetch detailed token data (market cap, volume, socials)
+  const {
+    data: tokenDetailData,
+    marketCap: detailMarketCap,
+    volume24h: detailVolume24h,
+    circulatingSupply: detailCirculatingSupply,
+    totalSupply: detailTotalSupply,
+    socials,
+    isLoading: isDetailLoading,
+  } = useTokenDetail(token.mint);
+
+  // Fetch performance data (calculated from Birdeye OHLCV)
+  const { performance: performanceData, isLoading: isPerformanceLoading } = useTokenPerformance(
+    token.mint,
+    token.price
   );
 
   // Use historical data if available, otherwise generate fallback
@@ -606,28 +611,36 @@ export function TokenDetailScreen({
                     <ThemedText style={[styles.statLabel, { color: mutedColor }]}>Market Cap</ThemedText>
                     <Ionicons name="analytics-outline" size={14} color={mutedColor} />
                   </View>
-                  <ThemedText style={styles.statValue}>{formatLargeNumber(token.marketCap)}</ThemedText>
+                  <ThemedText style={styles.statValue}>
+                    {detailMarketCap !== 'N/A' ? detailMarketCap : formatLargeNumber(token.marketCap)}
+                  </ThemedText>
                 </View>
                 <View style={styles.statItem}>
                   <View style={styles.statHeader}>
                     <ThemedText style={[styles.statLabel, { color: mutedColor }]}>Volume 24h</ThemedText>
                     <Ionicons name="trending-up-outline" size={14} color={mutedColor} />
                   </View>
-                  <ThemedText style={styles.statValue}>{formatLargeNumber(token.volume24h)}</ThemedText>
+                  <ThemedText style={styles.statValue}>
+                    {detailVolume24h !== 'N/A' ? detailVolume24h : formatLargeNumber(token.volume24h)}
+                  </ThemedText>
                 </View>
                 <View style={styles.statItem}>
                   <View style={styles.statHeader}>
                     <ThemedText style={[styles.statLabel, { color: mutedColor }]}>Circulating</ThemedText>
                     <Ionicons name="repeat-outline" size={14} color={mutedColor} />
                   </View>
-                  <ThemedText style={styles.statValue}>{formatSupply(token.supply)}</ThemedText>
+                  <ThemedText style={styles.statValue}>
+                    {detailCirculatingSupply !== 'N/A' ? detailCirculatingSupply : formatSupply(token.supply)}
+                  </ThemedText>
                 </View>
                 <View style={styles.statItem}>
                   <View style={styles.statHeader}>
                     <ThemedText style={[styles.statLabel, { color: mutedColor }]}>Total Supply</ThemedText>
                     <Ionicons name="layers-outline" size={14} color={mutedColor} />
                   </View>
-                  <ThemedText style={styles.statValue}>{formatSupply(token.totalSupply || token.supply)}</ThemedText>
+                  <ThemedText style={styles.statValue}>
+                    {detailTotalSupply !== 'N/A' ? detailTotalSupply : formatSupply(token.totalSupply || token.supply)}
+                  </ThemedText>
                 </View>
               </View>
             </View>
@@ -639,11 +652,13 @@ export function TokenDetailScreen({
                 <View style={styles.sectionContainer}>
                   <ThemedText style={styles.sectionTitle}>About {token.symbol}</ThemedText>
                   <ThemedText style={[styles.aboutText, { color: mutedColor }]}>
-                    {token.about || `${token.name} (${token.symbol}) is a cryptocurrency available on the ${token.network || 'Solana'} network. Trade, send, and receive ${token.symbol} with ease.`}
+                    {tokenDetailData?.description || token.about || `${token.name} (${token.symbol}) is a cryptocurrency available on the ${token.network || 'Solana'} network. Trade, send, and receive ${token.symbol} with ease.`}
                   </ThemedText>
-                  <Pressable style={styles.showMoreButton}>
-                    <ThemedText style={[styles.showMoreText, { color: primaryColor }]}>Show more</ThemedText>
-                  </Pressable>
+                  {(tokenDetailData?.description || token.about) && (
+                    <Pressable style={styles.showMoreButton}>
+                      <ThemedText style={[styles.showMoreText, { color: primaryColor }]}>Show more</ThemedText>
+                    </Pressable>
+                  )}
                 </View>
 
                 {/* Equity Section - Only for owned tokens */}
@@ -688,8 +703,8 @@ export function TokenDetailScreen({
                 {/* Performance Section */}
                 <View style={styles.sectionContainer}>
                   <ThemedText style={styles.sectionTitle}>Performance</ThemedText>
-                  {mockPerformance.map((item, index) => {
-                    const isNegative = item.value?.startsWith('-');
+                  {performanceData.map((item, index) => {
+                    const isNegative = item.change < 0;
                     const barColor = item.value === null ? mutedColor : (isNegative ? negativeColor : positiveColor);
                     return (
                       <View key={index} style={styles.performanceRow}>
@@ -717,58 +732,66 @@ export function TokenDetailScreen({
                   })}
                 </View>
 
-                {/* News Section */}
-                <View style={styles.sectionContainer}>
-                  <ThemedText style={styles.sectionTitle}>Latest News</ThemedText>
-                  {mockNews.map((article) => (
-                    <Pressable
-                      key={article.id}
-                      style={[styles.newsCard, { backgroundColor: cardBg, borderColor }]}
-                      onPress={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)}
-                    >
-                      <View style={styles.newsContent}>
-                        <View style={styles.newsSourceRow}>
-                          <View style={[styles.newsSourceIcon, { backgroundColor: primaryColor }]}>
-                            <Ionicons name="newspaper-outline" size={12} color="#fff" />
-                          </View>
-                          <ThemedText style={[styles.newsSource, { color: mutedColor }]}>
-                            {article.source}
-                          </ThemedText>
-                          <ThemedText style={[styles.newsTime, { color: mutedColor }]}>
-                            · {article.time}
-                          </ThemedText>
-                        </View>
-                        <ThemedText style={styles.newsTitle} numberOfLines={2}>
-                          {article.title}
-                        </ThemedText>
-                      </View>
-                      {article.image && (
-                        <Image source={{ uri: article.image }} style={styles.newsImage} />
+                {/* Resources Section - Only show if at least one link is available */}
+                {(socials.website || socials.twitter || socials.telegram || socials.discord) && (
+                  <View style={styles.sectionContainer}>
+                    <ThemedText style={styles.sectionTitle}>Resources</ThemedText>
+                    <View style={styles.resourcesRow}>
+                      {socials.website && (
+                        <Pressable
+                          style={[styles.resourceButton, { backgroundColor: cardBg, borderColor }]}
+                          onPress={() => {
+                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                            Linking.openURL(socials.website!);
+                          }}
+                        >
+                          <Ionicons name="globe-outline" size={20} color={textColor} />
+                        </Pressable>
                       )}
-                    </Pressable>
-                  ))}
-                </View>
-
-                {/* Resources Section */}
-                <View style={styles.sectionContainer}>
-                  <ThemedText style={styles.sectionTitle}>Resources</ThemedText>
-                  <View style={styles.resourcesRow}>
-                    {[
-                      { icon: 'globe-outline', label: 'Website' },
-                      { icon: 'logo-twitter', label: 'X' },
-                      { icon: 'paper-plane-outline', label: 'Telegram' },
-                      { icon: 'logo-discord', label: 'Discord' },
-                    ].map((resource, index) => (
-                      <Pressable
-                        key={index}
-                        style={[styles.resourceButton, { backgroundColor: cardBg, borderColor }]}
-                        onPress={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)}
-                      >
-                        <Ionicons name={resource.icon as any} size={20} color={textColor} />
-                      </Pressable>
-                    ))}
+                      {socials.twitter && (
+                        <Pressable
+                          style={[styles.resourceButton, { backgroundColor: cardBg, borderColor }]}
+                          onPress={() => {
+                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                            // Handle both full URLs and usernames
+                            const url = socials.twitter!.startsWith('http')
+                              ? socials.twitter!
+                              : `https://x.com/${socials.twitter!.replace('@', '')}`;
+                            Linking.openURL(url);
+                          }}
+                        >
+                          <Ionicons name="logo-twitter" size={20} color={textColor} />
+                        </Pressable>
+                      )}
+                      {socials.telegram && (
+                        <Pressable
+                          style={[styles.resourceButton, { backgroundColor: cardBg, borderColor }]}
+                          onPress={() => {
+                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                            // Handle both full URLs and usernames
+                            const url = socials.telegram!.startsWith('http')
+                              ? socials.telegram!
+                              : `https://t.me/${socials.telegram!.replace('@', '')}`;
+                            Linking.openURL(url);
+                          }}
+                        >
+                          <Ionicons name="paper-plane-outline" size={20} color={textColor} />
+                        </Pressable>
+                      )}
+                      {socials.discord && (
+                        <Pressable
+                          style={[styles.resourceButton, { backgroundColor: cardBg, borderColor }]}
+                          onPress={() => {
+                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                            Linking.openURL(socials.discord!);
+                          }}
+                        >
+                          <Ionicons name="logo-discord" size={20} color={textColor} />
+                        </Pressable>
+                      )}
+                    </View>
                   </View>
-                </View>
+                )}
 
                 {/* Edit Widgets Button */}
                 <Pressable

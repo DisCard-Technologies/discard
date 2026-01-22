@@ -1372,6 +1372,56 @@ export default defineSchema({
     updatedAt: v.number(),
   }).index("by_category_interval", ["category", "interval"]),
 
+  // ============ TOKEN DETAILS CACHE ============
+  // Cached token details from Jupiter + Helius for token detail screen
+  tokenDetails: defineTable({
+    mint: v.string(),
+    symbol: v.string(),
+    name: v.string(),
+    priceUsd: v.number(),
+    change24h: v.number(),
+    // Market data from Jupiter Tokens API V2
+    marketCap: v.optional(v.number()),
+    volume24h: v.optional(v.number()),
+    circulatingSupply: v.optional(v.number()),
+    totalSupply: v.optional(v.number()),
+    fdv: v.optional(v.number()), // Fully diluted valuation
+    // Metadata from Helius DAS (Metaplex)
+    description: v.optional(v.string()),
+    website: v.optional(v.string()),
+    twitter: v.optional(v.string()),
+    telegram: v.optional(v.string()),
+    discord: v.optional(v.string()),
+    logoUri: v.optional(v.string()),
+    // Verification status
+    verified: v.optional(v.boolean()),
+    // Cache metadata
+    updatedAt: v.number(),
+  })
+    .index("by_mint", ["mint"])
+    .index("by_symbol", ["symbol"])
+    .index("by_updated", ["updatedAt"]),
+
+  // ============ TOKEN OHLCV CACHE ============
+  // Cached OHLCV data from Birdeye for performance calculations
+  tokenOHLCV: defineTable({
+    mint: v.string(),
+    period: v.string(), // "1D", "1W", "1M", "3M", "1Y", "ALL"
+    data: v.array(
+      v.object({
+        o: v.number(), // Open
+        h: v.number(), // High
+        l: v.number(), // Low
+        c: v.number(), // Close
+        v: v.number(), // Volume
+        t: v.number(), // Timestamp
+      })
+    ),
+    updatedAt: v.number(),
+  })
+    .index("by_mint_period", ["mint", "period"])
+    .index("by_updated", ["updatedAt"]),
+
   // ============ OPEN PREDICTION MARKETS CACHE ============
   // Shared cache for available Kalshi markets via DFlow
   openPredictionMarkets: defineTable({

@@ -209,13 +209,13 @@ export default function ExploreScreen() {
     router.push({
       pathname: '/token-detail',
       params: {
+        id: token.mint || '', // token-detail expects 'id' as the mint address
         symbol: token.symbol,
         name: token.name,
         price: token.priceUsd.toString(),
-        change: token.change24h.toString(),
+        change24h: token.change24h.toString(),
         marketCap: token.marketCap?.toString() || '',
         logoUri: token.logoUri || '',
-        mint: token.mint || '',
       },
     });
   };
