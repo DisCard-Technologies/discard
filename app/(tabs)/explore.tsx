@@ -61,33 +61,6 @@ const MEME_TOKENS = ['BONK', 'WIF', 'POPCAT', 'MEW', 'SAMO', 'MYRO', 'SLERF', 'B
 // Preferred market category order
 const MARKET_CATEGORY_ORDER = ['Sports', 'Politics', 'Economics', 'Finance', 'Crypto', 'Tech', 'Entertainment', 'Science', 'Culture'];
 
-// Token image component with error fallback
-function TokenImage({ uri, symbol, style, fallbackStyle }: {
-  uri?: string;
-  symbol: string;
-  style: any;
-  fallbackStyle: any;
-}) {
-  const [hasError, setHasError] = useState(false);
-
-  if (!uri || hasError) {
-    return (
-      <ThemedText style={fallbackStyle}>
-        {symbol.slice(0, 2)}
-      </ThemedText>
-    );
-  }
-
-  return (
-    <Image
-      source={{ uri }}
-      style={style}
-      contentFit="cover"
-      transition={200}
-      onError={() => setHasError(true)}
-    />
-  );
-}
 
 // Format price with appropriate decimals
 const formatPrice = (price: number): string => {
@@ -482,12 +455,18 @@ export default function ExploreScreen() {
                 >
                   {/* Token Icon */}
                   <View style={[styles.tokenIcon, { backgroundColor: cardBg }]}>
-                    <TokenImage
-                      uri={token.logoUri}
-                      symbol={token.symbol}
-                      style={styles.tokenIconImage}
-                      fallbackStyle={styles.tokenIconFallback}
-                    />
+                    {token.logoUri ? (
+                      <Image
+                        source={token.logoUri}
+                        style={styles.tokenIconImage}
+                        contentFit="cover"
+                        transition={150}
+                      />
+                    ) : (
+                      <ThemedText style={styles.tokenIconFallback}>
+                        {token.symbol.slice(0, 2)}
+                      </ThemedText>
+                    )}
                   </View>
 
                   {/* Token Info */}
