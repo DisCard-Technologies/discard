@@ -251,16 +251,22 @@ export function PortfolioScreenContent({ topInset = 0 }: PortfolioScreenContentP
     <ThemedView style={styles.container}>
       <StatusBar style={isDark ? 'light' : 'dark'} />
 
-      {/* Dynamic ambient background gradient */}
-      <LinearGradient
-        colors={isPositive
-          ? ['rgba(16,185,129,0.15)', 'rgba(16,185,129,0.05)', 'transparent']
-          : ['rgba(239,68,68,0.15)', 'rgba(239,68,68,0.05)', 'transparent']
-        }
-        style={styles.ambientGradient}
-        start={{ x: 0.5, y: 0 }}
-        end={{ x: 0.5, y: 1 }}
-      />
+      {/* Dynamic ambient background gradient - matches home screen */}
+      <View style={styles.ambientGradient}>
+        <LinearGradient
+          colors={isDark
+            ? isPositive
+              ? ['transparent', 'rgba(16, 185, 129, 0.12)']
+              : ['transparent', 'rgba(239, 68, 68, 0.10)']
+            : isPositive
+              ? ['transparent', 'rgba(16, 185, 129, 0.08)']
+              : ['transparent', 'rgba(239, 68, 68, 0.06)']
+          }
+          style={StyleSheet.absoluteFill}
+          start={{ x: 0.5, y: 0 }}
+          end={{ x: 0.5, y: 1 }}
+        />
+      </View>
 
       {/* Hero Section - Above Drawer */}
       <View style={[styles.heroSection, { paddingTop: topInset + 24 }]}>
@@ -579,10 +585,11 @@ const styles = StyleSheet.create({
   },
   ambientGradient: {
     position: 'absolute',
-    top: 0,
     left: 0,
     right: 0,
+    bottom: 0,
     height: '60%',
+    pointerEvents: 'none',
   },
 
   // Hero Section

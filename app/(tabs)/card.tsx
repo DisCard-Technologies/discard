@@ -410,15 +410,15 @@ export function CardScreenContent({ topInset = 0 }: CardScreenContentProps) {
     <ThemedView style={styles.container}>
       <StatusBar style={isDark ? 'light' : 'dark'} />
 
-      {/* Ambient gradient background */}
+      {/* Ambient gradient background - matches home screen */}
       <View style={styles.ambientGradient}>
         <LinearGradient
           colors={isDark
-            ? ['rgba(16, 185, 129, 0.08)', 'transparent']
-            : ['rgba(16, 185, 129, 0.05)', 'transparent']}
+            ? ['transparent', 'rgba(16, 185, 129, 0.12)']
+            : ['transparent', 'rgba(16, 185, 129, 0.08)']}
           style={StyleSheet.absoluteFill}
           start={{ x: 0.5, y: 0 }}
-          end={{ x: 0.5, y: 0.6 }}
+          end={{ x: 0.5, y: 1 }}
         />
       </View>
 
@@ -722,10 +722,10 @@ const styles = StyleSheet.create({
   },
   ambientGradient: {
     position: 'absolute',
-    top: 0,
     left: 0,
     right: 0,
-    height: SCREEN_HEIGHT * 0.5,
+    bottom: 0,
+    height: '60%',
     pointerEvents: 'none',
   },
   mainContent: {
