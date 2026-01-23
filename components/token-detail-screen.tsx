@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo, useRef } from 'react';
-import { StyleSheet, View, Pressable, Image, Dimensions, Linking } from 'react-native';
+import { StyleSheet, View, Pressable, Image, Dimensions, Linking, Modal } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -28,6 +28,8 @@ import { primaryColor, positiveColor, negativeColor, Fonts } from '@/constants/t
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const CHART_WIDTH = SCREEN_WIDTH - 48;
 const CHART_HEIGHT = 200;
+const FULLSCREEN_CHART_WIDTH = SCREEN_WIDTH - 32;
+const FULLSCREEN_CHART_HEIGHT = SCREEN_HEIGHT * 0.45;
 
 // Drawer configuration
 const DRAWER_CLOSED_HEIGHT = 380;
@@ -203,9 +205,6 @@ export function TokenDetailScreen({
   // Transaction stack animation
   const txHeight = useSharedValue(80);
 
-  // Expandable chart animation
-  const chartHeight = useSharedValue(0);
-
   const formatPrice = (price: number): string => {
     if (price >= 1000) return price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     if (price >= 1) return price.toFixed(2);
@@ -320,22 +319,18 @@ export function TokenDetailScreen({
     setIsTxExpanded(!isTxExpanded);
   };
 
-  // Expandable chart
-  const chartAnimatedStyle = useAnimatedStyle(() => ({
-    height: chartHeight.value,
-    overflow: 'hidden',
-  }));
-
+  // Full-screen chart modal
   const toggleChart = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    if (isChartExpanded) {
-      chartHeight.value = withSpring(0, SPRING_CONFIG);
-      setIsChartExpanded(false);
-    } else {
-      chartHeight.value = withSpring(CHART_HEIGHT + 60, SPRING_CONFIG);
-      setIsChartExpanded(true);
-    }
+    setIsChartExpanded(!isChartExpanded);
   };
+
+  // Full-screen chart paths
+  const { linePath: fullscreenLinePath, lastPoint: fullscreenLastPoint, areaPath: fullscreenAreaPath } = useMemo(() => {
+    const { path, lastPoint } = createChartPath(chartData, FULLSCREEN_CHART_WIDTH, FULLSCREEN_CHART_HEIGHT);
+    const area = createAreaPath(path, FULLSCREEN_CHART_WIDTH, FULLSCREEN_CHART_HEIGHT, chartData.length);
+    return { linePath: path, lastPoint, areaPath: area };
+  }, [chartData]);
 
   const timePeriods: TimePeriod[] = ['H', 'D', 'W', 'M', 'Y', 'Max'];
 
@@ -810,54 +805,8 @@ export function TokenDetailScreen({
 
         </Animated.View>
 
-      {/* Expandable Price Row - On top of drawer */}
+      {/* Price Bar - Always visible at bottom */}
       <View style={[styles.expandablePriceContainer, { bottom: insets.bottom }]}>
-        {/* Expandable Chart Section */}
-        <Animated.View style={[styles.expandableChartWrapper, { backgroundColor: cardBg }, chartAnimatedStyle]}>
-          <View style={styles.expandableChartSection}>
-            <Svg width={CHART_WIDTH} height={CHART_HEIGHT}>
-              <Defs>
-                <SvgLinearGradient id="expandableChartGradient" x1="0" y1="0" x2="0" y2="1">
-                  <Stop offset="0%" stopColor={changeColor} stopOpacity="0.3" />
-                  <Stop offset="100%" stopColor={changeColor} stopOpacity="0" />
-                </SvgLinearGradient>
-              </Defs>
-              <Path d={areaPath} fill="url(#expandableChartGradient)" />
-              <Path d={linePath} stroke={changeColor} strokeWidth={2} fill="none" strokeLinecap="round" strokeLinejoin="round" />
-              <Circle cx={lastPoint.x} cy={lastPoint.y} r={5} fill={changeColor} stroke={cardBg} strokeWidth={2} />
-            </Svg>
-          </View>
-
-          {/* Time Period Selector */}
-          <View style={styles.expandableTimePeriodContainer}>
-            <View style={[styles.timePeriodSelector, { backgroundColor: drawerBg }]}>
-              {timePeriods.map((period) => (
-                <Pressable
-                  key={period}
-                  onPress={() => {
-                    setSelectedPeriod(period);
-                    Haptics.selectionAsync();
-                  }}
-                  style={[
-                    styles.timePeriodButton,
-                    selectedPeriod === period && [styles.timePeriodButtonActive, { backgroundColor: cardBg }],
-                  ]}
-                >
-                  <ThemedText
-                    style={[
-                      styles.timePeriodText,
-                      { color: selectedPeriod === period ? textColor : mutedColor },
-                    ]}
-                  >
-                    {period}
-                  </ThemedText>
-                </Pressable>
-              ))}
-            </View>
-          </View>
-        </Animated.View>
-
-        {/* Token and Price Display - Always visible, tappable to expand */}
         <Pressable
           onPress={toggleChart}
           style={[styles.expandablePriceRow, { backgroundColor: cardBg, borderTopColor: borderColor }]}
@@ -878,13 +827,100 @@ export function TokenDetailScreen({
             style={[styles.expandableExpandButton, { backgroundColor: drawerBg }]}
           >
             <Ionicons
-              name={isChartExpanded ? 'chevron-down' : 'chevron-up'}
+              name="chevron-up"
               size={20}
               color={mutedColor}
             />
           </Pressable>
         </Pressable>
       </View>
+
+      {/* Full-Screen Chart Modal */}
+      <Modal
+        visible={isChartExpanded}
+        animationType="slide"
+        transparent={false}
+        onRequestClose={toggleChart}
+      >
+        <View style={[styles.fullscreenChartContainer, { paddingTop: insets.top }]}>
+          {/* Modal Header */}
+          <View style={styles.fullscreenChartHeader}>
+            <ThemedText style={styles.fullscreenChartTitle}>{token.symbol} Price</ThemedText>
+            <Pressable
+              onPress={toggleChart}
+              style={({ pressed }) => [
+                styles.fullscreenCloseButton,
+                { backgroundColor: cardBg },
+                pressed && styles.pressed,
+              ]}
+            >
+              <Ionicons name="close" size={22} color={textColor} />
+            </Pressable>
+          </View>
+
+          {/* Price Display */}
+          <View style={styles.fullscreenPriceSection}>
+            <View style={[styles.fullscreenTokenIcon, { borderColor }]}>
+              {token.logoUri ? (
+                <Image source={{ uri: token.logoUri }} style={styles.fullscreenTokenImage} />
+              ) : (
+                <View style={[styles.fullscreenTokenIconPlaceholder, { backgroundColor: cardBg }]}>
+                  <ThemedText style={styles.fullscreenTokenIconText}>
+                    {token.icon || token.symbol.slice(0, 2)}
+                  </ThemedText>
+                </View>
+              )}
+            </View>
+            <ThemedText style={styles.fullscreenPrice}>${formatPrice(token.price)}</ThemedText>
+            <ThemedText style={[styles.fullscreenChangeText, { color: changeColor }]}>
+              {isPositive ? '+' : ''}{token.change24h.toFixed(2)}%
+            </ThemedText>
+          </View>
+
+          {/* Chart */}
+          <View style={styles.fullscreenChartWrapper}>
+            <Svg width={FULLSCREEN_CHART_WIDTH} height={FULLSCREEN_CHART_HEIGHT}>
+              <Defs>
+                <SvgLinearGradient id="fullscreenChartGradient" x1="0" y1="0" x2="0" y2="1">
+                  <Stop offset="0%" stopColor={changeColor} stopOpacity="0.4" />
+                  <Stop offset="100%" stopColor={changeColor} stopOpacity="0" />
+                </SvgLinearGradient>
+              </Defs>
+              <Path d={fullscreenAreaPath} fill="url(#fullscreenChartGradient)" />
+              <Path d={fullscreenLinePath} stroke={changeColor} strokeWidth={2.5} fill="none" strokeLinecap="round" strokeLinejoin="round" />
+              <Circle cx={fullscreenLastPoint.x} cy={fullscreenLastPoint.y} r={6} fill={changeColor} stroke="#0d1117" strokeWidth={2} />
+            </Svg>
+          </View>
+
+          {/* Time Period Selector */}
+          <View style={[styles.fullscreenTimePeriodContainer, { paddingBottom: insets.bottom + 16 }]}>
+            <View style={[styles.timePeriodSelector, { backgroundColor: cardBg }]}>
+              {timePeriods.map((period) => (
+                <Pressable
+                  key={period}
+                  onPress={() => {
+                    setSelectedPeriod(period);
+                    Haptics.selectionAsync();
+                  }}
+                  style={[
+                    styles.timePeriodButton,
+                    selectedPeriod === period && [styles.timePeriodButtonActive, { backgroundColor: drawerBg }],
+                  ]}
+                >
+                  <ThemedText
+                    style={[
+                      styles.timePeriodText,
+                      { color: selectedPeriod === period ? textColor : mutedColor },
+                    ]}
+                  >
+                    {period}
+                  </ThemedText>
+                </Pressable>
+              ))}
+            </View>
+          </View>
+        </View>
+      </Modal>
     </ThemedView>
   );
 }
@@ -1387,17 +1423,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 
-  // Expandable Price Row
+  // Price Bar at Bottom
   expandablePriceContainer: {
     position: 'absolute',
     left: 0,
     right: 0,
     zIndex: 60,
-  },
-  expandableChartWrapper: {
-    overflow: 'hidden',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
   },
   expandablePriceRow: {
     flexDirection: 'row',
@@ -1406,32 +1437,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 16,
     borderTopWidth: 1,
-  },
-  expandableChartSection: {
-    paddingHorizontal: 16,
-    paddingTop: 16,
-  },
-  expandableTimePeriodContainer: {
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-  },
-  expandableTokenIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-  },
-  expandableTokenImage: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-  },
-  expandableTokenText: {
-    fontSize: 14,
-    fontWeight: '600',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
   },
   expandablePriceInfo: {
     flex: 1,
@@ -1484,5 +1491,82 @@ const styles = StyleSheet.create({
   timePeriodText: {
     fontSize: 13,
     fontWeight: '500',
+  },
+
+  // Full-Screen Chart Modal
+  fullscreenChartContainer: {
+    flex: 1,
+    backgroundColor: '#0d1117',
+  },
+  fullscreenChartHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  fullscreenChartTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  fullscreenCloseButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fullscreenPriceSection: {
+    alignItems: 'flex-start',
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 16,
+  },
+  fullscreenTokenIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    marginBottom: 8,
+  },
+  fullscreenTokenImage: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+  },
+  fullscreenTokenIconPlaceholder: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fullscreenTokenIconText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  fullscreenPrice: {
+    fontSize: 32,
+    fontWeight: '700',
+    color: '#fff',
+    marginBottom: 4,
+  },
+  fullscreenChangeText: {
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  fullscreenChartWrapper: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    paddingHorizontal: 16,
+  },
+  fullscreenTimePeriodContainer: {
+    paddingHorizontal: 16,
+    paddingTop: 24,
   },
 });
