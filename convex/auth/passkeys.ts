@@ -393,6 +393,172 @@ export const updatePrivacySettings = mutation({
 });
 
 /**
+ * Privacy level presets - maps privacy level to specific settings
+ */
+const PRIVACY_LEVEL_PRESETS = {
+  basic: {
+    dataRetention: 365,
+    analyticsOptOut: false,
+    transactionIsolation: false,
+    preferredSwapProvider: "jupiter" as const,
+    preferredFundingMethod: "direct" as const,
+    useStealthAddresses: false,
+    useMpcSwaps: false,
+    useZkProofs: false,
+    useRingSignatures: false,
+    torRoutingEnabled: false,
+  },
+  enhanced: {
+    dataRetention: 90,
+    analyticsOptOut: true,
+    transactionIsolation: true,
+    preferredSwapProvider: "anoncoin" as const,
+    preferredFundingMethod: "stealth" as const,
+    useStealthAddresses: true,
+    useMpcSwaps: true,
+    useZkProofs: false,
+    useRingSignatures: false,
+    torRoutingEnabled: false,
+  },
+  maximum: {
+    dataRetention: 30,
+    analyticsOptOut: true,
+    transactionIsolation: true,
+    preferredSwapProvider: "silentswap" as const,
+    preferredFundingMethod: "shielded" as const,
+    useStealthAddresses: true,
+    useMpcSwaps: true,
+    useZkProofs: true,
+    useRingSignatures: true,
+    torRoutingEnabled: true,
+  },
+};
+
+/**
+ * Set privacy level - updates all related settings based on tier
+ */
+export const setPrivacyLevel = mutation({
+  args: {
+    userId: v.optional(v.id("users")),
+    privacyLevel: v.union(
+      v.literal("basic"),
+      v.literal("enhanced"),
+      v.literal("maximum")
+    ),
+  },
+  handler: async (ctx, args): Promise<void> => {
+    let user: Doc<"users"> | null = null;
+    const identity = await ctx.auth.getUserIdentity();
+
+    if (identity) {
+      user = await ctx.db
+        .query("users")
+        .withIndex("by_credential", (q) => q.eq("credentialId", identity.subject))
+        .first();
+      if (!user) {
+        const userId = ctx.db.normalizeId("users", identity.subject);
+        if (userId) user = await ctx.db.get(userId);
+      }
+    } else if (args.userId) {
+      user = await ctx.db.get(args.userId);
+    }
+
+    if (!user) {
+      throw new Error("User not found or not authenticated");
+    }
+
+    // Get preset settings for the selected privacy level
+    const preset = PRIVACY_LEVEL_PRESETS[args.privacyLevel];
+
+    // Merge with existing settings, applying all preset values
+    const updatedSettings = {
+      ...user.privacySettings,
+      privacyLevel: args.privacyLevel,
+      ...preset,
+    };
+
+    await ctx.db.patch(user._id, {
+      privacySettings: updatedSettings,
+    });
+
+    console.log(`[Privacy] User ${user._id} set privacy level to: ${args.privacyLevel}`);
+  },
+});
+
+/**
+ * Privacy settings response type
+ */
+type PrivacySettingsResponse = {
+  privacyLevel: "basic" | "enhanced" | "maximum";
+  settings: {
+    dataRetention: number;
+    analyticsOptOut: boolean;
+    transactionIsolation: boolean;
+    preferredSwapProvider: "jupiter" | "anoncoin" | "silentswap";
+    preferredFundingMethod: "direct" | "stealth" | "shielded";
+    useStealthAddresses: boolean;
+    useMpcSwaps: boolean;
+    useZkProofs: boolean;
+    useRingSignatures: boolean;
+    torRoutingEnabled: boolean;
+  };
+};
+
+/**
+ * Get privacy level details - returns current level and all settings
+ */
+export const getPrivacySettings = query({
+  args: {
+    userId: v.optional(v.id("users")),
+  },
+  handler: async (ctx, args): Promise<PrivacySettingsResponse | null> => {
+    let user: Doc<"users"> | null = null;
+    const identity = await ctx.auth.getUserIdentity();
+
+    if (identity) {
+      user = await ctx.db
+        .query("users")
+        .withIndex("by_credential", (q) => q.eq("credentialId", identity.subject))
+        .first();
+      if (!user) {
+        const userId = ctx.db.normalizeId("users", identity.subject);
+        if (userId) user = await ctx.db.get(userId);
+      }
+    } else if (args.userId) {
+      user = await ctx.db.get(args.userId);
+    }
+
+    if (!user) {
+      return null;
+    }
+
+    const ps = user.privacySettings;
+
+    // Map stored values to typed response
+    const swapProvider = ps.preferredSwapProvider;
+    const fundingMethod = ps.preferredFundingMethod;
+
+    return {
+      privacyLevel: (ps.privacyLevel as "basic" | "enhanced" | "maximum") || "basic",
+      settings: {
+        dataRetention: ps.dataRetention,
+        analyticsOptOut: ps.analyticsOptOut,
+        transactionIsolation: ps.transactionIsolation,
+        preferredSwapProvider: (swapProvider === "anoncoin" || swapProvider === "silentswap")
+          ? swapProvider : "jupiter",
+        preferredFundingMethod: (fundingMethod === "stealth" || fundingMethod === "shielded")
+          ? fundingMethod : "direct",
+        useStealthAddresses: ps.useStealthAddresses || false,
+        useMpcSwaps: ps.useMpcSwaps || false,
+        useZkProofs: ps.useZkProofs || false,
+        useRingSignatures: ps.useRingSignatures || false,
+        torRoutingEnabled: ps.torRoutingEnabled || false,
+      },
+    };
+  },
+});
+
+/**
  * Link phone hash for TextPay integration
  */
 export const linkPhoneHash = mutation({

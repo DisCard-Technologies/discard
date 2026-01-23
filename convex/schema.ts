@@ -28,6 +28,28 @@ export default defineSchema({
       dataRetention: v.number(),        // Days to retain data
       analyticsOptOut: v.boolean(),
       transactionIsolation: v.boolean(), // Enable card context isolation
+      // Privacy level tier (determines default behaviors)
+      privacyLevel: v.optional(v.union(
+        v.literal("basic"),             // Standard privacy, fastest UX
+        v.literal("enhanced"),          // Stealth addresses, MPC swaps
+        v.literal("maximum")            // Full ZK, Tor routing, max isolation
+      )),
+      // Provider preferences (auto-set by privacy level, can be overridden)
+      preferredSwapProvider: v.optional(v.union(
+        v.literal("jupiter"),           // Standard swaps (basic)
+        v.literal("anoncoin"),          // MPC confidential (enhanced)
+        v.literal("silentswap")         // Shielded pools (maximum)
+      )),
+      preferredFundingMethod: v.optional(v.union(
+        v.literal("direct"),            // Direct wallet funding (basic)
+        v.literal("stealth"),           // Stealth address funding (enhanced)
+        v.literal("shielded")           // Shielded pool funding (maximum)
+      )),
+      useStealthAddresses: v.optional(v.boolean()),    // Hush Protocol stealth addresses
+      useMpcSwaps: v.optional(v.boolean()),            // Arcium MPC for swaps
+      useZkProofs: v.optional(v.boolean()),            // ZK proofs for card funding
+      useRingSignatures: v.optional(v.boolean()),      // Ring signatures for transfers
+      torRoutingEnabled: v.optional(v.boolean()),      // Server-side Tor for RPC calls
     }),
 
     // Account status

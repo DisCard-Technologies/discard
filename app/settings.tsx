@@ -43,6 +43,14 @@ const settingsSections = [
     ],
   },
   {
+    title: 'Privacy',
+    items: [
+      { icon: 'shield-checkmark' as const, label: 'Privacy Level', value: '', route: '/privacy-settings' },
+      { icon: 'eye-off' as const, label: 'Transaction Isolation', value: 'On', route: '' },
+      { icon: 'analytics' as const, label: 'Analytics', value: 'Opt-out', route: '' },
+    ],
+  },
+  {
     title: 'Preferences',
     items: [
       { icon: 'notifications' as const, label: 'Notifications', value: 'On', route: '' },
@@ -57,7 +65,7 @@ const settingsSections = [
       { icon: 'key' as const, label: 'Seed Phrase', value: 'View', route: '', action: 'view_seed' },
       { icon: 'cloud-upload' as const, label: 'Cloud Backup', value: '', route: '', action: 'setup_backup' },
       { icon: 'refresh' as const, label: 'Restore Wallet', value: '', route: '', action: 'restore_wallet' },
-      { icon: 'shield-checkmark' as const, label: 'Security Settings', value: '', route: '' },
+      { icon: 'lock-closed' as const, label: 'Security Settings', value: '', route: '' },
     ],
   },
   {
