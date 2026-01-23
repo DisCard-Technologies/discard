@@ -3,18 +3,40 @@
  *
  * Client for communicating with the Soul (Financial Armor) CVM
  * for intent verification and attestation.
+ *
+ * Security: Uses mTLS with enclave-specific certificates for secure
+ * communication between Brain and Soul TEE components.
  */
 
 import * as grpc from "@grpc/grpc-js";
 import * as protoLoader from "@grpc/proto-loader";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
+import { readFileSync, existsSync } from "fs";
 import type {
   SoulVerificationRequest,
   SoulVerificationResponse,
 } from "../types/intent.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
+/**
+ * TLS configuration for secure Brain-Soul communication
+ */
+export interface TlsConfig {
+  /** Enable TLS (default: true in production) */
+  enabled: boolean;
+  /** Path to CA certificate for verifying Soul's certificate */
+  caCertPath?: string;
+  /** Path to Brain's client certificate (for mTLS) */
+  clientCertPath?: string;
+  /** Path to Brain's private key (for mTLS) */
+  clientKeyPath?: string;
+  /** Expected MRENCLAVE value for certificate pinning */
+  expectedMrEnclave?: string;
+  /** Skip certificate verification (DANGER: development only) */
+  insecureSkipVerify?: boolean;
+}
 
 /**
  * Configuration for Soul client
@@ -24,6 +46,8 @@ export interface SoulClientConfig {
   timeoutMs: number;
   maxRetries: number;
   retryDelayMs: number;
+  /** TLS configuration for secure communication */
+  tls?: TlsConfig;
 }
 
 /**
@@ -63,18 +87,148 @@ export class SoulClient {
   private connected: boolean = false;
   private cachedAttestation: SoulAttestation | null = null;
   private attestationCacheExpiry: number = 0;
+  private credentials: grpc.ChannelCredentials | null = null;
 
   constructor(config: Partial<SoulClientConfig> = {}) {
     this.config = {
-      soulGrpcUrl: config.soulGrpcUrl || "localhost:50051",
+      soulGrpcUrl: config.soulGrpcUrl || process.env.SOUL_GRPC_URL || "localhost:50051",
       timeoutMs: config.timeoutMs || 5000,
       maxRetries: config.maxRetries || 3,
       retryDelayMs: config.retryDelayMs || 1000,
+      tls: config.tls || this.getDefaultTlsConfig(),
     };
   }
 
   /**
-   * Initialize connection to Soul CVM
+   * Get default TLS configuration based on environment
+   */
+  private getDefaultTlsConfig(): TlsConfig {
+    const isProduction = process.env.NODE_ENV === "production";
+    const certBasePath = process.env.TEE_CERT_PATH || "/etc/tee/certs";
+
+    return {
+      enabled: isProduction || process.env.SOUL_TLS_ENABLED === "true",
+      caCertPath: process.env.SOUL_CA_CERT_PATH || `${certBasePath}/ca.crt`,
+      clientCertPath: process.env.BRAIN_CLIENT_CERT_PATH || `${certBasePath}/brain-client.crt`,
+      clientKeyPath: process.env.BRAIN_CLIENT_KEY_PATH || `${certBasePath}/brain-client.key`,
+      expectedMrEnclave: process.env.SOUL_EXPECTED_MRENCLAVE,
+      insecureSkipVerify: !isProduction && process.env.SOUL_TLS_INSECURE === "true",
+    };
+  }
+
+  /**
+   * Create gRPC credentials based on TLS configuration
+   */
+  private createCredentials(): grpc.ChannelCredentials {
+    const tlsConfig = this.config.tls;
+
+    // Use insecure credentials only in development with explicit flag
+    if (!tlsConfig?.enabled) {
+      if (process.env.NODE_ENV === "production") {
+        throw new Error("[SoulClient] TLS must be enabled in production");
+      }
+      console.warn("[SoulClient] WARNING: Using insecure credentials (development only)");
+      return grpc.credentials.createInsecure();
+    }
+
+    try {
+      // Load certificates
+      const caCert = this.loadCertificate(tlsConfig.caCertPath, "CA certificate");
+      const clientCert = this.loadCertificate(tlsConfig.clientCertPath, "client certificate");
+      const clientKey = this.loadCertificate(tlsConfig.clientKeyPath, "client key");
+
+      // Create SSL credentials with mutual TLS (mTLS)
+      const sslCredentials = grpc.credentials.createSsl(
+        caCert,
+        clientKey,
+        clientCert,
+        {
+          // Custom certificate verification for MRENCLAVE pinning
+          checkServerIdentity: (hostname, cert) => {
+            if (tlsConfig.insecureSkipVerify) {
+              console.warn("[SoulClient] Skipping server identity verification (DANGEROUS)");
+              return undefined;
+            }
+
+            // Verify MRENCLAVE if configured
+            if (tlsConfig.expectedMrEnclave) {
+              const mrEnclaveMatch = this.verifyMrEnclaveInCert(cert, tlsConfig.expectedMrEnclave);
+              if (!mrEnclaveMatch) {
+                return new Error(
+                  `MRENCLAVE mismatch: expected ${tlsConfig.expectedMrEnclave}`
+                );
+              }
+            }
+
+            return undefined; // No error
+          },
+        }
+      );
+
+      console.log("[SoulClient] mTLS credentials created successfully");
+      return sslCredentials;
+    } catch (error) {
+      console.error("[SoulClient] Failed to create TLS credentials:", error);
+
+      // In development, fall back to insecure if certs not found
+      if (process.env.NODE_ENV !== "production") {
+        console.warn("[SoulClient] Falling back to insecure credentials");
+        return grpc.credentials.createInsecure();
+      }
+
+      throw error;
+    }
+  }
+
+  /**
+   * Load a certificate file
+   */
+  private loadCertificate(path: string | undefined, name: string): Buffer {
+    if (!path) {
+      throw new Error(`[SoulClient] ${name} path not configured`);
+    }
+
+    if (!existsSync(path)) {
+      throw new Error(`[SoulClient] ${name} not found at: ${path}`);
+    }
+
+    return readFileSync(path);
+  }
+
+  /**
+   * Verify MRENCLAVE value in certificate's SAN extension
+   *
+   * TEE certificates should include the MRENCLAVE value in a custom
+   * Subject Alternative Name (SAN) extension or in the CN field.
+   */
+  private verifyMrEnclaveInCert(cert: any, expectedMrEnclave: string): boolean {
+    try {
+      // Check Subject CN for MRENCLAVE
+      const subject = cert.subject;
+      if (subject?.CN?.includes(expectedMrEnclave)) {
+        return true;
+      }
+
+      // Check SAN extensions for MRENCLAVE URI
+      // Format: URI:urn:mrenclave:<hex-value>
+      const sanExtension = cert.subjectaltname;
+      if (sanExtension) {
+        const mrEnclaveUri = `urn:mrenclave:${expectedMrEnclave}`;
+        if (sanExtension.includes(mrEnclaveUri)) {
+          return true;
+        }
+      }
+
+      console.warn("[SoulClient] MRENCLAVE not found in certificate");
+      return false;
+    } catch (error) {
+      console.error("[SoulClient] Error verifying MRENCLAVE in cert:", error);
+      return false;
+    }
+  }
+
+  /**
+   * Initialize connection to Soul CVM with TLS
    */
   async connect(): Promise<void> {
     const protoPath = resolve(
@@ -95,14 +249,20 @@ export class SoulClient {
     const FinancialArmorService =
       proto.discard.financial_armor.v1.FinancialArmorService;
 
+    // Create secure credentials
+    this.credentials = this.createCredentials();
+
+    // Create client with TLS credentials
     this.client = new FinancialArmorService(
       this.config.soulGrpcUrl,
-      grpc.credentials.createInsecure() // TODO: Use TLS in production
+      this.credentials
     );
 
     // Wait for connection
     await this.waitForReady();
     this.connected = true;
+
+    console.log(`[SoulClient] Connected to Soul CVM at ${this.config.soulGrpcUrl}`);
   }
 
   /**
@@ -395,12 +555,39 @@ export class SoulClient {
   }
 
   /**
-   * Close connection
+   * Close connection and cleanup resources
    */
   close(): void {
     if (this.client) {
       this.client.close();
       this.connected = false;
+      this.credentials = null;
+      this.cachedAttestation = null;
+      console.log("[SoulClient] Connection closed");
     }
+  }
+
+  /**
+   * Reconnect with fresh TLS credentials
+   * Use this after certificate rotation
+   */
+  async reconnect(): Promise<void> {
+    console.log("[SoulClient] Reconnecting with fresh credentials...");
+    this.close();
+    await this.connect();
+  }
+
+  /**
+   * Get current TLS configuration (for debugging)
+   */
+  getTlsConfig(): TlsConfig | undefined {
+    return this.config.tls;
+  }
+
+  /**
+   * Check if connection is using TLS
+   */
+  isSecure(): boolean {
+    return this.config.tls?.enabled === true;
   }
 }
