@@ -29,6 +29,11 @@ import {
   type UltraExecuteResponse,
 } from "./jupiterUltraClient";
 import { getShadowWireService, type StealthAddress } from "./shadowWireClient";
+import {
+  normalizeSOLAmount,
+  normalizeUSDCAmount,
+  type NormalizedAmount,
+} from "../lib/privacy/amount-normalizer";
 
 // ============================================================================
 // Types
@@ -47,6 +52,14 @@ export interface ConfidentialSwapRequest {
   useStealthOutput?: boolean;
   /** Slippage tolerance in basis points */
   slippageBps?: number;
+  /**
+   * Normalize amount to common denomination for increased anonymity.
+   * When enabled, rounds amount up to nearest standard bucket (e.g., 0.1 SOL, 1 SOL, 10 USDC).
+   * The padding (difference) is tracked separately.
+   * Only recommended for privacy-sensitive P2P or DeFi swaps.
+   * @default false
+   */
+  normalizeAmount?: boolean;
 }
 
 export interface ConfidentialSwapQuote {
@@ -71,6 +84,22 @@ export interface ConfidentialSwapQuote {
   inputMint?: string;
   /** Output token mint */
   outputMint?: string;
+  /**
+   * Amount normalization info (if normalizeAmount was enabled).
+   * Shows how the original amount was adjusted for privacy.
+   */
+  normalization?: {
+    /** Original amount before normalization */
+    originalAmount: bigint;
+    /** Normalized amount used for swap */
+    normalizedAmount: bigint;
+    /** Padding (difference between normalized and original) */
+    padding: bigint;
+    /** The denomination bucket used */
+    bucket: string;
+    /** Whether amount was rounded up */
+    roundedUp: boolean;
+  };
 }
 
 export interface ConfidentialSwapResult {
@@ -94,6 +123,8 @@ export interface ConfidentialSwapResult {
     addressesUnlinkable: boolean;
     /** MEV protection level */
     mevProtection: "full" | "partial" | "none";
+    /** Whether amount was normalized to common denomination */
+    amountNormalized: boolean;
   };
   /** On-chain verification result */
   verification?: TransactionVerification;
@@ -147,6 +178,37 @@ export class AnoncoinSwapService {
 
   // User's encrypted swap history
   private swapHistory: Map<string, SwapHistory> = new Map();
+
+  // Well-known token mints for normalization
+  private static readonly SOL_MINT = "So11111111111111111111111111111111111111112";
+  private static readonly USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+  private static readonly USDT_MINT = "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB";
+
+  /**
+   * Normalize amount based on token type
+   * Uses SOL denominations for SOL, USDC denominations for stablecoins
+   */
+  private normalizeAmountForToken(
+    amount: bigint,
+    tokenMint: string
+  ): NormalizedAmount {
+    // Use SOL denominations for SOL
+    if (tokenMint === AnoncoinSwapService.SOL_MINT) {
+      return normalizeSOLAmount(amount, true);
+    }
+
+    // Use USDC denominations for stablecoins
+    if (
+      tokenMint === AnoncoinSwapService.USDC_MINT ||
+      tokenMint === AnoncoinSwapService.USDT_MINT
+    ) {
+      return normalizeUSDCAmount(amount, true);
+    }
+
+    // Default: use USDC denominations for unknown tokens
+    // This works reasonably for most SPL tokens
+    return normalizeUSDCAmount(amount, true);
+  }
 
   /**
    * Verify a transaction on-chain
@@ -293,22 +355,51 @@ export class AnoncoinSwapService {
     console.log("[Anoncoin] Getting confidential quote:", {
       input: request.inputMint.slice(0, 8) + "...",
       output: request.outputMint.slice(0, 8) + "...",
+      normalizeAmount: request.normalizeAmount,
     });
 
     try {
-      // 1. Generate keypair for encrypted communication
+      // 1. Apply amount normalization if requested (for privacy-sensitive swaps)
+      let swapAmount = request.amount;
+      let normalizationInfo: ConfidentialSwapQuote["normalization"] | undefined;
+
+      if (request.normalizeAmount) {
+        // Detect token type and normalize accordingly
+        const normalized = this.normalizeAmountForToken(
+          request.amount,
+          request.inputMint
+        );
+
+        swapAmount = normalized.normalized;
+        normalizationInfo = {
+          originalAmount: request.amount,
+          normalizedAmount: normalized.normalized,
+          padding: normalized.padding,
+          bucket: normalized.bucket,
+          roundedUp: normalized.paddingDirection === "add",
+        };
+
+        console.log("[Anoncoin] Amount normalized:", {
+          original: request.amount.toString(),
+          normalized: swapAmount.toString(),
+          padding: normalized.padding.toString(),
+          bucket: normalized.bucket,
+        });
+      }
+
+      // 2. Generate keypair for encrypted communication
       const { privateKey, publicKey } = await this.arcium.generateKeyPair();
 
-      // 2. Encrypt the swap amount
+      // 3. Encrypt the swap amount (normalized if applicable)
       const encryptedAmount = await this.arcium.encryptInput(
-        [request.amount],
+        [swapAmount],
         privateKey
       );
 
-      // 3. Get price estimate from Jupiter (using a range to hide exact amount)
+      // 4. Get price estimate from Jupiter (using a range to hide exact amount)
       // We query with min/max bounds to get price range without revealing exact amount
-      const minAmount = (request.amount * 90n) / 100n; // 90% of amount
-      const maxAmount = (request.amount * 110n) / 100n; // 110% of amount
+      const minAmount = (swapAmount * 90n) / 100n; // 90% of amount
+      const maxAmount = (swapAmount * 110n) / 100n; // 110% of amount
 
       const [minQuote, maxQuote] = await Promise.all([
         this.jupiter.getQuote(
@@ -323,7 +414,7 @@ export class AnoncoinSwapService {
         ),
       ]);
 
-      // 4. Generate stealth address for output if requested
+      // 5. Generate stealth address for output if requested
       let stealthAddress: StealthAddress | undefined;
       if (request.useStealthOutput) {
         stealthAddress = await this.shadowWire.generateStealthAddress(
@@ -331,7 +422,7 @@ export class AnoncoinSwapService {
         );
       }
 
-      // 5. Estimate price impact category
+      // 6. Estimate price impact category
       const avgImpact = (minQuote.priceImpactPct + maxQuote.priceImpactPct) / 2;
       const priceImpactEstimate: "low" | "medium" | "high" =
         avgImpact < 0.5 ? "low" : avgImpact < 2 ? "medium" : "high";
@@ -351,6 +442,8 @@ export class AnoncoinSwapService {
         outputMint: request.outputMint,
         // Transaction data will be prepared by MXE
         encryptedTransaction: undefined,
+        // Amount normalization info (if enabled)
+        normalization: normalizationInfo,
       };
 
       console.log("[Anoncoin] Quote generated:", {
@@ -484,6 +577,7 @@ export class AnoncoinSwapService {
             amountHidden: true,
             addressesUnlinkable: !!quote.stealthAddress,
             mevProtection: "full",
+            amountNormalized: !!quote.normalization,
           },
           verification,
         };
