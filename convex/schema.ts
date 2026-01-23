@@ -50,6 +50,10 @@ export default defineSchema({
       useZkProofs: v.optional(v.boolean()),            // ZK proofs for card funding
       useRingSignatures: v.optional(v.boolean()),      // Ring signatures for transfers
       torRoutingEnabled: v.optional(v.boolean()),      // Server-side Tor for RPC calls
+      // Differential privacy settings for analytics protection
+      dpEnabled: v.optional(v.boolean()),              // Enable DP for fraud/analytics queries
+      dpEpsilon: v.optional(v.number()),               // Privacy budget (default: 1.0, lower = more private)
+      dpDelta: v.optional(v.number()),                 // Failure probability (default: 1e-5)
     }),
 
     // Account status
@@ -2286,5 +2290,34 @@ export default defineSchema({
     .index("by_user_status", ["userId", "status"])
     .index("by_backup_id", ["backupId"])
     .index("by_hash", ["backupHash"]),
+
+  // ============ REQUEST QUEUE (Timing Obfuscation) ============
+  // Queue for delayed/batched RPC requests for privacy
+  requestQueue: defineTable({
+    requestId: v.string(),
+    userId: v.string(),
+    endpoint: v.string(),
+    method: v.string(),
+    params: v.any(),
+    privacyLevel: v.union(
+      v.literal("basic"),
+      v.literal("enhanced"),
+      v.literal("maximum")
+    ),
+    executeAfter: v.number(),     // Timestamp when request should execute
+    status: v.union(
+      v.literal("queued"),
+      v.literal("executing"),
+      v.literal("completed"),
+      v.literal("failed")
+    ),
+    result: v.optional(v.any()),
+    error: v.optional(v.string()),
+    createdAt: v.number(),
+    executedAt: v.optional(v.number()),
+  })
+    .index("by_status_execute", ["status", "executeAfter"])
+    .index("by_request_id", ["requestId"])
+    .index("by_user", ["userId"]),
 
 });

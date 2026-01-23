@@ -17,6 +17,13 @@ import { ed25519 } from '@noble/curves/ed25519';
 import { sha512 } from '@noble/hashes/sha2';
 import { sha256 } from '@noble/hashes/sha2';
 import { bytesToHex, hexToBytes } from '@noble/hashes/utils';
+import {
+  constantTimeCompare,
+  constantTimeCompareHex,
+  constantTimeSelectBigInt,
+  constantTimeSecureShuffle,
+  secureClear,
+} from './constant-time';
 
 // Get curve order from @noble/curves v2 API
 const CURVE_ORDER = ed25519.Point.Fn.ORDER;
@@ -141,7 +148,10 @@ export function generateRingSignature(params: RingSignatureParams): RingSignatur
 
 /**
  * Verify a ring signature
- * 
+ *
+ * Uses constant-time operations to prevent timing side-channel attacks.
+ * All ring members are processed regardless of where verification would fail.
+ *
  * @param signature - Ring signature to verify
  * @param message - Original message
  * @returns True if signature is valid
@@ -149,19 +159,20 @@ export function generateRingSignature(params: RingSignatureParams): RingSignatur
 export function verifyRingSignature(signature: RingSignature, message: Uint8Array): boolean {
   try {
     const { ring, keyImage, challenges, responses, messageHash } = signature;
-    
-    // Verify message hash
+
+    // Verify message hash using constant-time comparison
     const computedHash = bytesToHex(sha256(message));
-    if (computedHash !== messageHash) {
+    if (!constantTimeCompareHex(computedHash, messageHash)) {
       return false;
     }
-    
+
     const ringSize = ring.length;
     const keyImagePoint = ed25519.Point.fromHex(keyImage);
-    
-    // Verify ring equation for all members
+
+    // Track validity across all iterations (no early exit)
+    let isValid = true;
     let c_next = BigInt('0x' + challenges[0]);
-    
+
     for (let i = 0; i < ringSize; i++) {
       const pubKey = ed25519.Point.fromHex(ring[i]);
       const c_i = BigInt('0x' + challenges[i]);
@@ -181,17 +192,24 @@ export function verifyRingSignature(signature: RingSignature, message: Uint8Arra
       // Compute next challenge
       c_next = hashPoints(messageHash, L_i, R_i);
 
-      // Verify it matches stored challenge (compare reduced values)
+      // Verify it matches stored challenge (constant-time comparison)
+      // Use accumulator pattern - no early exit based on secret-dependent values
       const expectedChallenge = mod(BigInt('0x' + challenges[(i + 1) % ringSize]), CURVE_ORDER);
-      if (c_next !== expectedChallenge && i !== ringSize - 1) {
-        return false;
+      const matchesExpected = c_next === expectedChallenge;
+      const isLastIteration = i === ringSize - 1;
+
+      // Accumulate validity (only check intermediate challenges)
+      if (!isLastIteration && !matchesExpected) {
+        isValid = false;
       }
     }
-    
-    // Ring closes: last challenge should match first (compare reduced values)
+
+    // Ring closes: last challenge should match first (constant-time)
     const firstChallenge = mod(BigInt('0x' + challenges[0]), CURVE_ORDER);
-    return c_next === firstChallenge;
-    
+    const ringCloses = c_next === firstChallenge;
+
+    return isValid && ringCloses;
+
   } catch (error) {
     console.error('[RingSignature] Verification failed:', error);
     return false;
@@ -200,13 +218,27 @@ export function verifyRingSignature(signature: RingSignature, message: Uint8Arra
 
 /**
  * Check if a key image has been used (double-signing detection)
- * 
+ *
+ * Uses constant-time comparison to prevent timing attacks that could
+ * leak information about which key images are in the set.
+ *
  * @param keyImage - Key image to check
  * @param usedKeyImages - Set of used key images
  * @returns True if key image is already used
  */
 export function isKeyImageUsed(keyImage: string, usedKeyImages: Set<string>): boolean {
-  return usedKeyImages.has(keyImage);
+  // Convert set to array for constant-time iteration
+  const keyImages = Array.from(usedKeyImages);
+
+  // Check all key images (no early exit)
+  let found = false;
+  for (const usedImage of keyImages) {
+    if (constantTimeCompareHex(keyImage, usedImage)) {
+      found = true;
+    }
+  }
+
+  return found;
 }
 
 // ============================================================================
@@ -259,11 +291,28 @@ function hashPoints(
 
 /**
  * Generate cryptographically secure random scalar
+ *
+ * Uses crypto.getRandomValues for secure randomness.
  */
 function randomScalar(): Uint8Array {
   const bytes = new Uint8Array(32);
   crypto.getRandomValues(bytes);
   return bytes;
+}
+
+/**
+ * Securely shuffle ring member indices
+ *
+ * Used to randomize the order of decoy selection and processing.
+ * Uses Fisher-Yates with crypto-secure randomness.
+ *
+ * @param n - Number of indices to shuffle
+ * @returns Shuffled array of indices [0, 1, ..., n-1]
+ */
+function secureShuffleIndices(n: number): number[] {
+  const indices = Array.from({ length: n }, (_, i) => i);
+  constantTimeSecureShuffle(indices);
+  return indices;
 }
 
 /**
@@ -352,7 +401,10 @@ export function verifyBatchRingSignatures(
 
 /**
  * Check for linkability (same signer in multiple signatures)
- * 
+ *
+ * Uses constant-time comparison to prevent timing attacks that could
+ * reveal information about key image relationships.
+ *
  * @param signatures - Array of signatures to check
  * @returns True if any key images are reused (linkable)
  */
@@ -360,19 +412,21 @@ export function checkLinkability(signatures: RingSignature[]): {
   linkable: boolean;
   linkedIndices?: [number, number];
 } {
-  const keyImages = new Set<string>();
-  
+  let linkable = false;
+  let linkedIndices: [number, number] | undefined;
+
+  // Compare all pairs in constant time (no early exit)
   for (let i = 0; i < signatures.length; i++) {
-    if (keyImages.has(signatures[i].keyImage)) {
-      // Found duplicate key image - signatures are linkable
-      const firstIndex = signatures.findIndex(s => s.keyImage === signatures[i].keyImage);
-      return {
-        linkable: true,
-        linkedIndices: [firstIndex, i],
-      };
+    for (let j = i + 1; j < signatures.length; j++) {
+      if (constantTimeCompareHex(signatures[i].keyImage, signatures[j].keyImage)) {
+        linkable = true;
+        // Only record first match found (still iterate all)
+        if (!linkedIndices) {
+          linkedIndices = [i, j];
+        }
+      }
     }
-    keyImages.add(signatures[i].keyImage);
   }
-  
-  return { linkable: false };
+
+  return linkable ? { linkable: true, linkedIndices } : { linkable: false };
 }

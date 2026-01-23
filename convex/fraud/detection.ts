@@ -20,6 +20,12 @@ import { internalAction, internalMutation, internalQuery, query } from "../_gene
 import { v } from "convex/values";
 import { Doc, Id } from "../_generated/dataModel";
 import { internal } from "../_generated/api";
+import {
+  type DPConfig,
+  getDPConfigFromSettings,
+  applyDPToTransactionStats,
+  applyDPToVelocityCount,
+} from "../lib/differential-privacy";
 
 // ============ TYPES ============
 
@@ -311,7 +317,12 @@ export const analyzeTransaction = internalAction({
   handler: async (ctx, args): Promise<FraudAnalysisResult> => {
     const startTime = Date.now();
 
-    // Run all anomaly checks concurrently
+    // Fetch user's DP configuration if enabled
+    const dpConfig = await ctx.runQuery(internal.fraud.detection.getUserDPConfig, {
+      cardId: args.cardId,
+    });
+
+    // Run all anomaly checks concurrently (pass DP config where applicable)
     const [
       velocityAnomaly,
       amountAnomaly,
@@ -319,8 +330,8 @@ export const analyzeTransaction = internalAction({
       merchantAnomaly,
       patternAnomaly,
     ] = await Promise.all([
-      checkVelocityAnomaly(ctx, args.cardContext),
-      checkAmountAnomaly(ctx, args.cardContext, args.amount),
+      checkVelocityAnomaly(ctx, args.cardContext, dpConfig),
+      checkAmountAnomaly(ctx, args.cardContext, args.amount, dpConfig),
       checkGeographicAnomaly(ctx, args.cardContext, args.merchantCountry, args.merchantLocation),
       checkMerchantAnomaly(args.merchantMcc, args.merchantName),
       checkPatternAnomaly(),
@@ -378,10 +389,14 @@ export const analyzeTransaction = internalAction({
 
 /**
  * Check for velocity anomaly (too many transactions in short time)
+ *
+ * When DP is enabled, applies Laplace noise to the velocity count
+ * to prevent inference attacks on transaction patterns.
  */
 async function checkVelocityAnomaly(
   ctx: any,
-  cardContext: string
+  cardContext: string,
+  dpConfig?: DPConfig | null
 ): Promise<FraudAnomaly | null> {
   // Query recent transactions for this card
   // Note: In Convex, we query the database directly instead of Redis
@@ -394,14 +409,17 @@ async function checkVelocityAnomaly(
     since: windowStart,
   });
 
-  const recentCount = recentAuths.length;
+  // Apply DP noise to velocity count if enabled
+  const recentCount = dpConfig
+    ? applyDPToVelocityCount(recentAuths.length, dpConfig)
+    : recentAuths.length;
 
   if (recentCount > THRESHOLDS.VELOCITY_LIMIT) {
     return {
       type: "velocity",
       severity: "high",
       details: `${recentCount} transactions in ${THRESHOLDS.VELOCITY_WINDOW_MS / 60000} minutes exceeds limit of ${THRESHOLDS.VELOCITY_LIMIT}`,
-      confidence: 0.9,
+      confidence: dpConfig ? 0.85 : 0.9, // Slightly lower confidence with DP noise
     };
   }
 
@@ -410,15 +428,23 @@ async function checkVelocityAnomaly(
 
 /**
  * Check for amount anomaly (unusual transaction amount)
+ *
+ * When DP is enabled, uses noisy statistics to protect spending patterns.
  */
 async function checkAmountAnomaly(
   ctx: any,
   cardContext: string,
-  amount: number
+  amount: number,
+  dpConfig?: DPConfig | null
 ): Promise<FraudAnomaly | null> {
-  // Get historical transaction data
+  // Get historical transaction data (with DP noise if enabled)
   const stats = await ctx.runQuery(internal.fraud.detection.getTransactionStats, {
     cardContext,
+    dpConfig: dpConfig ? {
+      epsilon: dpConfig.epsilon,
+      delta: dpConfig.delta,
+      sensitivity: dpConfig.sensitivity,
+    } : undefined,
   });
 
   if (!stats || stats.count < THRESHOLDS.MIN_TRANSACTIONS_FOR_AMOUNT) {
@@ -434,7 +460,7 @@ async function checkAmountAnomaly(
       type: "amount",
       severity: amount > threshold * 2 ? "high" : "medium",
       details: `Transaction amount $${(amount / 100).toFixed(2)} is ${multiplier}x the average ($${(stats.avgAmount / 100).toFixed(2)})`,
-      confidence: 0.8,
+      confidence: dpConfig ? 0.75 : 0.8, // Slightly lower confidence with DP noise
     };
   }
 
@@ -552,6 +578,9 @@ async function checkPatternAnomaly(): Promise<FraudAnomaly | null> {
 
 /**
  * Get recent authorizations for velocity check
+ *
+ * When DP is enabled, the returned count should have Laplace noise applied
+ * by the caller to protect velocity patterns.
  */
 export const getRecentAuthorizations = internalQuery({
   args: {
@@ -568,11 +597,37 @@ export const getRecentAuthorizations = internalQuery({
 });
 
 /**
+ * Get user's DP configuration from privacy settings
+ */
+export const getUserDPConfig = internalQuery({
+  args: {
+    cardId: v.id("cards"),
+  },
+  handler: async (ctx, args): Promise<DPConfig | null> => {
+    const card = await ctx.db.get(args.cardId);
+    if (!card) return null;
+
+    const user = await ctx.db.get(card.userId);
+    if (!user) return null;
+
+    return getDPConfigFromSettings(user.privacySettings);
+  },
+});
+
+/**
  * Get transaction statistics for amount check
+ *
+ * When DP is enabled, applies Gaussian noise to protect user behavioral patterns
+ * from statistical inference attacks.
  */
 export const getTransactionStats = internalQuery({
   args: {
     cardContext: v.string(),
+    dpConfig: v.optional(v.object({
+      epsilon: v.number(),
+      delta: v.number(),
+      sensitivity: v.number(),
+    })),
   },
   handler: async (ctx, args): Promise<{
     count: number;
@@ -595,11 +650,18 @@ export const getTransactionStats = internalQuery({
     const variance = amounts.reduce((acc, val) => acc + Math.pow(val - avgAmount, 2), 0) / amounts.length;
     const stdDevAmount = Math.sqrt(variance);
 
-    return {
+    const stats = {
       count: transactions.length,
       avgAmount,
       stdDevAmount,
     };
+
+    // Apply differential privacy noise if config provided
+    if (args.dpConfig) {
+      return applyDPToTransactionStats(stats, args.dpConfig);
+    }
+
+    return stats;
   },
 });
 

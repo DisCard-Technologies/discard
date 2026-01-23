@@ -3,7 +3,7 @@
  *
  * Unified exports for privacy-preserving features in DisCard.
  * Combines stealth addresses, ring signatures, bulletproofs,
- * and ZK compliance into a single production-ready API.
+ * differential privacy, and ZK compliance into a single production-ready API.
  */
 
 // Main service
@@ -59,3 +59,88 @@ export {
   type ElGamalCiphertext,
   type SerializedCiphertext,
 } from '../crypto/elgamal';
+
+// Re-export Differential Privacy utilities
+export {
+  laplaceMechanism,
+  laplaceMechanismCount,
+  gaussianMechanism,
+  gaussianMechanismBounded,
+  exponentialMechanism,
+  exponentialMechanismWithScores,
+  createPrivacyBudget,
+  checkBudget,
+  consumeBudget,
+  advancedComposition,
+  sumSensitivity,
+  countSensitivity,
+  meanSensitivity,
+  varianceSensitivity,
+  validateConfig,
+  describePrivacyLevel,
+  DEFAULT_DP_CONFIG,
+  type DPConfig,
+  type PrivacyBudget,
+  type CompositionResult,
+} from './differential-privacy';
+
+// Re-export DP Aggregation utilities
+export {
+  noisyCount,
+  noisyCountWithBudget,
+  noisySum,
+  noisyAverage,
+  noisyAverageRobust,
+  noisyHistogram,
+  noisyHistogramWithSuppression,
+  topKWithDP,
+  topKByCount,
+  noisyVariance,
+  noisyStdDev,
+  noisyPercentile,
+  noisyMedian,
+  noisyThresholdCheck,
+  noisyRangeCount,
+  type NoisyResult,
+  type HistogramBin,
+  type TopKItem,
+} from './dp-aggregator';
+
+// Re-export Amount Normalization utilities
+export {
+  normalizeToCommonAmount,
+  normalizeSOLAmount,
+  normalizeUSDCAmount,
+  addDecoyAmounts,
+  addNormalizedDecoyAmounts,
+  chunkAmount,
+  chunkIntoMixedDenominations,
+  getDenominationsForCurrency,
+  isCommonDenomination,
+  suggestChunkingStrategy,
+  type NormalizedAmount,
+  type DecoySet,
+  type ChunkedAmount,
+} from './amount-normalizer';
+
+// Re-export Constant-Time utilities (for crypto code)
+export {
+  constantTimeCompare,
+  constantTimeCompareStrings,
+  constantTimeCompareHex,
+  constantTimeSelect,
+  constantTimeSelectBigInt,
+  constantTimeSelectBytes,
+  constantTimeSwap,
+  constantTimeSwapBigInt,
+  constantTimeIsZero,
+  constantTimeIsZeroBigInt,
+  constantTimeLessThan,
+  constantTimeGreaterOrEqual,
+  constantTimeMin,
+  constantTimeMax,
+  constantTimeLookup,
+  constantTimeConditionalCopy,
+  secureClear,
+  constantTimeSecureShuffle,
+} from '../crypto/constant-time';
