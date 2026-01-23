@@ -5,7 +5,7 @@
  * Supports pre-selecting a token from token-detail or defaults to USDC.
  */
 import { useState, useCallback } from 'react';
-import { StyleSheet, View, Pressable, TextInput, ActivityIndicator, Platform, Keyboard, TouchableWithoutFeedback, ScrollView } from 'react-native';
+import { StyleSheet, View, Pressable, TextInput, ActivityIndicator, Platform, Keyboard, TouchableWithoutFeedback, ScrollView, Image } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -17,12 +17,22 @@ import { useAuth } from '@/stores/authConvex';
 import { useMoonPay } from '@/hooks/useMoonPay';
 
 // Supported currencies for purchase
-// Network suffix: _sol = Solana, no suffix = Ethereum
+// USDC is default, SOL available as alternative
 const CURRENCIES = [
-  { code: 'sol', name: 'Solana', symbol: 'SOL', icon: '◎', network: 'solana' },
-  { code: 'usdc_sol', name: 'USD Coin (SOL)', symbol: 'USDC', icon: '$', network: 'solana' },
-  { code: 'usdt_sol', name: 'Tether (ETH)', symbol: 'USDT', icon: '₮', network: 'solana' },
-  { code: 'eth_sol', name: 'Ethereum', symbol: 'ETH', icon: '◇', network: 'solana' },
+  {
+    code: 'usdc_sol',
+    name: 'USD Coin',
+    symbol: 'USDC',
+    logoUri: 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v/logo.png',
+    network: 'solana'
+  },
+  {
+    code: 'sol',
+    name: 'Solana',
+    symbol: 'SOL',
+    logoUri: 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png',
+    network: 'solana'
+  },
 ];
 
 // Helper to get wallet address based on currency network
@@ -62,10 +72,15 @@ export default function BuyCryptoScreen() {
   const ethereumAddress = user?.ethereumAddress || null;
 
   // Selected currency (default to USDC or from params)
-  const initialCurrency = params.currency?.toLowerCase() || 'usdc';
-  const [selectedCurrency, setSelectedCurrency] = useState(
-    CURRENCIES.find((c) => c.code === initialCurrency) || CURRENCIES[0]
-  );
+  const paramCurrency = params.currency?.toLowerCase();
+  const [selectedCurrency, setSelectedCurrency] = useState(() => {
+    // Try to match param currency (support both 'sol' and 'usdc' shortcuts)
+    if (paramCurrency === 'sol') {
+      return CURRENCIES.find((c) => c.code === 'sol') || CURRENCIES[0];
+    }
+    // Default to USDC (first in array)
+    return CURRENCIES[0];
+  });
 
   // Get the appropriate wallet address for selected currency
   const walletAddress = getWalletAddress(selectedCurrency, solanaAddress, ethereumAddress);
@@ -141,9 +156,10 @@ export default function BuyCryptoScreen() {
                       isSelected && { borderColor: primaryColor, borderWidth: 1 },
                     ]}
                   >
-                    <View style={[styles.currencyIcon, { backgroundColor: isSelected ? `${primaryColor}20` : borderColor }]}>
-                      <ThemedText style={styles.currencyIconText}>{currency.icon}</ThemedText>
-                    </View>
+                    <Image
+                      source={{ uri: currency.logoUri }}
+                      style={styles.currencyLogo}
+                    />
                     <ThemedText style={[styles.currencySymbol, isSelected && { color: primaryColor }]}>
                       {currency.symbol}
                     </ThemedText>
@@ -239,11 +255,9 @@ export default function BuyCryptoScreen() {
             <ActivityIndicator color="#fff" />
           ) : (
             <>
-              <Ionicons name="flash" size={20} color="#fff" />
+              <Ionicons name={isValidAmount ? "arrow-forward" : "flash"} size={20} color="#fff" />
               <ThemedText style={styles.buyButtonText}>
-                {isValidAmount
-                    ? (isDepositMode ? `Deposit $${numericAmount} USDC` : `Buy $${numericAmount} of ${selectedCurrency.symbol}`)
-                    : 'Enter amount'}
+                {isValidAmount ? 'Continue' : 'Enter amount'}
               </ThemedText>
             </>
           )}
@@ -308,15 +322,10 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     borderRadius: 14,
   },
-  currencyIcon: {
+  currencyLogo: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  currencyIconText: {
-    fontSize: 18,
   },
   currencySymbol: {
     fontSize: 12,
