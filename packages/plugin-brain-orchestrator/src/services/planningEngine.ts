@@ -3,6 +3,9 @@
  *
  * Creates and manages multi-step execution plans
  * for complex user requests.
+ *
+ * Enhanced with structured plan generation (Gate 1) for the
+ * Intent → Plan → Validate → Execute safety architecture.
  */
 
 import { v4 as uuidv4 } from "uuid";
@@ -19,6 +22,58 @@ import type {
 } from "../types/plan.js";
 import type { ParsedIntent } from "../types/intent.js";
 import type { SoulClient } from "./soulClient.js";
+
+// ============================================================================
+// Structured Plan Types (Gate 1 Output)
+// ============================================================================
+
+/**
+ * Risk level classification
+ */
+export type RiskLevel = "low" | "medium" | "high" | "critical";
+
+/**
+ * Estimated cost for a step
+ */
+export interface EstimatedCost {
+  maxSpendCents: number;
+  maxSlippageBps: number;
+  riskLevel: RiskLevel;
+}
+
+/**
+ * A single step in a structured plan
+ */
+export interface StructuredStep {
+  stepId: string;
+  sequence: number;
+  action: string;
+  description: string;
+  estimatedCost: EstimatedCost;
+  expectedOutcome: string;
+  dependsOn: string[];
+  requiresSoulVerification: boolean;
+  requiresUserApproval: boolean;
+  simulationRequired: boolean;
+  status: "pending" | "approved" | "executing" | "completed" | "failed" | "skipped";
+}
+
+/**
+ * Structured plan with cost estimates and risk levels (Gate 1 output)
+ */
+export interface StructuredPlan {
+  planId: string;
+  intentId: string;
+  userId: string;
+  goalRecap: string;
+  steps: StructuredStep[];
+  totalMaxSpendCents: number;
+  totalEstimatedFeeCents: number;
+  overallRiskLevel: RiskLevel;
+  expectedOutcome: string;
+  createdAt: number;
+  expiresAt: number;
+}
 
 /**
  * Configuration for planning engine
@@ -609,5 +664,354 @@ export class PlanningEngine {
     this.plans.clear();
     this.templates.clear();
     this.eventListeners.clear();
+  }
+
+  // ============================================================================
+  // Structured Plan Generation (Gate 1)
+  // ============================================================================
+
+  /**
+   * Create a structured plan from an intent with cost estimates and risk levels
+   * This is Gate 1 of the safety architecture.
+   */
+  createStructuredPlanFromIntent(
+    intent: ParsedIntent,
+    userId: string,
+    options?: {
+      simulationThresholdCents?: number;
+      defaultSlippageBps?: number;
+    }
+  ): StructuredPlan {
+    const planId = uuidv4();
+    const now = Date.now();
+    const expiresAt = now + 30 * 60 * 1000; // 30-minute expiry
+
+    const simulationThreshold = options?.simulationThresholdCents ?? 100000; // $1,000
+    const defaultSlippage = options?.defaultSlippageBps ?? 50; // 0.5%
+
+    // Find matching template
+    const template = this.findTemplate(intent.action);
+
+    // Build structured steps
+    let steps: StructuredStep[];
+    if (template) {
+      steps = this.buildStructuredStepsFromTemplate(template, intent, simulationThreshold, defaultSlippage);
+    } else {
+      steps = [this.buildSimpleStructuredStep(intent, simulationThreshold, defaultSlippage)];
+    }
+
+    // Calculate totals
+    const totalMaxSpendCents = steps.reduce((sum, s) => sum + s.estimatedCost.maxSpendCents, 0);
+    const totalEstimatedFeeCents = this.estimateFees(intent, totalMaxSpendCents);
+
+    // Determine overall risk level
+    const overallRiskLevel = this.calculateOverallRiskLevel(steps, totalMaxSpendCents);
+
+    // Build goal recap
+    const goalRecap = this.buildGoalRecap(intent);
+
+    // Build expected outcome
+    const expectedOutcome = this.buildExpectedOutcome(intent, steps);
+
+    return {
+      planId,
+      intentId: intent.intentId,
+      userId,
+      goalRecap,
+      steps,
+      totalMaxSpendCents,
+      totalEstimatedFeeCents,
+      overallRiskLevel,
+      expectedOutcome,
+      createdAt: now,
+      expiresAt,
+    };
+  }
+
+  /**
+   * Build structured steps from a template
+   */
+  private buildStructuredStepsFromTemplate(
+    template: PlanTemplate,
+    intent: ParsedIntent,
+    simulationThreshold: number,
+    defaultSlippage: number
+  ): StructuredStep[] {
+    return template.steps.map((stepTemplate, index) => {
+      const stepId = uuidv4();
+      const dependsOn = stepTemplate.dependsOn.map((depIndex) => `step-${depIndex}`);
+
+      // Estimate cost for this step
+      const estimatedCost = this.estimateStepCost(
+        stepTemplate.action,
+        intent,
+        defaultSlippage
+      );
+
+      // Determine if simulation is required
+      const simulationRequired = estimatedCost.maxSpendCents >= simulationThreshold;
+
+      return {
+        stepId,
+        sequence: index,
+        action: stepTemplate.action,
+        description: stepTemplate.description,
+        estimatedCost,
+        expectedOutcome: this.buildStepOutcome(stepTemplate.action, intent),
+        dependsOn,
+        requiresSoulVerification: stepTemplate.requiresSoulVerification,
+        requiresUserApproval: estimatedCost.riskLevel === "high" || estimatedCost.riskLevel === "critical",
+        simulationRequired,
+        status: "pending",
+      };
+    });
+  }
+
+  /**
+   * Build a single structured step for simple actions
+   */
+  private buildSimpleStructuredStep(
+    intent: ParsedIntent,
+    simulationThreshold: number,
+    defaultSlippage: number
+  ): StructuredStep {
+    const stepId = uuidv4();
+    const estimatedCost = this.estimateStepCost(intent.action, intent, defaultSlippage);
+    const simulationRequired = estimatedCost.maxSpendCents >= simulationThreshold;
+
+    return {
+      stepId,
+      sequence: 0,
+      action: intent.action,
+      description: this.buildActionDescription(intent),
+      estimatedCost,
+      expectedOutcome: this.buildStepOutcome(intent.action, intent),
+      dependsOn: [],
+      requiresSoulVerification: this.requiresVerification(intent.action),
+      requiresUserApproval: estimatedCost.riskLevel === "high" || estimatedCost.riskLevel === "critical",
+      simulationRequired,
+      status: "pending",
+    };
+  }
+
+  /**
+   * Estimate cost for a step
+   */
+  private estimateStepCost(
+    action: string,
+    intent: ParsedIntent,
+    defaultSlippage: number
+  ): EstimatedCost {
+    const amount = intent.amount ?? 0;
+
+    // Determine slippage based on action type
+    let slippageBps = 0;
+    if (action === "execute_swap" || action === "swap") {
+      slippageBps = defaultSlippage;
+    }
+
+    // Determine risk level based on action and amount
+    const riskLevel = this.calculateStepRiskLevel(action, amount);
+
+    // Calculate max spend (amount + potential slippage)
+    const slippageAmount = Math.ceil(amount * (slippageBps / 10000));
+    const maxSpendCents = amount + slippageAmount;
+
+    return {
+      maxSpendCents,
+      maxSlippageBps: slippageBps,
+      riskLevel,
+    };
+  }
+
+  /**
+   * Calculate risk level for a single step
+   */
+  private calculateStepRiskLevel(action: string, amountCents: number): RiskLevel {
+    // High-risk actions
+    const highRiskActions = ["withdraw_defi", "transfer"];
+    const mediumRiskActions = ["swap", "execute_swap", "fund_card"];
+
+    if (amountCents >= 500000) {
+      // $5,000+
+      return "critical";
+    }
+
+    if (highRiskActions.includes(action)) {
+      if (amountCents >= 100000) {
+        // $1,000+
+        return "high";
+      }
+      return "medium";
+    }
+
+    if (mediumRiskActions.includes(action)) {
+      if (amountCents >= 100000) {
+        // $1,000+
+        return "medium";
+      }
+      return "low";
+    }
+
+    // Default to low for safe actions
+    return "low";
+  }
+
+  /**
+   * Calculate overall risk level from steps
+   */
+  private calculateOverallRiskLevel(steps: StructuredStep[], totalAmount: number): RiskLevel {
+    // Check if any step is critical
+    if (steps.some((s) => s.estimatedCost.riskLevel === "critical")) {
+      return "critical";
+    }
+
+    // Check if total amount is high
+    if (totalAmount >= 500000) {
+      // $5,000+
+      return "critical";
+    }
+
+    // Check if any step is high risk
+    if (steps.some((s) => s.estimatedCost.riskLevel === "high")) {
+      return "high";
+    }
+
+    if (totalAmount >= 100000) {
+      // $1,000+
+      return "high";
+    }
+
+    // Check if any step is medium risk
+    if (steps.some((s) => s.estimatedCost.riskLevel === "medium")) {
+      return "medium";
+    }
+
+    return "low";
+  }
+
+  /**
+   * Estimate total fees for the plan
+   */
+  private estimateFees(intent: ParsedIntent, totalAmount: number): number {
+    // Network fee estimate (Solana transaction + priority fee)
+    const networkFeeCents = 5; // ~$0.05 per transaction
+
+    // Platform fee (0.3% for transfers)
+    let platformFeeCents = 0;
+    if (intent.action === "transfer" || intent.action === "fund_card") {
+      platformFeeCents = Math.ceil(totalAmount * 0.003);
+    }
+
+    // Swap fee estimate (0.25% Jupiter fee)
+    let swapFeeCents = 0;
+    if (intent.action === "swap") {
+      swapFeeCents = Math.ceil(totalAmount * 0.0025);
+    }
+
+    return networkFeeCents + platformFeeCents + swapFeeCents;
+  }
+
+  /**
+   * Build human-readable goal recap
+   */
+  private buildGoalRecap(intent: ParsedIntent): string {
+    const amount = intent.amount ? `$${(intent.amount / 100).toFixed(2)}` : "";
+    const currency = intent.currency || "USD";
+
+    switch (intent.action) {
+      case "fund_card":
+        return `Fund your card with ${amount} from your wallet`;
+      case "transfer":
+        return `Send ${amount} to ${intent.targetId || "recipient"}`;
+      case "swap":
+        return `Swap ${amount} ${currency} for another token`;
+      case "create_card":
+        return "Create a new virtual card";
+      case "freeze_card":
+        return "Freeze your card to prevent transactions";
+      case "withdraw_defi":
+        return `Withdraw ${amount} from DeFi position`;
+      case "pay_bill":
+        return `Pay ${amount} to merchant`;
+      default:
+        return `Execute ${intent.action}${amount ? ` for ${amount}` : ""}`;
+    }
+  }
+
+  /**
+   * Build expected outcome for the plan
+   */
+  private buildExpectedOutcome(intent: ParsedIntent, steps: StructuredStep[]): string {
+    const amount = intent.amount ? `$${(intent.amount / 100).toFixed(2)}` : "";
+
+    switch (intent.action) {
+      case "fund_card":
+        return `Your card will be funded with ${amount}`;
+      case "transfer":
+        return `${amount} will be sent to the recipient`;
+      case "swap":
+        return `Your tokens will be swapped at current market rates`;
+      case "create_card":
+        return "A new virtual card will be created and ready to use";
+      case "freeze_card":
+        return "Your card will be frozen and all transactions blocked";
+      case "withdraw_defi":
+        return `${amount} will be withdrawn to your wallet`;
+      default:
+        return `${steps.length} step(s) will be executed`;
+    }
+  }
+
+  /**
+   * Build description for an action
+   */
+  private buildActionDescription(intent: ParsedIntent): string {
+    const amount = intent.amount ? `$${(intent.amount / 100).toFixed(2)}` : "";
+
+    switch (intent.action) {
+      case "fund_card":
+        return `Add ${amount} to card`;
+      case "transfer":
+        return `Transfer ${amount}`;
+      case "swap":
+        return `Swap ${amount} ${intent.currency || ""}`;
+      case "create_card":
+        return "Create virtual card";
+      case "freeze_card":
+        return "Freeze card";
+      case "withdraw_defi":
+        return `Withdraw ${amount} from DeFi`;
+      default:
+        return `Execute ${intent.action}`;
+    }
+  }
+
+  /**
+   * Build expected outcome for a single step
+   */
+  private buildStepOutcome(action: string, intent: ParsedIntent): string {
+    const amount = intent.amount ? `$${(intent.amount / 100).toFixed(2)}` : "";
+
+    switch (action) {
+      case "verify_with_soul":
+        return "Transaction verified by security enclave";
+      case "check_balance":
+        return "Balance confirmed sufficient";
+      case "fund_card":
+        return `${amount} added to card`;
+      case "execute_transfer":
+        return `${amount} transferred successfully`;
+      case "execute_swap":
+        return "Tokens swapped at market rate";
+      case "create_card":
+        return "New card created";
+      case "notify_user":
+        return "User notified";
+      case "request_approval":
+        return "Approval requested";
+      default:
+        return `${action} completed`;
+    }
   }
 }

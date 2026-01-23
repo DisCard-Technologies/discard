@@ -1827,12 +1827,47 @@ export default defineSchema({
       v.literal("cancelled")
     ),
 
+    // ===== SAFETY ARCHITECTURE: Time-Bound Goals & Automation =====
+
+    // Automation configuration
+    automationEnabled: v.optional(v.boolean()),     // Enable automated contributions
+    automationConfig: v.optional(v.object({
+      triggerType: v.union(
+        v.literal("schedule"),           // Recurring schedule (daily, weekly, monthly)
+        v.literal("price_target"),       // When token reaches price target
+        v.literal("balance_threshold")   // When wallet balance exceeds threshold
+      ),
+      scheduleInterval: v.optional(v.union(
+        v.literal("daily"),
+        v.literal("weekly"),
+        v.literal("monthly")
+      )),
+      priceTargetUsd: v.optional(v.number()),       // Price target in cents
+      balanceThresholdCents: v.optional(v.number()), // Balance threshold in cents
+      maxSingleAmountCents: v.optional(v.number()), // Max per automated transaction
+      sourceWalletId: v.optional(v.id("wallets")),  // Wallet to fund from
+    })),
+    lastAutomatedAt: v.optional(v.number()),        // Last automated contribution timestamp
+    nextAutomatedAt: v.optional(v.number()),        // Next scheduled contribution
+
+    // Re-approval requirements
+    requiresReapproval: v.optional(v.boolean()),    // Whether goal needs periodic re-approval
+    reapprovalIntervalMs: v.optional(v.number()),   // How often to require re-approval (e.g., 30 days)
+    lastApprovedAt: v.optional(v.number()),         // Last time user approved/confirmed the goal
+    nextReapprovalAt: v.optional(v.number()),       // When next re-approval is due
+
+    // Auto-expiry for time-sensitive goals
+    autoExpireAt: v.optional(v.number()),           // Goal auto-cancels after this timestamp
+
     // Timestamps
     createdAt: v.number(),
     updatedAt: v.number(),
   })
     .index("by_user", ["userId"])
-    .index("by_user_status", ["userId", "status"]),
+    .index("by_user_status", ["userId", "status"])
+    .index("by_next_automated", ["nextAutomatedAt"])
+    .index("by_next_reapproval", ["nextReapprovalAt"])
+    .index("by_auto_expire", ["autoExpireAt"]),
 
   // ============================================================================
   // DEPOSIT ADDRESSES - Single-use addresses for Privacy Cash auto-shield
@@ -2318,6 +2353,338 @@ export default defineSchema({
   })
     .index("by_status_execute", ["status", "executeAfter"])
     .index("by_request_id", ["requestId"])
+    .index("by_user", ["userId"]),
+
+  // ============================================================================
+  // SAFETY ARCHITECTURE - Double-Gated Intent → Plan → Validate → Execute
+  // ============================================================================
+
+  // ============ EXECUTION PLANS ============
+  // Structured multi-step plans from intents with cost estimates and risk levels
+  executionPlans: defineTable({
+    intentId: v.id("intents"),
+    userId: v.id("users"),
+    planId: v.string(),                    // UUID for external reference
+
+    // Human-readable summary
+    goalRecap: v.string(),                 // "Fund your card with $50 from wallet"
+
+    // Step-by-step execution plan
+    steps: v.array(v.object({
+      stepId: v.string(),
+      sequence: v.number(),
+      action: v.string(),                  // Action type (fund_card, transfer, swap, etc.)
+      description: v.string(),             // Human-readable description
+      estimatedCost: v.object({
+        maxSpendCents: v.number(),
+        maxSlippageBps: v.number(),        // Basis points (100 = 1%)
+        riskLevel: v.union(
+          v.literal("low"),
+          v.literal("medium"),
+          v.literal("high"),
+          v.literal("critical")
+        ),
+      }),
+      expectedOutcome: v.string(),
+      dependsOn: v.array(v.string()),      // Step IDs this step depends on
+      requiresSoulVerification: v.boolean(),
+      requiresUserApproval: v.boolean(),
+      simulationRequired: v.boolean(),
+      status: v.union(
+        v.literal("pending"),
+        v.literal("approved"),
+        v.literal("executing"),
+        v.literal("completed"),
+        v.literal("failed"),
+        v.literal("skipped")
+      ),
+    })),
+
+    // Cost aggregation
+    totalMaxSpendCents: v.number(),
+    totalEstimatedFeeCents: v.number(),
+    overallRiskLevel: v.union(
+      v.literal("low"),
+      v.literal("medium"),
+      v.literal("high"),
+      v.literal("critical")
+    ),
+
+    // Plan lifecycle status
+    status: v.union(
+      v.literal("draft"),                  // Plan created, not yet evaluated
+      v.literal("policy_review"),          // Being evaluated by policy engine
+      v.literal("policy_rejected"),        // Blocked by policy violation
+      v.literal("awaiting_approval"),      // Waiting for user approval
+      v.literal("approved"),               // User approved, ready to execute
+      v.literal("executing"),              // Currently executing
+      v.literal("completed"),              // All steps completed successfully
+      v.literal("failed"),                 // Execution failed
+      v.literal("cancelled")               // User cancelled
+    ),
+
+    // Policy evaluation results
+    policyResult: v.optional(v.object({
+      approved: v.boolean(),
+      violations: v.array(v.object({
+        policyId: v.string(),
+        policyName: v.string(),
+        severity: v.union(v.literal("warning"), v.literal("block")),
+        message: v.string(),
+      })),
+      evaluatedAt: v.number(),
+    })),
+
+    // Approval mode determined by policy engine
+    approvalMode: v.union(
+      v.literal("auto"),                   // Auto-approve after countdown
+      v.literal("manual"),                 // Requires explicit user approval
+      v.literal("blocked")                 // Cannot proceed (policy violation)
+    ),
+    autoApproveCountdownMs: v.optional(v.number()), // Countdown duration if auto mode
+
+    // Timestamps
+    createdAt: v.number(),
+    expiresAt: v.number(),                 // Plans expire after 30 minutes
+    approvedAt: v.optional(v.number()),
+    completedAt: v.optional(v.number()),
+  })
+    .index("by_user", ["userId"])
+    .index("by_intent", ["intentId"])
+    .index("by_plan_id", ["planId"])
+    .index("by_status", ["status"])
+    .index("by_user_status", ["userId", "status"]),
+
+  // ============ USER POLICIES ============
+  // User-defined and system policies for safety evaluation
+  userPolicies: defineTable({
+    userId: v.id("users"),
+    policyId: v.string(),                  // UUID for external reference
+    policyName: v.string(),                // Human-readable name
+
+    // Policy ownership
+    policyType: v.union(
+      v.literal("system"),                 // Hardcoded, cannot be disabled
+      v.literal("default"),                // Enabled by default, can be disabled
+      v.literal("user")                    // User-created custom policy
+    ),
+
+    // Policy rule definition
+    rule: v.object({
+      type: v.union(
+        v.literal("max_transaction_value"),
+        v.literal("daily_limit"),
+        v.literal("weekly_limit"),
+        v.literal("monthly_limit"),
+        v.literal("allowed_protocols"),
+        v.literal("blocked_actions"),
+        v.literal("time_window"),
+        v.literal("simulation_required"),
+        v.literal("max_slippage")
+      ),
+      // Thresholds (used based on rule type)
+      thresholdCents: v.optional(v.number()),
+      thresholdBps: v.optional(v.number()),
+      // Lists (used for allowed/blocked rules)
+      protocols: v.optional(v.array(v.string())),
+      actions: v.optional(v.array(v.string())),
+      // Time window (24-hour format, e.g., "02:00", "06:00")
+      timeWindowStart: v.optional(v.string()),
+      timeWindowEnd: v.optional(v.string()),
+    }),
+
+    // Violation severity
+    severity: v.union(
+      v.literal("warning"),                // Show warning but allow
+      v.literal("block")                   // Block the operation
+    ),
+
+    // Policy state
+    isEnabled: v.boolean(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_user_enabled", ["userId", "isEnabled"])
+    .index("by_policy_type", ["policyType"]),
+
+  // ============ APPROVAL QUEUE ============
+  // Pending approvals with preview data and countdown
+  approvalQueue: defineTable({
+    userId: v.id("users"),
+    planId: v.id("executionPlans"),
+    intentId: v.id("intents"),
+
+    // Human-readable preview for UI
+    preview: v.object({
+      goalRecap: v.string(),               // "Fund your card with $50"
+      stepsPreview: v.array(v.object({
+        description: v.string(),
+        estimatedCostUsd: v.string(),      // "$50.00"
+        riskLevel: v.string(),             // "low", "medium", "high", "critical"
+      })),
+      totalMaxSpendUsd: v.string(),        // "$50.00"
+      estimatedFeesUsd: v.string(),        // "$0.30"
+      expectedOutcome: v.string(),         // "Your card ending in 1234 will be funded"
+      warnings: v.array(v.string()),       // Policy warnings to display
+    }),
+
+    // Approval mode and countdown
+    approvalMode: v.union(
+      v.literal("auto"),                   // Auto-approve after countdown
+      v.literal("manual")                  // Requires explicit approval
+    ),
+    countdownStartedAt: v.optional(v.number()),
+    countdownDurationMs: v.optional(v.number()),
+    autoApproveAt: v.optional(v.number()), // Timestamp when auto-approve triggers
+
+    // Approval status
+    status: v.union(
+      v.literal("pending"),                // Created, not yet started
+      v.literal("counting_down"),          // Countdown in progress
+      v.literal("approved"),               // User approved or countdown completed
+      v.literal("rejected"),               // User rejected
+      v.literal("cancelled"),              // User cancelled during countdown
+      v.literal("expired")                 // Expired without action
+    ),
+
+    // Action metadata
+    approvedBy: v.optional(v.string()),    // "user" or "auto"
+    rejectionReason: v.optional(v.string()),
+
+    // Timestamps
+    createdAt: v.number(),
+    expiresAt: v.number(),                 // 5-minute expiry for pending approvals
+    resolvedAt: v.optional(v.number()),
+  })
+    .index("by_user", ["userId"])
+    .index("by_user_status", ["userId", "status"])
+    .index("by_plan", ["planId"])
+    .index("by_intent", ["intentId"])
+    .index("by_status", ["status"])
+    .index("by_auto_approve", ["autoApproveAt"]),
+
+  // ============ CIRCUIT BREAKERS ============
+  // Kill switches for emergency operation control
+  circuitBreakers: defineTable({
+    userId: v.id("users"),
+    breakerId: v.string(),                 // UUID for external reference
+    breakerName: v.string(),               // Human-readable name
+
+    // Breaker scope
+    breakerType: v.union(
+      v.literal("global"),                 // Pause ALL operations
+      v.literal("action_type"),            // Pause specific action types
+      v.literal("goal"),                   // Pause specific goal's automation
+      v.literal("protocol")                // Pause specific protocol interactions
+    ),
+
+    // Scope specification (depends on breakerType)
+    scope: v.optional(v.object({
+      actionType: v.optional(v.string()),  // For action_type breaker
+      goalId: v.optional(v.id("goals")),   // For goal breaker
+      protocol: v.optional(v.string()),    // For protocol breaker
+    })),
+
+    // Breaker state
+    isTripped: v.boolean(),
+    trippedAt: v.optional(v.number()),
+    trippedBy: v.optional(v.string()),     // "user", "system", "fraud_detection"
+    tripReason: v.optional(v.string()),
+
+    // Auto-reset configuration
+    autoResetAfterMs: v.optional(v.number()), // Optional auto-reset duration
+
+    // Timestamps
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_user_type", ["userId", "breakerType"])
+    .index("by_tripped", ["isTripped"]),
+
+  // ============ AUDIT LOG ============
+  // Hash-chained audit trail for verifiable action history
+  auditLog: defineTable({
+    userId: v.id("users"),
+    eventId: v.string(),                   // UUID for external reference
+    sequence: v.number(),                  // Monotonically increasing per user
+
+    // Event classification
+    eventType: v.union(
+      v.literal("intent_created"),
+      v.literal("plan_generated"),
+      v.literal("policy_evaluated"),
+      v.literal("approval_requested"),
+      v.literal("approval_granted"),
+      v.literal("approval_rejected"),
+      v.literal("countdown_started"),
+      v.literal("countdown_cancelled"),
+      v.literal("execution_started"),
+      v.literal("execution_completed"),
+      v.literal("execution_failed"),
+      v.literal("breaker_tripped"),
+      v.literal("breaker_reset"),
+      v.literal("policy_created"),
+      v.literal("policy_updated"),
+      v.literal("threshold_changed")
+    ),
+
+    // Related entities
+    intentId: v.optional(v.id("intents")),
+    planId: v.optional(v.id("executionPlans")),
+    approvalId: v.optional(v.id("approvalQueue")),
+
+    // Event data (varies by eventType)
+    eventData: v.object({
+      action: v.optional(v.string()),
+      amountCents: v.optional(v.number()),
+      targetId: v.optional(v.string()),
+      reason: v.optional(v.string()),
+      violations: v.optional(v.array(v.string())),
+      metadata: v.optional(v.any()),
+    }),
+
+    // Hash chain for tamper detection
+    previousHash: v.string(),              // Hash of previous event (or "genesis")
+    eventHash: v.string(),                 // SHA-256 hash of this event
+
+    // On-chain anchoring
+    anchoredToChain: v.boolean(),
+    anchorTxSignature: v.optional(v.string()),
+    anchorMerkleRoot: v.optional(v.string()),
+
+    // Timestamps
+    timestamp: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_user_sequence", ["userId", "sequence"])
+    .index("by_event_type", ["eventType"])
+    .index("by_intent", ["intentId"])
+    .index("by_plan", ["planId"])
+    .index("by_anchored", ["anchoredToChain"])
+    .index("by_timestamp", ["timestamp"]),
+
+  // ============ APPROVAL THRESHOLDS ============
+  // User-configurable approval thresholds
+  approvalThresholds: defineTable({
+    userId: v.id("users"),
+
+    // Auto-approval threshold (below this, auto-approve with countdown)
+    autoApproveMaxCents: v.number(),       // Default: $100 (10000 cents)
+
+    // Manual approval threshold (above this, requires explicit approval)
+    manualApproveMaxCents: v.number(),     // Default: $10,000 (1000000 cents)
+
+    // Countdown timing configuration
+    countdownBaseDurationMs: v.number(),   // Default: 5000 (5 seconds)
+    countdownPerDollarMs: v.number(),      // Default: 100 (1 sec per $10)
+    countdownMaxDurationMs: v.number(),    // Default: 30000 (30 seconds)
+
+    // Timestamps
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
     .index("by_user", ["userId"]),
 
 });

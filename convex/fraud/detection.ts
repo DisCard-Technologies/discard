@@ -25,7 +25,7 @@ import {
   getDPConfigFromSettings,
   applyDPToTransactionStats,
   applyDPToVelocityCount,
-} from "../lib/differential-privacy";
+} from "../lib/differentialPrivacy";
 
 // ============ TYPES ============
 

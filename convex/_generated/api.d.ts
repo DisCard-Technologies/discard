@@ -8,7 +8,12 @@
  * @module
  */
 
+import type * as approvals_approvals from "../approvals/approvals.js";
+import type * as approvals_plans from "../approvals/plans.js";
+import type * as approvals_policies from "../approvals/policies.js";
+import type * as approvals_safetyFlow from "../approvals/safetyFlow.js";
 import type * as attestations_sas from "../attestations/sas.js";
+import type * as audit_auditLog from "../audit/auditLog.js";
 import type * as auth_passkeys from "../auth/passkeys.js";
 import type * as auth_phoneVerification from "../auth/phoneVerification.js";
 import type * as auth_sessions from "../auth/sessions.js";
@@ -20,6 +25,7 @@ import type * as cards_cardFunding from "../cards/cardFunding.js";
 import type * as cards_cards from "../cards/cards.js";
 import type * as cards_marqeta from "../cards/marqeta.js";
 import type * as cards_starpay from "../cards/starpay.js";
+import type * as circuitBreakers_circuitBreakers from "../circuitBreakers/circuitBreakers.js";
 import type * as compression_light from "../compression/light.js";
 import type * as compression_proofs from "../compression/proofs.js";
 import type * as crons from "../crons.js";
@@ -55,6 +61,9 @@ import type * as intents_handlers_questionHandler from "../intents/handlers/ques
 import type * as intents_intents from "../intents/intents.js";
 import type * as intents_rateLimiter from "../intents/rateLimiter.js";
 import type * as intents_solver from "../intents/solver.js";
+import type * as lib_differentialPrivacy from "../lib/differentialPrivacy.js";
+import type * as network_privateRpc from "../network/privateRpc.js";
+import type * as network_timingService from "../network/timingService.js";
 import type * as nullifiers from "../nullifiers.js";
 import type * as privacy from "../privacy.js";
 import type * as privacy_keyImages from "../privacy/keyImages.js";
@@ -88,7 +97,12 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  "approvals/approvals": typeof approvals_approvals;
+  "approvals/plans": typeof approvals_plans;
+  "approvals/policies": typeof approvals_policies;
+  "approvals/safetyFlow": typeof approvals_safetyFlow;
   "attestations/sas": typeof attestations_sas;
+  "audit/auditLog": typeof audit_auditLog;
   "auth/passkeys": typeof auth_passkeys;
   "auth/phoneVerification": typeof auth_phoneVerification;
   "auth/sessions": typeof auth_sessions;
@@ -100,6 +114,7 @@ declare const fullApi: ApiFromModules<{
   "cards/cards": typeof cards_cards;
   "cards/marqeta": typeof cards_marqeta;
   "cards/starpay": typeof cards_starpay;
+  "circuitBreakers/circuitBreakers": typeof circuitBreakers_circuitBreakers;
   "compression/light": typeof compression_light;
   "compression/proofs": typeof compression_proofs;
   crons: typeof crons;
@@ -135,6 +150,9 @@ declare const fullApi: ApiFromModules<{
   "intents/intents": typeof intents_intents;
   "intents/rateLimiter": typeof intents_rateLimiter;
   "intents/solver": typeof intents_solver;
+  "lib/differentialPrivacy": typeof lib_differentialPrivacy;
+  "network/privateRpc": typeof network_privateRpc;
+  "network/timingService": typeof network_timingService;
   nullifiers: typeof nullifiers;
   privacy: typeof privacy;
   "privacy/keyImages": typeof privacy_keyImages;

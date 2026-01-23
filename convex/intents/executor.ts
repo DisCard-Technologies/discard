@@ -1125,3 +1125,193 @@ function serializeTransaction(transaction: UnsignedTransaction): string {
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
+
+// ============================================================================
+// PLAN-BASED EXECUTION (Safety Architecture Gate 4)
+// ============================================================================
+
+/**
+ * Execute an approved plan (called after approval gate passes)
+ *
+ * This is Gate 4 of the safety architecture:
+ * Intent → Plan → Validate → Execute
+ *
+ * The plan has already been:
+ * 1. Created with structured steps and cost estimates (Gate 1)
+ * 2. Evaluated by policy engine (Gate 2)
+ * 3. Approved by user or auto-approval countdown (Gate 3)
+ */
+export const executeFromPlan = internalAction({
+  args: {
+    planId: v.id("executionPlans"),
+  },
+  handler: async (ctx, args): Promise<void> => {
+    console.log(`[Executor] Starting plan execution for planId: ${args.planId}`);
+
+    try {
+      // Get the plan
+      const plan = await ctx.runQuery(internal.approvals.plans.getPlan, {
+        planId: args.planId,
+      });
+
+      if (!plan) {
+        throw new Error("Plan not found");
+      }
+
+      if (plan.status !== "approved") {
+        throw new Error(`Cannot execute plan in ${plan.status} state`);
+      }
+
+      // Update plan status to executing
+      await ctx.runMutation(internal.approvals.plans.updatePlanStatus, {
+        planId: args.planId,
+        status: "executing",
+      });
+
+      // Get the original intent
+      const intent = await ctx.runQuery(internal.intents.intents.getById, {
+        intentId: plan.intentId,
+      });
+
+      if (!intent) {
+        throw new Error("Intent not found for plan");
+      }
+
+      // Log execution start to audit log
+      await logAuditEvent(ctx, plan.userId, {
+        eventType: "execution_started",
+        intentId: plan.intentId,
+        planId: args.planId,
+        amountCents: plan.totalMaxSpendCents,
+        action: intent.parsedIntent?.action,
+      });
+
+      // Execute the intent using the existing executor
+      // This provides backward compatibility
+      await ctx.runMutation(internal.intents.intents.updateStatus, {
+        intentId: plan.intentId,
+        status: "approved",
+      });
+
+      // Call the original execute function
+      await ctx.runAction(internal.intents.executor.execute, {
+        intentId: plan.intentId,
+      });
+
+      // Wait for execution to complete (poll status)
+      let executionComplete = false;
+      let pollAttempts = 0;
+      const maxPollAttempts = 60; // 30 seconds max
+
+      while (!executionComplete && pollAttempts < maxPollAttempts) {
+        await sleep(500);
+        pollAttempts++;
+
+        const updatedIntent = await ctx.runQuery(internal.intents.intents.getById, {
+          intentId: plan.intentId,
+        });
+
+        if (updatedIntent?.status === "completed") {
+          executionComplete = true;
+
+          // Update plan status
+          await ctx.runMutation(internal.approvals.plans.updatePlanStatus, {
+            planId: args.planId,
+            status: "completed",
+          });
+
+          // Log success to audit log
+          await logAuditEvent(ctx, plan.userId, {
+            eventType: "execution_completed",
+            intentId: plan.intentId,
+            planId: args.planId,
+            signature: updatedIntent.solanaTransactionSignature,
+          });
+
+        } else if (updatedIntent?.status === "failed") {
+          // Update plan status
+          await ctx.runMutation(internal.approvals.plans.updatePlanStatus, {
+            planId: args.planId,
+            status: "failed",
+          });
+
+          // Log failure to audit log
+          await logAuditEvent(ctx, plan.userId, {
+            eventType: "execution_failed",
+            intentId: plan.intentId,
+            planId: args.planId,
+            reason: updatedIntent.errorMessage,
+          });
+
+          throw new Error(updatedIntent.errorMessage || "Execution failed");
+        }
+      }
+
+      if (!executionComplete) {
+        throw new Error("Execution timed out");
+      }
+
+    } catch (error) {
+      console.error("[Executor] Plan execution failed:", error);
+
+      // Update plan status
+      await ctx.runMutation(internal.approvals.plans.updatePlanStatus, {
+        planId: args.planId,
+        status: "failed",
+      });
+
+      throw error;
+    }
+  },
+});
+
+/**
+ * Log an event to the audit log
+ */
+async function logAuditEvent(
+  ctx: any,
+  userId: Id<"users">,
+  event: {
+    eventType: string;
+    intentId?: Id<"intents">;
+    planId?: Id<"executionPlans">;
+    amountCents?: number;
+    action?: string;
+    reason?: string;
+    signature?: string;
+  }
+) {
+  try {
+    // Get last audit log entry for sequence number
+    const lastEntry = await ctx.runQuery(internal.audit.auditLog.getLastEntry, {
+      userId,
+    });
+
+    const sequence = lastEntry ? lastEntry.sequence + 1 : 1;
+    const previousHash = lastEntry ? lastEntry.eventHash : "genesis";
+
+    // Calculate event hash (simplified)
+    const eventHash = `${userId}-${sequence}-${event.eventType}-${Date.now()}`;
+
+    await ctx.runMutation(internal.audit.auditLog.createEntry, {
+      userId,
+      eventId: `audit-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      sequence,
+      eventType: event.eventType,
+      intentId: event.intentId,
+      planId: event.planId,
+      eventData: {
+        action: event.action,
+        amountCents: event.amountCents,
+        reason: event.reason,
+        metadata: event.signature ? { signature: event.signature } : {},
+      },
+      previousHash,
+      eventHash,
+      timestamp: Date.now(),
+    });
+  } catch (error) {
+    // Don't fail execution if audit logging fails
+    console.error("[Executor] Failed to log audit event:", error);
+  }
+}
