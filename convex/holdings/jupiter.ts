@@ -179,6 +179,32 @@ export const getRwaHoldings = query({
 });
 
 /**
+ * Get cached SOL price from cryptoRates table
+ * Used by devnet holdings to avoid rate limiting on CoinGecko
+ */
+export const getCachedSolPrice = query({
+  args: {},
+  handler: async (ctx) => {
+    const solRate = await ctx.db
+      .query("cryptoRates")
+      .withIndex("by_symbol", (q) => q.eq("symbol", "SOL"))
+      .first();
+
+    if (solRate) {
+      return {
+        price: solRate.usdPrice,
+        change24h: solRate.change24h,
+        updatedAt: solRate.updatedAt,
+        source: solRate.source,
+      };
+    }
+
+    // Return null if no cached rate exists
+    return null;
+  },
+});
+
+/**
  * Get total portfolio value for a wallet
  */
 export const getPortfolioValue = query({
@@ -216,11 +242,13 @@ export const getPortfolioValue = query({
  * @param walletAddress - Wallet address to fetch holdings for
  * @param privacyLevel - Optional privacy level for routing decisions
  * @param runAction - Action runner for private RPC calls
+ * @param runQuery - Query runner for reading cached rates
  */
 async function fetchDevnetHoldings(
   walletAddress: string,
   privacyLevel?: PrivacyLevel,
-  runAction?: (action: any, args: any) => Promise<any>
+  runAction?: (action: any, args: any) => Promise<any>,
+  runQuery?: (query: any, args: any) => Promise<any>
 ): Promise<{
   holdings: Array<{
     mint: string;
@@ -286,38 +314,23 @@ async function fetchDevnetHoldings(
   console.log(`[Holdings] SOL balance: ${solBalance} (${lamports} lamports)`);
 
   if (solBalance > 0) {
-    // Fetch SOL price from CoinGecko (works for devnet testing)
+    // Get SOL price from cached cryptoRates table (populated by cron job)
     let solPrice = 0;
     let change24h = 0;
     try {
-      let priceData: any;
-      if (usePrivateRoute) {
-        priceData = await runAction(api.network.privateRpc.privateRestCall, {
-          endpoint: "coingecko",
-          path: "/simple/price",
-          method: "GET",
-          queryParams: {
-            ids: "solana",
-            vs_currencies: "usd",
-            include_24hr_change: "true",
-          },
-          privacyLevel,
-        });
-      } else {
-        const priceResponse = await fetch(
-          "https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd&include_24hr_change=true"
-        );
-        priceData = await priceResponse.json();
+      if (runQuery) {
+        const cachedRate = await runQuery(api.holdings.jupiter.getCachedSolPrice, {});
+        if (cachedRate) {
+          solPrice = cachedRate.price;
+          change24h = cachedRate.change24h;
+          console.log(`[Holdings] Using cached SOL price: $${solPrice}, 24h change: ${change24h}% (source: ${cachedRate.source}, updated: ${new Date(cachedRate.updatedAt).toISOString()})`);
+        }
       }
-      console.log(`[Holdings] CoinGecko response:`, JSON.stringify(priceData));
-      solPrice = priceData.solana?.usd || 0;
-      change24h = priceData.solana?.usd_24h_change || 0;
-      console.log(`[Holdings] SOL price: $${solPrice}, 24h change: ${change24h}%`);
     } catch (err) {
-      console.error(`[Holdings] CoinGecko price fetch failed:`, err);
+      console.error(`[Holdings] Failed to fetch cached SOL price:`, err);
     }
 
-    // Use fallback price if CoinGecko failed or was rate limited
+    // Use fallback price if no cached rate available
     if (solPrice === 0) {
       solPrice = 150; // Fallback price for devnet testing
       console.log(`[Holdings] Using fallback SOL price: $${solPrice}`);
@@ -439,7 +452,8 @@ export const refreshHoldings = action({
       const { holdings, totalValueUsd } = await fetchDevnetHoldings(
         args.walletAddress,
         privacyLevel,
-        ctx.runAction
+        ctx.runAction,
+        ctx.runQuery
       );
 
       // Update cache via mutation
