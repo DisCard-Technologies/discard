@@ -22,7 +22,7 @@ import { internal } from "../_generated/api";
 // ============================================================================
 
 type PrivacyLevel = "basic" | "enhanced" | "maximum";
-type Endpoint = "helius" | "jupiter" | "solana" | "magicblock";
+type Endpoint = "helius" | "jupiter" | "jupiter-ultra" | "jupiter-token" | "solana" | "magicblock" | "coingecko";
 
 interface RpcRequestBody {
   jsonrpc: "2.0";
@@ -55,6 +55,15 @@ const ENDPOINTS: Record<Endpoint, EndpointConfig> = {
     url: "https://quote-api.jup.ag/v6",
     requiresAuth: false,
   },
+  "jupiter-ultra": {
+    url: "https://api.jup.ag/ultra/v1",
+    requiresAuth: true,
+    authHeader: "x-api-key",
+  },
+  "jupiter-token": {
+    url: "https://tokens.jup.ag",
+    requiresAuth: false,
+  },
   solana: {
     url: process.env.SOLANA_RPC_URL || "https://api.mainnet-beta.solana.com",
     requiresAuth: false,
@@ -63,6 +72,10 @@ const ENDPOINTS: Record<Endpoint, EndpointConfig> = {
     url: process.env.MAGICBLOCK_RPC_URL || "https://devnet.magicblock.app",
     requiresAuth: true,
     authHeader: "Authorization",
+  },
+  coingecko: {
+    url: "https://api.coingecko.com/api/v3",
+    requiresAuth: false,
   },
 };
 
@@ -100,6 +113,8 @@ function getApiKey(endpoint: Endpoint): string | undefined {
   switch (endpoint) {
     case "helius":
       return process.env.HELIUS_API_KEY;
+    case "jupiter-ultra":
+      return process.env.JUPITER_API_KEY;
     case "magicblock":
       return process.env.MAGICBLOCK_API_KEY;
     default:
@@ -162,8 +177,11 @@ export const privateRpcCall = action({
     endpoint: v.union(
       v.literal("helius"),
       v.literal("jupiter"),
+      v.literal("jupiter-ultra"),
+      v.literal("jupiter-token"),
       v.literal("solana"),
-      v.literal("magicblock")
+      v.literal("magicblock"),
+      v.literal("coingecko")
     ),
     method: v.string(),
     params: v.any(),
@@ -260,8 +278,11 @@ export const privateRestCall = action({
     endpoint: v.union(
       v.literal("helius"),
       v.literal("jupiter"),
+      v.literal("jupiter-ultra"),
+      v.literal("jupiter-token"),
       v.literal("solana"),
-      v.literal("magicblock")
+      v.literal("magicblock"),
+      v.literal("coingecko")
     ),
     path: v.string(),
     method: v.union(
@@ -337,8 +358,11 @@ export const privateBatchRpc = action({
     endpoint: v.union(
       v.literal("helius"),
       v.literal("jupiter"),
+      v.literal("jupiter-ultra"),
+      v.literal("jupiter-token"),
       v.literal("solana"),
-      v.literal("magicblock")
+      v.literal("magicblock"),
+      v.literal("coingecko")
     ),
     requests: v.array(
       v.object({

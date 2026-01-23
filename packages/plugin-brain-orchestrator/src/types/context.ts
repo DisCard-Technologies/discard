@@ -85,6 +85,12 @@ export interface ContextConfig {
   ttlSeconds: number;
   persistUserState: boolean;
   summarizeThreshold: number;
+  /** Differential privacy settings for behavioral data protection */
+  dpConfig?: {
+    enabled: boolean;
+    epsilon: number;
+    delta: number;
+  };
 }
 
 /**

@@ -15,6 +15,14 @@ import type {
   UserPreferences,
 } from "../types/context.js";
 import type { ParsedIntent } from "../types/intent.js";
+import {
+  type DPConfig,
+  DEFAULT_DP_CONFIG,
+  noisyCount,
+  noisyTimestamp,
+  applyDPToActionFrequencies,
+  applyDPToRecentMerchants,
+} from "../utils/differential-privacy.js";
 
 /**
  * Default configuration
@@ -41,17 +49,35 @@ const DEFAULT_PREFERENCES: UserPreferences = {
  */
 export class ContextManager {
   private config: ContextConfig;
+  private dpConfig: DPConfig;
   private sessions: Map<string, SessionContext>;
   private userStates: Map<string, UserState>;
   private cleanupTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(config?: Partial<ContextConfig>) {
     this.config = { ...DEFAULT_CONFIG, ...config };
+    this.dpConfig = config?.dpConfig
+      ? { ...DEFAULT_DP_CONFIG, ...config.dpConfig }
+      : DEFAULT_DP_CONFIG;
     this.sessions = new Map();
     this.userStates = new Map();
 
     // Start cleanup timer
     this.startCleanupTimer();
+  }
+
+  /**
+   * Update DP configuration at runtime
+   */
+  setDPConfig(dpConfig: Partial<DPConfig>): void {
+    this.dpConfig = { ...this.dpConfig, ...dpConfig };
+  }
+
+  /**
+   * Get current DP configuration
+   */
+  getDPConfig(): DPConfig {
+    return { ...this.dpConfig };
   }
 
   /**
@@ -193,6 +219,8 @@ export class ContextManager {
 
   /**
    * Update action frequency for personalization
+   *
+   * Stores exact counts internally; DP noise is applied when reading.
    */
   private updateActionFrequency(userState: UserState, action: string): void {
     const existing = userState.frequentActions.find((f) => f.action === action);
@@ -215,6 +243,55 @@ export class ContextManager {
     if (userState.frequentActions.length > 10) {
       userState.frequentActions = userState.frequentActions.slice(0, 10);
     }
+  }
+
+  /**
+   * Get frequent actions with differential privacy applied
+   *
+   * Returns noisy counts and timestamps to protect behavioral patterns.
+   *
+   * @param userId - User ID to get actions for
+   * @param applyDP - Whether to apply DP (default: use config)
+   * @returns Array of action frequencies with optional DP noise
+   */
+  getFrequentActions(
+    userId: string,
+    applyDP?: boolean
+  ): Array<{ action: string; count: number; lastUsed: number }> {
+    const userState = this.userStates.get(userId);
+    if (!userState) {
+      return [];
+    }
+
+    const shouldApplyDP = applyDP ?? this.dpConfig.enabled;
+
+    if (shouldApplyDP) {
+      return applyDPToActionFrequencies(userState.frequentActions, this.dpConfig);
+    }
+
+    return [...userState.frequentActions];
+  }
+
+  /**
+   * Get recent merchants with differential privacy applied
+   *
+   * @param userId - User ID to get merchants for
+   * @param applyDP - Whether to apply DP (default: use config)
+   * @returns Array of merchant IDs with optional DP protection
+   */
+  getRecentMerchants(userId: string, applyDP?: boolean): string[] {
+    const userState = this.userStates.get(userId);
+    if (!userState) {
+      return [];
+    }
+
+    const shouldApplyDP = applyDP ?? this.dpConfig.enabled;
+
+    if (shouldApplyDP) {
+      return applyDPToRecentMerchants(userState.recentMerchants, this.dpConfig);
+    }
+
+    return [...userState.recentMerchants];
   }
 
   /**

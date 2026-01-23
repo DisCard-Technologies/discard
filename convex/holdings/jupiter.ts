@@ -3,11 +3,22 @@
  *
  * Provides caching and real-time subscriptions for token holdings
  * fetched from Jupiter Ultra API (mainnet) or direct RPC (devnet).
+ *
+ * Privacy Features:
+ * - Optional routing through private RPC proxy
+ * - Timing obfuscation based on privacy level
+ * - Server-side Tor routing for maximum privacy
  */
 import { v } from "convex/values";
-import { query, mutation, action, internalMutation } from "../_generated/server";
-import { internal } from "../_generated/api";
+import { query, mutation, action, internalMutation, internalAction } from "../_generated/server";
+import { internal, api } from "../_generated/api";
 import type { Doc } from "../_generated/dataModel";
+
+// ============================================================================
+// Privacy Types
+// ============================================================================
+
+type PrivacyLevel = "basic" | "enhanced" | "maximum";
 
 // Network configuration - log on load for debugging
 const SOLANA_NETWORK = process.env.SOLANA_NETWORK || "mainnet-beta";
@@ -89,7 +100,12 @@ const KNOWN_TOKEN_METADATA: Record<string, { symbol: string; name: string; logoU
 };
 
 // Helper to fetch token metadata from Jupiter Token API
-async function fetchTokenMetadata(mint: string): Promise<{
+// When privacyLevel is provided, routes through private proxy
+async function fetchTokenMetadata(
+  mint: string,
+  privacyLevel?: PrivacyLevel,
+  runAction?: (action: any, args: any) => Promise<any>
+): Promise<{
   symbol: string;
   name: string;
   logoUri?: string;
@@ -101,6 +117,22 @@ async function fetchTokenMetadata(mint: string): Promise<{
   }
 
   try {
+    // Use private route if privacy level is enhanced or maximum
+    if (privacyLevel && privacyLevel !== "basic" && runAction) {
+      const data = await runAction(api.network.privateRpc.privateRestCall, {
+        endpoint: "jupiter-token",
+        path: `/token/${mint}`,
+        method: "GET",
+        privacyLevel,
+      });
+      return {
+        symbol: data.symbol || mint.slice(0, 4).toUpperCase(),
+        name: data.name || mint.slice(0, 8),
+        logoUri: data.logoURI,
+      };
+    }
+
+    // Direct call for basic privacy or when no context
     const response = await fetch(`https://tokens.jup.ag/token/${mint}`);
     if (!response.ok) return null;
     const data = await response.json();
@@ -180,8 +212,16 @@ export const getPortfolioValue = query({
 /**
  * Fetch holdings directly from Solana RPC (for devnet)
  * Uses getBalance for SOL and getTokenAccountsByOwner for SPL tokens
+ *
+ * @param walletAddress - Wallet address to fetch holdings for
+ * @param privacyLevel - Optional privacy level for routing decisions
+ * @param runAction - Action runner for private RPC calls
  */
-async function fetchDevnetHoldings(walletAddress: string): Promise<{
+async function fetchDevnetHoldings(
+  walletAddress: string,
+  privacyLevel?: PrivacyLevel,
+  runAction?: (action: any, args: any) => Promise<any>
+): Promise<{
   holdings: Array<{
     mint: string;
     symbol: string;
@@ -216,19 +256,30 @@ async function fetchDevnetHoldings(walletAddress: string): Promise<{
     rwaMetadata?: { issuer: string; type: string; expectedYield?: number };
   }> = [];
 
-  // Fetch SOL balance
-  const balanceResponse = await fetch(SOLANA_RPC_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      id: 1,
+  // Fetch SOL balance - use private route if privacy enabled
+  let balanceData: any;
+  const usePrivateRoute = privacyLevel && privacyLevel !== "basic" && runAction;
+
+  if (usePrivateRoute) {
+    balanceData = await runAction(api.network.privateRpc.privateRpcCall, {
+      endpoint: "solana",
       method: "getBalance",
       params: [walletAddress],
-    }),
-  });
-
-  const balanceData = await balanceResponse.json();
+      privacyLevel,
+    });
+  } else {
+    const balanceResponse = await fetch(SOLANA_RPC_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "getBalance",
+        params: [walletAddress],
+      }),
+    });
+    balanceData = await balanceResponse.json();
+  }
   console.log(`[Holdings] Balance response:`, JSON.stringify(balanceData));
   const lamports = balanceData.result?.value || 0;
   const solBalance = lamports / 1e9;
@@ -239,10 +290,25 @@ async function fetchDevnetHoldings(walletAddress: string): Promise<{
     let solPrice = 0;
     let change24h = 0;
     try {
-      const priceResponse = await fetch(
-        "https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd&include_24hr_change=true"
-      );
-      const priceData = await priceResponse.json();
+      let priceData: any;
+      if (usePrivateRoute) {
+        priceData = await runAction(api.network.privateRpc.privateRestCall, {
+          endpoint: "coingecko",
+          path: "/simple/price",
+          method: "GET",
+          queryParams: {
+            ids: "solana",
+            vs_currencies: "usd",
+            include_24hr_change: "true",
+          },
+          privacyLevel,
+        });
+      } else {
+        const priceResponse = await fetch(
+          "https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd&include_24hr_change=true"
+        );
+        priceData = await priceResponse.json();
+      }
       console.log(`[Holdings] CoinGecko response:`, JSON.stringify(priceData));
       solPrice = priceData.solana?.usd || 0;
       change24h = priceData.solana?.usd_24h_change || 0;
@@ -275,23 +341,36 @@ async function fetchDevnetHoldings(walletAddress: string): Promise<{
     });
   }
 
-  // Fetch SPL token accounts
-  const tokenResponse = await fetch(SOLANA_RPC_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      id: 2,
+  // Fetch SPL token accounts - use private route if privacy enabled
+  let tokenData: any;
+  if (usePrivateRoute) {
+    tokenData = await runAction(api.network.privateRpc.privateRpcCall, {
+      endpoint: "solana",
       method: "getTokenAccountsByOwner",
       params: [
         walletAddress,
         { programId: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA" },
         { encoding: "jsonParsed" },
       ],
-    }),
-  });
-
-  const tokenData = await tokenResponse.json();
+      privacyLevel,
+    });
+  } else {
+    const tokenResponse = await fetch(SOLANA_RPC_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 2,
+        method: "getTokenAccountsByOwner",
+        params: [
+          walletAddress,
+          { programId: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA" },
+          { encoding: "jsonParsed" },
+        ],
+      }),
+    });
+    tokenData = await tokenResponse.json();
+  }
   const tokenAccounts = tokenData.result?.value || [];
 
   for (const account of tokenAccounts) {
@@ -307,7 +386,7 @@ async function fetchDevnetHoldings(walletAddress: string): Promise<{
 
     const isRwa = RWA_MINTS.has(mint);
     const rwaMetadata = isRwa ? RWA_METADATA[mint] : undefined;
-    const meta = await fetchTokenMetadata(mint);
+    const meta = await fetchTokenMetadata(mint, privacyLevel, runAction);
 
     holdings.push({
       mint,
@@ -337,14 +416,31 @@ async function fetchDevnetHoldings(walletAddress: string): Promise<{
 
 /**
  * Refresh holdings from Jupiter Ultra API (mainnet) or direct RPC (devnet)
+ *
+ * @param walletAddress - Wallet address to refresh holdings for
+ * @param privacyLevel - Optional privacy level (basic/enhanced/maximum)
+ *   - basic: Direct API calls
+ *   - enhanced: Timing jitter + server routing
+ *   - maximum: Timing jitter + Tor routing (when available)
  */
 export const refreshHoldings = action({
-  args: { walletAddress: v.string() },
+  args: {
+    walletAddress: v.string(),
+    privacyLevel: v.optional(
+      v.union(v.literal("basic"), v.literal("enhanced"), v.literal("maximum"))
+    ),
+  },
   handler: async (ctx, args) => {
+    const privacyLevel = args.privacyLevel || "basic";
+
     // Use devnet path if on devnet (Jupiter Ultra only supports mainnet)
     if (IS_DEVNET) {
-      console.log(`[Holdings] Using devnet RPC for ${args.walletAddress.slice(0, 8)}...`);
-      const { holdings, totalValueUsd } = await fetchDevnetHoldings(args.walletAddress);
+      console.log(`[Holdings] Using devnet RPC for ${args.walletAddress.slice(0, 8)}... (privacy: ${privacyLevel})`);
+      const { holdings, totalValueUsd } = await fetchDevnetHoldings(
+        args.walletAddress,
+        privacyLevel,
+        ctx.runAction
+      );
 
       // Update cache via mutation
       await ctx.runMutation(internal.holdings.jupiter.updateCache, {
@@ -369,23 +465,42 @@ export const refreshHoldings = action({
       throw new Error("JUPITER_API_KEY environment variable not set");
     }
 
-    // Fetch from Jupiter Ultra API
-    const response = await fetch(
-      `${JUPITER_ULTRA_URL}/holdings/${args.walletAddress}`,
-      {
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": JUPITER_API_KEY,
-        },
+    console.log(`[Holdings] Using mainnet Jupiter Ultra for ${args.walletAddress.slice(0, 8)}... (privacy: ${privacyLevel})`);
+
+    // Fetch from Jupiter Ultra API - use private route if privacy enabled
+    let data: any;
+    const usePrivateRoute = privacyLevel !== "basic";
+
+    if (usePrivateRoute) {
+      try {
+        data = await ctx.runAction(api.network.privateRpc.privateRestCall, {
+          endpoint: "jupiter-ultra",
+          path: `/holdings/${args.walletAddress}`,
+          method: "GET",
+          privacyLevel,
+        });
+      } catch (error) {
+        console.error(`[Holdings] Private route failed, error:`, error);
+        throw error;
       }
-    );
+    } else {
+      const response = await fetch(
+        `${JUPITER_ULTRA_URL}/holdings/${args.walletAddress}`,
+        {
+          headers: {
+            "Content-Type": "application/json",
+            "x-api-key": JUPITER_API_KEY,
+          },
+        }
+      );
 
-    if (!response.ok) {
-      const errorText = await response.text().catch(() => "");
-      throw new Error(`Jupiter API error: ${response.status} - ${errorText}`);
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => "");
+        throw new Error(`Jupiter API error: ${response.status} - ${errorText}`);
+      }
+
+      data = await response.json();
     }
-
-    const data = await response.json();
 
     // Jupiter Ultra returns tokens as object keyed by mint address:
     // { "amount": "sol_lamports", "uiAmount": 1.5, "tokens": { "mint1": [...], "mint2": [...] } }
@@ -429,8 +544,9 @@ export const refreshHoldings = action({
     const mints = Object.keys(tokensObj);
 
     // Fetch token metadata from Jupiter Token API in parallel
+    // Pass privacy options for routing decisions
     const metadataResults = await Promise.all(
-      mints.map(mint => fetchTokenMetadata(mint))
+      mints.map(mint => fetchTokenMetadata(mint, privacyLevel, ctx.runAction))
     );
     const tokenMetadata = new Map(
       mints.map((mint, i) => [mint, metadataResults[i]])

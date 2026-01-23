@@ -11,6 +11,7 @@
  * - Advanced search with filters (searchAssets)
  * - Compressed NFT proof generation (getAssetProof)
  * - Token price data for top 10k tokens
+ * - Privacy-preserving routing through Convex backend
  *
  * @see https://docs.helius.dev/das-api
  */
@@ -23,6 +24,26 @@ const HELIUS_API_KEY = process.env.EXPO_PUBLIC_HELIUS_API_KEY || "";
 const HELIUS_RPC_URL = HELIUS_API_KEY
   ? `https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`
   : "https://api.mainnet-beta.solana.com";
+
+// ============================================================================
+// Privacy Types
+// ============================================================================
+
+export type PrivacyLevel = "basic" | "enhanced" | "maximum";
+
+export interface PrivacyOptions {
+  /** Route through Convex backend for privacy */
+  usePrivateRoute?: boolean;
+  /** Privacy level for routing decisions */
+  privacyLevel?: PrivacyLevel;
+  /** Convex action caller (injected from React component) */
+  convexAction?: <T>(args: {
+    endpoint: "helius" | "jupiter" | "solana" | "magicblock";
+    method: string;
+    params: unknown;
+    privacyLevel: PrivacyLevel;
+  }) => Promise<T>;
+}
 
 // ============================================================================
 // Types
@@ -175,11 +196,81 @@ export interface TokenBalance {
 
 export class HeliusDasService {
   private rpcUrl: string;
+  private defaultPrivacyOptions: PrivacyOptions;
 
-  constructor(apiKey?: string) {
+  constructor(apiKey?: string, privacyOptions?: PrivacyOptions) {
     this.rpcUrl = apiKey
       ? `https://mainnet.helius-rpc.com/?api-key=${apiKey}`
       : HELIUS_RPC_URL;
+    this.defaultPrivacyOptions = privacyOptions || {};
+  }
+
+  /**
+   * Set default privacy options for all requests
+   */
+  setPrivacyOptions(options: PrivacyOptions): void {
+    this.defaultPrivacyOptions = { ...this.defaultPrivacyOptions, ...options };
+  }
+
+  /**
+   * Make an RPC request, optionally routing through Convex for privacy
+   */
+  private async makeRequest<T>(
+    method: string,
+    params: unknown,
+    options?: PrivacyOptions
+  ): Promise<T | null> {
+    const mergedOptions = { ...this.defaultPrivacyOptions, ...options };
+    const { usePrivateRoute, privacyLevel, convexAction } = mergedOptions;
+
+    // Use private route through Convex if configured
+    if (usePrivateRoute && convexAction && privacyLevel !== "basic") {
+      try {
+        console.log(`[HeliusDAS] Using private route for ${method}`);
+        const result = await convexAction<{ result?: T; error?: unknown }>({
+          endpoint: "helius",
+          method,
+          params,
+          privacyLevel: privacyLevel || "enhanced",
+        });
+
+        if (result.error) {
+          console.error(`[HeliusDAS] Private route error:`, result.error);
+          return null;
+        }
+
+        return result.result || null;
+      } catch (error) {
+        console.error(`[HeliusDAS] Private route failed, falling back to direct:`, error);
+        // Fall through to direct request
+      }
+    }
+
+    // Direct request
+    try {
+      const response = await fetch(this.rpcUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: method,
+          method,
+          params,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.error) {
+        console.error(`[HeliusDAS] ${method} error:`, data.error);
+        return null;
+      }
+
+      return data.result;
+    } catch (error) {
+      console.error(`[HeliusDAS] ${method} failed:`, error);
+      return null;
+    }
   }
 
   // ==========================================================================
@@ -188,70 +279,43 @@ export class HeliusDasService {
 
   /**
    * Get a single asset by its ID (mint address)
+   *
+   * @param assetId - Mint address of the asset
+   * @param privacyOptions - Optional privacy routing configuration
    */
-  async getAsset(assetId: string): Promise<DasAsset | null> {
+  async getAsset(
+    assetId: string,
+    privacyOptions?: PrivacyOptions
+  ): Promise<DasAsset | null> {
     console.log("[HeliusDAS] Getting asset:", assetId);
-
-    try {
-      const response = await fetch(this.rpcUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          jsonrpc: "2.0",
-          id: "get-asset",
-          method: "getAsset",
-          params: { id: assetId },
-        }),
-      });
-
-      const data = await response.json();
-
-      if (data.error) {
-        console.error("[HeliusDAS] getAsset error:", data.error);
-        return null;
-      }
-
-      return data.result;
-    } catch (error) {
-      console.error("[HeliusDAS] getAsset failed:", error);
-      return null;
-    }
+    return this.makeRequest<DasAsset>("getAsset", { id: assetId }, privacyOptions);
   }
 
   /**
    * Get multiple assets by their IDs
+   *
+   * @param assetIds - Array of mint addresses
+   * @param privacyOptions - Optional privacy routing configuration
    */
-  async getAssetBatch(assetIds: string[]): Promise<DasAsset[]> {
+  async getAssetBatch(
+    assetIds: string[],
+    privacyOptions?: PrivacyOptions
+  ): Promise<DasAsset[]> {
     console.log("[HeliusDAS] Getting batch of", assetIds.length, "assets");
-
-    try {
-      const response = await fetch(this.rpcUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          jsonrpc: "2.0",
-          id: "get-asset-batch",
-          method: "getAssetBatch",
-          params: { ids: assetIds },
-        }),
-      });
-
-      const data = await response.json();
-
-      if (data.error) {
-        console.error("[HeliusDAS] getAssetBatch error:", data.error);
-        return [];
-      }
-
-      return data.result || [];
-    } catch (error) {
-      console.error("[HeliusDAS] getAssetBatch failed:", error);
-      return [];
-    }
+    const result = await this.makeRequest<DasAsset[]>(
+      "getAssetBatch",
+      { ids: assetIds },
+      privacyOptions
+    );
+    return result || [];
   }
 
   /**
    * Get all assets owned by a wallet
+   *
+   * @param ownerAddress - Wallet address to query
+   * @param options - Query options (pagination, sorting, display)
+   * @param privacyOptions - Optional privacy routing configuration
    */
   async getAssetsByOwner(
     ownerAddress: string,
@@ -266,83 +330,53 @@ export class HeliusDasService {
         showInscription?: boolean;
         showCollectionMetadata?: boolean;
       };
-    }
+    },
+    privacyOptions?: PrivacyOptions
   ): Promise<SearchAssetsResult> {
     console.log("[HeliusDAS] Getting assets for owner:", ownerAddress);
 
-    try {
-      const params: any = {
-        ownerAddress,
-        page: options?.page || 1,
-        limit: options?.limit || 100,
+    const params: Record<string, unknown> = {
+      ownerAddress,
+      page: options?.page || 1,
+      limit: options?.limit || 100,
+    };
+
+    if (options?.sortBy) {
+      params.sortBy = {
+        sortBy: options.sortBy,
+        sortDirection: options.sortDirection || "desc",
       };
-
-      if (options?.sortBy) {
-        params.sortBy = {
-          sortBy: options.sortBy,
-          sortDirection: options.sortDirection || "desc",
-        };
-      }
-
-      if (options?.displayOptions) {
-        params.displayOptions = options.displayOptions;
-      }
-
-      const response = await fetch(this.rpcUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          jsonrpc: "2.0",
-          id: "get-assets-by-owner",
-          method: "getAssetsByOwner",
-          params,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (data.error) {
-        console.error("[HeliusDAS] getAssetsByOwner error:", data.error);
-        return { total: 0, limit: 100, page: 1, items: [] };
-      }
-
-      return data.result || { total: 0, limit: 100, page: 1, items: [] };
-    } catch (error) {
-      console.error("[HeliusDAS] getAssetsByOwner failed:", error);
-      return { total: 0, limit: 100, page: 1, items: [] };
     }
+
+    if (options?.displayOptions) {
+      params.displayOptions = options.displayOptions;
+    }
+
+    const result = await this.makeRequest<SearchAssetsResult>(
+      "getAssetsByOwner",
+      params,
+      privacyOptions
+    );
+    return result || { total: 0, limit: 100, page: 1, items: [] };
   }
 
   /**
    * Search assets with advanced filters
+   *
+   * @param params - Search parameters
+   * @param privacyOptions - Optional privacy routing configuration
    */
-  async searchAssets(params: SearchAssetsParams): Promise<SearchAssetsResult> {
+  async searchAssets(
+    params: SearchAssetsParams,
+    privacyOptions?: PrivacyOptions
+  ): Promise<SearchAssetsResult> {
     console.log("[HeliusDAS] Searching assets with params:", params);
-
-    try {
-      const response = await fetch(this.rpcUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          jsonrpc: "2.0",
-          id: "search-assets",
-          method: "searchAssets",
-          params,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (data.error) {
-        console.error("[HeliusDAS] searchAssets error:", data.error);
-        return { total: 0, limit: 100, page: 1, items: [] };
-      }
-
-      return data.result || { total: 0, limit: 100, page: 1, items: [] };
-    } catch (error) {
-      console.error("[HeliusDAS] searchAssets failed:", error);
-      return { total: 0, limit: 100, page: 1, items: [] };
-    }
+    const result = await this.makeRequest<SearchAssetsResult>(
+      "searchAssets",
+      params,
+      privacyOptions
+    );
+    return result || { total: 0, limit: 100, page: 1, items: [] };
   }
 
   // ==========================================================================
@@ -351,73 +385,44 @@ export class HeliusDasService {
 
   /**
    * Get merkle proof for a compressed asset
+   *
+   * @param assetId - Mint address of the compressed asset
+   * @param privacyOptions - Optional privacy routing configuration
    */
-  async getAssetProof(assetId: string): Promise<AssetProof | null> {
+  async getAssetProof(
+    assetId: string,
+    privacyOptions?: PrivacyOptions
+  ): Promise<AssetProof | null> {
     console.log("[HeliusDAS] Getting proof for compressed asset:", assetId);
-
-    try {
-      const response = await fetch(this.rpcUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          jsonrpc: "2.0",
-          id: "get-asset-proof",
-          method: "getAssetProof",
-          params: { id: assetId },
-        }),
-      });
-
-      const data = await response.json();
-
-      if (data.error) {
-        console.error("[HeliusDAS] getAssetProof error:", data.error);
-        return null;
-      }
-
-      return data.result;
-    } catch (error) {
-      console.error("[HeliusDAS] getAssetProof failed:", error);
-      return null;
-    }
+    return this.makeRequest<AssetProof>("getAssetProof", { id: assetId }, privacyOptions);
   }
 
   /**
    * Get proofs for multiple compressed assets
+   *
+   * @param assetIds - Array of mint addresses
+   * @param privacyOptions - Optional privacy routing configuration
    */
-  async getAssetProofBatch(assetIds: string[]): Promise<Map<string, AssetProof>> {
+  async getAssetProofBatch(
+    assetIds: string[],
+    privacyOptions?: PrivacyOptions
+  ): Promise<Map<string, AssetProof>> {
     console.log("[HeliusDAS] Getting proofs for", assetIds.length, "assets");
 
-    try {
-      const response = await fetch(this.rpcUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          jsonrpc: "2.0",
-          id: "get-asset-proof-batch",
-          method: "getAssetProofBatch",
-          params: { ids: assetIds },
-        }),
-      });
+    const result = await this.makeRequest<Record<string, AssetProof>>(
+      "getAssetProofBatch",
+      { ids: assetIds },
+      privacyOptions
+    );
 
-      const data = await response.json();
-
-      if (data.error) {
-        console.error("[HeliusDAS] getAssetProofBatch error:", data.error);
-        return new Map();
+    const proofMap = new Map<string, AssetProof>();
+    if (result) {
+      for (const [id, proof] of Object.entries(result)) {
+        proofMap.set(id, proof);
       }
-
-      const result = new Map<string, AssetProof>();
-      if (data.result) {
-        for (const [id, proof] of Object.entries(data.result)) {
-          result.set(id, proof as AssetProof);
-        }
-      }
-
-      return result;
-    } catch (error) {
-      console.error("[HeliusDAS] getAssetProofBatch failed:", error);
-      return new Map();
     }
+
+    return proofMap;
   }
 
   // ==========================================================================
@@ -426,17 +431,26 @@ export class HeliusDasService {
 
   /**
    * Get all token balances for a wallet with prices
+   *
+   * @param ownerAddress - Wallet address to query
+   * @param privacyOptions - Optional privacy routing configuration
    */
-  async getTokenBalances(ownerAddress: string): Promise<TokenBalance[]> {
+  async getTokenBalances(
+    ownerAddress: string,
+    privacyOptions?: PrivacyOptions
+  ): Promise<TokenBalance[]> {
     console.log("[HeliusDAS] Getting token balances for:", ownerAddress);
 
     try {
       // Get fungible tokens with prices
-      const result = await this.searchAssets({
-        ownerAddress,
-        tokenType: "fungible",
-        limit: 100,
-      });
+      const result = await this.searchAssets(
+        {
+          ownerAddress,
+          tokenType: "fungible",
+          limit: 100,
+        },
+        privacyOptions
+      );
 
       const balances: TokenBalance[] = result.items
         .filter((asset) => asset.token_info)
@@ -461,16 +475,25 @@ export class HeliusDasService {
 
   /**
    * Get NFT collections owned by a wallet
+   *
+   * @param ownerAddress - Wallet address to query
+   * @param privacyOptions - Optional privacy routing configuration
    */
-  async getNftCollections(ownerAddress: string): Promise<Map<string, DasAsset[]>> {
+  async getNftCollections(
+    ownerAddress: string,
+    privacyOptions?: PrivacyOptions
+  ): Promise<Map<string, DasAsset[]>> {
     console.log("[HeliusDAS] Getting NFT collections for:", ownerAddress);
 
     try {
-      const result = await this.searchAssets({
-        ownerAddress,
-        tokenType: "nonFungible",
-        limit: 500,
-      });
+      const result = await this.searchAssets(
+        {
+          ownerAddress,
+          tokenType: "nonFungible",
+          limit: 500,
+        },
+        privacyOptions
+      );
 
       // Group by collection
       const collections = new Map<string, DasAsset[]>();
