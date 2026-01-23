@@ -469,9 +469,9 @@ export class MagicBlockService {
   /**
    * Handle incoming webhook payload
    */
-  handleWebhook(payload: WebhookPayload): void {
+  async handleWebhook(payload: WebhookPayload): Promise<void> {
     // Verify signature
-    if (!this.verifyWebhookSignature(payload)) {
+    if (!await this.verifyWebhookSignature(payload)) {
       console.error('[MagicBlock] Invalid webhook signature');
       return;
     }
@@ -511,15 +511,90 @@ export class MagicBlockService {
   }
 
   /**
-   * Verify webhook signature
+   * Verify webhook signature using HMAC-SHA256
+   *
+   * MagicBlock webhooks include:
+   * - signature: HMAC-SHA256 of the payload
+   * - timestamp: Unix timestamp for replay protection
    */
-  private verifyWebhookSignature(payload: WebhookPayload): boolean {
-    // TODO: Implement HMAC verification with MAGICBLOCK_WEBHOOK_SECRET
-    // For now, accept all webhooks in development
-    if (process.env.NODE_ENV === 'development') {
-      return true;
+  private async verifyWebhookSignature(payload: WebhookPayload): Promise<boolean> {
+    const secret = process.env.MAGICBLOCK_WEBHOOK_SECRET;
+
+    if (!secret) {
+      console.warn('[MagicBlock] MAGICBLOCK_WEBHOOK_SECRET not configured');
+      // Allow in development, reject in production
+      if (process.env.NODE_ENV !== 'production') {
+        return true;
+      }
+      return false;
     }
-    return Boolean(payload.signature);
+
+    if (!payload.signature) {
+      console.error('[MagicBlock] Webhook missing signature');
+      return false;
+    }
+
+    // Check timestamp for replay protection (5 minute window)
+    const timestamp = payload.timestamp;
+    if (timestamp) {
+      const now = Date.now();
+      const maxAge = 5 * 60 * 1000; // 5 minutes in ms
+      if (Math.abs(now - timestamp) > maxAge) {
+        console.error('[MagicBlock] Webhook timestamp too old');
+        return false;
+      }
+    }
+
+    try {
+      // Create the payload string to verify (exclude signature field)
+      const { signature, ...payloadWithoutSig } = payload;
+      const payloadString = JSON.stringify(payloadWithoutSig);
+
+      // Compute expected HMAC-SHA256
+      const encoder = new TextEncoder();
+      const key = await crypto.subtle.importKey(
+        'raw',
+        encoder.encode(secret),
+        { name: 'HMAC', hash: 'SHA-256' },
+        false,
+        ['sign']
+      );
+
+      const expectedSignature = await crypto.subtle.sign(
+        'HMAC',
+        key,
+        encoder.encode(payloadString)
+      );
+
+      // Convert to hex for comparison
+      const expectedHex = Array.from(new Uint8Array(expectedSignature))
+        .map((b) => b.toString(16).padStart(2, '0'))
+        .join('');
+
+      // Constant-time comparison to prevent timing attacks
+      const providedSig = signature.toLowerCase();
+      const expectedSig = expectedHex.toLowerCase();
+
+      if (providedSig.length !== expectedSig.length) {
+        console.error('[MagicBlock] Webhook signature length mismatch');
+        return false;
+      }
+
+      let result = 0;
+      for (let i = 0; i < providedSig.length; i++) {
+        result |= providedSig.charCodeAt(i) ^ expectedSig.charCodeAt(i);
+      }
+
+      const isValid = result === 0;
+      if (!isValid) {
+        console.error('[MagicBlock] Webhook signature mismatch');
+      }
+
+      return isValid;
+    } catch (error) {
+      console.error('[MagicBlock] Webhook signature verification error:', error);
+      return false;
+    }
   }
 
   // ============ API HELPERS ============

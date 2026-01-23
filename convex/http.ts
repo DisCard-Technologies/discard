@@ -188,7 +188,7 @@ http.route({
       const body = await request.text();
 
       // Verify Stripe webhook signature
-      if (!verifyStripeSignature(body, signature)) {
+      if (!await verifyStripeSignature(body, signature)) {
         return new Response(JSON.stringify({ error: "Invalid signature" }), {
           status: 401,
           headers: { "Content-Type": "application/json" },
@@ -758,22 +758,92 @@ function verifyMarqetaAuth(authHeader: string | null): boolean {
 }
 
 /**
- * Verify Stripe webhook signature
+ * Verify Stripe webhook signature using HMAC-SHA256
+ *
+ * Stripe signature format: t=timestamp,v1=signature[,v1=signature...]
+ * The signed payload is: {timestamp}.{body}
  */
-function verifyStripeSignature(body: string, signature: string | null): boolean {
-  if (!signature) return false;
+async function verifyStripeSignature(body: string, signature: string | null): Promise<boolean> {
+  if (!signature) {
+    console.error("[Stripe] Missing webhook signature");
+    return false;
+  }
 
   const secret = process.env.STRIPE_WEBHOOK_SECRET;
   if (!secret) {
     console.warn("STRIPE_WEBHOOK_SECRET not configured - skipping verification");
-    return true; // Allow in development
+    // In development without secret, allow but warn
+    if (process.env.NODE_ENV !== "production") {
+      return true;
+    }
+    return false;
   }
 
-  // In production, implement Stripe signature verification
-  // Stripe uses a specific format: t=timestamp,v1=signature
-  // Use the stripe-js library or implement manually
+  // Parse the signature header
+  const elements = signature.split(",");
+  const timestampStr = elements.find((e) => e.startsWith("t="))?.slice(2);
+  const signatures = elements
+    .filter((e) => e.startsWith("v1="))
+    .map((e) => e.slice(3));
 
-  return true; // Placeholder - implement proper verification
+  if (!timestampStr || signatures.length === 0) {
+    console.error("[Stripe] Invalid signature format");
+    return false;
+  }
+
+  const timestamp = parseInt(timestampStr, 10);
+
+  // Check timestamp to prevent replay attacks (5 minute tolerance)
+  const tolerance = 5 * 60; // 5 minutes in seconds
+  const now = Math.floor(Date.now() / 1000);
+  if (Math.abs(now - timestamp) > tolerance) {
+    console.error("[Stripe] Webhook timestamp too old or in future");
+    return false;
+  }
+
+  // Compute expected signature
+  const signedPayload = `${timestamp}.${body}`;
+
+  try {
+    const encoder = new TextEncoder();
+    const key = await crypto.subtle.importKey(
+      "raw",
+      encoder.encode(secret),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign"]
+    );
+
+    const expectedSignature = await crypto.subtle.sign(
+      "HMAC",
+      key,
+      encoder.encode(signedPayload)
+    );
+
+    const expectedHex = Array.from(new Uint8Array(expectedSignature))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+
+    // Check if any of the signatures match (Stripe may include multiple versions)
+    const isValid = signatures.some((sig) => {
+      // Constant-time comparison to prevent timing attacks
+      if (sig.length !== expectedHex.length) return false;
+      let result = 0;
+      for (let i = 0; i < sig.length; i++) {
+        result |= sig.charCodeAt(i) ^ expectedHex.charCodeAt(i);
+      }
+      return result === 0;
+    });
+
+    if (!isValid) {
+      console.error("[Stripe] Webhook signature mismatch");
+    }
+
+    return isValid;
+  } catch (error) {
+    console.error("[Stripe] Signature verification error:", error);
+    return false;
+  }
 }
 
 /**
