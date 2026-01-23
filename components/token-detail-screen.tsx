@@ -600,7 +600,7 @@ export function TokenDetailScreen({
             showsVerticalScrollIndicator={false}
             bounces={true}
             nestedScrollEnabled={true}
-            contentContainerStyle={{ paddingBottom: owned ? 80 : 24 }}
+            contentContainerStyle={{ paddingBottom: 80 }}
           >
             {/* Stats Section */}
             <View style={styles.sectionContainer}>
@@ -811,81 +811,80 @@ export function TokenDetailScreen({
         </Animated.View>
 
       {/* Expandable Price Row - On top of drawer */}
-      {owned && (
-        <View style={[styles.expandablePriceContainer, { bottom: insets.bottom }]}>
-          {/* Expandable Chart Section */}
-          <Animated.View style={[styles.expandableChartWrapper, { backgroundColor: cardBg }, chartAnimatedStyle]}>
-            <View style={styles.expandableChartSection}>
-              <Svg width={CHART_WIDTH} height={CHART_HEIGHT}>
-                <Defs>
-                  <SvgLinearGradient id="expandableChartGradient" x1="0" y1="0" x2="0" y2="1">
-                    <Stop offset="0%" stopColor={changeColor} stopOpacity="0.3" />
-                    <Stop offset="100%" stopColor={changeColor} stopOpacity="0" />
-                  </SvgLinearGradient>
-                </Defs>
-                <Path d={areaPath} fill="url(#expandableChartGradient)" />
-                <Path d={linePath} stroke={changeColor} strokeWidth={2} fill="none" strokeLinecap="round" strokeLinejoin="round" />
-                <Circle cx={lastPoint.x} cy={lastPoint.y} r={5} fill={changeColor} stroke={cardBg} strokeWidth={2} />
-              </Svg>
-            </View>
+      <View style={[styles.expandablePriceContainer, { bottom: insets.bottom }]}>
+        {/* Expandable Chart Section */}
+        <Animated.View style={[styles.expandableChartWrapper, { backgroundColor: cardBg }, chartAnimatedStyle]}>
+          <View style={styles.expandableChartSection}>
+            <Svg width={CHART_WIDTH} height={CHART_HEIGHT}>
+              <Defs>
+                <SvgLinearGradient id="expandableChartGradient" x1="0" y1="0" x2="0" y2="1">
+                  <Stop offset="0%" stopColor={changeColor} stopOpacity="0.3" />
+                  <Stop offset="100%" stopColor={changeColor} stopOpacity="0" />
+                </SvgLinearGradient>
+              </Defs>
+              <Path d={areaPath} fill="url(#expandableChartGradient)" />
+              <Path d={linePath} stroke={changeColor} strokeWidth={2} fill="none" strokeLinecap="round" strokeLinejoin="round" />
+              <Circle cx={lastPoint.x} cy={lastPoint.y} r={5} fill={changeColor} stroke={cardBg} strokeWidth={2} />
+            </Svg>
+          </View>
 
-            {/* Time Period Selector */}
-            <View style={styles.expandableTimePeriodContainer}>
-              <View style={[styles.timePeriodSelector, { backgroundColor: drawerBg }]}>
-                {timePeriods.map((period) => (
-                  <Pressable
-                    key={period}
-                    onPress={() => {
-                      setSelectedPeriod(period);
-                      Haptics.selectionAsync();
-                    }}
+          {/* Time Period Selector */}
+          <View style={styles.expandableTimePeriodContainer}>
+            <View style={[styles.timePeriodSelector, { backgroundColor: drawerBg }]}>
+              {timePeriods.map((period) => (
+                <Pressable
+                  key={period}
+                  onPress={() => {
+                    setSelectedPeriod(period);
+                    Haptics.selectionAsync();
+                  }}
+                  style={[
+                    styles.timePeriodButton,
+                    selectedPeriod === period && [styles.timePeriodButtonActive, { backgroundColor: cardBg }],
+                  ]}
+                >
+                  <ThemedText
                     style={[
-                      styles.timePeriodButton,
-                      selectedPeriod === period && [styles.timePeriodButtonActive, { backgroundColor: cardBg }],
+                      styles.timePeriodText,
+                      { color: selectedPeriod === period ? textColor : mutedColor },
                     ]}
                   >
-                    <ThemedText
-                      style={[
-                        styles.timePeriodText,
-                        { color: selectedPeriod === period ? textColor : mutedColor },
-                      ]}
-                    >
-                      {period}
-                    </ThemedText>
-                  </Pressable>
-                ))}
-              </View>
+                    {period}
+                  </ThemedText>
+                </Pressable>
+              ))}
             </View>
-          </Animated.View>
+          </View>
+        </Animated.View>
 
-          {/* Token and Price Display - Always visible, tappable to expand */}
-          <Pressable
-            onPress={toggleChart}
-            style={[styles.expandablePriceRow, { backgroundColor: cardBg, borderTopColor: borderColor }]}
-          >
-            <View style={[styles.expandableTokenIcon, { borderColor }]}>
-              {token.logoUri ? (
-                <Image source={{ uri: token.logoUri }} style={styles.expandableTokenImage} />
-              ) : (
-                <ThemedText style={styles.expandableTokenText}>{token.symbol.slice(0, 2)}</ThemedText>
-              )}
-            </View>
-            <View style={styles.expandablePriceInfo}>
+        {/* Token and Price Display - Always visible, tappable to expand */}
+        <Pressable
+          onPress={toggleChart}
+          style={[styles.expandablePriceRow, { backgroundColor: cardBg, borderTopColor: borderColor }]}
+        >
+          <View style={styles.expandablePriceInfo}>
+            <ThemedText style={[styles.expandablePriceLabel, { color: mutedColor }]}>
+              Current {token.symbol} price
+            </ThemedText>
+            <View style={styles.expandablePriceValueRow}>
               <ThemedText style={styles.expandablePrice}>${formatPrice(token.price)}</ThemedText>
               <ThemedText style={[styles.expandableChangeText, { color: changeColor }]}>
                 {isPositive ? '+' : ''}{token.change24h.toFixed(2)}%
               </ThemedText>
             </View>
-            <View style={styles.expandableExpandButton}>
-              <Ionicons
-                name={isChartExpanded ? 'chevron-down' : 'chevron-up'}
-                size={20}
-                color={mutedColor}
-              />
-            </View>
+          </View>
+          <Pressable
+            onPress={toggleChart}
+            style={[styles.expandableExpandButton, { backgroundColor: drawerBg }]}
+          >
+            <Ionicons
+              name={isChartExpanded ? 'chevron-down' : 'chevron-up'}
+              size={20}
+              color={mutedColor}
+            />
           </Pressable>
-        </View>
-      )}
+        </Pressable>
+      </View>
     </ThemedView>
   );
 }
@@ -1438,6 +1437,15 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'column',
   },
+  expandablePriceLabel: {
+    fontSize: 13,
+    marginBottom: 4,
+  },
+  expandablePriceValueRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 8,
+  },
   expandablePrice: {
     fontSize: 24,
     fontWeight: '700',
@@ -1447,8 +1455,9 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   expandableExpandButton: {
-    width: 40,
-    height: 40,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
   },
