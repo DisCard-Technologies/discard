@@ -793,74 +793,162 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
 
         // PRODUCTION: Use real passkey authentication
-        // Generate challenge and user ID
-        const challenge = await generateChallenge();
-        const webauthnUserId = await generateUserId();
+        // Try passkey first, fall back to biometric if it fails (e.g., domain not configured)
+        try {
+          console.log("[Auth] Attempting native passkey registration...");
 
-        // Create passkey using v3 API (Passkey.create instead of Passkey.register)
-        const registrationResult = await Passkey.create({
-          challenge,
-          rp: {
-            id: RP_CONFIG.id,
-            name: RP_CONFIG.name,
-          },
-          user: {
-            id: webauthnUserId,
-            name: displayName,
-            displayName: displayName,
-          },
-          pubKeyCredParams: [
-            { alg: -7, type: "public-key" }, // ES256 (P-256)
-          ],
-          authenticatorSelection: {
-            authenticatorAttachment: "platform",
-            residentKey: "required",
-            userVerification: "required",
-          },
-          timeout: 60000,
-          attestation: "none",
-        });
+          // Generate challenge and user ID
+          const challenge = await generateChallenge();
+          const webauthnUserId = await generateUserId();
 
-        // Generate a mnemonic-based Solana wallet for this user (enables cloud backup)
-        // Note: For TEE-managed wallets, use the Turnkey flow instead
-        const wallet = await generateMnemonicSolanaWallet();
-        console.log("[Auth] Generated mnemonic wallet for passkey user:", wallet.publicKey);
-        // Note: User should be prompted to back up their seed phrase!
+          // Create passkey using v3 API (Passkey.create instead of Passkey.register)
+          const registrationResult = await Passkey.create({
+            challenge,
+            rp: {
+              id: RP_CONFIG.id,
+              name: RP_CONFIG.name,
+            },
+            user: {
+              id: webauthnUserId,
+              name: displayName,
+              displayName: displayName,
+            },
+            pubKeyCredParams: [
+              { alg: -7, type: "public-key" }, // ES256 (P-256)
+            ],
+            authenticatorSelection: {
+              authenticatorAttachment: "platform",
+              residentKey: "required",
+              userVerification: "required",
+            },
+            timeout: 60000,
+            attestation: "none",
+          });
 
-        // Register with Convex
-        // Convert base64url public key to ArrayBuffer for Convex v.bytes() validator
-        const publicKeyBase64url = registrationResult.response.publicKey || "";
-        // Convert base64url to standard base64 (replace - with +, _ with /, add padding)
-        let publicKeyBase64 = publicKeyBase64url.replace(/-/g, '+').replace(/_/g, '/');
-        while (publicKeyBase64.length % 4) publicKeyBase64 += '=';
-        const publicKeyBytes = publicKeyBase64
-          ? Uint8Array.from(atob(publicKeyBase64), c => c.charCodeAt(0)).buffer
-          : new ArrayBuffer(0);
+          // Generate a mnemonic-based Solana wallet for this user (enables cloud backup)
+          // Note: For TEE-managed wallets, use the Turnkey flow instead
+          const wallet = await generateMnemonicSolanaWallet();
+          console.log("[Auth] Generated mnemonic wallet for passkey user:", wallet.publicKey);
+          // Note: User should be prompted to back up their seed phrase!
 
-        const result = await registerPasskeyMutation({
-          credentialId: registrationResult.id,
-          publicKey: publicKeyBytes,
-          displayName,
-          solanaAddress: wallet.publicKey, // Pass real wallet address
-        });
+          // Register with Convex
+          // Convert base64url public key to ArrayBuffer for Convex v.bytes() validator
+          const publicKeyBase64url = registrationResult.response.publicKey || "";
+          // Convert base64url to standard base64 (replace - with +, _ with /, add padding)
+          let publicKeyBase64 = publicKeyBase64url.replace(/-/g, '+').replace(/_/g, '/');
+          while (publicKeyBase64.length % 4) publicKeyBase64 += '=';
+          const publicKeyBytes = publicKeyBase64
+            ? Uint8Array.from(atob(publicKeyBase64), c => c.charCodeAt(0)).buffer
+            : new ArrayBuffer(0);
 
-        // Store credentials
-        await storage.setItem(USER_ID_KEY, result.userId);
-        await storeCredential({
-          credentialId: registrationResult.id,
-          userId: result.userId,
-          publicKey: registrationResult.response.publicKey,
-        });
+          const result = await registerPasskeyMutation({
+            credentialId: registrationResult.id,
+            publicKey: publicKeyBytes,
+            displayName,
+            solanaAddress: wallet.publicKey, // Pass real wallet address
+          });
 
-        setState((prev) => ({
-          ...prev,
-          userId: result.userId as Id<"users">,
-          credentialId: registrationResult.id,
-          isAuthenticated: true,
-          error: null,
-        }));
+          // Store credentials
+          await storage.setItem(USER_ID_KEY, result.userId);
+          await storeCredential({
+            credentialId: registrationResult.id,
+            userId: result.userId,
+            publicKey: registrationResult.response.publicKey,
+          });
 
-        return true;
+          setState((prev) => ({
+            ...prev,
+            userId: result.userId as Id<"users">,
+            credentialId: registrationResult.id,
+            isAuthenticated: true,
+            error: null,
+          }));
+
+          return true;
+        } catch (passkeyError: any) {
+          // Passkey failed (likely domain not configured) - fall back to biometric auth
+          console.warn("[Auth] Passkey registration failed, falling back to biometric:", {
+            error: passkeyError?.message || passkeyError?.error || passkeyError,
+          });
+
+          // Check biometric support for fallback
+          const hasHardware = await LocalAuthentication.hasHardwareAsync();
+          const isEnrolled = await LocalAuthentication.isEnrolledAsync();
+
+          if (!hasHardware || !isEnrolled) {
+            throw new Error("Passkey registration failed and biometrics not available");
+          }
+
+          // Authenticate with biometrics
+          const biometricResult = await LocalAuthentication.authenticateAsync({
+            promptMessage: "Authenticate to create your DisCard account",
+            fallbackLabel: "Use passcode",
+            disableDeviceFallback: false,
+          });
+
+          if (!biometricResult.success) {
+            const errorMsg = 'error' in biometricResult ? biometricResult.error : "Biometric authentication failed";
+            throw new Error(errorMsg || "Biometric authentication failed");
+          }
+
+          // Generate credential ID for biometric auth
+          const credentialId = await generateCredentialId();
+          await storage.setItem(CREDENTIAL_ID_KEY, credentialId);
+
+          // Generate mnemonic wallet
+          const wallet = await generateMnemonicSolanaWallet();
+          console.log("[Auth] Generated mnemonic wallet (biometric fallback):", wallet.publicKey);
+
+          // Register with Convex
+          let userId: string;
+          let solanaAddress = wallet.publicKey;
+
+          try {
+            const result = await registerBiometricMutation({
+              credentialId,
+              displayName,
+              solanaAddress: wallet.publicKey,
+              deviceInfo: {
+                platform: Platform.OS,
+              },
+            });
+            userId = result.userId;
+            solanaAddress = result.solanaAddress || wallet.publicKey;
+          } catch (convexError) {
+            console.warn("[Auth] Convex unavailable, using local-only mode:", convexError);
+            userId = `local_${Date.now()}`;
+            await storage.setItem("pending_sync", "true");
+          }
+
+          // Store credentials
+          await storage.setItem(USER_ID_KEY, userId);
+          await storeCredential({
+            credentialId,
+            userId,
+            publicKey: solanaAddress,
+          });
+
+          setState((prev) => ({
+            ...prev,
+            userId: userId as Id<"users">,
+            credentialId,
+            user: {
+              id: userId,
+              displayName: displayName,
+              solanaAddress: solanaAddress,
+              kycStatus: "none",
+              createdAt: Date.now(),
+            },
+            isAuthenticated: true,
+            error: null,
+          }));
+
+          console.log("[Auth] Biometric fallback registration successful:", {
+            userId,
+            solanaAddress,
+          });
+          return true;
+        }
       } catch (error) {
         // Enhanced error logging for passkey failures
         console.error("[Auth] Registration error:", {
