@@ -1,14 +1,16 @@
 /**
- * Buy Crypto Screen
+ * Deposit Screen
  *
  * Allows users to purchase crypto via MoonPay with Apple Pay, Google Pay, or card.
  * Supports pre-selecting a token from token-detail or defaults to USDC.
  */
 import { useState, useCallback } from 'react';
-import { StyleSheet, View, Pressable, TextInput, ActivityIndicator, Platform, Keyboard, TouchableWithoutFeedback, ScrollView, Image } from 'react-native';
+import { StyleSheet, View, Pressable, ActivityIndicator, Dimensions, Image } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
+import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -16,22 +18,41 @@ import { useThemeColor } from '@/hooks/use-theme-color';
 import { useAuth } from '@/stores/authConvex';
 import { useMoonPay } from '@/hooks/useMoonPay';
 
-// Supported currencies for purchase
-// USDC is default, SOL available as alternative
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
+// Supported currencies for purchase with prices
 const CURRENCIES = [
   {
     code: 'usdc_sol',
-    name: 'USD Coin',
+    name: 'Digital Dollars',
     symbol: 'USDC',
     logoUri: 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v/logo.png',
-    network: 'solana'
+    network: 'solana',
+    price: 1,
   },
   {
     code: 'sol',
     name: 'Solana',
     symbol: 'SOL',
     logoUri: 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png',
-    network: 'solana'
+    network: 'solana',
+    price: 178.55,
+  },
+  {
+    code: 'jup',
+    name: 'Jupiter',
+    symbol: 'JUP',
+    logoUri: 'https://static.jup.ag/jup/icon.png',
+    network: 'solana',
+    price: 0.89,
+  },
+  {
+    code: 'bonk',
+    name: 'Bonk',
+    symbol: 'BONK',
+    logoUri: 'https://arweave.net/hQiPZOsRZXGXBJd_82PhVdlM_hACsT_q6wqwf5cSY7I',
+    network: 'solana',
+    price: 0,
   },
 ];
 
@@ -50,6 +71,9 @@ function getWalletAddress(
 // Quick amount buttons
 const QUICK_AMOUNTS = [25, 50, 100, 250, 500];
 
+// Number pad keys
+const NUMBER_PAD_KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', 'delete'];
+
 export default function BuyCryptoScreen() {
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ currency?: string; amount?: string; mode?: string }>();
@@ -57,11 +81,7 @@ export default function BuyCryptoScreen() {
   const primaryColor = useThemeColor({}, 'tint');
   const mutedColor = useThemeColor({ light: '#687076', dark: '#9BA1A6' }, 'icon');
   const textColor = useThemeColor({}, 'text');
-  const cardBg = useThemeColor({ light: '#f4f4f5', dark: '#1c1c1e' }, 'background');
-  const borderColor = useThemeColor(
-    { light: 'rgba(0,0,0,0.08)', dark: 'rgba(255,255,255,0.1)' },
-    'background'
-  );
+  const cardBg = useThemeColor({ light: '#f5f5f5', dark: '#1c1c1e' }, 'background');
 
   // Deposit mode locks to USDC only
   const isDepositMode = params.mode === 'deposit';
@@ -81,6 +101,9 @@ export default function BuyCryptoScreen() {
     // Default to USDC (first in array)
     return CURRENCIES[0];
   });
+
+  // Dropdown state
+  const [showDropdown, setShowDropdown] = useState(false);
 
   // Get the appropriate wallet address for selected currency
   const walletAddress = getWalletAddress(selectedCurrency, solanaAddress, ethereumAddress);
@@ -114,8 +137,37 @@ export default function BuyCryptoScreen() {
 
   // Set quick amount
   const handleQuickAmount = (value: number) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setAmount(value.toString());
   };
+
+  // Number pad handlers
+  const handleNumberPress = useCallback((num: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (num === '.' && amount.includes('.')) return;
+    if (amount === '0' && num !== '.') {
+      setAmount(num);
+    } else if (amount === '' && num === '.') {
+      setAmount('0.');
+    } else {
+      setAmount(amount + num);
+    }
+  }, [amount]);
+
+  const handleDelete = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (amount.length > 1) {
+      setAmount(amount.slice(0, -1));
+    } else {
+      setAmount('');
+    }
+  }, [amount]);
+
+  const handleSelectCurrency = useCallback((currency: typeof CURRENCIES[number]) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setSelectedCurrency(currency);
+    setShowDropdown(false);
+  }, []);
 
   const isValidAmount = numericAmount >= 10;
 
@@ -124,81 +176,113 @@ export default function BuyCryptoScreen() {
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <Pressable onPress={() => router.back()} style={styles.backButton}>
-          <Ionicons name="arrow-back" size={20} color={textColor} />
+          <Ionicons name="chevron-back" size={24} color={textColor} />
         </Pressable>
-        <ThemedText style={styles.headerTitle}>
-          {isDepositMode ? 'Deposit USDC' : 'Buy Crypto'}
-        </ThemedText>
+        <ThemedText style={styles.headerTitle}>Deposit</ThemedText>
         <View style={styles.headerRight} />
       </View>
 
-      <ScrollView
-        style={styles.content}
-        contentContainerStyle={styles.contentContainer}
-        keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="on-drag"
-      >
-        <TouchableWithoutFeedback onPress={Keyboard.dismiss}><View>
-        {/* Currency Selector - hidden in deposit mode */}
+      <View style={styles.content}>
+        {/* Dropdown Backdrop */}
+        {showDropdown && (
+          <Pressable
+            style={styles.dropdownBackdrop}
+            onPress={() => setShowDropdown(false)}
+          />
+        )}
+
+        {/* Currency Selector Dropdown */}
         {!isDepositMode && (
-          <View style={styles.section}>
-            <ThemedText style={[styles.sectionLabel, { color: mutedColor }]}>SELECT CURRENCY</ThemedText>
-            <View style={styles.currencyGrid}>
-              {CURRENCIES.map((currency) => {
-                const isSelected = selectedCurrency.code === currency.code;
-                return (
-                  <Pressable
-                    key={currency.code}
-                    onPress={() => setSelectedCurrency(currency)}
-                    style={[
-                      styles.currencyButton,
-                      { backgroundColor: isSelected ? `${primaryColor}15` : cardBg },
-                      isSelected && { borderColor: primaryColor, borderWidth: 1 },
-                    ]}
-                  >
+          <View style={[styles.section, showDropdown && styles.sectionElevated]}>
+            <ThemedText style={[styles.sectionLabel, { color: textColor }]}>YOU'RE BUYING</ThemedText>
+            <View style={[
+              styles.dropdownContainer,
+              { backgroundColor: cardBg },
+              showDropdown && styles.dropdownContainerOpen,
+            ]}>
+              <Pressable
+                onPress={() => setShowDropdown(!showDropdown)}
+                style={styles.dropdownHeader}
+              >
+                <View style={styles.dropdownLeft}>
+                  <View style={[styles.currencyIconContainer, { backgroundColor: '#e6f4ea' }]}>
                     <Image
-                      source={{ uri: currency.logoUri }}
+                      source={{ uri: selectedCurrency.logoUri }}
                       style={styles.currencyLogo}
                     />
-                    <ThemedText style={[styles.currencySymbol, isSelected && { color: primaryColor }]}>
-                      {currency.symbol}
+                  </View>
+                  <View style={styles.currencyInfo}>
+                    <ThemedText style={styles.currencySymbol}>{selectedCurrency.symbol}</ThemedText>
+                    <ThemedText style={[styles.currencyName, { color: mutedColor }]}>
+                      {selectedCurrency.name}
                     </ThemedText>
-                  </Pressable>
-                );
-              })}
+                  </View>
+                </View>
+                <Ionicons
+                  name={showDropdown ? 'chevron-up' : 'chevron-down'}
+                  size={20}
+                  color={mutedColor}
+                />
+              </Pressable>
+
+              {/* Dropdown Items */}
+              {showDropdown && (
+                <Animated.View
+                  entering={FadeIn.duration(150)}
+                  exiting={FadeOut.duration(100)}
+                  style={[styles.dropdownList, { backgroundColor: cardBg }]}
+                >
+                  {CURRENCIES.filter(c => c.code !== selectedCurrency.code).map((currency) => (
+                    <Pressable
+                      key={currency.code}
+                      onPress={() => handleSelectCurrency(currency)}
+                      style={({ pressed }) => [
+                        styles.dropdownItem,
+                        pressed && styles.dropdownItemPressed,
+                      ]}
+                    >
+                      <View style={styles.dropdownLeft}>
+                        <View style={styles.currencyIconSmall}>
+                          <Image
+                            source={{ uri: currency.logoUri }}
+                            style={styles.currencyLogoSmall}
+                          />
+                        </View>
+                        <ThemedText style={styles.dropdownItemText}>{currency.symbol}</ThemedText>
+                      </View>
+                    </Pressable>
+                  ))}
+                </Animated.View>
+              )}
             </View>
           </View>
         )}
 
         {/* Amount Input */}
         <View style={styles.section}>
-          <ThemedText style={[styles.sectionLabel, { color: mutedColor }]}>AMOUNT (USD)</ThemedText>
+          <ThemedText style={[styles.sectionLabel, { color: textColor }]}>AMOUNT IN USD</ThemedText>
           <View style={[styles.amountInputContainer, { backgroundColor: cardBg }]}>
-            <ThemedText style={styles.dollarSign}>$</ThemedText>
-            <TextInput
-              style={[styles.amountInput, { color: textColor }]}
-              value={amount}
-              onChangeText={setAmount}
-              placeholder="0.00"
-              placeholderTextColor={mutedColor}
-              keyboardType="decimal-pad"
-            />
+            <ThemedText style={[styles.dollarSign, { color: mutedColor }]}>$</ThemedText>
+            <ThemedText style={[styles.amountDisplay, { color: amount ? textColor : mutedColor }]}>
+              {amount || '0.00'}
+            </ThemedText>
           </View>
           {numericAmount > 0 && numericAmount < 10 && (
-            <ThemedText style={[styles.errorText, { color: '#ef4444' }]}>Minimum amount is $10</ThemedText>
+            <ThemedText style={styles.errorText}>Minimum amount is $10</ThemedText>
           )}
         </View>
 
-        {/* Quick Amount Buttons */}
+        {/* Quick Amount Pills */}
         <View style={styles.quickAmounts}>
           {QUICK_AMOUNTS.map((value) => (
             <Pressable
               key={value}
               onPress={() => handleQuickAmount(value)}
-              style={[
-                styles.quickAmountButton,
+              style={({ pressed }) => [
+                styles.quickAmountPill,
                 { backgroundColor: numericAmount === value ? `${primaryColor}15` : cardBg },
                 numericAmount === value && { borderColor: primaryColor, borderWidth: 1 },
+                pressed && styles.pressed,
               ]}
             >
               <ThemedText style={[styles.quickAmountText, numericAmount === value && { color: primaryColor }]}>
@@ -208,63 +292,57 @@ export default function BuyCryptoScreen() {
           ))}
         </View>
 
-        {/* Payment Methods Info */}
-        <View style={[styles.paymentInfo, { backgroundColor: cardBg }]}>
-          <ThemedText style={[styles.paymentInfoTitle, { color: mutedColor }]}>PAYMENT METHODS</ThemedText>
-          <View style={styles.paymentMethods}>
-            {Platform.OS === 'ios' && (
-              <View style={styles.paymentMethod}>
-                <Ionicons name="logo-apple" size={20} color={textColor} />
-                <ThemedText style={styles.paymentMethodText}>Apple Pay</ThemedText>
-              </View>
-            )}
-            {Platform.OS === 'android' && (
-              <View style={styles.paymentMethod}>
-                <Ionicons name="logo-google" size={20} color={textColor} />
-                <ThemedText style={styles.paymentMethodText}>Google Pay</ThemedText>
-              </View>
-            )}
-            <View style={styles.paymentMethod}>
-              <Ionicons name="card" size={20} color={textColor} />
-              <ThemedText style={styles.paymentMethodText}>Credit/Debit Card</ThemedText>
-            </View>
-          </View>
-        </View>
-
         {/* Error Display */}
         {error && (
-          <View style={[styles.errorBanner, { backgroundColor: 'rgba(239,68,68,0.1)' }]}>
+          <View style={styles.errorBanner}>
             <Ionicons name="alert-circle" size={16} color="#ef4444" />
-            <ThemedText style={[styles.errorBannerText, { color: '#ef4444' }]}>{error}</ThemedText>
+            <ThemedText style={styles.errorBannerText}>{error}</ThemedText>
           </View>
         )}
-        </View></TouchableWithoutFeedback>
-      </ScrollView>
+      </View>
 
-      {/* Buy Button */}
-      <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
+      {/* Number Pad */}
+      <View style={styles.numberPadContainer}>
+        <View style={styles.numberPad}>
+          {NUMBER_PAD_KEYS.map((key, index) => (
+            <Pressable
+              key={index}
+              onPress={() => {
+                if (key === 'delete') handleDelete();
+                else handleNumberPress(key);
+              }}
+              style={({ pressed }) => [
+                styles.numberKey,
+                pressed && styles.numberKeyPressed,
+              ]}
+            >
+              {key === 'delete' ? (
+                <Ionicons name="backspace-outline" size={24} color="#1C1C1E" />
+              ) : (
+                <ThemedText style={styles.numberKeyText}>{key}</ThemedText>
+              )}
+            </Pressable>
+          ))}
+        </View>
+
+        {/* Continue Button */}
         <Pressable
           onPress={handleBuy}
           disabled={!isValidAmount || isLoading || !isReady}
-          style={[
-            styles.buyButton,
-            { backgroundColor: isValidAmount && isReady ? primaryColor : `${mutedColor}50` },
+          style={({ pressed }) => [
+            styles.continueButton,
+            { backgroundColor: isValidAmount && isReady ? primaryColor : '#4A4A4D' },
+            pressed && isValidAmount && styles.pressed,
           ]}
         >
           {isLoading ? (
             <ActivityIndicator color="#fff" />
           ) : (
-            <>
-              <Ionicons name={isValidAmount ? "arrow-forward" : "flash"} size={20} color="#fff" />
-              <ThemedText style={styles.buyButtonText}>
-                {isValidAmount ? 'Continue' : 'Enter amount'}
-              </ThemedText>
-            </>
+            <ThemedText style={styles.continueButtonText}>
+              {isValidAmount ? 'Continue' : 'Enter amount'}
+            </ThemedText>
           )}
         </Pressable>
-        <ThemedText style={[styles.footerNote, { color: mutedColor }]}>
-          Powered by MoonPay. Instant delivery to your wallet.
-        </ThemedText>
       </View>
     </ThemedView>
   );
@@ -297,129 +375,209 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-  },
-  contentContainer: {
     paddingHorizontal: 16,
-    flexGrow: 1,
   },
   section: {
-    marginBottom: 24,
+    marginBottom: 20,
+    zIndex: 1,
+  },
+  sectionElevated: {
+    zIndex: 100,
+  },
+  dropdownBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 50,
   },
   sectionLabel: {
     fontSize: 10,
-    fontWeight: '500',
+    fontWeight: '600',
     letterSpacing: 1,
     marginBottom: 12,
+    marginLeft: 4,
   },
-  currencyGrid: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  currencyButton: {
-    flex: 1,
-    alignItems: 'center',
-    gap: 8,
-    paddingVertical: 16,
-    borderRadius: 14,
-  },
-  currencyLogo: {
-    width: 40,
-    height: 40,
+  // Dropdown styles
+  dropdownContainer: {
     borderRadius: 20,
   },
+  dropdownContainerOpen: {
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
+  },
+  dropdownHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+  },
+  dropdownLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  currencyIconContainer: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  currencyLogo: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+  },
+  currencyInfo: {
+    gap: 2,
+  },
   currencySymbol: {
-    fontSize: 12,
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  currencyName: {
+    fontSize: 13,
+  },
+  dropdownList: {
+    position: 'absolute',
+    top: '100%',
+    left: 0,
+    right: 0,
+    borderTopLeftRadius: 0,
+    borderTopRightRadius: 0,
+    borderBottomLeftRadius: 20,
+    borderBottomRightRadius: 20,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(0,0,0,0.05)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  dropdownItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+  },
+  dropdownItemPressed: {
+    backgroundColor: 'rgba(0,0,0,0.03)',
+  },
+  currencyIconSmall: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  currencyLogoSmall: {
+    width: 32,
+    height: 32,
+  },
+  dropdownItemText: {
+    fontSize: 15,
     fontWeight: '500',
   },
+  // Amount input styles
   amountInputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 14,
-    paddingHorizontal: 16,
-    paddingVertical: 16,
+    borderRadius: 20,
+    paddingHorizontal: 20,
+    paddingVertical: 20,
   },
   dollarSign: {
-    fontSize: 32,
+    fontSize: 28,
     fontWeight: '300',
-    marginRight: 4,
+    marginRight: 8,
   },
-  amountInput: {
+  amountDisplay: {
     flex: 1,
-    fontSize: 32,
+    fontSize: 28,
     fontWeight: '300',
   },
   errorText: {
     fontSize: 12,
     marginTop: 8,
+    marginLeft: 4,
+    color: '#ef4444',
   },
+  // Quick amount pills
   quickAmounts: {
     flexDirection: 'row',
-    gap: 8,
-    marginBottom: 24,
+    gap: 6,
   },
-  quickAmountButton: {
+  quickAmountPill: {
     flex: 1,
     alignItems: 'center',
-    paddingVertical: 12,
-    borderRadius: 12,
+    paddingVertical: 10,
+    borderRadius: 20,
   },
   quickAmountText: {
     fontSize: 14,
     fontWeight: '500',
   },
-  paymentInfo: {
-    borderRadius: 14,
-    padding: 16,
+  pressed: {
+    opacity: 0.7,
   },
-  paymentInfoTitle: {
-    fontSize: 10,
-    fontWeight: '500',
-    letterSpacing: 1,
-    marginBottom: 12,
-  },
-  paymentMethods: {
-    gap: 12,
-  },
-  paymentMethod: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  paymentMethodText: {
-    fontSize: 14,
-  },
+  // Error banner
   errorBanner: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     padding: 12,
-    borderRadius: 12,
+    borderRadius: 16,
     marginTop: 16,
+    backgroundColor: 'rgba(239,68,68,0.1)',
   },
   errorBannerText: {
     fontSize: 12,
     flex: 1,
+    color: '#ef4444',
   },
-  footer: {
-    paddingHorizontal: 16,
+  // Number pad styles
+  numberPadContainer: {
+    backgroundColor: '#F2F2F7',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
     paddingTop: 16,
+    paddingHorizontal: 16,
+    paddingBottom: 24,
   },
-  buyButton: {
+  numberPad: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+  },
+  numberKey: {
+    width: (SCREEN_WIDTH - 48) / 3,
+    height: 56,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 16,
-    borderRadius: 14,
+    marginBottom: 8,
   },
-  buyButtonText: {
+  numberKeyPressed: {
+    backgroundColor: 'rgba(0,0,0,0.05)',
+    borderRadius: 12,
+  },
+  numberKeyText: {
+    fontSize: 28,
+    fontWeight: '400',
+    color: '#1C1C1E',
+  },
+  continueButton: {
+    height: 50,
+    borderRadius: 25,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 8,
+  },
+  continueButtonText: {
+    color: '#fff',
     fontSize: 16,
     fontWeight: '600',
-    color: '#fff',
-  },
-  footerNote: {
-    fontSize: 12,
-    textAlign: 'center',
-    marginTop: 12,
   },
 });
