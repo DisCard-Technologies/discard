@@ -674,7 +674,7 @@ export function CardScreenContent({ topInset = 0 }: CardScreenContentProps) {
                       <ThemedText style={[styles.tokenBadgeText, { color: primaryColor }]}>◎</ThemedText>
                     </View>
                     <ThemedText style={[styles.drawerItemSubtitle, { color: mutedColor }]}>
-                      {walletAddress ? 'Solana Wallet' : 'Not set'}
+                      {user?.solanaAddress ? 'Solana Wallet' : 'Not set'}
                     </ThemedText>
                   </View>
                 </View>

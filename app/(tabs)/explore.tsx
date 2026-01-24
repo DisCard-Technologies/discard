@@ -164,7 +164,7 @@ export default function ExploreScreen() {
       });
     }
     return result;
-  }, [tokens, searchQuery, activeTab, tokenSort]);
+  }, [tokens, searchQuery, activeTab, tokenSort, tokenCategoryFilter]);
 
   // Filter and sort markets
   const filteredMarkets = useMemo(() => {
