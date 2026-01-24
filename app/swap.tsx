@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo, useEffect } from 'react';
-import { StyleSheet, View, Pressable, TextInput, ScrollView, ActivityIndicator, Dimensions, Alert } from 'react-native';
+import { StyleSheet, View, Pressable, ScrollView, ActivityIndicator, Dimensions, Alert, Image } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
@@ -18,6 +18,7 @@ import { usePrivacySwap, type PrivacyProvider, type Chain } from '@/hooks/usePri
 import { useTurnkeySigner } from '@/hooks/useTurnkeySigner';
 import { DFlowSwapClient } from '@/services/dflowSwapClient';
 import { Connection, Transaction, PublicKey } from '@solana/web3.js';
+import { estimateTransferFees, type TransferFees } from '@/lib/fees/estimateFees';
 
 // Swap client instance
 const dflowClient = new DFlowSwapClient({ debug: __DEV__ });
@@ -423,17 +424,29 @@ export default function SwapScreen() {
 
           console.log('[Swap] Signing transaction with Turnkey...');
 
-          // Sign with Turnkey
-          const signedTx = await signTransaction(transaction);
+          // Serialize transaction to base64 for Turnkey signing
+          const serializedTx = transaction.serializeMessage().toString('base64');
 
-          if (!signedTx) {
-            throw new Error('Failed to sign transaction');
+          // Sign with Turnkey
+          const signResult = await signTransaction({
+            unsignedTransaction: serializedTx,
+          });
+
+          if (!signResult.success || !signResult.signature) {
+            throw new Error(signResult.error || 'Failed to sign transaction');
           }
+
+          // Reconstruct signed transaction
+          const signatureBuffer = Buffer.from(signResult.signature, 'base64');
+          transaction.addSignature(
+            new PublicKey(walletAddress!),
+            signatureBuffer
+          );
 
           console.log('[Swap] Submitting transaction to Solana...');
 
           // Submit to network
-          const txSignature = await connection.sendRawTransaction(signedTx.serialize(), {
+          const txSignature = await connection.sendRawTransaction(transaction.serialize(), {
             skipPreflight: false,
             preflightCommitment: 'confirmed',
           });
@@ -477,15 +490,67 @@ export default function SwapScreen() {
 
   const canContinue = fromToken && toToken && fromAmount && parseFloat(fromAmount) > 0 && !isLoadingQuote && !privacySwapLoading && !isSigning && signerReady && (swapQuote || (usePrivateMode && isAnyProviderAvailable));
 
-  // Estimated network fee (simplified)
-  const networkFee = useMemo(() => {
-    // Approximate SOL transaction fee
-    return {
-      amount: '0.00015',
-      symbol: 'SOL',
-      usd: 0.03,
+  // Real network fee estimation
+  const [feeEstimate, setFeeEstimate] = useState<TransferFees | null>(null);
+  const [isLoadingFees, setIsLoadingFees] = useState(false);
+
+  // Fetch real network fees
+  useEffect(() => {
+    let cancelled = false;
+
+    const fetchFees = async () => {
+      setIsLoadingFees(true);
+      try {
+        // Get SOL price from available tokens if possible
+        const solToken = availableTokens.find(t => t.symbol === 'SOL');
+        const solPrice = solToken?.priceUsd || undefined;
+
+        const fees = await estimateTransferFees({
+          amountUsd: fromAmountUsd,
+          includeAtaRent: false, // Swap usually doesn't need new ATA
+          solPriceUsd: solPrice,
+        });
+
+        if (!cancelled) {
+          setFeeEstimate(fees);
+        }
+      } catch (error) {
+        console.warn('[Swap] Failed to estimate fees:', error);
+      } finally {
+        if (!cancelled) {
+          setIsLoadingFees(false);
+        }
+      }
     };
-  }, []);
+
+    fetchFees();
+
+    // Refresh fees every 30 seconds
+    const interval = setInterval(fetchFees, 30000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [fromAmountUsd, availableTokens]);
+
+  // Network fee display values
+  const networkFee = useMemo(() => {
+    if (!feeEstimate) {
+      return {
+        amount: '...',
+        symbol: 'SOL',
+        usd: 0,
+      };
+    }
+
+    const totalFee = feeEstimate.networkFee + feeEstimate.priorityFee;
+    return {
+      amount: totalFee.toFixed(6),
+      symbol: 'SOL',
+      usd: feeEstimate.networkFeeUsd + feeEstimate.priorityFeeUsd,
+    };
+  }, [feeEstimate]);
 
   // Token selector modal
   const renderTokenSelector = (
@@ -518,11 +583,15 @@ export default function SwapScreen() {
                 ]}
               >
                 <View style={styles.tokenItemLeft}>
-                  <View style={[styles.tokenIcon, { backgroundColor: primaryColor }]}>
-                    <ThemedText style={styles.tokenIconText}>
-                      {token.symbol.charAt(0)}
-                    </ThemedText>
-                  </View>
+                  {token.logoUri ? (
+                    <Image source={{ uri: token.logoUri }} style={styles.tokenModalImage} />
+                  ) : (
+                    <View style={[styles.tokenIcon, { backgroundColor: primaryColor }]}>
+                      <ThemedText style={styles.tokenIconText}>
+                        {token.symbol.charAt(0)}
+                      </ThemedText>
+                    </View>
+                  )}
                   <View>
                     <ThemedText style={styles.tokenItemSymbol}>{token.symbol}</ThemedText>
                     <ThemedText style={[styles.tokenItemName, { color: mutedColor }]}>
@@ -546,6 +615,31 @@ export default function SwapScreen() {
     );
   };
 
+  // Number pad handler
+  const handleNumberPress = useCallback((num: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (num === '.' && fromAmount.includes('.')) return;
+    if (fromAmount === '0' && num !== '.') {
+      setFromAmount(num);
+    } else if (fromAmount === '' && num === '.') {
+      setFromAmount('0.');
+    } else {
+      setFromAmount(fromAmount + num);
+    }
+  }, [fromAmount]);
+
+  const handleDelete = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (fromAmount.length > 1) {
+      setFromAmount(fromAmount.slice(0, -1));
+    } else {
+      setFromAmount('0');
+    }
+  }, [fromAmount]);
+
+  // Number pad keys (simple, no letters)
+  const numberPadKeys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', 'delete'];
+
   return (
     <ThemedView style={styles.container}>
       <StatusBar style={isDark ? 'light' : 'dark'} />
@@ -554,320 +648,185 @@ export default function SwapScreen() {
       <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
         <Pressable
           onPress={handleClose}
-          style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}
+          style={({ pressed }) => [styles.headerButton, { backgroundColor: cardColor }, pressed && styles.pressed]}
         >
-          <Ionicons name="close" size={28} color={textColor} />
+          <Ionicons name="chevron-back" size={24} color={textColor} />
         </Pressable>
         <ThemedText style={styles.headerTitle}>Swap</ThemedText>
         <Pressable
           onPress={() => setShowSettingsModal(true)}
-          style={({ pressed }) => [styles.settingsButton, pressed && styles.pressed]}
+          style={({ pressed }) => [styles.headerButton, { backgroundColor: cardColor }, pressed && styles.pressed]}
         >
-          <Ionicons name="settings-outline" size={24} color={textColor} />
+          <Ionicons name="settings-outline" size={22} color={textColor} />
         </Pressable>
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* From Token Section */}
-        <View style={[styles.tokenSection, { backgroundColor: cardColor }]}>
-          <View style={styles.tokenHeader}>
-            {activeProvider === 'silentswap' && usePrivateMode ? (
-              <Pressable
-                onPress={() => setShowFromChainSelector(true)}
-                style={[styles.networkBadge, styles.networkBadgeActive]}
-              >
-                <ThemedText style={[styles.networkLabel, { color: primaryColor }]}>
-                  From: {getChainName(sourceChain)}
-                </ThemedText>
-                <Ionicons name="chevron-down" size={12} color={primaryColor} />
-              </Pressable>
-            ) : (
-              <View style={styles.networkBadge}>
-                <ThemedText style={[styles.networkLabel, { color: mutedColor }]}>
-                  From: Solana
-                </ThemedText>
-              </View>
-            )}
-            <View style={styles.balanceContainer}>
-              <ThemedText style={[styles.balanceLabel, { color: mutedColor }]}>
-                ◎ {fromToken?.balanceFormatted || '0'}
-              </ThemedText>
-              <Pressable onPress={handleMaxPress}>
-                <ThemedText style={[styles.maxButton, { color: primaryColor }]}>Max</ThemedText>
-              </Pressable>
-            </View>
-          </View>
-
-          <View style={styles.tokenInputRow}>
+      {/* Main Content */}
+      <View style={styles.content}>
+        {/* From Section */}
+        <ThemedText style={styles.sectionLabel}>From</ThemedText>
+        <View style={[styles.tokenCard, { backgroundColor: cardColor }]}>
+          <View style={styles.tokenCardRow}>
             <Pressable
               onPress={() => setShowFromSelector(true)}
-              style={[styles.tokenSelector, { borderColor }]}
+              style={styles.tokenSelectorButton}
             >
-              {fromToken && (
-                <View style={[styles.tokenBadge, { backgroundColor: primaryColor }]}>
-                  <ThemedText style={styles.tokenBadgeText}>
-                    {fromToken.symbol.charAt(0)}
-                  </ThemedText>
-                </View>
+              {fromToken ? (
+                fromToken.logoUri ? (
+                  <Image source={{ uri: fromToken.logoUri }} style={styles.tokenImage} />
+                ) : (
+                  <View style={[styles.tokenIconCircle, { backgroundColor: '#8B5CF6' }]}>
+                    <ThemedText style={styles.tokenIconText}>
+                      {fromToken.symbol.charAt(0)}
+                    </ThemedText>
+                  </View>
+                )
+              ) : (
+                <View style={[styles.tokenIconCircle, { backgroundColor: mutedColor, opacity: 0.3 }]} />
               )}
-              <ThemedText style={styles.tokenSymbol}>
-                {fromToken?.symbol || 'Select'}
+              <ThemedText style={styles.tokenName}>
+                {fromToken?.name || 'Select'}
               </ThemedText>
               <Ionicons name="chevron-down" size={16} color={mutedColor} />
             </Pressable>
 
-            <View style={styles.amountContainer}>
-              <TextInput
-                style={[styles.amountInput, { color: textColor }]}
-                value={fromAmount}
-                onChangeText={setFromAmount}
-                placeholder="0"
-                placeholderTextColor={mutedColor}
-                keyboardType="decimal-pad"
-              />
+            <View style={styles.amountSection}>
+              <ThemedText style={styles.amountDisplay}>
+                {fromAmount || '0'}
+              </ThemedText>
               <ThemedText style={[styles.amountUsd, { color: mutedColor }]}>
                 ${fromAmountUsd.toFixed(2)}
               </ThemedText>
             </View>
           </View>
+
+          <View style={styles.tokenCardBottom}>
+            <ThemedText style={[styles.balanceText, { color: mutedColor }]}>
+              Balance: ${fromToken?.valueUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}
+            </ThemedText>
+            <View style={styles.networkBadge}>
+              <View style={styles.networkDot} />
+              <ThemedText style={styles.networkText}>main network</ThemedText>
+            </View>
+          </View>
         </View>
 
-        {/* Swap Direction Button */}
-        <View style={styles.swapButtonContainer}>
+        {/* Swap Button */}
+        <View style={styles.swapButtonWrapper}>
           <Pressable
             onPress={handleSwapTokens}
             style={({ pressed }) => [
-              styles.swapButton,
-              { backgroundColor: primaryColor },
+              styles.swapCircleButton,
+              { backgroundColor: cardColor },
               pressed && styles.pressed,
             ]}
           >
-            <Ionicons name="swap-vertical" size={20} color="#fff" />
+            <Ionicons name="sync" size={20} color={textColor} />
           </Pressable>
         </View>
 
-        {/* To Token Section */}
-        <View style={[styles.tokenSection, { backgroundColor: cardColor }]}>
-          <View style={styles.tokenHeader}>
-            {activeProvider === 'silentswap' && usePrivateMode ? (
-              <Pressable
-                onPress={() => setShowToChainSelector(true)}
-                style={[styles.networkBadge, styles.networkBadgeActive]}
-              >
-                <ThemedText style={[styles.networkLabel, { color: primaryColor }]}>
-                  To: {getChainName(destChain)}
-                </ThemedText>
-                <Ionicons name="chevron-down" size={12} color={primaryColor} />
-              </Pressable>
-            ) : (
-              <View style={styles.networkBadge}>
-                <ThemedText style={[styles.networkLabel, { color: mutedColor }]}>
-                  To: Solana
-                </ThemedText>
-              </View>
-            )}
-          </View>
-
-          <View style={styles.tokenInputRow}>
+        {/* To Section */}
+        <ThemedText style={styles.sectionLabel}>To</ThemedText>
+        <View style={[styles.tokenCard, { backgroundColor: cardColor }]}>
+          <View style={styles.tokenCardRow}>
             <Pressable
               onPress={() => setShowToSelector(true)}
-              style={[styles.tokenSelector, { borderColor }]}
+              style={styles.tokenSelectorButton}
             >
-              {toToken && (
-                <View style={[styles.tokenBadge, { backgroundColor: '#8B5CF6' }]}>
-                  <ThemedText style={styles.tokenBadgeText}>
-                    {toToken.symbol.charAt(0)}
-                  </ThemedText>
-                </View>
+              {toToken ? (
+                toToken.logoUri ? (
+                  <Image source={{ uri: toToken.logoUri }} style={styles.tokenImage} />
+                ) : (
+                  <View style={[styles.tokenIconCircle, { backgroundColor: '#8B5CF6' }]}>
+                    <ThemedText style={styles.tokenIconText}>
+                      {toToken.symbol.charAt(0)}
+                    </ThemedText>
+                  </View>
+                )
+              ) : (
+                <View style={[styles.tokenIconCircleEmpty, { borderColor: mutedColor }]} />
               )}
-              <ThemedText style={styles.tokenSymbol}>
-                {toToken?.symbol || 'Select'}
+              <ThemedText style={[styles.tokenName, !toToken && { color: mutedColor }]}>
+                {toToken?.name || 'Choose an asset'}
               </ThemedText>
               <Ionicons name="chevron-down" size={16} color={mutedColor} />
             </Pressable>
 
-            <View style={styles.amountContainer}>
+            <View style={styles.amountSection}>
               {isLoadingQuote ? (
                 <ActivityIndicator size="small" color={primaryColor} />
               ) : (
-                <ThemedText style={styles.outputAmount}>
-                  {toAmount || '0'}
+                <ThemedText style={styles.amountDisplay}>
+                  {toAmount || '0.00'}
                 </ThemedText>
               )}
-              <View style={styles.outputUsdRow}>
-                <ThemedText style={[styles.amountUsd, { color: mutedColor }]}>
-                  ${toAmountUsd.toFixed(2)}
-                </ThemedText>
-                {priceChangePercent !== 0 && (
-                  <ThemedText
-                    style={[
-                      styles.priceChange,
-                      { color: priceChangePercent < 0 ? '#EF4444' : '#10B981' },
-                    ]}
-                  >
-                    {priceChangePercent > 0 ? '+' : ''}{priceChangePercent.toFixed(2)}%
-                  </ThemedText>
-                )}
-              </View>
-            </View>
-          </View>
-        </View>
-
-        {/* Rate Display */}
-        {swapRate && (
-          <View style={[styles.infoRow, { borderColor }]}>
-            <View style={styles.infoLabel}>
-              <ThemedText style={[styles.infoLabelText, { color: mutedColor }]}>Rate</ThemedText>
-              <Ionicons name="information-circle-outline" size={16} color={mutedColor} />
-            </View>
-            <View style={styles.infoValue}>
-              <ThemedText style={styles.infoValueText}>
-                1 {swapRate.fromSymbol} = {swapRate.rate} {swapRate.toSymbol}
-              </ThemedText>
-              <Ionicons name="refresh-outline" size={14} color={mutedColor} />
-            </View>
-          </View>
-        )}
-
-        {/* Privacy Mode Toggle */}
-        {isAnyProviderAvailable && (
-          <Pressable
-            onPress={() => setUsePrivateMode(!usePrivateMode)}
-            style={[styles.infoRow, { borderColor }]}
-          >
-            <View style={styles.infoLabel}>
-              <Ionicons
-                name={usePrivateMode ? 'shield-checkmark' : 'shield-outline'}
-                size={16}
-                color={usePrivateMode ? '#22c55e' : mutedColor}
-              />
-              <ThemedText style={[
-                styles.infoLabelText,
-                { color: usePrivateMode ? '#22c55e' : mutedColor }
-              ]}>
-                {usePrivateMode ? 'Privacy Swap' : 'Standard Swap'}
-              </ThemedText>
-            </View>
-            <View style={styles.infoValue}>
-              <View style={[
-                styles.providerBadge,
-                { backgroundColor: usePrivateMode ? 'rgba(34,197,94,0.2)' : `${mutedColor}20` }
-              ]}>
-                <ThemedText style={[
-                  styles.providerText,
-                  { color: usePrivateMode ? '#22c55e' : mutedColor }
-                ]}>
-                  {usePrivateMode ? 'Amount Hidden' : 'Visible'}
-                </ThemedText>
-              </View>
-            </View>
-          </Pressable>
-        )}
-
-        {/* Privacy Provider Selection - only show when switchable (same-chain) */}
-        {usePrivateMode && canSwitchProvider && (
-          <View style={[styles.infoRow, { borderColor }]}>
-            <View style={styles.infoLabel}>
-              <Ionicons name="shield-checkmark-outline" size={16} color={mutedColor} />
-              <ThemedText style={[styles.infoLabelText, { color: mutedColor }]}>
-                Privacy Provider
-              </ThemedText>
-            </View>
-            <View style={styles.providerToggle}>
-              {availableProviders.map((provider) => (
-                <Pressable
-                  key={provider}
-                  onPress={() => {
-                    setActiveProvider(provider);
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  }}
-                  style={[
-                    styles.providerPill,
-                    { borderColor },
-                    activeProvider === provider && { backgroundColor: `${primaryColor}20`, borderColor: primaryColor },
-                  ]}
-                >
-                  <ThemedText style={[
-                    styles.providerPillText,
-                    { color: mutedColor },
-                    activeProvider === provider && { color: primaryColor },
-                  ]}>
-                    {getProviderName(provider)}
-                  </ThemedText>
-                </Pressable>
-              ))}
-            </View>
-          </View>
-        )}
-
-        {/* Cross-chain indicator - show when cross-chain is active */}
-        {usePrivateMode && isCrossChain && (
-          <View style={[styles.infoRow, { borderColor }]}>
-            <View style={styles.infoLabel}>
-              <Ionicons name="git-branch-outline" size={16} color={primaryColor} />
-              <ThemedText style={[styles.infoLabelText, { color: primaryColor }]}>
-                Cross-Chain via SilentSwap
+              <ThemedText style={[styles.amountUsd, { color: mutedColor }]}>
+                ${toAmountUsd.toFixed(2)}
               </ThemedText>
             </View>
           </View>
-        )}
-
-        {/* Provider */}
-        <View style={[styles.infoRow, { borderColor }]}>
-          <View style={styles.infoLabel}>
-            <ThemedText style={[styles.infoLabelText, { color: mutedColor }]}>Provider</ThemedText>
-            <Ionicons name="information-circle-outline" size={16} color={mutedColor} />
-          </View>
-          <View style={styles.infoValue}>
-            <View style={[styles.providerBadge, { backgroundColor: `${primaryColor}20` }]}>
-              <ThemedText style={[styles.providerText, { color: primaryColor }]}>
-                {usePrivateMode && isAnyProviderAvailable ? getProviderName(activeProvider) : 'Jupiter'}
-              </ThemedText>
-              {activeProvider === 'silentswap' && usePrivateMode && (
-                <Ionicons name="git-branch-outline" size={14} color={primaryColor} style={{ marginLeft: 4 }} />
-              )}
-            </View>
-            {!usePrivateMode && <ThemedText style={[styles.providerPlus, { color: mutedColor }]}>+2</ThemedText>}
-          </View>
-        </View>
-
-        {/* Slippage Tolerance */}
-        <View style={[styles.infoRow, { borderColor }]}>
-          <View style={styles.infoLabel}>
-            <ThemedText style={[styles.infoLabelText, { color: mutedColor }]}>
-              Slippage Tolerance
-            </ThemedText>
-            <Ionicons name="information-circle-outline" size={16} color={mutedColor} />
-          </View>
-          <ThemedText style={styles.infoValueText}>{slippage}%</ThemedText>
         </View>
 
         {/* Network Fee */}
-        <View style={[styles.infoRow, { borderColor }]}>
-          <View style={styles.infoLabel}>
-            <ThemedText style={[styles.infoLabelText, { color: mutedColor }]}>
-              Network Fee: Fast
-            </ThemedText>
-            <Ionicons name="flash" size={16} color="#F59E0B" />
+        <Pressable style={styles.networkFeeRow}>
+          <View style={styles.networkFeeLeft}>
+            <ThemedText style={[styles.networkFeeLabel, { color: mutedColor }]}>Network Fee:</ThemedText>
+            <ThemedText style={[styles.networkFeeSpeed, { color: textColor }]}> Fast</ThemedText>
+            <Ionicons name="information-circle-outline" size={14} color={mutedColor} style={{ marginLeft: 4 }} />
           </View>
-          <ThemedText style={styles.infoValueText}>
-            {networkFee.amount} {networkFee.symbol} (${networkFee.usd.toFixed(2)})
-          </ThemedText>
-        </View>
-      </ScrollView>
+          <View style={styles.networkFeeRight}>
+            {isLoadingFees ? (
+              <ActivityIndicator size="small" color={mutedColor} />
+            ) : (
+              <>
+                <ThemedText style={[styles.networkFeeAmount, { color: textColor }]}>
+                  {networkFee.amount} {networkFee.symbol}
+                </ThemedText>
+                <ThemedText style={[styles.networkFeeUsd, { color: mutedColor }]}>
+                  {' '}(${networkFee.usd.toFixed(2)})
+                </ThemedText>
+              </>
+            )}
+            <Ionicons name="chevron-forward" size={14} color={mutedColor} style={{ marginLeft: 4 }} />
+          </View>
+        </Pressable>
+      </View>
 
-      {/* Continue Button */}
-      <View style={[styles.bottomContainer, { paddingBottom: insets.bottom + 16 }]}>
+      {/* Number Pad */}
+      <View style={styles.numberPadContainer}>
+        <View style={styles.numberPad}>
+          {numberPadKeys.map((key, index) => (
+            <Pressable
+              key={index}
+              onPress={() => {
+                if (key === 'delete') handleDelete();
+                else handleNumberPress(key);
+              }}
+              style={({ pressed }) => [
+                styles.numberKey,
+                pressed && styles.numberKeyPressed,
+              ]}
+            >
+              {key === 'delete' ? (
+                <Ionicons name="backspace-outline" size={24} color="#1C1C1E" />
+              ) : (
+                <ThemedText style={styles.numberKeyText}>{key}</ThemedText>
+              )}
+            </Pressable>
+          ))}
+        </View>
+
+        {/* Review Button */}
         <Pressable
           onPress={handleContinue}
           disabled={!canContinue}
           style={({ pressed }) => [
-            styles.continueButton,
-            { backgroundColor: canContinue ? primaryColor : `${primaryColor}50` },
+            styles.reviewButton,
+            { backgroundColor: canContinue ? primaryColor : '#4A4A4D' },
             pressed && canContinue && styles.pressed,
           ]}
         >
-          <ThemedText style={styles.continueButtonText}>Continue</ThemedText>
+          <ThemedText style={styles.reviewButtonText}>Review</ThemedText>
         </Pressable>
       </View>
 
@@ -1086,28 +1045,20 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingBottom: 16,
   },
-  closeButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+  headerButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
   },
   headerTitle: {
-    flex: 1,
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '600',
-    textAlign: 'center',
-  },
-  settingsButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   pressed: {
     opacity: 0.7,
@@ -1116,162 +1067,180 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 16,
   },
-  tokenSection: {
+  sectionLabel: {
+    fontSize: 13,
+    color: '#FFFFFF',
+    marginBottom: 8,
+    marginLeft: 4,
+  },
+  tokenCard: {
     borderRadius: 16,
     padding: 16,
+    marginBottom: 8,
   },
-  tokenHeader: {
+  tokenCardRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  tokenSelectorButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  tokenIconCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tokenIconCircleEmpty: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+  },
+  tokenIconText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  tokenImage: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+  },
+  tokenModalImage: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+  },
+  tokenName: {
+    fontSize: 15,
+    fontWeight: '500',
+  },
+  amountSection: {
+    alignItems: 'flex-end',
+  },
+  amountDisplay: {
+    fontSize: 24,
+    fontWeight: '400',
+  },
+  amountUsd: {
+    fontSize: 13,
+    marginTop: 2,
+  },
+  tokenCardBottom: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    marginTop: 12,
+  },
+  balanceText: {
+    fontSize: 13,
   },
   networkBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-  },
-  networkLabel: {
-    fontSize: 13,
-  },
-  balanceContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  balanceLabel: {
-    fontSize: 13,
-  },
-  maxButton: {
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  tokenInputRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  tokenSelector: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 24,
-    borderWidth: 1,
-  },
-  tokenBadge: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  tokenBadgeText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  tokenSymbol: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  amountContainer: {
-    flex: 1,
-    alignItems: 'flex-end',
-  },
-  amountInput: {
-    fontSize: 28,
-    fontWeight: '600',
-    textAlign: 'right',
-    minWidth: 100,
-  },
-  amountUsd: {
-    fontSize: 14,
-    marginTop: 2,
-  },
-  outputAmount: {
-    fontSize: 28,
-    fontWeight: '600',
-    textAlign: 'right',
-  },
-  outputUsdRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
     gap: 6,
-    marginTop: 2,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#22c55e',
   },
-  priceChange: {
-    fontSize: 12,
+  networkDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#22c55e',
+  },
+  networkText: {
+    fontSize: 11,
+    color: '#22c55e',
     fontWeight: '500',
   },
-  swapButtonContainer: {
+  swapButtonWrapper: {
     alignItems: 'center',
-    marginVertical: -12,
-    zIndex: 10,
+    marginVertical: 4,
   },
-  swapButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+  swapCircleButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 4,
   },
-  infoRow: {
+  networkFeeRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingVertical: 16,
-    borderBottomWidth: 1,
-    marginHorizontal: 4,
+    paddingHorizontal: 4,
+    marginTop: 8,
   },
-  infoLabel: {
+  networkFeeLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
   },
-  infoLabelText: {
-    fontSize: 14,
+  networkFeeLabel: {
+    fontSize: 13,
   },
-  infoValue: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  infoValueText: {
-    fontSize: 14,
+  networkFeeSpeed: {
+    fontSize: 13,
     fontWeight: '500',
   },
-  providerBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
+  networkFeeRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
-  providerText: {
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  providerPlus: {
+  networkFeeAmount: {
     fontSize: 13,
   },
-  bottomContainer: {
-    paddingHorizontal: 16,
+  networkFeeUsd: {
+    fontSize: 13,
+  },
+  numberPadContainer: {
+    backgroundColor: '#F2F2F7',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
     paddingTop: 16,
+    paddingHorizontal: 16,
+    paddingBottom: 24,
   },
-  continueButton: {
+  numberPad: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+  },
+  numberKey: {
+    width: (SCREEN_WIDTH - 48) / 3,
     height: 56,
-    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
+    marginBottom: 8,
   },
-  continueButtonText: {
+  numberKeyPressed: {
+    backgroundColor: 'rgba(0,0,0,0.05)',
+    borderRadius: 12,
+  },
+  numberKeyText: {
+    fontSize: 28,
+    fontWeight: '400',
+    color: '#1C1C1E',
+  },
+  reviewButton: {
+    height: 50,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 8,
+  },
+  reviewButtonText: {
     color: '#fff',
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '600',
   },
   modalOverlay: {
@@ -1316,11 +1285,6 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  tokenIconText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
   },
   tokenItemSymbol: {
     fontSize: 16,
@@ -1424,27 +1388,6 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
-  },
-  // Provider Toggle Styles
-  providerToggle: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  providerPill: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    borderWidth: 1,
-  },
-  providerPillText: {
-    fontSize: 13,
-    fontWeight: '500',
-  },
-  // Network Badge Active Style
-  networkBadgeActive: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
   },
   // Chain Selector Modal Styles
   chainModal: {
