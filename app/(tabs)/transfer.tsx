@@ -62,9 +62,6 @@ interface NumpadProps {
 }
 
 function Numpad({ onPress, disabled }: NumpadProps) {
-  const mutedColor = 'rgba(16, 185, 129, 0.6)';
-  const textColor = '#ECEDEE';
-
   const keys = [
     ['1', '2', '3'],
     ['4', '5', '6'],
@@ -94,9 +91,9 @@ function Numpad({ onPress, disabled }: NumpadProps) {
               ]}
             >
               {key === 'del' ? (
-                <Ionicons name="backspace-outline" size={28} color={mutedColor} />
+                <Ionicons name="backspace-outline" size={28} color="#1C1C1E" />
               ) : (
-                <Text style={[styles.numpadKeyText, { color: textColor }]}>{key}</Text>
+                <Text style={styles.numpadKeyText}>{key}</Text>
               )}
             </Pressable>
           ))}
@@ -119,7 +116,6 @@ interface ContactSelectorProps {
 
 function ContactSelector({ contacts, favorites, onSelect, onAddNew }: ContactSelectorProps) {
   const primaryColor = useThemeColor({}, 'tint');
-  const mutedColor = useThemeColor({ light: '#687076', dark: '#9BA1A6' }, 'icon');
 
   return (
     <ScrollView
@@ -133,11 +129,11 @@ function ContactSelector({ contacts, favorites, onSelect, onAddNew }: ContactSel
         style={({ pressed }) => [styles.contactCircle, pressed && styles.pressed]}
       >
         <View style={[styles.contactAvatar, styles.addContactAvatar]}>
-          <Ionicons name="add" size={24} color={mutedColor} />
+          <Ionicons name="add" size={24} color="#6B7280" />
         </View>
-        <ThemedText style={[styles.contactName, { color: mutedColor }]} numberOfLines={1}>
+        <Text style={styles.contactName} numberOfLines={1}>
           Get $15
-        </ThemedText>
+        </Text>
       </Pressable>
 
       {/* Favorites first, then recent */}
@@ -148,11 +144,11 @@ function ContactSelector({ contacts, favorites, onSelect, onAddNew }: ContactSel
           style={({ pressed }) => [styles.contactCircle, pressed && styles.pressed]}
         >
           <View style={[styles.contactAvatar, { backgroundColor: primaryColor }]}>
-            <ThemedText style={styles.contactAvatarText}>{contact.avatar}</ThemedText>
+            <Text style={styles.contactAvatarText}>{contact.avatar}</Text>
           </View>
-          <ThemedText style={[styles.contactName, { color: mutedColor }]} numberOfLines={1}>
+          <Text style={styles.contactName} numberOfLines={1}>
             {contact.name.split(' ')[0]}
-          </ThemedText>
+          </Text>
         </Pressable>
       ))}
     </ScrollView>
@@ -498,24 +494,23 @@ export default function TransferScreen() {
         {renderBalance()}
       </View>
 
-      {/* Numpad */}
-      <View style={styles.numpadContainer}>
-        <Numpad onPress={handleNumpadPress} />
-      </View>
+      {/* White Numpad Container with buttons */}
+      <View style={styles.numpadSection}>
+        <View style={styles.numpadContainer}>
+          <Numpad onPress={handleNumpadPress} />
+        </View>
 
-      {/* Bottom buttons */}
-      <View style={[styles.bottomButtons, { paddingBottom: insets.bottom + 16 }]}>
+        {/* Action buttons */}
         <View style={styles.actionRow}>
           <Pressable
             onPress={handleRequest}
             style={({ pressed }) => [
               styles.actionButton,
               styles.requestButtonStyle,
-              { borderColor: primaryColor },
               pressed && { opacity: 0.8 },
             ]}
           >
-            <ThemedText style={[styles.actionButtonText, { color: primaryColor }]}>Request</ThemedText>
+            <Text style={styles.requestButtonText}>Request</Text>
           </Pressable>
           <Pressable
             onPress={handlePay}
@@ -526,23 +521,23 @@ export default function TransferScreen() {
               pressed && { opacity: 0.8 },
             ]}
           >
-            <ThemedText style={[styles.actionButtonText, { color: '#fff' }]}>Pay</ThemedText>
+            <Text style={styles.payButtonText}>Pay</Text>
           </Pressable>
         </View>
 
         {/* Selected contact indicator */}
         {selectedContact && (
-          <Animated.View entering={FadeIn.duration(200)} style={[styles.selectedContactBar, { borderColor: primaryColor, backgroundColor: `${primaryColor}15` }]}>
+          <Animated.View entering={FadeIn.duration(200)} style={styles.selectedContactBar}>
             <View style={styles.selectedContactInfo}>
               <View style={[styles.selectedContactAvatar, { backgroundColor: primaryColor }]}>
-                <ThemedText style={[styles.selectedContactAvatarText, { color: '#fff' }]}>
+                <Text style={styles.selectedContactAvatarText}>
                   {selectedContact.avatar}
-                </ThemedText>
+                </Text>
               </View>
-              <ThemedText style={[styles.selectedContactName, { color: textColor }]}>{selectedContact.name}</ThemedText>
+              <Text style={styles.selectedContactName}>{selectedContact.name}</Text>
             </View>
             <Pressable onPress={() => setSelectedContact(null)}>
-              <Ionicons name="close-circle" size={24} color={mutedColor} />
+              <Ionicons name="close-circle" size={24} color="#9BA1A6" />
             </Pressable>
           </Animated.View>
         )}
@@ -556,6 +551,9 @@ export default function TransferScreen() {
             onAddNew={handleAddContact}
           />
         )}
+
+        {/* Bottom safe area spacer */}
+        <View style={{ height: insets.bottom + 80 }} />
       </View>
 
       {/* Token selector modal */}
@@ -865,61 +863,75 @@ const styles = StyleSheet.create({
   balanceText: {
     fontSize: 14,
   },
+  numpadSection: {
+    backgroundColor: '#F2F2F7',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingTop: 16,
+    paddingHorizontal: 16,
+  },
   numpadContainer: {
-    paddingHorizontal: 24,
+    paddingHorizontal: 8,
   },
   numpad: {
-    gap: 8,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
   },
   numpadRow: {
     flexDirection: 'row',
     justifyContent: 'center',
-    gap: 16,
+    width: '100%',
   },
   numpadKey: {
-    width: (SCREEN_WIDTH - 80) / 3,
-    height: 64,
-    borderRadius: 32,
+    width: (SCREEN_WIDTH - 48) / 3,
+    height: 56,
     alignItems: 'center',
     justifyContent: 'center',
+    marginBottom: 8,
   },
   numpadKeyPressed: {
-    backgroundColor: 'rgba(16, 185, 129, 0.2)',
+    backgroundColor: 'rgba(0,0,0,0.05)',
+    borderRadius: 12,
   },
   numpadKeyDisabled: {
     opacity: 0.5,
   },
   numpadKeyText: {
-    fontSize: 32,
+    fontSize: 28,
     fontWeight: '400',
-    color: '#fff',
-  },
-  bottomButtons: {
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    gap: 16,
+    color: '#1C1C1E',
   },
   actionRow: {
     flexDirection: 'row',
     gap: 12,
+    marginTop: 8,
+    marginBottom: 16,
   },
   actionButton: {
     flex: 1,
-    height: 56,
-    borderRadius: 16,
+    height: 50,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
   },
   requestButtonStyle: {
     borderWidth: 1,
+    borderColor: '#1C1C1E',
     backgroundColor: 'transparent',
   },
   payButtonStyle: {
     // backgroundColor set dynamically
   },
-  actionButtonText: {
-    fontSize: 18,
+  requestButtonText: {
+    fontSize: 16,
     fontWeight: '600',
+    color: '#1C1C1E',
+  },
+  payButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
   },
   selectedContactBar: {
     flexDirection: 'row',
@@ -927,7 +939,8 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     borderRadius: 16,
     padding: 12,
-    borderWidth: 1,
+    backgroundColor: 'rgba(0,0,0,0.05)',
+    marginBottom: 16,
   },
   selectedContactInfo: {
     flexDirection: 'row',
@@ -944,14 +957,17 @@ const styles = StyleSheet.create({
   selectedContactAvatarText: {
     fontSize: 14,
     fontWeight: '600',
+    color: '#fff',
   },
   selectedContactName: {
     fontSize: 16,
     fontWeight: '500',
+    color: '#1C1C1E',
   },
   contactsScrollContent: {
     paddingHorizontal: 8,
     gap: 16,
+    paddingBottom: 8,
   },
   contactCircle: {
     alignItems: 'center',
@@ -966,9 +982,9 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   addContactAvatar: {
-    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+    backgroundColor: 'rgba(0, 0, 0, 0.05)',
     borderWidth: 2,
-    borderColor: 'rgba(16, 185, 129, 0.4)',
+    borderColor: 'rgba(0, 0, 0, 0.2)',
     borderStyle: 'dashed',
   },
   contactAvatarText: {
@@ -979,6 +995,7 @@ const styles = StyleSheet.create({
   contactName: {
     fontSize: 12,
     textAlign: 'center',
+    color: '#6B7280',
   },
   pressed: {
     opacity: 0.7,

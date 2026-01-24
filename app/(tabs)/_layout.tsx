@@ -1,5 +1,5 @@
 import { View, StyleSheet } from 'react-native';
-import { Tabs } from 'expo-router';
+import { Tabs, usePathname } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FloatingNavBar } from '@/components/floating-nav-bar';
@@ -7,6 +7,10 @@ import { FloatingCommandBar } from '@/components/floating-command-bar';
 
 export default function TabLayout() {
   const insets = useSafeAreaInsets();
+  const pathname = usePathname();
+
+  // Hide command bar on transfer screen
+  const hideCommandBar = pathname === '/transfer';
 
   // Calculate bottom offset for command bar:
   // New compact navbar: content (56) + paddingTop (8) + paddingBottom + gap
@@ -30,7 +34,7 @@ export default function TabLayout() {
         <Tabs.Screen name="card" options={{ href: null }} />
       </Tabs>
 
-      <FloatingCommandBar bottomOffset={commandBarBottomOffset} />
+      {!hideCommandBar && <FloatingCommandBar bottomOffset={commandBarBottomOffset} />}
     </View>
   );
 }
