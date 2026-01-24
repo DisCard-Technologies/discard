@@ -656,6 +656,177 @@ export const clearAllCaches = mutation({
 });
 
 // ============================================================================
+// Category Token Actions (LST, Stables, Memes, etc.)
+// ============================================================================
+
+/**
+ * Fetch LST tokens from Jupiter Tag API
+ */
+export const getTokensByTag = action({
+  args: {
+    tag: v.union(v.literal("lst"), v.literal("verified")),
+  },
+  handler: async (_ctx, args) => {
+    const JUPITER_API_KEY = process.env.JUPITER_API_KEY;
+    if (!JUPITER_API_KEY) {
+      throw new Error("JUPITER_API_KEY not configured");
+    }
+
+    const response = await fetch(
+      `${JUPITER_TOKENS_URL}/v2/tag?query=${args.tag}`,
+      {
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": JUPITER_API_KEY,
+        },
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(`Jupiter Tag API error: ${response.status}`);
+    }
+
+    const tokens = await response.json();
+
+    return tokens.map((token: {
+      id: string;
+      symbol: string;
+      name: string;
+      usdPrice?: number;
+      stats24h?: {
+        priceChange?: number;
+        buyVolume?: number;
+        sellVolume?: number;
+      };
+      mcap?: number;
+      fdv?: number;
+      icon?: string;
+    }) => ({
+      mint: token.id,
+      symbol: token.symbol,
+      name: token.name,
+      priceUsd: token.usdPrice ?? 0,
+      change24h: token.stats24h?.priceChange ?? 0,
+      volume24h: (token.stats24h?.buyVolume ?? 0) + (token.stats24h?.sellVolume ?? 0),
+      marketCap: token.mcap ?? token.fdv,
+      logoUri: toProxiedImageUrl(token.icon),
+      verified: true,
+    }));
+  },
+});
+
+/**
+ * Fetch tokens by CoinGecko category
+ * Categories: stablecoins, solana-meme-coins, real-world-assets
+ */
+export const getTokensByCategory = action({
+  args: {
+    category: v.union(
+      v.literal("stablecoins"),
+      v.literal("solana-meme-coins"),
+      v.literal("real-world-assets")
+    ),
+  },
+  handler: async (_ctx, args) => {
+    // CoinGecko free API (no key required, but rate limited)
+    const response = await fetch(
+      `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&category=${args.category}&order=market_cap_desc&per_page=50&sparkline=false&price_change_percentage=24h`,
+      {
+        headers: {
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(`CoinGecko API error: ${response.status}`);
+    }
+
+    const coins = await response.json();
+
+    // Map CoinGecko response to our TrendingToken format
+    // Note: CoinGecko uses 'id' not mint address
+    return coins.map((coin: {
+      id: string;
+      symbol: string;
+      name: string;
+      current_price?: number;
+      price_change_percentage_24h?: number;
+      total_volume?: number;
+      market_cap?: number;
+      image?: string;
+    }) => ({
+      mint: coin.id, // CoinGecko ID (not Solana mint)
+      symbol: coin.symbol.toUpperCase(),
+      name: coin.name,
+      priceUsd: coin.current_price ?? 0,
+      change24h: coin.price_change_percentage_24h ?? 0,
+      volume24h: coin.total_volume ?? 0,
+      marketCap: coin.market_cap,
+      logoUri: coin.image,
+      verified: true,
+    }));
+  },
+});
+
+/**
+ * Search tokens via Jupiter (for xStocks)
+ */
+export const searchTokens = action({
+  args: {
+    query: v.string(),
+  },
+  handler: async (_ctx, args) => {
+    const JUPITER_API_KEY = process.env.JUPITER_API_KEY;
+    if (!JUPITER_API_KEY) {
+      throw new Error("JUPITER_API_KEY not configured");
+    }
+
+    const response = await fetch(
+      `${JUPITER_TOKENS_URL}/v2/search?query=${encodeURIComponent(args.query)}`,
+      {
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": JUPITER_API_KEY,
+        },
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(`Jupiter Search API error: ${response.status}`);
+    }
+
+    const tokens = await response.json();
+
+    return tokens.map((token: {
+      id: string;
+      symbol: string;
+      name: string;
+      usdPrice?: number;
+      stats24h?: {
+        priceChange?: number;
+        buyVolume?: number;
+        sellVolume?: number;
+      };
+      mcap?: number;
+      fdv?: number;
+      icon?: string;
+      isVerified?: boolean;
+    }) => ({
+      mint: token.id,
+      symbol: token.symbol,
+      name: token.name,
+      priceUsd: token.usdPrice ?? 0,
+      change24h: token.stats24h?.priceChange ?? 0,
+      volume24h: (token.stats24h?.buyVolume ?? 0) + (token.stats24h?.sellVolume ?? 0),
+      marketCap: token.mcap ?? token.fdv,
+      logoUri: toProxiedImageUrl(token.icon),
+      verified: token.isVerified ?? false,
+    }));
+  },
+});
+
+// ============================================================================
 // Token Price API (Jupiter Price V3)
 // ============================================================================
 

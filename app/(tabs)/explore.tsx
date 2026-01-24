@@ -14,12 +14,12 @@ import { useThemeColor } from '@/hooks/use-theme-color';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useTrendingTokens } from '@/hooks/useTrendingTokens';
 import { useOpenMarkets } from '@/hooks/useOpenMarkets';
+import { useCategoryTokens, TokenCategoryFilter } from '@/hooks/useCategoryTokens';
 import { positiveColor, negativeColor } from '@/constants/theme';
 
 type TabFilter = 'tokens' | 'markets';
 type TokenSortOption = 'default' | 'price_asc' | 'price_desc' | 'change_asc' | 'change_desc' | 'mcap_asc' | 'mcap_desc';
 type MarketSortOption = 'default' | 'volume_asc' | 'volume_desc' | 'yes_asc' | 'yes_desc';
-type TokenCategoryFilter = 'all' | 'stables' | 'stocks' | 'reward' | 'memes';
 
 const tokenSortOptions: { id: TokenSortOption; label: string }[] = [
   { id: 'default', label: 'Default' },
@@ -50,13 +50,8 @@ const tokenCategoryOptions: { id: TokenCategoryFilter; label: string }[] = [
   { id: 'stocks', label: 'Stocks' },
   { id: 'reward', label: 'Reward-Bearing' },
   { id: 'memes', label: 'Memes' },
+  { id: 'rwa', label: 'RWA' },
 ];
-
-// Token symbols for each category (case-insensitive matching)
-const STABLE_TOKENS = ['USDC', 'USDT', 'PYUSD', 'DAI', 'USDH', 'UXD', 'USDY', 'USDP', 'TUSD', 'FRAX', 'EURC'];
-const STOCK_TOKENS = ['AAPL', 'TSLA', 'GOOGL', 'AMZN', 'MSFT', 'NVDA', 'META', 'NFLX', 'AMD', 'COIN', 'MSTR', 'GME', 'AMC'];
-const REWARD_TOKENS = ['JLP', 'MSOL', 'BSOL', 'JSOL', 'JITOSOL', 'VSOL', 'LST', 'HSOL', 'COMPASSSOL', 'INF', 'PSOL'];
-const MEME_TOKENS = ['BONK', 'WIF', 'POPCAT', 'MEW', 'SAMO', 'MYRO', 'SLERF', 'BOME', 'TREMP', 'TRUMP', 'PNUT', 'GOAT', 'FWOG', 'MOODENG', 'GIGACHAD', 'PENGU', 'AI16Z', 'GRIFFAIN', 'ZEREBRO'];
 
 // Preferred market category order
 const MARKET_CATEGORY_ORDER = ['Sports', 'Politics', 'Economics', 'Finance', 'Crypto', 'Tech', 'Entertainment', 'Science', 'Culture'];
@@ -103,6 +98,9 @@ export default function ExploreScreen() {
   // Fetch trending tokens
   const { tokens, isLoading: tokensLoading, error: tokensError } = useTrendingTokens();
 
+  // Fetch category-specific tokens
+  const { tokens: categoryTokens, isLoading: categoryLoading, error: categoryError } = useCategoryTokens(tokenCategoryFilter);
+
   // Track failed image loads by mint address
   const [failedImages, setFailedImages] = useState<Set<string>>(new Set());
   const handleImageError = useCallback((mint: string) => {
@@ -122,30 +120,14 @@ export default function ExploreScreen() {
   // Filter and sort tokens
   const filteredTokens = useMemo(() => {
     if (activeTab !== 'tokens') return [];
-    let result = tokens.filter((token) => {
+
+    // Use category-specific tokens when a category is selected, otherwise use trending tokens
+    const sourceTokens = tokenCategoryFilter === 'all' ? tokens : categoryTokens;
+
+    let result = sourceTokens.filter((token) => {
       const matchesSearch =
         token.symbol.toLowerCase().includes(searchQuery.toLowerCase()) ||
         token.name.toLowerCase().includes(searchQuery.toLowerCase());
-
-      // Apply category filter
-      if (tokenCategoryFilter !== 'all') {
-        const symbolUpper = token.symbol.toUpperCase();
-        switch (tokenCategoryFilter) {
-          case 'stables':
-            if (!STABLE_TOKENS.includes(symbolUpper)) return false;
-            break;
-          case 'stocks':
-            if (!STOCK_TOKENS.includes(symbolUpper)) return false;
-            break;
-          case 'reward':
-            if (!REWARD_TOKENS.includes(symbolUpper)) return false;
-            break;
-          case 'memes':
-            if (!MEME_TOKENS.includes(symbolUpper)) return false;
-            break;
-        }
-      }
-
       return matchesSearch;
     });
 
@@ -164,7 +146,7 @@ export default function ExploreScreen() {
       });
     }
     return result;
-  }, [tokens, searchQuery, activeTab, tokenSort, tokenCategoryFilter]);
+  }, [tokens, categoryTokens, searchQuery, activeTab, tokenSort, tokenCategoryFilter]);
 
   // Filter and sort markets
   const filteredMarkets = useMemo(() => {
@@ -193,8 +175,12 @@ export default function ExploreScreen() {
   }, [markets, searchQuery, activeTab, marketCategoryFilter, marketSort]);
 
   // Loading and error states based on active tab
-  const isLoading = activeTab === 'tokens' ? tokensLoading : marketsLoading;
-  const error = activeTab === 'tokens' ? tokensError : marketsError;
+  const isLoading = activeTab === 'tokens'
+    ? (tokenCategoryFilter === 'all' ? tokensLoading : categoryLoading)
+    : marketsLoading;
+  const error = activeTab === 'tokens'
+    ? (tokenCategoryFilter === 'all' ? tokensError : categoryError)
+    : marketsError;
 
   // Get current sort label for button display
   const currentSortLabel = useMemo(() => {
@@ -428,7 +414,7 @@ export default function ExploreScreen() {
           <View style={styles.errorContainer}>
             <Ionicons name="alert-circle-outline" size={48} color={mutedColor} />
             <ThemedText style={[styles.errorText, { color: mutedColor }]}>
-              Failed to load {activeCategory}
+              Failed to load {activeTab === 'tokens' ? 'tokens' : 'markets'}
             </ThemedText>
           </View>
         ) : activeTab === 'tokens' ? (
