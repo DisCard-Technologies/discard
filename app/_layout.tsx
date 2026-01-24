@@ -79,20 +79,39 @@ export default function RootLayout() {
   const [isReady, setIsReady] = useState(false);
 
   // Load custom fonts
-  const [fontsLoaded] = useFonts({
+  const [fontsLoaded, fontError] = useFonts({
     'InstrumentSans-ExtraLight': require('../assets/fonts/InstrumentSans-ExtraLight.ttf'),
     'InstrumentSans-Regular': require('../assets/fonts/InstrumentSans-Regular.ttf'),
     'InstrumentSans-Medium': require('../assets/fonts/InstrumentSans-Medium.ttf'),
     'JetBrainsMono-Regular': require('../assets/fonts/JetBrainsMono-Regular.ttf'),
   });
 
-  // Mark app ready once fonts are loaded
+  // Log font loading issues
   useEffect(() => {
-    setIsReady(true);
-  }, []);
+    if (fontError) {
+      console.warn('[Layout] Font loading error:', fontError);
+    }
+    if (fontsLoaded) {
+      console.log('[Layout] Fonts loaded successfully');
+    }
+  }, [fontsLoaded, fontError]);
 
-  // Show loading screen while cleanup runs or fonts load
-  if (!isReady || !fontsLoaded) {
+  // Mark app ready once fonts are loaded, errored, or after timeout
+  useEffect(() => {
+    if (fontsLoaded || fontError) {
+      setIsReady(true);
+      return;
+    }
+    // Timeout fallback - proceed after 3 seconds even if fonts haven't loaded
+    const timeout = setTimeout(() => {
+      console.warn('[Layout] Font loading timeout - proceeding without custom fonts');
+      setIsReady(true);
+    }, 3000);
+    return () => clearTimeout(timeout);
+  }, [fontsLoaded, fontError]);
+
+  // Show loading screen until app is ready (fonts loaded, errored, or timeout)
+  if (!isReady) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#0A0A0A' }}>
         <Text style={{ fontSize: 64, marginBottom: 16 }}>💳</Text>
