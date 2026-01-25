@@ -111,6 +111,7 @@ function RootLayoutNav() {
                           <Stack.Screen name="receive" options={{ headerShown: false, presentation: 'modal' }} />
                           <Stack.Screen name="swap" options={{ headerShown: false, presentation: 'modal' }} />
                           <Stack.Screen name="claim/[code]" options={{ headerShown: false }} />
+                          <Stack.Screen name="pay/[requestId]" options={{ headerShown: false }} />
                         </Stack>
                       </AuthGuard>
                       <StatusBar style="auto" />
