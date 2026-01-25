@@ -131,16 +131,25 @@ export function usePrivateTransfer() {
    * @param amount - Amount in lamports
    * @param tokenMint - Optional token mint (native SOL if not specified)
    * @param signer - Optional signer keypair for REAL transaction submission
+   * @param useRelay - Use relay pool for sender privacy (User → Pool → Stealth)
+   * @param relayAction - Convex action to trigger relay (required if useRelay=true)
    */
   const executePrivateTransfer = useCallback(async (
     senderAddress: string,
     recipientStealthAddress: string,
     amount: number,
     tokenMint?: string,
-    signer?: Keypair
+    signer?: Keypair,
+    useRelay?: boolean,
+    relayAction?: (args: {
+      stealthAddress: string;
+      amountLamports: number;
+      depositTxSignature: string;
+    }) => Promise<{ success: boolean; relaySignature?: string; error?: string }>
   ): Promise<PrivateTransferResult> => {
     console.log("[PrivateTransfer] Executing private transfer...", {
       hasRealSigner: !!signer,
+      useRelay,
       amount,
     });
     setIsLoading(true);
@@ -153,6 +162,8 @@ export function usePrivateTransfer() {
         amount,
         tokenMint,
         signer,
+        useRelay,
+        relayAction,
       });
 
       setState({
@@ -231,16 +242,25 @@ export function usePrivateTransfer() {
    * @param amount - Amount in lamports
    * @param tokenMint - Optional token mint
    * @param signer - Optional signer keypair for REAL transaction submission
+   * @param useRelay - Use relay pool for sender privacy
+   * @param relayAction - Convex action to trigger relay
    */
   const executeZkPrivateTransfer = useCallback(async (
     senderAddress: string,
     recipientStealthAddress: string,
     amount: number,
     tokenMint?: string,
-    signer?: Keypair
+    signer?: Keypair,
+    useRelay?: boolean,
+    relayAction?: (args: {
+      stealthAddress: string;
+      amountLamports: number;
+      depositTxSignature: string;
+    }) => Promise<{ success: boolean; relaySignature?: string; error?: string }>
   ): Promise<ZkPrivateTransferResult> => {
     console.log("[PrivateTransfer] Executing ZK-compressed private transfer...", {
       hasRealSigner: !!signer,
+      useRelay,
       amount,
     });
     setIsLoading(true);
@@ -255,6 +275,8 @@ export function usePrivateTransfer() {
           amount,
           tokenMint,
           signer,
+          useRelay,
+          relayAction,
         },
         payerPubkey
       );
@@ -278,7 +300,9 @@ export function usePrivateTransfer() {
         recipientStealthAddress,
         amount,
         tokenMint,
-        signer
+        signer,
+        useRelay,
+        relayAction
       );
       return fallbackResult;
     }
@@ -369,6 +393,10 @@ export function usePrivateTransfer() {
     isComplianceAvailable: complianceService.isConfigured(),
     isPrivateTransferAvailable: shadowWireService.isAvailable(),
     isZkCompressionAvailable: shadowWireStatus.zkCompressionEnabled,
+    isRelayAvailable: shadowWireService.isRelayAvailable(),
+
+    // Relay pool info
+    relayPoolAddress: shadowWireService.getRelayPoolAddress(),
 
     // Feature status
     shadowWireStatus,

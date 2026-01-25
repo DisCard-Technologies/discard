@@ -30,7 +30,7 @@ import { useColorScheme } from "@/hooks/use-color-scheme";
 // TransferSummary removed - using simplified inline display
 import { useAuth, useCurrentCredentialId, getLocalSolanaKeypair } from "@/stores/authConvex";
 import { usePrivateTransfer } from "@/hooks/usePrivateTransfer";
-import { useMutation } from "convex/react";
+import { useMutation, useAction } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Connection, PublicKey } from "@solana/web3.js";
 import { useTurnkey } from "@/hooks/useTurnkey";
@@ -102,6 +102,9 @@ export default function TransferConfirmationScreen() {
     generateZkCompressedStealthAddress,
     executeZkPrivateTransfer,
     isZkCompressionAvailable,
+    // Relay pool for sender privacy
+    isRelayAvailable,
+    relayPoolAddress,
     shadowWireStatus,
   } = usePrivateTransfer();
 
@@ -115,6 +118,9 @@ export default function TransferConfirmationScreen() {
 
   // Use user's Solana address from auth (biometric flow) OR Turnkey (TEE flow)
   const walletAddress = user?.solanaAddress || turnkey.walletAddress;
+
+  // ShadowWire relay action for sender privacy (User → Pool → Stealth)
+  const relayToStealth = useAction(api.shadowwire.relay.relayToStealth);
 
   // Convex mutations for transfer records
   const createTransfer = useMutation(api.transfers.transfers.create);
@@ -226,6 +232,8 @@ export default function TransferConfirmationScreen() {
       if (isPrivateTransferAvailable) {
         console.log("[Confirmation] Executing shielded transfer via ShadowWire", {
           zkCompression: isZkCompressionAvailable,
+          relayAvailable: isRelayAvailable,
+          relayPool: relayPoolAddress?.slice(0, 8),
           features: shadowWireStatus?.features,
         });
         setExecutionPhase("shielding");
@@ -273,28 +281,38 @@ export default function TransferConfirmationScreen() {
             ? Number(amount.amountBaseUnits)
             : Number(amount.amountBaseUnits);
 
+          // Determine if we should use relay for sender privacy
+          const useRelay = isRelayAvailable && !!relayPoolAddress;
+
           console.log("[Confirmation] Private transfer with signer:", {
             from: localKeypair.publicKey.toBase58().slice(0, 8) + "...",
             to: stealthAddress.publicAddress.slice(0, 8) + "...",
             amountLamports,
+            useRelay,
+            relayPool: relayPoolAddress?.slice(0, 8),
           });
 
           // Execute private transfer - use ZK compressed when available
           // Pass the signer keypair for REAL on-chain transactions
+          // If relay is available, use it for sender privacy (User → Pool → Stealth)
           const privateResult = isZkCompressionAvailable
             ? await executeZkPrivateTransfer(
                 localKeypair.publicKey.toBase58(),
                 stealthAddress.publicAddress,
                 amountLamports,
                 token.mint === "native" ? undefined : token.mint,
-                localKeypair
+                localKeypair,
+                useRelay,
+                useRelay ? relayToStealth : undefined
               )
             : await executePrivateTransfer(
                 localKeypair.publicKey.toBase58(),
                 stealthAddress.publicAddress,
                 amountLamports,
                 token.mint === "native" ? undefined : token.mint,
-                localKeypair
+                localKeypair,
+                useRelay,
+                useRelay ? relayToStealth : undefined
               );
 
           if (privateResult.success && privateResult.txSignature) {
@@ -326,6 +344,14 @@ export default function TransferConfirmationScreen() {
               explorerUrl: `${explorerBase}/${privateResult.txSignature}${explorerCluster}`,
             };
 
+            const usedRelay = privateResult.usedRelay ?? false;
+            console.log("[Confirmation] Private transfer success:", {
+              signature: privateResult.txSignature?.slice(0, 16) + "...",
+              usedRelay,
+              depositTx: privateResult.depositSignature?.slice(0, 16),
+              relayTx: privateResult.relaySignature?.slice(0, 16),
+            });
+
             router.push({
               pathname: "/transfer/success",
               params: {
@@ -336,6 +362,7 @@ export default function TransferConfirmationScreen() {
                 tokenSymbol: token.symbol,
                 feesPaid: fees.totalFeesUsd.toString(),
                 shielded: "true", // Mark as shielded transfer
+                senderPrivate: usedRelay ? "true" : "false", // Sender privacy via relay
               },
             });
             return; // Exit early - transfer complete
@@ -636,7 +663,7 @@ export default function TransferConfirmationScreen() {
       setIsConfirming(false);
       setExecutionPhase("idle");
     }
-  }, [recipient, token, amount, fees, userId, walletAddress, turnkey, params, createTransfer, updateTransferStatus, credentialId, privacyState, isPrivateTransferAvailable, isZkCompressionAvailable, generateStealthAddress, generateZkCompressedStealthAddress, executePrivateTransfer, executeZkPrivateTransfer]);
+  }, [recipient, token, amount, fees, userId, walletAddress, turnkey, params, createTransfer, updateTransferStatus, credentialId, privacyState, isPrivateTransferAvailable, isZkCompressionAvailable, isRelayAvailable, relayPoolAddress, generateStealthAddress, generateZkCompressedStealthAddress, executePrivateTransfer, executeZkPrivateTransfer, relayToStealth]);
 
   // Show error if params missing
   if (!recipient || !token || !amount || !fees) {

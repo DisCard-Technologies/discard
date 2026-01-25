@@ -74,6 +74,7 @@ import type * as realtime_optimistic from "../realtime/optimistic.js";
 import type * as scripts_bulkCreateCards from "../scripts/bulkCreateCards.js";
 import type * as scripts_migrateEthereumWallets from "../scripts/migrateEthereumWallets.js";
 import type * as scripts_reprovisionCards from "../scripts/reprovisionCards.js";
+import type * as shadowwire_relay from "../shadowwire/relay.js";
 import type * as tee_magicblock from "../tee/magicblock.js";
 import type * as tee_turnkey from "../tee/turnkey.js";
 import type * as transfers_contacts from "../transfers/contacts.js";
@@ -163,6 +164,7 @@ declare const fullApi: ApiFromModules<{
   "scripts/bulkCreateCards": typeof scripts_bulkCreateCards;
   "scripts/migrateEthereumWallets": typeof scripts_migrateEthereumWallets;
   "scripts/reprovisionCards": typeof scripts_reprovisionCards;
+  "shadowwire/relay": typeof shadowwire_relay;
   "tee/magicblock": typeof tee_magicblock;
   "tee/turnkey": typeof tee_turnkey;
   "transfers/contacts": typeof transfers_contacts;

@@ -47,6 +47,9 @@ const RPC_URL = process.env.EXPO_PUBLIC_HELIUS_RPC_URL || "https://api.mainnet-b
 // ShadowWire relayer endpoints
 const SHADOWWIRE_RELAYER_URL = process.env.EXPO_PUBLIC_SHADOWWIRE_RELAYER || "https://relayer.shadowwire.io";
 
+// ShadowWire Pool address for sender privacy (funds go: User → Pool → Stealth)
+const SHADOWWIRE_POOL_ADDRESS = process.env.EXPO_PUBLIC_SHADOWWIRE_POOL_ADDRESS || "";
+
 // ShadowWire program address (placeholder - will be actual program ID)
 const SHADOWWIRE_PROGRAM_ID = "SWire11111111111111111111111111111111111111";
 
@@ -76,6 +79,14 @@ export interface PrivateTransferRequest {
   encryptedMemo?: string;
   /** Optional signer keypair for real transaction submission */
   signer?: Keypair;
+  /** Use relay pool for sender privacy (User → Pool → Stealth) */
+  useRelay?: boolean;
+  /** Convex action to call for relay (injected from React component) */
+  relayAction?: (args: {
+    stealthAddress: string;
+    amountLamports: number;
+    depositTxSignature: string;
+  }) => Promise<{ success: boolean; relaySignature?: string; error?: string }>;
 }
 
 export interface PrivateTransferResult {
@@ -89,6 +100,12 @@ export interface PrivateTransferResult {
   /** Encrypted note for recipient */
   encryptedNote?: string;
   error?: string;
+  /** Whether relay was used for sender privacy */
+  usedRelay?: boolean;
+  /** Deposit transaction (User → Pool) */
+  depositSignature?: string;
+  /** Relay transaction (Pool → Stealth) */
+  relaySignature?: string;
 }
 
 export interface TransferScanResult {
@@ -455,6 +472,7 @@ export class ShadowWireService {
 
       // 4. Build and submit transaction via relayer
       // Using relayer for additional privacy (hides sender IP)
+      // If useRelay is true, uses Pool for sender privacy
       // If signer is provided, submits a REAL transaction
       const result = await this.submitViaRelayer({
         proof: ringProof,
@@ -463,10 +481,13 @@ export class ShadowWireService {
         tokenMint: request.tokenMint,
         signer: request.signer,
         recipientAddress: request.recipientStealthAddress,
+        useRelay: request.useRelay,
+        relayAction: request.relayAction,
       });
 
       const isReal = !result.txSignature.startsWith("sw_");
-      console.log("[ShadowWire] Private transfer submitted:", result.txSignature, isReal ? "(REAL)" : "(demo)");
+      const modeLabel = result.usedRelay ? "(RELAY)" : isReal ? "(REAL)" : "(demo)";
+      console.log("[ShadowWire] Private transfer submitted:", result.txSignature, modeLabel);
 
       return {
         success: true,
@@ -474,6 +495,9 @@ export class ShadowWireService {
         ringProof: ringProof,
         nullifier: result.nullifier,
         encryptedNote: encryptedNote.ciphertext,
+        usedRelay: result.usedRelay,
+        depositSignature: result.depositSignature,
+        relaySignature: result.relaySignature,
       };
     } catch (error) {
       console.error("[ShadowWire] Transfer failed:", error);
@@ -584,6 +608,7 @@ export class ShadowWireService {
       }
 
       // 5. Submit via relayer with ZK proof
+      // If useRelay is true, uses Pool for sender privacy
       // If signer is provided, submits a REAL transaction
       const relayerResult = await this.submitViaRelayer({
         proof: zkProof ? JSON.stringify(zkProof) : stateHash,
@@ -592,9 +617,12 @@ export class ShadowWireService {
         tokenMint: request.tokenMint,
         signer: request.signer,
         recipientAddress: request.recipientStealthAddress,
+        useRelay: request.useRelay,
+        relayAction: request.relayAction,
       });
 
-      console.log("[ShadowWire] ZK private transfer submitted:", relayerResult.txSignature);
+      const modeLabel = relayerResult.usedRelay ? "(RELAY)" : "(REAL)";
+      console.log("[ShadowWire] ZK private transfer submitted:", relayerResult.txSignature, modeLabel);
 
       return {
         success: true,
@@ -604,6 +632,9 @@ export class ShadowWireService {
         zkProof,
         merkleTree,
         leafIndex,
+        usedRelay: relayerResult.usedRelay,
+        depositSignature: relayerResult.depositSignature,
+        relaySignature: relayerResult.relaySignature,
       };
     } catch (error) {
       console.error("[ShadowWire] ZK transfer failed:", error);
@@ -1319,13 +1350,136 @@ export class ShadowWireService {
   }
 
   /**
+   * Submit a RELAYED transaction for sender privacy
+   *
+   * Two-step process:
+   * 1. User sends to ShadowWire Pool (visible: User → Pool)
+   * 2. Pool forwards to Stealth Address (visible: Pool → Stealth)
+   *
+   * Result: On-chain observer cannot directly link User to Stealth
+   *
+   * @param params - Transaction parameters including relay action
+   * @returns Both deposit and relay transaction signatures
+   */
+  private async submitRelayedTransaction(params: {
+    signer: Keypair;
+    stealthAddress: string;
+    amountLamports: number;
+    relayAction: (args: {
+      stealthAddress: string;
+      amountLamports: number;
+      depositTxSignature: string;
+    }) => Promise<{ success: boolean; relaySignature?: string; error?: string }>;
+  }): Promise<{
+    depositSignature: string;
+    relaySignature: string;
+    nullifier: string;
+  }> {
+    if (!SHADOWWIRE_POOL_ADDRESS) {
+      throw new Error("ShadowWire Pool not configured");
+    }
+
+    console.log("[ShadowWire] Submitting RELAYED transaction for sender privacy...", {
+      from: params.signer.publicKey.toBase58().slice(0, 8) + "...",
+      pool: SHADOWWIRE_POOL_ADDRESS.slice(0, 8) + "...",
+      stealth: params.stealthAddress.slice(0, 8) + "...",
+      amount: params.amountLamports / LAMPORTS_PER_SOL,
+    });
+
+    try {
+      // Step 1: User sends to Pool
+      console.log("[ShadowWire] Step 1: Depositing to relay pool...");
+
+      const depositTx = new Transaction().add(
+        SystemProgram.transfer({
+          fromPubkey: params.signer.publicKey,
+          toPubkey: new PublicKey(SHADOWWIRE_POOL_ADDRESS),
+          lamports: params.amountLamports,
+        })
+      );
+
+      const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash("confirmed");
+      depositTx.recentBlockhash = blockhash;
+      depositTx.lastValidBlockHeight = lastValidBlockHeight;
+      depositTx.feePayer = params.signer.publicKey;
+
+      depositTx.sign(params.signer);
+
+      const depositSignature = await this.connection.sendRawTransaction(
+        depositTx.serialize(),
+        { skipPreflight: false, preflightCommitment: "confirmed" }
+      );
+
+      console.log("[ShadowWire] Deposit sent:", depositSignature);
+
+      // Wait for deposit confirmation
+      const depositConfirmation = await this.connection.confirmTransaction(
+        { signature: depositSignature, blockhash, lastValidBlockHeight },
+        "confirmed"
+      );
+
+      if (depositConfirmation.value.err) {
+        throw new Error(`Deposit failed: ${JSON.stringify(depositConfirmation.value.err)}`);
+      }
+
+      console.log("[ShadowWire] Deposit confirmed:", depositSignature);
+
+      // Step 2: Call Convex action to relay from Pool → Stealth
+      console.log("[ShadowWire] Step 2: Triggering relay to stealth address...");
+
+      const relayResult = await params.relayAction({
+        stealthAddress: params.stealthAddress,
+        amountLamports: params.amountLamports,
+        depositTxSignature: depositSignature,
+      });
+
+      if (!relayResult.success || !relayResult.relaySignature) {
+        throw new Error(relayResult.error || "Relay action failed");
+      }
+
+      console.log("[ShadowWire] Relay confirmed:", relayResult.relaySignature);
+
+      // Generate nullifier
+      const nullifierData = new TextEncoder().encode(
+        `relay:${depositSignature}:${relayResult.relaySignature}:${Date.now()}`
+      );
+      const nullifier = bs58.encode(sha256(nullifierData));
+
+      return {
+        depositSignature,
+        relaySignature: relayResult.relaySignature,
+        nullifier,
+      };
+    } catch (error) {
+      console.error("[ShadowWire] Relayed transaction failed:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Check if relay pool is configured and available
+   */
+  isRelayAvailable(): boolean {
+    return !!SHADOWWIRE_POOL_ADDRESS && SHADOWWIRE_POOL_ADDRESS.length > 0;
+  }
+
+  /**
+   * Get the relay pool address
+   */
+  getRelayPoolAddress(): string | null {
+    return SHADOWWIRE_POOL_ADDRESS || null;
+  }
+
+  /**
    * Submit transaction via ShadowWire relayer for privacy
    *
    * The relayer hides the sender's IP address and submits the
    * transaction on their behalf.
    *
-   * If a signer is provided, submits a REAL transaction.
-   * Otherwise, returns a mock signature (demo mode).
+   * Modes:
+   * 1. Relay mode (useRelay=true): User → Pool → Stealth (full sender privacy)
+   * 2. Direct mode (signer provided): User → Stealth (recipient privacy only)
+   * 3. Demo mode (no signer): Mock signature
    */
   private async submitViaRelayer(params: {
     proof: string;
@@ -1334,16 +1488,47 @@ export class ShadowWireService {
     tokenMint?: string;
     signer?: Keypair;
     recipientAddress?: string;
-  }): Promise<{ txSignature: string; nullifier: string }> {
-    // If signer and recipient are provided, submit a REAL transaction
+    useRelay?: boolean;
+    relayAction?: (args: {
+      stealthAddress: string;
+      amountLamports: number;
+      depositTxSignature: string;
+    }) => Promise<{ success: boolean; relaySignature?: string; error?: string }>;
+  }): Promise<{
+    txSignature: string;
+    nullifier: string;
+    usedRelay?: boolean;
+    depositSignature?: string;
+    relaySignature?: string;
+  }> {
+    // Mode 1: Relay mode for full sender privacy
+    if (params.useRelay && params.signer && params.recipientAddress && params.relayAction) {
+      console.log("[ShadowWire] Using RELAY mode for sender privacy");
+      const relayResult = await this.submitRelayedTransaction({
+        signer: params.signer,
+        stealthAddress: params.recipientAddress,
+        amountLamports: params.amount,
+        relayAction: params.relayAction,
+      });
+      return {
+        txSignature: relayResult.relaySignature, // Show relay tx as main signature
+        nullifier: relayResult.nullifier,
+        usedRelay: true,
+        depositSignature: relayResult.depositSignature,
+        relaySignature: relayResult.relaySignature,
+      };
+    }
+
+    // Mode 2: Direct mode (recipient privacy only)
     if (params.signer && params.recipientAddress) {
-      console.log("[ShadowWire] Signer provided - submitting REAL transaction");
-      return this.submitRealTransaction({
+      console.log("[ShadowWire] Signer provided - submitting REAL transaction (direct mode)");
+      const result = await this.submitRealTransaction({
         signer: params.signer,
         recipientAddress: params.recipientAddress,
         amountLamports: params.amount,
         tokenMint: params.tokenMint,
       });
+      return { ...result, usedRelay: false };
     }
 
     // Otherwise, use mock/demo mode
