@@ -248,13 +248,25 @@ export default function TransferScreen() {
     return tokenHoldings.find(h => h.symbol === selectedToken) || null;
   }, [tokenHoldings, selectedToken]);
 
-  // Cross-currency settlement
-  const paymentAmountBaseUnits = useMemo(() => {
+  // Convert USD amount to token amount using price
+  const tokenAmount = useMemo(() => {
     if (!amount || amount === '0' || !selectedPaymentToken) return undefined;
-    const parsed = parseFloat(amount);
-    if (isNaN(parsed) || parsed <= 0) return undefined;
-    return Math.floor(parsed * Math.pow(10, selectedPaymentToken.decimals)).toString();
+    const usdAmount = parseFloat(amount);
+    if (isNaN(usdAmount) || usdAmount <= 0) return undefined;
+
+    const price = selectedPaymentToken.priceUsd;
+    if (!price || price <= 0) return undefined;
+
+    // USD amount / token price = token amount
+    return usdAmount / price;
   }, [amount, selectedPaymentToken]);
+
+  // Cross-currency settlement - convert token amount to base units
+  const paymentAmountBaseUnits = useMemo(() => {
+    if (tokenAmount === undefined || !selectedPaymentToken) return undefined;
+    // Token amount * 10^decimals = base units (lamports for SOL, micro-units for tokens)
+    return Math.floor(tokenAmount * Math.pow(10, selectedPaymentToken.decimals)).toString();
+  }, [tokenAmount, selectedPaymentToken]);
 
   const {
     settlementToken,
@@ -312,15 +324,21 @@ export default function TransferScreen() {
       return;
     }
 
+    // Check if we can convert USD to token amount
+    if (tokenAmount === undefined || !paymentAmountBaseUnits) {
+      Alert.alert('Price Unavailable', `Unable to get price for ${selectedToken}. Please try again.`);
+      return;
+    }
+
     // If no contact selected, go to send screen for recipient selection
     if (!selectedContact) {
       (router.push as any)({
         pathname: '/transfer/send',
         params: {
           amount: JSON.stringify({
-            amount: parseFloat(amount),
-            amountUsd: parseFloat(amount),
-            amountBaseUnits: paymentAmountBaseUnits || (parseFloat(amount) * 1e6).toString(),
+            amount: tokenAmount || 0, // Token amount (converted from USD)
+            amountUsd: parseFloat(amount), // Original USD amount entered
+            amountBaseUnits: paymentAmountBaseUnits || '0',
           }),
           token: JSON.stringify({
             symbol: selectedToken,
@@ -355,9 +373,9 @@ export default function TransferScreen() {
           balanceUsd: 0,
         }),
         amount: JSON.stringify({
-          amount: parseFloat(amount),
-          amountUsd: parseFloat(amount),
-          amountBaseUnits: paymentAmountBaseUnits || (parseFloat(amount) * 1e6).toString(),
+          amount: tokenAmount || 0, // Token amount (converted from USD)
+          amountUsd: parseFloat(amount), // Original USD amount entered
+          amountBaseUnits: paymentAmountBaseUnits || '0',
         }),
         fees: JSON.stringify({
           networkFee: dynamicFees.networkFee,
@@ -378,7 +396,7 @@ export default function TransferScreen() {
         }),
       },
     });
-  }, [amount, selectedContact, selectedToken, selectedPaymentToken, paymentAmountBaseUnits, settlementToken, needsSwap, estimatedReceivedFormatted, dynamicFees]);
+  }, [amount, selectedContact, selectedToken, selectedPaymentToken, tokenAmount, paymentAmountBaseUnits, settlementToken, needsSwap, estimatedReceivedFormatted, dynamicFees]);
 
   // Request payment
   const handleRequest = useCallback(() => {
