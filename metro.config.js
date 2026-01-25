@@ -4,7 +4,7 @@ const config = getDefaultConfig(__dirname);
 
 // Exclude native build directories from Metro's file watcher
 // These directories are created during Android/iOS native builds and cause ENOENT errors
-config.watcher.additionalExclusions = [
+config.resolver.blockList = [
   /node_modules\/.*\/android\/\.cxx\/.*/,
   /node_modules\/.*\/\.cxx\/.*/,
   /android\/\.cxx\/.*/,
