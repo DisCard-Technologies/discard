@@ -7,6 +7,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useQuery, useAction } from "convex/react";
 import { api } from "@/convex/_generated/api";
+import { useCurrentCredentialId } from "@/stores/authConvex";
 import type { StackTransaction, TransactionType } from "@/components/transaction-stack";
 
 // Known token logos for in-app transfers
@@ -69,16 +70,19 @@ export function useTransactionHistory(
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Get credential for authenticated queries
+  const credentialId = useCurrentCredentialId();
+
   // Subscribe to cached on-chain transactions
   const onChainTransactions = useQuery(
     api.holdings.transactionHistory.getRecentTransactions,
     walletAddress ? { walletAddress, limit } : "skip"
   );
 
-  // Subscribe to in-app transfers
+  // Subscribe to in-app transfers (requires credentialId for auth)
   const inAppTransfers = useQuery(
     api.transfers.transfers.getRecent,
-    mergeWithInApp ? { limit } : "skip"
+    mergeWithInApp && credentialId ? { limit, credentialId } : "skip"
   );
 
   // Action to refresh from Helius

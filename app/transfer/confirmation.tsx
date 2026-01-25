@@ -254,12 +254,17 @@ export default function TransferConfirmationScreen() {
           // Fall through to regular transfer
         } else if (localKeypair) {
           // Create Convex transfer record for private transfer
+          // Store amount as base units (lamports) for consistent display
+          const amountBaseUnits = typeof amount.amountBaseUnits === 'string'
+            ? Number(amount.amountBaseUnits)
+            : Number(amount.amountBaseUnits);
+
           transferId = await createTransfer({
             recipientType: recipient.type,
             recipientIdentifier: recipient.input,
             recipientAddress: stealthAddress.publicAddress, // Use stealth address
             recipientDisplayName: recipient.displayName,
-            amount: amount.amount,
+            amount: amountBaseUnits,
             token: token.symbol,
             tokenMint: token.mint,
             tokenDecimals: token.decimals,
@@ -439,12 +444,17 @@ export default function TransferConfirmationScreen() {
       console.log("[Confirmation] Simulation passed");
 
       // Step 4: Create Convex transfer record
+      // Store amount as base units (lamports) for consistent display
+      const amountInBaseUnits = typeof amount.amountBaseUnits === 'string'
+        ? Number(amount.amountBaseUnits)
+        : Number(amount.amountBaseUnits);
+
       transferId = await createTransfer({
         recipientType: recipient.type,
         recipientIdentifier: recipient.input,
         recipientAddress: recipient.address,
         recipientDisplayName: recipient.displayName,
-        amount: amount.amount,
+        amount: amountInBaseUnits,
         token: token.symbol,
         tokenMint: token.mint,
         tokenDecimals: token.decimals,
