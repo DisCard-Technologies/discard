@@ -12,12 +12,12 @@ import { useState, useCallback, useEffect, useMemo } from "react";
 import {
   StyleSheet,
   View,
-  SafeAreaView,
   Pressable,
   TextInput,
   ScrollView,
   ActivityIndicator,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { EyeOff, Shield, Clock, Zap } from "lucide-react-native";
