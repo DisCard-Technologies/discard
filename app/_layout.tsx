@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { View, Text, Platform } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { router, Stack, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -7,8 +7,8 @@ import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useFonts } from 'expo-font';
+import * as SplashScreen from 'expo-splash-screen';
 import 'react-native-reanimated';
-import * as SecureStore from 'expo-secure-store';
 
 import { ConvexProvider, ConvexReactClient } from 'convex/react';
 import { AuthProvider, useAuth } from '@/stores/authConvex';
@@ -17,6 +17,9 @@ import { FundingProvider } from '@/stores/fundingConvex';
 import { WalletsProvider } from '@/stores/walletsConvex';
 import { CryptoProvider } from '@/stores/cryptoConvex';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+
+// Prevent splash screen from auto-hiding
+SplashScreen.preventAutoHideAsync();
 
 // Initialize Convex client
 const convexUrl = process.env.EXPO_PUBLIC_CONVEX_URL;
@@ -61,67 +64,25 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
     }
   }, [auth.isLoading, auth.isAuthenticated, segments]);
 
-  // Show loading screen while auth is loading
-  if (auth.isLoading) {
-    return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#0A0A0A' }}>
-        <Text style={{ fontSize: 64, marginBottom: 16 }}>💳</Text>
-        <Text style={{ fontSize: 18, fontWeight: '600', color: '#FFFFFF' }}>Loading...</Text>
-      </View>
-    );
-  }
-
-  return <>{children}</>;
+  // Always render children - show loading overlay if auth is loading
+  // This prevents unmounting/remounting the navigation tree
+  return (
+    <>
+      {children}
+      {auth.isLoading && (
+        <View style={styles.loadingOverlay}>
+          <Text style={styles.loadingEmoji}>💳</Text>
+          <Text style={styles.loadingText}>Loading...</Text>
+        </View>
+      )}
+    </>
+  );
 }
 
-export default function RootLayout() {
+function RootLayoutNav() {
   const colorScheme = useColorScheme();
-  const [isReady, setIsReady] = useState(false);
 
-  // Load custom fonts
-  const [fontsLoaded, fontError] = useFonts({
-    'InstrumentSans-ExtraLight': require('../assets/fonts/InstrumentSans-ExtraLight.ttf'),
-    'InstrumentSans-Regular': require('../assets/fonts/InstrumentSans-Regular.ttf'),
-    'InstrumentSans-Medium': require('../assets/fonts/InstrumentSans-Medium.ttf'),
-    'JetBrainsMono-Regular': require('../assets/fonts/JetBrainsMono-Regular.ttf'),
-  });
-
-  // Log font loading issues
-  useEffect(() => {
-    if (fontError) {
-      console.warn('[Layout] Font loading error:', fontError);
-    }
-    if (fontsLoaded) {
-      console.log('[Layout] Fonts loaded successfully');
-    }
-  }, [fontsLoaded, fontError]);
-
-  // Mark app ready once fonts are loaded, errored, or after timeout
-  useEffect(() => {
-    if (fontsLoaded || fontError) {
-      setIsReady(true);
-      return;
-    }
-    // Timeout fallback - proceed after 3 seconds even if fonts haven't loaded
-    const timeout = setTimeout(() => {
-      console.warn('[Layout] Font loading timeout - proceeding without custom fonts');
-      setIsReady(true);
-    }, 3000);
-    return () => clearTimeout(timeout);
-  }, [fontsLoaded, fontError]);
-
-  // Show loading screen until app is ready (fonts loaded, errored, or timeout)
-  if (!isReady) {
-    return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#0A0A0A' }}>
-        <Text style={{ fontSize: 64, marginBottom: 16 }}>💳</Text>
-        <Text style={{ fontSize: 18, fontWeight: '600', color: '#FFFFFF' }}>Starting...</Text>
-      </View>
-    );
-  }
-
-  // Wrap with Convex provider if available
-  const content = (
+  return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <KeyboardProvider>
@@ -163,6 +124,51 @@ export default function RootLayout() {
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );
+}
+
+export default function RootLayout() {
+  const [isReady, setIsReady] = useState(false);
+
+  // Load custom fonts
+  const [fontsLoaded, fontError] = useFonts({
+    'InstrumentSans-ExtraLight': require('../assets/fonts/InstrumentSans-ExtraLight.ttf'),
+    'InstrumentSans-Regular': require('../assets/fonts/InstrumentSans-Regular.ttf'),
+    'InstrumentSans-Medium': require('../assets/fonts/InstrumentSans-Medium.ttf'),
+    'JetBrainsMono-Regular': require('../assets/fonts/JetBrainsMono-Regular.ttf'),
+  });
+
+  // Log font loading issues
+  useEffect(() => {
+    if (fontError) {
+      console.warn('[Layout] Font loading error:', fontError);
+    }
+    if (fontsLoaded) {
+      console.log('[Layout] Fonts loaded successfully');
+    }
+  }, [fontsLoaded, fontError]);
+
+  // Mark app ready once fonts are loaded, errored, or after timeout
+  useEffect(() => {
+    async function prepare() {
+      if (fontsLoaded || fontError) {
+        setIsReady(true);
+        await SplashScreen.hideAsync();
+        return;
+      }
+      // Timeout fallback - proceed after 3 seconds even if fonts haven't loaded
+      const timeout = setTimeout(async () => {
+        console.warn('[Layout] Font loading timeout - proceeding without custom fonts');
+        setIsReady(true);
+        await SplashScreen.hideAsync();
+      }, 3000);
+      return () => clearTimeout(timeout);
+    }
+    prepare();
+  }, [fontsLoaded, fontError]);
+
+  // Always render the navigation tree - splash screen handles the loading state
+  // This prevents the "linking configured in multiple places" error
+  const content = <RootLayoutNav />;
 
   // Only wrap with ConvexProvider if URL is configured
   if (convex) {
@@ -175,3 +181,25 @@ export default function RootLayout() {
 
   return content;
 }
+
+const styles = StyleSheet.create({
+  loadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#0A0A0A',
+  },
+  loadingEmoji: {
+    fontSize: 64,
+    marginBottom: 16,
+  },
+  loadingText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+});
