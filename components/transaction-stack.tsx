@@ -168,9 +168,9 @@ export function TransactionStack({
                   </View>
                 </View>
                 <View style={styles.amountContainer}>
-                  <ThemedText style={styles.tokenAmount}>{tx.tokenAmount}</ThemedText>
-                  <ThemedText style={[styles.fiatValue, { color: mutedColor }]}>
-                    {tx.fiatValue}
+                  <ThemedText style={styles.fiatValue}>{tx.fiatValue}</ThemedText>
+                  <ThemedText style={[styles.tokenAmount, { color: mutedColor }]}>
+                    {tx.tokenAmount}
                   </ThemedText>
                 </View>
               </View>
@@ -288,12 +288,12 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
   },
   tokenAmount: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  fiatValue: {
     fontSize: 14,
     marginTop: 2,
+  },
+  fiatValue: {
+    fontSize: 16,
+    fontWeight: '600',
   },
   expandedContent: {
     flexDirection: 'row',
