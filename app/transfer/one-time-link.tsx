@@ -18,7 +18,7 @@ import {
   ScrollView,
   ActivityIndicator,
 } from "react-native";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { EyeOff, Shield, Clock, Zap } from "lucide-react-native";
 import Animated, { FadeIn, FadeInUp } from "react-native-reanimated";
@@ -48,8 +48,20 @@ const TOKENS = [
 // ============================================================================
 
 export default function OneTimeLinkScreen() {
-  const [amount, setAmount] = useState("");
-  const [selectedToken, setSelectedToken] = useState(TOKENS[0]);
+  const params = useLocalSearchParams<{
+    amount?: string;
+    token?: string;
+    tokenMint?: string;
+    tokenDecimals?: string;
+  }>();
+
+  // Find initial token from params or default to USDC
+  const initialToken = params.token
+    ? TOKENS.find(t => t.symbol === params.token) || TOKENS[0]
+    : TOKENS[0];
+
+  const [amount, setAmount] = useState(params.amount || "");
+  const [selectedToken, setSelectedToken] = useState(initialToken);
   const [memo, setMemo] = useState("");
   const [generatedLink, setGeneratedLink] = useState<OneTimeLinkResult | null>(null);
   const [isCreating, setIsCreating] = useState(false);

@@ -1,15 +1,15 @@
 /**
  * DisCard 2035 - SuccessScreen Component
  *
- * Animated success screen for completed transfers:
- * - Animated checkmark
- * - Transaction summary
- * - Solscan link
- * - Done button
+ * Celebratory success screen for completed transfers:
+ * - Confetti animation
+ * - Haptic burst celebration
+ * - Clean hero layout
+ * - Subtle explorer link
  */
 
-import { useEffect } from "react";
-import { StyleSheet, View, Pressable, Linking } from "react-native";
+import { useEffect, useCallback } from "react";
+import { StyleSheet, View, Pressable, Linking, Dimensions, Text } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import Animated, {
   useAnimatedStyle,
@@ -18,16 +18,30 @@ import Animated, {
   withSequence,
   withDelay,
   withSpring,
+  withRepeat,
   Easing,
   FadeIn,
   FadeInUp,
+  FadeInDown,
 } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
 
-import { ThemedText } from "@/components/themed-text";
 import { useThemeColor } from "@/hooks/use-theme-color";
 import { formatAddress } from "@/lib/transfer/address-resolver";
 import type { TransferResult, TransferRecipient } from "@/hooks/useTransfer";
+
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
+
+// Confetti colors
+const CONFETTI_COLORS = [
+  "#FFD700", // Gold
+  "#FF6B6B", // Coral
+  "#4ECDC4", // Teal
+  "#45B7D1", // Sky blue
+  "#96E6A1", // Mint
+  "#DDA0DD", // Plum
+  "#FF9F43", // Orange
+];
 
 // ============================================================================
 // Types
@@ -53,31 +67,152 @@ export interface SuccessScreenProps {
 }
 
 // ============================================================================
+// Confetti Particle Component
+// ============================================================================
+
+interface ConfettiParticleProps {
+  index: number;
+  color: string;
+}
+
+function ConfettiParticle({ index, color }: ConfettiParticleProps) {
+  const translateY = useSharedValue(-50);
+  const translateX = useSharedValue(0);
+  const rotate = useSharedValue(0);
+  const opacity = useSharedValue(1);
+  const scale = useSharedValue(1);
+
+  // Random starting position and physics
+  const startX = Math.random() * SCREEN_WIDTH - SCREEN_WIDTH / 2;
+  const endX = startX + (Math.random() - 0.5) * 200;
+  const duration = 2000 + Math.random() * 1000;
+  const delay = index * 30;
+  const size = 8 + Math.random() * 8;
+
+  useEffect(() => {
+    translateY.value = withDelay(
+      delay,
+      withTiming(SCREEN_HEIGHT * 0.8, { duration, easing: Easing.out(Easing.quad) })
+    );
+    translateX.value = withDelay(
+      delay,
+      withTiming(endX, { duration, easing: Easing.out(Easing.quad) })
+    );
+    rotate.value = withDelay(
+      delay,
+      withRepeat(withTiming(360, { duration: 1000 }), -1, false)
+    );
+    opacity.value = withDelay(
+      delay + duration * 0.6,
+      withTiming(0, { duration: duration * 0.4 })
+    );
+    scale.value = withDelay(
+      delay,
+      withSequence(
+        withSpring(1.2, { damping: 8 }),
+        withTiming(0.8, { duration: duration * 0.8 })
+      )
+    );
+  }, []);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: translateX.value },
+      { translateY: translateY.value },
+      { rotate: `${rotate.value}deg` },
+      { scale: scale.value },
+    ],
+    opacity: opacity.value,
+  }));
+
+  return (
+    <Animated.View
+      style={[
+        styles.confettiParticle,
+        {
+          left: SCREEN_WIDTH / 2 + startX,
+          width: size,
+          height: size * 0.6,
+          backgroundColor: color,
+          borderRadius: size / 4,
+        },
+        animatedStyle,
+      ]}
+    />
+  );
+}
+
+// ============================================================================
+// Confetti Burst Component
+// ============================================================================
+
+function ConfettiBurst() {
+  const particles = Array.from({ length: 50 }, (_, i) => ({
+    id: i,
+    color: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
+  }));
+
+  return (
+    <View style={styles.confettiContainer} pointerEvents="none">
+      {particles.map((particle) => (
+        <ConfettiParticle key={particle.id} index={particle.id} color={particle.color} />
+      ))}
+    </View>
+  );
+}
+
+// ============================================================================
+// Haptic Celebration Sequence
+// ============================================================================
+
+async function triggerCelebrationHaptics() {
+  // Initial success notification
+  await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+  // Burst sequence for extra celebration
+  await new Promise(resolve => setTimeout(resolve, 100));
+  await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  await new Promise(resolve => setTimeout(resolve, 80));
+  await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  await new Promise(resolve => setTimeout(resolve, 80));
+  await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+}
+
+// ============================================================================
 // Animated Checkmark Component
 // ============================================================================
 
 function AnimatedCheckmark() {
   const scale = useSharedValue(0);
   const opacity = useSharedValue(0);
-  const rotation = useSharedValue(-20);
+  const rotation = useSharedValue(-30);
+  const ringScale = useSharedValue(0.8);
+  const ringOpacity = useSharedValue(0);
 
   const successColor = useThemeColor({ light: "#4CAF50", dark: "#66BB6A" }, "text");
   const bgColor = useThemeColor(
-    { light: "rgba(76, 175, 80, 0.1)", dark: "rgba(102, 187, 106, 0.15)" },
+    { light: "rgba(76, 175, 80, 0.15)", dark: "rgba(102, 187, 106, 0.2)" },
     "background"
   );
 
   useEffect(() => {
-    // Trigger haptic on mount
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    // Trigger celebration haptics
+    triggerCelebrationHaptics();
 
-    // Animate checkmark
-    opacity.value = withTiming(1, { duration: 200 });
+    // Animate checkmark with more bounce
+    opacity.value = withTiming(1, { duration: 150 });
     scale.value = withSequence(
-      withTiming(1.2, { duration: 200, easing: Easing.out(Easing.back(2)) }),
-      withSpring(1, { damping: 12, stiffness: 200 })
+      withTiming(1.3, { duration: 250, easing: Easing.out(Easing.back(3)) }),
+      withSpring(1, { damping: 8, stiffness: 150 })
     );
-    rotation.value = withTiming(0, { duration: 300 });
+    rotation.value = withSpring(0, { damping: 12, stiffness: 100 });
+
+    // Animate ring burst
+    ringOpacity.value = withSequence(
+      withTiming(0.6, { duration: 200 }),
+      withDelay(300, withTiming(0, { duration: 400 }))
+    );
+    ringScale.value = withTiming(2, { duration: 600, easing: Easing.out(Easing.quad) });
   }, []);
 
   const animatedStyle = useAnimatedStyle(() => ({
@@ -88,16 +223,32 @@ function AnimatedCheckmark() {
     opacity: opacity.value,
   }));
 
+  const ringStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: ringScale.value }],
+    opacity: ringOpacity.value,
+  }));
+
   return (
-    <Animated.View
-      style={[
-        styles.checkmarkContainer,
-        { backgroundColor: bgColor },
-        animatedStyle,
-      ]}
-    >
-      <Ionicons name="checkmark" size={48} color={successColor} />
-    </Animated.View>
+    <View style={styles.checkmarkWrapper}>
+      {/* Expanding ring effect */}
+      <Animated.View
+        style={[
+          styles.checkmarkRing,
+          { borderColor: successColor },
+          ringStyle,
+        ]}
+      />
+      {/* Main checkmark */}
+      <Animated.View
+        style={[
+          styles.checkmarkContainer,
+          { backgroundColor: bgColor },
+          animatedStyle,
+        ]}
+      >
+        <Ionicons name="checkmark" size={56} color={successColor} />
+      </Animated.View>
+    </View>
   );
 }
 
@@ -117,11 +268,7 @@ export function SuccessScreen({
 }: SuccessScreenProps) {
   const primaryColor = useThemeColor({}, "tint");
   const mutedColor = useThemeColor({ light: "#687076", dark: "#9BA1A6" }, "icon");
-  const cardBg = useThemeColor({ light: "#f8f9fa", dark: "#1c1c1e" }, "background");
-  const borderColor = useThemeColor(
-    { light: "rgba(0,0,0,0.08)", dark: "rgba(255,255,255,0.1)" },
-    "background"
-  );
+  const textColor = useThemeColor({}, "text");
   const successColor = useThemeColor({ light: "#4CAF50", dark: "#66BB6A" }, "text");
 
   // Auto dismiss
@@ -133,149 +280,112 @@ export function SuccessScreen({
   }, [autoDismissMs, onDone]);
 
   // Open Solscan
-  const handleViewOnSolscan = () => {
+  const handleViewOnSolscan = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     Linking.openURL(result.explorerUrl);
-  };
+  }, [result.explorerUrl]);
+
+  // Handle done with haptic
+  const handleDone = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    onDone();
+  }, [onDone]);
 
   // Format recipient display
   const recipientDisplay =
     recipient.displayName || formatAddress(recipient.address, 6);
 
-  // Format confirmation time
-  const confirmationTimeDisplay = result.confirmationTimeMs < 1000
-    ? `${result.confirmationTimeMs}ms`
-    : `${(result.confirmationTimeMs / 1000).toFixed(1)}s`;
-
   return (
     <View style={styles.container}>
-      {/* Animated Checkmark */}
-      <AnimatedCheckmark />
+      {/* Confetti Burst */}
+      <ConfettiBurst />
 
-      {/* Success Title */}
-      <Animated.View entering={FadeIn.delay(200).duration(300)}>
-        <ThemedText style={styles.title}>Transfer Sent!</ThemedText>
-      </Animated.View>
+      {/* Main Content */}
+      <View style={styles.content}>
+        {/* Animated Checkmark */}
+        <AnimatedCheckmark />
 
-      {/* Amount Display */}
-      <Animated.View
-        entering={FadeInUp.delay(300).duration(300)}
-        style={styles.amountContainer}
-      >
-        <ThemedText style={styles.amountText}>{amountDisplay}</ThemedText>
-        <ThemedText style={[styles.amountUsd, { color: mutedColor }]}>
-          ≈ ${amountUsd.toFixed(2)} USD
-        </ThemedText>
-      </Animated.View>
+        {/* Success Title */}
+        <Animated.View entering={FadeIn.delay(200).duration(300)}>
+          <Text style={[styles.title, { color: textColor }]}>Sent!</Text>
+        </Animated.View>
 
-      {/* Transfer Details Card */}
-      <Animated.View
-        entering={FadeInUp.delay(400).duration(300)}
-        style={[styles.detailsCard, { backgroundColor: cardBg, borderColor }]}
-      >
+        {/* Amount Display */}
+        <Animated.View
+          entering={FadeInUp.delay(300).duration(300)}
+          style={styles.amountContainer}
+        >
+          <Text style={[styles.amountText, { color: textColor }]}>
+            ${amountUsd.toFixed(2)}
+          </Text>
+        </Animated.View>
+
+        {/* Arrow */}
+        <Animated.View
+          entering={FadeIn.delay(350).duration(200)}
+          style={styles.arrowContainer}
+        >
+          <Ionicons name="arrow-down" size={24} color={mutedColor} />
+        </Animated.View>
+
         {/* Recipient */}
-        <View style={styles.detailRow}>
-          <ThemedText style={[styles.detailLabel, { color: mutedColor }]}>
-            To
-          </ThemedText>
-          <View style={styles.recipientContainer}>
-            <ThemedText style={styles.detailValue} numberOfLines={1}>
-              {recipientDisplay}
-            </ThemedText>
-            {recipient.type === "sol_name" && (
-              <Ionicons name="checkmark-circle" size={14} color={successColor} />
-            )}
+        <Animated.View
+          entering={FadeInUp.delay(400).duration(300)}
+          style={styles.recipientContainer}
+        >
+          <View style={[styles.recipientAvatar, { backgroundColor: primaryColor }]}>
+            <Ionicons name="person" size={28} color="#fff" />
           </View>
-        </View>
+          <Text style={[styles.recipientName, { color: textColor }]} numberOfLines={1}>
+            {recipientDisplay}
+          </Text>
+        </Animated.View>
 
-        {/* Confirmation Time */}
-        <View style={styles.detailRow}>
-          <ThemedText style={[styles.detailLabel, { color: mutedColor }]}>
-            Confirmed in
-          </ThemedText>
-          <View style={styles.confirmationContainer}>
-            <ThemedText
-              style={[
-                styles.detailValue,
-                result.withinTarget && { color: successColor },
-              ]}
-            >
-              {confirmationTimeDisplay}
-            </ThemedText>
-            {result.withinTarget && (
-              <Ionicons name="flash" size={14} color={successColor} />
-            )}
-          </View>
-        </View>
-
-        {/* Fees Paid */}
-        <View style={styles.detailRow}>
-          <ThemedText style={[styles.detailLabel, { color: mutedColor }]}>
-            Fees paid
-          </ThemedText>
-          <ThemedText style={styles.detailValue}>
-            ${feesPaid.toFixed(4)}
-          </ThemedText>
-        </View>
-
-        {/* Transaction Signature */}
-        <View style={styles.signatureRow}>
-          <ThemedText style={[styles.detailLabel, { color: mutedColor }]}>
-            Signature
-          </ThemedText>
-          <ThemedText
-            style={[styles.signatureText, { color: mutedColor }]}
-            numberOfLines={1}
+        {/* Fast confirmation indicator */}
+        {result.withinTarget && (
+          <Animated.View
+            entering={FadeIn.delay(500).duration(300)}
+            style={[styles.fastBadge, { backgroundColor: `${successColor}15` }]}
           >
-            {formatAddress(result.signature, 8)}
-          </ThemedText>
-        </View>
-      </Animated.View>
+            <Ionicons name="flash" size={14} color={successColor} />
+            <Text style={[styles.fastBadgeText, { color: successColor }]}>
+              Instant
+            </Text>
+          </Animated.View>
+        )}
+      </View>
 
-      {/* Action Buttons */}
+      {/* Bottom Actions */}
       <Animated.View
-        entering={FadeInUp.delay(500).duration(300)}
-        style={styles.buttonsContainer}
+        entering={FadeInDown.delay(600).duration(300)}
+        style={styles.bottomActions}
       >
-        {/* View on Solscan */}
+        {/* View Details Link */}
         <Pressable
           onPress={handleViewOnSolscan}
           style={({ pressed }) => [
-            styles.secondaryButton,
-            { borderColor },
-            pressed && styles.buttonPressed,
+            styles.detailsLink,
+            pressed && styles.pressed,
           ]}
         >
-          <Ionicons name="open-outline" size={18} color={primaryColor} />
-          <ThemedText style={[styles.secondaryButtonText, { color: primaryColor }]}>
-            View on Solscan
-          </ThemedText>
+          <Ionicons name="open-outline" size={16} color={mutedColor} />
+          <Text style={[styles.detailsLinkText, { color: mutedColor }]}>
+            View on Explorer
+          </Text>
         </Pressable>
 
         {/* Done Button */}
         <Pressable
-          onPress={onDone}
+          onPress={handleDone}
           style={({ pressed }) => [
-            styles.primaryButton,
+            styles.doneButton,
             { backgroundColor: primaryColor },
-            pressed && styles.buttonPressed,
+            pressed && styles.pressed,
           ]}
         >
-          <ThemedText style={styles.primaryButtonText}>Done</ThemedText>
+          <Text style={styles.doneButtonText}>Done</Text>
         </Pressable>
       </Animated.View>
-
-      {/* Alpenglow Badge */}
-      {result.withinTarget && (
-        <Animated.View
-          entering={FadeIn.delay(700).duration(300)}
-          style={[styles.alpenglowBadge, { backgroundColor: `${successColor}15` }]}
-        >
-          <Ionicons name="flash" size={14} color={successColor} />
-          <ThemedText style={[styles.alpenglowText, { color: successColor }]}>
-            Alpenglow fast confirmation
-          </ThemedText>
-        </Animated.View>
-      )}
     </View>
   );
 }
@@ -287,115 +397,78 @@ export function SuccessScreen({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  confettiContainer: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 10,
+  },
+  confettiParticle: {
+    position: "absolute",
+    top: 0,
+  },
+  content: {
+    flex: 1,
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 24,
-    paddingVertical: 40,
   },
-  checkmarkContainer: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
+  checkmarkWrapper: {
+    width: 120,
+    height: 120,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 24,
+    marginBottom: 16,
+  },
+  checkmarkRing: {
+    position: "absolute",
+    width: 110,
+    height: 110,
+    borderRadius: 55,
+    borderWidth: 3,
+  },
+  checkmarkContainer: {
+    width: 110,
+    height: 110,
+    borderRadius: 55,
+    alignItems: "center",
+    justifyContent: "center",
   },
   title: {
-    fontSize: 28,
+    fontSize: 32,
     fontWeight: "700",
     textAlign: "center",
     marginBottom: 8,
   },
   amountContainer: {
     alignItems: "center",
-    marginBottom: 32,
+    marginBottom: 16,
   },
   amountText: {
-    fontSize: 36,
+    fontSize: 44,
     fontWeight: "700",
   },
-  amountUsd: {
-    fontSize: 16,
-    marginTop: 4,
-  },
-  detailsCard: {
-    width: "100%",
-    borderRadius: 16,
-    borderWidth: 1,
-    padding: 16,
-    marginBottom: 24,
-  },
-  detailRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingVertical: 10,
-  },
-  detailLabel: {
-    fontSize: 14,
-  },
-  detailValue: {
-    fontSize: 14,
-    fontWeight: "500",
-    maxWidth: "60%",
-    textAlign: "right",
+  arrowContainer: {
+    marginVertical: 12,
+    opacity: 0.5,
   },
   recipientContainer: {
-    flexDirection: "row",
     alignItems: "center",
-    gap: 4,
-  },
-  confirmationContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-  },
-  signatureRow: {
-    paddingTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: "rgba(0,0,0,0.05)",
-    marginTop: 4,
-  },
-  signatureText: {
-    fontSize: 12,
-    fontFamily: "monospace",
-    marginTop: 4,
-  },
-  buttonsContainer: {
-    width: "100%",
     gap: 12,
   },
-  primaryButton: {
-    width: "100%",
-    paddingVertical: 16,
-    borderRadius: 14,
+  recipientAvatar: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     alignItems: "center",
     justifyContent: "center",
   },
-  primaryButtonText: {
-    color: "#fff",
-    fontSize: 16,
+  recipientName: {
+    fontSize: 20,
     fontWeight: "600",
+    textAlign: "center",
+    maxWidth: "80%",
   },
-  secondaryButton: {
-    width: "100%",
-    paddingVertical: 14,
-    borderRadius: 14,
-    borderWidth: 1.5,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-  },
-  secondaryButtonText: {
-    fontSize: 15,
-    fontWeight: "500",
-  },
-  buttonPressed: {
-    opacity: 0.8,
-    transform: [{ scale: 0.98 }],
-  },
-  alpenglowBadge: {
+  fastBadge: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
@@ -404,9 +477,41 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     marginTop: 24,
   },
-  alpenglowText: {
-    fontSize: 13,
+  fastBadgeText: {
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  bottomActions: {
+    paddingHorizontal: 24,
+    paddingBottom: 40,
+    gap: 16,
+  },
+  detailsLink: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 12,
+  },
+  detailsLinkText: {
+    fontSize: 14,
     fontWeight: "500",
+  },
+  doneButton: {
+    width: "100%",
+    paddingVertical: 18,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  doneButtonText: {
+    color: "#fff",
+    fontSize: 17,
+    fontWeight: "600",
+  },
+  pressed: {
+    opacity: 0.8,
+    transform: [{ scale: 0.98 }],
   },
 });
 

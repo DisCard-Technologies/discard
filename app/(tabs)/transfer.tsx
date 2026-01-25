@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useRef } from 'react';
-import { StyleSheet, View, Pressable, ScrollView, TextInput, Keyboard, Alert, Text, ActivityIndicator, Dimensions } from 'react-native';
+import { StyleSheet, View, Pressable, ScrollView, TextInput, Keyboard, Alert, Text, ActivityIndicator, Dimensions, Image } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
@@ -38,6 +38,13 @@ import { useCrossCurrencyTransfer } from '@/hooks/useCrossCurrencyTransfer';
 import { useFeeEstimate } from '@/hooks/useFeeEstimate';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
+// Fallback token logos for common tokens
+const TOKEN_LOGO_FALLBACKS: Record<string, string> = {
+  USDC: 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v/logo.png',
+  SOL: 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png',
+  USDT: 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB/logo.png',
+};
 
 type TransferMode = 'pay' | 'request' | 'qr';
 type QRMode = 'scan' | 'mycode';
@@ -208,14 +215,16 @@ export default function TransferScreen() {
     }));
   }, [favoriteContacts]);
 
-  // Transform token holdings
+  // Transform token holdings with fallback logos
   const tokens = useMemo(() => {
     if (!tokenHoldings || tokenHoldings.length === 0) return [];
     return tokenHoldings.map(h => ({
       symbol: h.symbol,
       balance: h.balanceFormatted,
+      valueUsd: h.valueUsd,
       mint: h.mint,
       decimals: h.decimals,
+      logoUri: h.logoUri || TOKEN_LOGO_FALLBACKS[h.symbol] || null,
     }));
   }, [tokenHoldings]);
 
@@ -272,13 +281,7 @@ export default function TransferScreen() {
     ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`
     : 'No wallet';
 
-  // Get currency symbol for selected token ($ for stablecoins, token symbol for others)
-  const currencySymbol = useMemo(() => {
-    const stablecoins = ['USDC', 'USDT', 'BUSD', 'DAI', 'UST', 'USDP', 'TUSD'];
-    return stablecoins.includes(selectedToken) ? '$' : '';
-  }, [selectedToken]);
-
-  // Numpad handler
+  // Numpad handler - always USD (2 decimal places)
   const handleNumpadPress = useCallback((key: string) => {
     setAmount(prev => {
       if (key === 'del') {
@@ -289,11 +292,10 @@ export default function TransferScreen() {
         if (prev.includes('.')) return prev;
         return prev + '.';
       }
-      // Limit decimal places based on token
-      const decimals = selectedPaymentToken?.decimals || 2;
+      // Always limit to 2 decimal places (USD)
       if (prev.includes('.')) {
         const [, decimal] = prev.split('.');
-        if (decimal && decimal.length >= decimals) return prev;
+        if (decimal && decimal.length >= 2) return prev;
       }
       // Remove leading zero unless it's a decimal
       if (prev === '0' && key !== '.') return key;
@@ -301,7 +303,7 @@ export default function TransferScreen() {
       if (prev.length >= 10) return prev;
       return prev + key;
     });
-  }, [selectedPaymentToken]);
+  }, []);
 
   // Navigate to confirmation
   const handlePay = useCallback(() => {
@@ -324,6 +326,7 @@ export default function TransferScreen() {
             symbol: selectedToken,
             mint: selectedPaymentToken?.mint || 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
             decimals: selectedPaymentToken?.decimals || 6,
+            logoUri: selectedPaymentToken?.logoUri || TOKEN_LOGO_FALLBACKS[selectedToken] || null,
             balance: 0,
             balanceUsd: 0,
           }),
@@ -347,6 +350,7 @@ export default function TransferScreen() {
           symbol: selectedToken,
           mint: selectedPaymentToken?.mint || 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
           decimals: selectedPaymentToken?.decimals || 6,
+          logoUri: selectedPaymentToken?.logoUri || TOKEN_LOGO_FALLBACKS[selectedToken] || null,
           balance: 0,
           balanceUsd: 0,
         }),
@@ -382,8 +386,17 @@ export default function TransferScreen() {
       Alert.alert('Enter Amount', 'Please enter an amount to request');
       return;
     }
-    router.push('/transfer/request-link' as any);
-  }, [amount]);
+    (router.push as any)({
+      pathname: '/transfer/request-link',
+      params: {
+        amount: amount,
+        token: selectedToken,
+        tokenMint: selectedPaymentToken?.mint || 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+        tokenDecimals: selectedPaymentToken?.decimals || 6,
+        tokenLogoUri: selectedPaymentToken?.logoUri || TOKEN_LOGO_FALLBACKS[selectedToken] || '',
+      },
+    });
+  }, [amount, selectedToken, selectedPaymentToken]);
 
   // Copy address
   const handleCopy = useCallback(async () => {
@@ -416,25 +429,6 @@ export default function TransferScreen() {
     setSelectedContact(contact);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   }, []);
-
-  // Render token balance indicator
-  const renderBalance = () => {
-    if (tokensLoading) {
-      return <ActivityIndicator size="small" color={mutedColor} />;
-    }
-    const balance = selectedPaymentToken?.balanceFormatted || '0';
-    return (
-      <Pressable
-        onPress={() => setShowTokenSelector(true)}
-        style={styles.balanceButton}
-      >
-        <ThemedText style={[styles.balanceText, { color: mutedColor }]}>
-          {selectedToken} {balance}
-        </ThemedText>
-        <Ionicons name="chevron-down" size={14} color={mutedColor} />
-      </Pressable>
-    );
-  };
 
   // ============================================================================
   // RENDER: Main Numpad View (Pay/Request modes)
@@ -480,19 +474,102 @@ export default function TransferScreen() {
         )}
       </View>
 
-      {/* Amount Display */}
+      {/* Amount Display - Always USD, Centered */}
       <View style={styles.amountContainer}>
-        <View style={styles.amountRow}>
-          {currencySymbol ? (
-            <Text style={styles.amountCurrency}>{currencySymbol}</Text>
-          ) : null}
-          <Text style={styles.amountValue}>{amount}</Text>
+        <View style={styles.amountCentered}>
+          <View style={styles.amountRow}>
+            <Text style={styles.amountCurrency}>$</Text>
+            <Text style={styles.amountValue}>{amount}</Text>
+          </View>
+          {/* Token Selector Badge with Dropdown */}
+          <View style={styles.tokenBadgeContainer}>
+            <Pressable
+              onPress={() => setShowTokenSelector(!showTokenSelector)}
+              style={({ pressed }) => [
+                styles.inlineTokenBadge,
+                pressed && styles.inlineTokenBadgePressed,
+              ]}
+            >
+              {(selectedPaymentToken?.logoUri || TOKEN_LOGO_FALLBACKS[selectedToken]) && (
+                <Image
+                  source={{ uri: selectedPaymentToken?.logoUri || TOKEN_LOGO_FALLBACKS[selectedToken] }}
+                  style={styles.tokenBadgeImage}
+                />
+              )}
+              <Text style={styles.inlineTokenText}>{selectedToken}</Text>
+              <Ionicons
+                name={showTokenSelector ? "chevron-up" : "chevron-down"}
+                size={16}
+                color="#fff"
+              />
+            </Pressable>
+
+            {/* Dropdown Menu */}
+            {showTokenSelector && (
+              <Animated.View
+                entering={FadeIn.duration(150)}
+                style={[styles.tokenDropdown, { backgroundColor: cardColor }]}
+              >
+                <ScrollView
+                  style={styles.tokenDropdownScroll}
+                  showsVerticalScrollIndicator={false}
+                  nestedScrollEnabled
+                >
+                  {tokens.map((token) => (
+                    <Pressable
+                      key={token.symbol}
+                      onPress={() => {
+                        setSelectedToken(token.symbol);
+                        setShowTokenSelector(false);
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      }}
+                      style={({ pressed }) => [
+                        styles.tokenDropdownItem,
+                        selectedToken === token.symbol && styles.tokenDropdownItemSelected,
+                        pressed && styles.pressed,
+                      ]}
+                    >
+                      {token.logoUri ? (
+                        <Image
+                          source={{ uri: token.logoUri }}
+                          style={styles.tokenDropdownImage}
+                        />
+                      ) : (
+                        <View style={[styles.tokenDropdownImagePlaceholder, { backgroundColor: primaryColor }]}>
+                          <Text style={styles.tokenDropdownImagePlaceholderText}>
+                            {token.symbol[0]}
+                          </Text>
+                        </View>
+                      )}
+                      <Text style={[styles.tokenDropdownSymbol, { color: textColor }]}>
+                        {token.symbol}
+                      </Text>
+                      <Text style={[styles.tokenDropdownAvailable, { color: mutedColor }]}>
+                        Available: ${token.valueUsd?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}
+                      </Text>
+                      {selectedToken === token.symbol && (
+                        <Ionicons name="checkmark" size={20} color={primaryColor} />
+                      )}
+                    </Pressable>
+                  ))}
+                </ScrollView>
+              </Animated.View>
+            )}
+          </View>
+          {/* Balance indicator - always show USD value */}
+          <Text style={[styles.balanceIndicator, { color: mutedColor }]}>
+            Balance: ${tokensLoading ? '...' : (selectedPaymentToken?.valueUsd?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00')}
+          </Text>
         </View>
-        {!currencySymbol && (
-          <Text style={styles.amountTokenLabel}>{selectedToken}</Text>
-        )}
-        {renderBalance()}
       </View>
+
+      {/* Dismiss dropdown when tapping outside */}
+      {showTokenSelector && (
+        <Pressable
+          style={styles.dropdownBackdrop}
+          onPress={() => setShowTokenSelector(false)}
+        />
+      )}
 
       {/* White Numpad Container with buttons */}
       <View style={styles.numpadSection}>
@@ -556,41 +633,6 @@ export default function TransferScreen() {
         <View style={{ height: insets.bottom + 80 }} />
       </View>
 
-      {/* Token selector modal */}
-      {showTokenSelector && (
-        <Pressable
-          style={styles.modalOverlay}
-          onPress={() => setShowTokenSelector(false)}
-        >
-          <Animated.View
-            entering={FadeIn.duration(200)}
-            style={[styles.tokenModal, { backgroundColor: cardColor }]}
-          >
-            <ThemedText style={styles.tokenModalTitle}>Select Token</ThemedText>
-            <ScrollView style={styles.tokenList}>
-              {tokens.map((token) => (
-                <Pressable
-                  key={token.symbol}
-                  onPress={() => {
-                    setSelectedToken(token.symbol);
-                    setShowTokenSelector(false);
-                  }}
-                  style={({ pressed }) => [
-                    styles.tokenItem,
-                    selectedToken === token.symbol && { backgroundColor: `${primaryColor}20` },
-                    pressed && styles.pressed,
-                  ]}
-                >
-                  <ThemedText style={styles.tokenItemSymbol}>{token.symbol}</ThemedText>
-                  <ThemedText style={[styles.tokenItemBalance, { color: mutedColor }]}>
-                    {token.balance}
-                  </ThemedText>
-                </Pressable>
-              ))}
-            </ScrollView>
-          </Animated.View>
-        </Pressable>
-      )}
     </View>
   );
 
@@ -826,9 +868,18 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 24,
   },
+  amountCentered: {
+    alignItems: 'center',
+  },
   amountRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
+    justifyContent: 'center',
+  },
+  tokenBadgeContainer: {
+    marginTop: 16,
+    zIndex: 100,
+    alignItems: 'center',
   },
   amountCurrency: {
     fontSize: 48,
@@ -847,6 +898,92 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: 'rgba(16, 185, 129, 0.7)',
     marginTop: 4,
+  },
+  inlineTokenBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingLeft: 6,
+    paddingRight: 12,
+    paddingVertical: 6,
+    borderRadius: 24,
+    backgroundColor: 'rgba(16, 185, 129, 0.9)',
+  },
+  inlineTokenBadgePressed: {
+    backgroundColor: 'rgba(16, 185, 129, 0.7)',
+    transform: [{ scale: 0.96 }],
+  },
+  tokenBadgeImage: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+  },
+  inlineTokenText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  tokenDropdown: {
+    position: 'absolute',
+    top: '100%',
+    marginTop: 8,
+    width: 220,
+    borderRadius: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
+    overflow: 'hidden',
+    alignSelf: 'center',
+    left: -60,
+  },
+  tokenDropdownScroll: {
+    maxHeight: 240,
+  },
+  tokenDropdownItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    gap: 10,
+  },
+  tokenDropdownItemSelected: {
+    backgroundColor: 'rgba(16, 185, 129, 0.1)',
+  },
+  tokenDropdownImage: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+  },
+  tokenDropdownImagePlaceholder: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tokenDropdownImagePlaceholderText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  tokenDropdownSymbol: {
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  tokenDropdownAvailable: {
+    flex: 1,
+    fontSize: 13,
+    textAlign: 'right',
+  },
+  dropdownBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 50,
+  },
+  balanceIndicator: {
+    fontSize: 14,
+    marginTop: 12,
   },
   balanceButton: {
     flexDirection: 'row',
@@ -999,44 +1136,6 @@ const styles = StyleSheet.create({
   },
   pressed: {
     opacity: 0.7,
-  },
-  modalOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-  },
-  tokenModal: {
-    width: '100%',
-    maxHeight: '60%',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 24,
-  },
-  tokenModalTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 16,
-    textAlign: 'center',
-  },
-  tokenList: {
-    maxHeight: 300,
-  },
-  tokenItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 16,
-    paddingHorizontal: 16,
-    borderRadius: 12,
-    marginBottom: 8,
-  },
-  tokenItemSymbol: {
-    fontSize: 16,
-    fontWeight: '500',
-  },
-  tokenItemBalance: {
-    fontSize: 14,
   },
 
   // QR Mode Styles

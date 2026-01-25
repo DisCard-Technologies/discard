@@ -14,6 +14,8 @@ import {
   SafeAreaView,
   Pressable,
   ActivityIndicator,
+  Text,
+  Image,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -25,7 +27,7 @@ import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { useThemeColor } from "@/hooks/use-theme-color";
 import { useColorScheme } from "@/hooks/use-color-scheme";
-import { TransferSummary } from "@/components/transfer";
+// TransferSummary removed - using simplified inline display
 import { useAuth, useCurrentCredentialId, getLocalSolanaKeypair } from "@/stores/authConvex";
 import { usePrivateTransfer } from "@/hooks/usePrivateTransfer";
 import { useMutation } from "convex/react";
@@ -118,6 +120,7 @@ export default function TransferConfirmationScreen() {
   const isDark = colorScheme === "dark";
   const primaryColor = useThemeColor({}, "tint");
   const mutedColor = useThemeColor({ light: "#687076", dark: "#9BA1A6" }, "icon");
+  const textColor = useThemeColor({}, "text");
   const bgColor = useThemeColor({ light: "#fff", dark: "#000" }, "background");
   const errorColor = useThemeColor({ light: "#F44336", dark: "#EF5350" }, "text");
   // In dark mode, tint is white so button needs dark text; in light mode, tint is teal so white text
@@ -573,153 +576,101 @@ export default function TransferConfirmationScreen() {
     );
   }
 
+  // Format recipient display
+  const recipientDisplay = recipient.displayName || recipient.input;
+  const recipientAddress = recipient.address.slice(0, 6) + '...' + recipient.address.slice(-4);
+
+  // Calculate total fee
+  const totalFee = fees.networkFeeUsd + fees.platformFee;
+
   return (
     <ThemedView style={[styles.container, { backgroundColor: bgColor }]}>
       <SafeAreaView style={styles.safeArea}>
         {/* Header */}
-        <Animated.View
-          entering={FadeIn.duration(200)}
-          style={styles.header}
-        >
+        <Animated.View entering={FadeIn.duration(200)} style={styles.header}>
+          <Pressable
+            onPress={handleEdit}
+            style={({ pressed }) => [styles.headerButton, pressed && styles.pressed]}
+          >
+            <Ionicons name="arrow-back" size={24} color={mutedColor} />
+          </Pressable>
+
+          <ThemedText style={styles.headerTitle}>Confirm</ThemedText>
+
           <Pressable
             onPress={handleClose}
             style={({ pressed }) => [styles.headerButton, pressed && styles.pressed]}
           >
             <Ionicons name="close" size={24} color={mutedColor} />
           </Pressable>
-
-          <ThemedText style={styles.headerTitle}>Confirm Transfer</ThemedText>
-
-          <View style={styles.headerButton} />
         </Animated.View>
 
-        {/* Content */}
+        {/* Content - Simplified */}
         <View style={styles.content}>
-          {/* Transfer Summary */}
-          <Animated.View entering={FadeInUp.delay(100).duration(300)}>
-            <TransferSummary
-              recipient={recipient}
-              token={token}
-              amount={amount}
-              fees={fees}
-              createsAta={createsAta}
-              memo={memo}
-            />
-          </Animated.View>
-
-          {/* Privacy Badge - Always shielded */}
-          <Animated.View
-            entering={FadeInUp.delay(150).duration(300)}
-            style={styles.privacySection}
-          >
-            <View style={[styles.privacyCard, { backgroundColor: isDark ? "rgba(16, 185, 129, 0.1)" : "rgba(16, 185, 129, 0.05)" }]}>
-              <View style={styles.privacyHeader}>
-                <View style={styles.privacyIconContainer}>
-                  <Ionicons name="shield-checkmark" size={20} color={primaryColor} />
-                </View>
-                <View style={styles.privacyTextContainer}>
-                  <ThemedText style={styles.privacyTitle}>Shielded Transfer</ThemedText>
-                  <ThemedText style={[styles.privacyDescription, { color: mutedColor }]}>
-                    Protected by ShadowWire + Range Compliance
-                  </ThemedText>
-                </View>
-              </View>
-
-              {/* Compliance Status */}
-              {privacyState.privacyCheck && (
-                <View style={styles.complianceStatus}>
-                  {privacyState.privacyCheck.compliant ? (
-                    <View style={styles.complianceRow}>
-                      <Ionicons name="checkmark-circle" size={16} color="#10B981" />
-                      <ThemedText style={[styles.complianceText, { color: "#10B981" }]}>
-                        Compliance verified
-                      </ThemedText>
-                    </View>
-                  ) : (
-                    <View style={styles.complianceRow}>
-                      <Ionicons name="warning" size={16} color="#F59E0B" />
-                      <ThemedText style={[styles.complianceText, { color: "#F59E0B" }]}>
-                        {privacyState.privacyCheck.error || "Review required"}
-                      </ThemedText>
-                    </View>
-                  )}
-                  {privacyState.privacyCheck.warnings?.map((warning, idx) => (
-                    <View key={idx} style={styles.complianceWarning}>
-                      <Ionicons name="information-circle" size={14} color="#F59E0B" />
-                      <ThemedText style={[styles.complianceWarningText, { color: mutedColor }]}>
-                        {warning}
-                      </ThemedText>
-                    </View>
-                  ))}
-                </View>
+          {/* Hero Amount */}
+          <Animated.View entering={FadeInUp.delay(100).duration(300)} style={styles.heroSection}>
+            <Text style={[styles.heroAmount, { color: textColor }]}>
+              ${amount.amountUsd.toFixed(2)}
+            </Text>
+            <View style={[styles.tokenBadge, { backgroundColor: primaryColor }]}>
+              {token.logoUri && (
+                <Image source={{ uri: token.logoUri }} style={styles.tokenImage} />
               )}
-
-              {/* Loading state */}
-              {isCheckingPrivacy && (
-                <View style={styles.complianceStatus}>
-                  <ActivityIndicator size="small" color={primaryColor} />
-                  <ThemedText style={[styles.complianceText, { color: mutedColor, marginLeft: 8 }]}>
-                    Verifying compliance...
-                  </ThemedText>
-                </View>
-              )}
+              <Text style={styles.tokenText}>{token.symbol}</Text>
             </View>
           </Animated.View>
 
-          {/* Error Message with Retry */}
+          {/* Arrow indicator */}
+          <Animated.View entering={FadeInUp.delay(150).duration(300)} style={styles.arrowSection}>
+            <View style={[styles.arrowLine, { backgroundColor: mutedColor }]} />
+            <Ionicons name="arrow-down" size={20} color={mutedColor} />
+            <View style={[styles.arrowLine, { backgroundColor: mutedColor }]} />
+          </Animated.View>
+
+          {/* Recipient */}
+          <Animated.View entering={FadeInUp.delay(200).duration(300)} style={styles.recipientSection}>
+            <View style={[styles.recipientAvatar, { backgroundColor: primaryColor }]}>
+              <Ionicons name="person" size={24} color="#fff" />
+            </View>
+            <Text style={[styles.recipientName, { color: textColor }]}>
+              {recipientDisplay}
+            </Text>
+            <Text style={[styles.recipientAddress, { color: mutedColor }]}>
+              {recipientAddress}
+            </Text>
+          </Animated.View>
+
+          {/* Fee + Privacy line */}
+          <Animated.View entering={FadeInUp.delay(250).duration(300)} style={styles.infoLine}>
+            <Text style={[styles.infoText, { color: mutedColor }]}>
+              Fee: ${totalFee.toFixed(2)}
+            </Text>
+            <View style={styles.infoDot} />
+            <Ionicons name="shield-checkmark" size={14} color={primaryColor} />
+            <Text style={[styles.infoText, { color: primaryColor }]}>Private</Text>
+          </Animated.View>
+
+          {/* Error Message */}
           {error && (
-            <Animated.View
-              entering={FadeIn.duration(200)}
-              style={styles.errorBanner}
-            >
-              <View style={styles.errorContent}>
-                <Ionicons name="alert-circle" size={18} color={errorColor} />
-                <ThemedText style={[styles.errorBannerText, { color: errorColor }]}>
-                  {error}
-                </ThemedText>
-              </View>
-              <View style={styles.errorActions}>
-                <Pressable
-                  onPress={() => setError(null)}
-                  style={[styles.errorButton, { backgroundColor: `${errorColor}20` }]}
-                >
-                  <ThemedText style={[styles.errorButtonText, { color: errorColor }]}>
-                    Dismiss
-                  </ThemedText>
-                </Pressable>
-              </View>
+            <Animated.View entering={FadeIn.duration(200)} style={styles.errorBanner}>
+              <Ionicons name="alert-circle" size={18} color={errorColor} />
+              <ThemedText style={[styles.errorBannerText, { color: errorColor }]}>
+                {error}
+              </ThemedText>
+              <Pressable onPress={() => setError(null)}>
+                <Ionicons name="close-circle" size={20} color={errorColor} />
+              </Pressable>
             </Animated.View>
           )}
         </View>
 
-        {/* Bottom Actions */}
-        <Animated.View
-          entering={FadeInUp.delay(200).duration(300)}
-          style={styles.bottomActions}
-        >
-          {/* Edit Button */}
-          <Pressable
-            onPress={handleEdit}
-            disabled={isConfirming}
-            style={({ pressed }) => [
-              styles.editButton,
-              { borderColor: mutedColor },
-              pressed && styles.pressed,
-              isConfirming && styles.buttonDisabled,
-            ]}
-          >
-            <Ionicons name="pencil" size={18} color={mutedColor} />
-            <ThemedText style={[styles.editButtonText, { color: mutedColor }]}>
-              Edit
-            </ThemedText>
-          </Pressable>
-
-          {/* Confirm Button */}
+        {/* Send Button */}
+        <Animated.View entering={FadeInUp.delay(300).duration(300)} style={styles.bottomActions}>
           <Pressable
             onPress={handleConfirm}
             disabled={isConfirming}
             style={({ pressed }) => [
-              styles.confirmButton,
+              styles.sendButton,
               { backgroundColor: primaryColor },
               pressed && styles.pressed,
               isConfirming && styles.buttonDisabled,
@@ -728,35 +679,21 @@ export default function TransferConfirmationScreen() {
             {isConfirming ? (
               <View style={styles.confirmingContent}>
                 <ActivityIndicator size="small" color={confirmButtonTextColor} />
-                <ThemedText style={[styles.confirmButtonText, { color: confirmButtonTextColor }]}>
-                  {executionPhase === "building" && "Building transaction..."}
+                <Text style={[styles.sendButtonText, { color: confirmButtonTextColor }]}>
+                  {executionPhase === "building" && "Building..."}
                   {executionPhase === "signing" && "Signing..."}
-                  {executionPhase === "shielding" && "Shielding transfer..."}
-                  {executionPhase === "submitting" && "Submitting..."}
+                  {executionPhase === "shielding" && "Shielding..."}
+                  {executionPhase === "submitting" && "Sending..."}
                   {executionPhase === "confirming" && "Confirming..."}
                   {executionPhase === "idle" && "Processing..."}
-                </ThemedText>
+                </Text>
               </View>
             ) : (
-              <>
-                <Ionicons name="finger-print" size={22} color={confirmButtonTextColor} />
-                <ThemedText style={[styles.confirmButtonText, { color: confirmButtonTextColor }]}>
-                  {error ? "Try Again" : "Confirm with Face ID"}
-                </ThemedText>
-              </>
+              <Text style={[styles.sendButtonText, { color: confirmButtonTextColor }]}>
+                {error ? "Try Again" : "Send"}
+              </Text>
             )}
           </Pressable>
-        </Animated.View>
-
-        {/* Security Note */}
-        <Animated.View
-          entering={FadeIn.delay(400).duration(300)}
-          style={styles.securityNote}
-        >
-          <Ionicons name="shield-checkmark" size={14} color={mutedColor} />
-          <ThemedText style={[styles.securityText, { color: mutedColor }]}>
-            Secured by Turnkey TEE • Your keys never leave the enclave
-          </ThemedText>
         </Animated.View>
       </SafeAreaView>
     </ThemedView>
@@ -795,8 +732,137 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     paddingHorizontal: 20,
-    paddingTop: 8,
+    alignItems: "center",
+    justifyContent: "center",
   },
+  // Hero Amount
+  heroSection: {
+    alignItems: "center",
+    marginBottom: 24,
+  },
+  heroAmount: {
+    fontSize: 48,
+    fontWeight: "700",
+    marginBottom: 12,
+  },
+  tokenBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingLeft: 6,
+    paddingRight: 14,
+    paddingVertical: 8,
+    borderRadius: 24,
+  },
+  tokenImage: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+  },
+  tokenText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  // Arrow
+  arrowSection: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 24,
+    gap: 12,
+  },
+  arrowLine: {
+    width: 40,
+    height: 1,
+    opacity: 0.3,
+  },
+  // Recipient
+  recipientSection: {
+    alignItems: "center",
+    marginBottom: 32,
+  },
+  recipientAvatar: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 12,
+  },
+  recipientName: {
+    fontSize: 20,
+    fontWeight: "600",
+    marginBottom: 4,
+  },
+  recipientAddress: {
+    fontSize: 14,
+    fontFamily: "monospace",
+  },
+  // Info line
+  infoLine: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    backgroundColor: "rgba(0,0,0,0.03)",
+    borderRadius: 12,
+  },
+  infoText: {
+    fontSize: 14,
+  },
+  infoDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "rgba(0,0,0,0.2)",
+  },
+  // Error
+  errorBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    padding: 12,
+    backgroundColor: "rgba(244, 67, 54, 0.1)",
+    borderRadius: 12,
+    marginTop: 16,
+    width: "100%",
+  },
+  errorBannerText: {
+    fontSize: 14,
+    flex: 1,
+  },
+  // Bottom
+  bottomActions: {
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    paddingBottom: 8,
+  },
+  sendButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    paddingVertical: 18,
+    borderRadius: 14,
+  },
+  sendButtonText: {
+    fontSize: 18,
+    fontWeight: "600",
+  },
+  confirmingContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  buttonDisabled: {
+    opacity: 0.6,
+  },
+  pressed: {
+    opacity: 0.8,
+    transform: [{ scale: 0.98 }],
+  },
+  // Error container (for invalid params)
   errorContainer: {
     flex: 1,
     alignItems: "center",
@@ -820,150 +886,4 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
   },
-  errorBanner: {
-    flexDirection: "column",
-    gap: 12,
-    padding: 12,
-    backgroundColor: "rgba(244, 67, 54, 0.1)",
-    borderRadius: 12,
-    marginTop: 16,
-  },
-  errorContent: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  errorBannerText: {
-    fontSize: 14,
-    flex: 1,
-  },
-  errorActions: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
-  },
-  errorButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-  },
-  errorButtonText: {
-    fontSize: 13,
-    fontWeight: "500",
-  },
-  bottomActions: {
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    gap: 12,
-  },
-  editButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    paddingVertical: 14,
-    borderRadius: 14,
-    borderWidth: 1.5,
-  },
-  editButtonText: {
-    fontSize: 15,
-    fontWeight: "500",
-  },
-  confirmButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 10,
-    paddingVertical: 18,
-    borderRadius: 14,
-  },
-  confirmButtonText: {
-    color: "#fff",
-    fontSize: 17,
-    fontWeight: "600",
-  },
-  confirmingContent: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
-  buttonDisabled: {
-    opacity: 0.6,
-  },
-  pressed: {
-    opacity: 0.8,
-    transform: [{ scale: 0.98 }],
-  },
-  securityNote: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-  },
-  securityText: {
-    fontSize: 12,
-    textAlign: "center",
-  },
-  // Privacy Toggle Styles
-  privacySection: {
-    marginTop: 16,
-  },
-  privacyCard: {
-    borderRadius: 14,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: "rgba(16, 185, 129, 0.2)",
-  },
-  privacyHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  privacyIconContainer: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    backgroundColor: "rgba(16, 185, 129, 0.15)",
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 12,
-  },
-  privacyTextContainer: {
-    flex: 1,
-  },
-  privacyTitle: {
-    fontSize: 15,
-    fontWeight: "600",
-  },
-  privacyDescription: {
-    fontSize: 12,
-    marginTop: 2,
-  },
-  complianceStatus: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: 12,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: "rgba(16, 185, 129, 0.15)",
-  },
-  complianceRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  complianceText: {
-    fontSize: 13,
-    fontWeight: "500",
-  },
-  complianceWarning: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    marginTop: 6,
-  },
-  complianceWarningText: {
-    fontSize: 12,
-    flex: 1,
-  },
-  });
+});

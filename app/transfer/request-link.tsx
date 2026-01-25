@@ -1,115 +1,139 @@
 /**
  * DisCard 2035 - Request Payment Link Screen
  *
- * Generate shareable payment request links with:
- * - Amount input
- * - Token selection
- * - QR code display
+ * Streamlined request flow:
+ * - Hero amount display (from transfer screen)
+ * - Optional memo
+ * - QR code generation
  * - Share/copy functionality
  */
 
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback } from "react";
 import {
   StyleSheet,
   View,
-  SafeAreaView,
   Pressable,
   TextInput,
   ScrollView,
   ActivityIndicator,
+  Text,
+  Image,
+  Dimensions,
 } from "react-native";
-import { router } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { router, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import Animated, { FadeIn, FadeInUp } from "react-native-reanimated";
+import Animated, {
+  FadeIn,
+  FadeInUp,
+  FadeInDown,
+  useSharedValue,
+  useAnimatedStyle,
+  withSpring,
+  withSequence,
+  withTiming,
+} from "react-native-reanimated";
+import * as Haptics from "expo-haptics";
 import QRCode from "react-native-qrcode-svg";
 
-import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { useThemeColor } from "@/hooks/use-theme-color";
-import { useCryptoRates } from "@/hooks/useCryptoRatesConvex";
 import { usePaymentLink, type PaymentRequest } from "@/hooks/usePaymentLink";
 
-// ============================================================================
-// Constants
-// ============================================================================
-
-const TOKENS = [
-  { symbol: "USDC", name: "USD Coin", mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", decimals: 6 },
-  { symbol: "SOL", name: "Solana", mint: "So11111111111111111111111111111111111111112", decimals: 9 },
-  { symbol: "USDT", name: "Tether", mint: "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB", decimals: 6 },
-];
+const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
 // ============================================================================
 // Component
 // ============================================================================
 
 export default function RequestLinkScreen() {
-  const [amount, setAmount] = useState("");
-  const [selectedToken, setSelectedToken] = useState(TOKENS[0]);
+  const insets = useSafeAreaInsets();
+
+  const params = useLocalSearchParams<{
+    amount?: string;
+    token?: string;
+    tokenMint?: string;
+    tokenDecimals?: string;
+    tokenLogoUri?: string;
+  }>();
+
+  // Parse params from transfer screen
+  const amountUsd = parseFloat(params.amount || "0");
+  const tokenSymbol = params.token || "USDC";
+  const tokenMint = params.tokenMint || "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+  const tokenDecimals = parseInt(params.tokenDecimals || "6", 10);
+  const tokenLogoUri = params.tokenLogoUri;
+
   const [memo, setMemo] = useState("");
   const [generatedRequest, setGeneratedRequest] = useState<PaymentRequest | null>(null);
+  const [showMemoInput, setShowMemoInput] = useState(false);
 
   const { createPaymentLink, copyToClipboard, shareLink, isCreating, isCopying, isSharing, error } =
     usePaymentLink();
 
-  // Crypto rates for real-time SOL price
-  const { convertToUsd, convertFromUsd } = useCryptoRates({
-    symbols: ["SOL", "USDC", "USDT"],
-  });
+  // Animation values
+  const qrScale = useSharedValue(0);
+  const checkScale = useSharedValue(0);
 
   // Theme colors
   const primaryColor = useThemeColor({}, "tint");
   const mutedColor = useThemeColor({ light: "#687076", dark: "#9BA1A6" }, "icon");
   const bgColor = useThemeColor({ light: "#fff", dark: "#000" }, "background");
-  const cardBg = useThemeColor({ light: "#f8f9fa", dark: "#1c1c1e" }, "background");
-  const borderColor = useThemeColor(
-    { light: "rgba(0,0,0,0.08)", dark: "rgba(255,255,255,0.1)" },
-    "background"
-  );
-  const successColor = useThemeColor({ light: "#4CAF50", dark: "#66BB6A" }, "text");
   const textColor = useThemeColor({}, "text");
+  const successColor = useThemeColor({ light: "#4CAF50", dark: "#66BB6A" }, "text");
+  const cardBg = useThemeColor({ light: "#f8f9fa", dark: "#1c1c1e" }, "background");
 
-  // Handle close
-  const handleClose = useCallback(() => {
-    router.back();
+  // Handle back
+  const handleBack = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace("/(tabs)/transfer");
+    }
   }, []);
 
-  // Parse amount
-  const numericAmount = parseFloat(amount) || 0;
-
-  // Calculate USD using real-time rates
-  const amountUsd = useMemo(() => {
-    if (selectedToken.symbol === "USDC" || selectedToken.symbol === "USDT") {
-      return numericAmount; // Stablecoins are 1:1
-    }
-    // Use real-time price from Convex rates
-    const converted = convertToUsd(numericAmount, selectedToken.symbol);
-    return converted ?? numericAmount * 100; // Fallback if rate unavailable
-  }, [numericAmount, selectedToken.symbol, convertToUsd]);
-
-  // Generate link
+  // Generate link automatically on mount (or when user confirms)
   const handleGenerate = useCallback(async () => {
-    if (numericAmount <= 0) return;
+    if (amountUsd <= 0) return;
+
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
     try {
       const request = await createPaymentLink({
-        amount: numericAmount,
-        token: selectedToken.symbol,
-        tokenMint: selectedToken.mint,
-        tokenDecimals: selectedToken.decimals,
-        amountUsd,
+        amount: amountUsd,
+        token: tokenSymbol,
+        tokenMint: tokenMint,
+        tokenDecimals: tokenDecimals,
+        amountUsd: amountUsd,
         memo: memo.trim() || undefined,
       });
 
       setGeneratedRequest(request);
+
+      // Animate QR code appearance
+      qrScale.value = withSequence(
+        withTiming(1.1, { duration: 200 }),
+        withSpring(1, { damping: 12, stiffness: 150 })
+      );
+      checkScale.value = withSequence(
+        withTiming(0, { duration: 0 }),
+        withTiming(1.2, { duration: 200 }),
+        withSpring(1, { damping: 10 })
+      );
+
+      // Success haptic
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (err) {
       console.error("[RequestLink] Generation failed:", err);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     }
-  }, [numericAmount, selectedToken, amountUsd, memo, createPaymentLink]);
+  }, [amountUsd, tokenSymbol, tokenMint, tokenDecimals, memo, createPaymentLink]);
 
   // Copy link
   const handleCopy = useCallback(async () => {
     if (generatedRequest) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       await copyToClipboard(generatedRequest.webLink);
     }
   }, [generatedRequest, copyToClipboard]);
@@ -117,120 +141,145 @@ export default function RequestLinkScreen() {
   // Share link
   const handleShare = useCallback(async () => {
     if (generatedRequest) {
-      const message = `Pay me $${amountUsd.toFixed(2)} in ${selectedToken.symbol}`;
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      const message = `Pay me $${amountUsd.toFixed(2)}`;
       await shareLink(generatedRequest.webLink, message);
     }
-  }, [generatedRequest, amountUsd, selectedToken, shareLink]);
+  }, [generatedRequest, amountUsd, shareLink]);
 
-  // Reset and create new
+  // Create new request (go back to transfer screen)
   const handleNewRequest = useCallback(() => {
-    setGeneratedRequest(null);
-    setAmount("");
-    setMemo("");
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    router.replace("/(tabs)/transfer");
   }, []);
 
-  // Show generated link view
+  // Animated styles
+  const qrAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: qrScale.value }],
+  }));
+
+  const checkAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: checkScale.value }],
+  }));
+
+  // ============================================================================
+  // Render: Generated Link View (Success State)
+  // ============================================================================
+
   if (generatedRequest) {
     return (
       <ThemedView style={[styles.container, { backgroundColor: bgColor }]}>
-        <SafeAreaView style={styles.safeArea}>
-          {/* Header */}
-          <View style={styles.header}>
-            <Pressable
-              onPress={handleClose}
-              style={({ pressed }) => [styles.headerButton, pressed && styles.pressed]}
-            >
-              <Ionicons name="close" size={24} color={mutedColor} />
-            </Pressable>
-            <ThemedText style={styles.headerTitle}>Payment Request</ThemedText>
-            <View style={styles.headerButton} />
-          </View>
-
-          <ScrollView
-            style={styles.scrollView}
-            contentContainerStyle={styles.scrollContent}
-            showsVerticalScrollIndicator={false}
+        {/* Header */}
+        <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
+          <Pressable
+            onPress={handleBack}
+            style={({ pressed }) => [styles.headerButton, pressed && styles.pressed]}
           >
-            {/* Success Badge */}
-            <Animated.View
-              entering={FadeIn.duration(200)}
-              style={[styles.successBadge, { backgroundColor: `${successColor}15` }]}
-            >
-              <Ionicons name="checkmark-circle" size={18} color={successColor} />
-              <ThemedText style={[styles.successText, { color: successColor }]}>
-                Payment link created!
-              </ThemedText>
-            </Animated.View>
+            <Ionicons name="close" size={24} color={textColor} />
+          </Pressable>
+          <Text style={[styles.headerTitle, { color: textColor }]}>Request</Text>
+          <View style={styles.headerButton} />
+        </View>
 
-            {/* Amount Display */}
-            <Animated.View entering={FadeInUp.delay(100).duration(300)} style={styles.amountDisplay}>
-              <ThemedText style={styles.amountLarge}>
-                {numericAmount.toFixed(selectedToken.decimals <= 2 ? 2 : 4)} {selectedToken.symbol}
-              </ThemedText>
-              <ThemedText style={[styles.amountUsd, { color: mutedColor }]}>
-                ≈ ${amountUsd.toFixed(2)} USD
-              </ThemedText>
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={styles.successContent}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Success Badge */}
+          <Animated.View
+            entering={FadeIn.duration(200)}
+            style={[styles.successBadge, { backgroundColor: `${successColor}15` }]}
+          >
+            <Animated.View style={checkAnimatedStyle}>
+              <Ionicons name="checkmark-circle" size={20} color={successColor} />
             </Animated.View>
+            <Text style={[styles.successText, { color: successColor }]}>
+              Link Ready
+            </Text>
+          </Animated.View>
 
-            {/* QR Code */}
-            <Animated.View
-              entering={FadeInUp.delay(200).duration(300)}
-              style={[styles.qrContainer, { backgroundColor: "#fff", borderColor }]}
-            >
-              <QRCode
-                value={generatedRequest.qrData}
-                size={200}
-                backgroundColor="#fff"
-                color="#000"
-              />
-              <ThemedText style={[styles.qrLabel, { color: mutedColor }]}>
-                Scan to pay with any Solana wallet
-              </ThemedText>
-            </Animated.View>
+          {/* Hero Amount */}
+          <Animated.View entering={FadeInUp.delay(100).duration(300)} style={styles.heroAmount}>
+            <Text style={[styles.heroAmountText, { color: textColor }]}>
+              ${amountUsd.toFixed(2)}
+            </Text>
+            <View style={[styles.tokenBadge, { backgroundColor: primaryColor }]}>
+              {tokenLogoUri && (
+                <Image source={{ uri: tokenLogoUri }} style={styles.tokenBadgeImage} />
+              )}
+              <Text style={styles.tokenBadgeText}>{tokenSymbol}</Text>
+            </View>
+          </Animated.View>
 
-            {/* Link Display */}
-            <Animated.View
-              entering={FadeInUp.delay(300).duration(300)}
-              style={[styles.linkCard, { backgroundColor: cardBg, borderColor }]}
-            >
-              <ThemedText style={[styles.linkLabel, { color: mutedColor }]}>
-                PAYMENT LINK
-              </ThemedText>
-              <ThemedText style={styles.linkText} numberOfLines={1}>
-                {generatedRequest.webLink}
-              </ThemedText>
-            </Animated.View>
+          {/* QR Code */}
+          <Animated.View
+            entering={FadeInUp.delay(200).duration(300)}
+            style={[styles.qrCard, qrAnimatedStyle]}
+          >
+            <QRCode
+              value={generatedRequest.qrData}
+              size={SCREEN_WIDTH * 0.55}
+              backgroundColor="#fff"
+              color="#000"
+            />
+          </Animated.View>
 
-            {/* Expiry Note */}
+          {/* Scan hint */}
+          <Animated.View entering={FadeIn.delay(300).duration(200)}>
+            <Text style={[styles.scanHint, { color: mutedColor }]}>
+              Scan to pay with any Solana wallet
+            </Text>
+          </Animated.View>
+
+          {/* Expiry */}
+          <Animated.View
+            entering={FadeIn.delay(350).duration(200)}
+            style={styles.expiryRow}
+          >
+            <Ionicons name="time-outline" size={14} color={mutedColor} />
+            <Text style={[styles.expiryText, { color: mutedColor }]}>
+              Expires in 24 hours
+            </Text>
+          </Animated.View>
+
+          {/* Memo display if added */}
+          {memo.trim() && (
             <Animated.View
               entering={FadeIn.delay(400).duration(200)}
-              style={styles.expiryNote}
+              style={[styles.memoDisplay, { backgroundColor: cardBg }]}
             >
-              <Ionicons name="time-outline" size={14} color={mutedColor} />
-              <ThemedText style={[styles.expiryText, { color: mutedColor }]}>
-                Expires in 24 hours
-              </ThemedText>
+              <Ionicons name="document-text-outline" size={16} color={mutedColor} />
+              <Text style={[styles.memoDisplayText, { color: textColor }]} numberOfLines={2}>
+                {memo}
+              </Text>
             </Animated.View>
-          </ScrollView>
+          )}
+        </ScrollView>
 
-          {/* Action Buttons */}
-          <Animated.View
-            entering={FadeInUp.delay(400).duration(300)}
-            style={styles.actionButtons}
-          >
+        {/* Bottom Actions */}
+        <Animated.View
+          entering={FadeInDown.delay(400).duration(300)}
+          style={[styles.bottomActions, { paddingBottom: insets.bottom + 16 }]}
+        >
+          <View style={styles.actionRow}>
             <Pressable
               onPress={handleCopy}
               disabled={isCopying}
               style={({ pressed }) => [
                 styles.actionButton,
-                { borderColor },
+                styles.secondaryAction,
                 pressed && styles.pressed,
               ]}
             >
-              <Ionicons name="copy-outline" size={20} color={primaryColor} />
-              <ThemedText style={[styles.actionButtonText, { color: primaryColor }]}>
-                {isCopying ? "Copied!" : "Copy"}
-              </ThemedText>
+              <Ionicons
+                name={isCopying ? "checkmark" : "copy-outline"}
+                size={20}
+                color={isCopying ? successColor : primaryColor}
+              />
+              <Text style={[styles.secondaryActionText, { color: isCopying ? successColor : primaryColor }]}>
+                {isCopying ? "Copied!" : "Copy Link"}
+              </Text>
             </Pressable>
 
             <Pressable
@@ -238,170 +287,131 @@ export default function RequestLinkScreen() {
               disabled={isSharing}
               style={({ pressed }) => [
                 styles.actionButton,
-                styles.primaryActionButton,
+                styles.primaryAction,
                 { backgroundColor: primaryColor },
                 pressed && styles.pressed,
               ]}
             >
               <Ionicons name="share-outline" size={20} color="#fff" />
-              <ThemedText style={styles.primaryActionButtonText}>Share</ThemedText>
+              <Text style={styles.primaryActionText}>Share</Text>
             </Pressable>
-          </Animated.View>
+          </View>
 
-          {/* New Request Button */}
+          {/* New Request */}
           <Pressable
             onPress={handleNewRequest}
-            style={({ pressed }) => [styles.newRequestButton, pressed && styles.pressed]}
+            style={({ pressed }) => [styles.newRequestLink, pressed && styles.pressed]}
           >
-            <ThemedText style={[styles.newRequestText, { color: mutedColor }]}>
+            <Text style={[styles.newRequestText, { color: mutedColor }]}>
               Create another request
-            </ThemedText>
+            </Text>
           </Pressable>
-        </SafeAreaView>
+        </Animated.View>
       </ThemedView>
     );
   }
 
-  // Show input form
+  // ============================================================================
+  // Render: Pre-Generation View (Confirm & Add Memo)
+  // ============================================================================
+
   return (
     <ThemedView style={[styles.container, { backgroundColor: bgColor }]}>
-      <SafeAreaView style={styles.safeArea}>
-        {/* Header */}
-        <View style={styles.header}>
-          <Pressable
-            onPress={handleClose}
-            style={({ pressed }) => [styles.headerButton, pressed && styles.pressed]}
-          >
-            <Ionicons name="close" size={24} color={mutedColor} />
-          </Pressable>
-          <ThemedText style={styles.headerTitle}>Request Payment</ThemedText>
-          <View style={styles.headerButton} />
-        </View>
-
-        <ScrollView
-          style={styles.scrollView}
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
+      {/* Header */}
+      <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
+        <Pressable
+          onPress={handleBack}
+          style={({ pressed }) => [styles.headerButton, pressed && styles.pressed]}
         >
-          {/* Amount Input */}
-          <Animated.View entering={FadeInUp.delay(100).duration(300)}>
-            <ThemedText style={[styles.inputLabel, { color: mutedColor }]}>
-              AMOUNT
-            </ThemedText>
-            <View style={[styles.amountInputContainer, { borderColor }]}>
-              <ThemedText style={styles.currencyPrefix}>$</ThemedText>
-              <TextInput
-                style={[styles.amountInput, { color: textColor }]}
-                value={amount}
-                onChangeText={setAmount}
-                placeholder="0.00"
-                placeholderTextColor={mutedColor}
-                keyboardType="decimal-pad"
-                autoFocus
-              />
-            </View>
-            {numericAmount > 0 && (
-              <ThemedText style={[styles.conversionText, { color: mutedColor }]}>
-                ≈ {(() => {
-                  if (selectedToken.symbol === "USDC" || selectedToken.symbol === "USDT") {
-                    return numericAmount.toFixed(2);
-                  }
-                  // Convert USD input to token amount using real-time rate
-                  const tokenAmount = convertFromUsd(numericAmount, selectedToken.symbol);
-                  return (tokenAmount ?? numericAmount / 100).toFixed(4);
-                })()}{" "}
-                {selectedToken.symbol}
-              </ThemedText>
+          <Ionicons name="arrow-back" size={24} color={textColor} />
+        </Pressable>
+        <Text style={[styles.headerTitle, { color: textColor }]}>Request</Text>
+        <View style={styles.headerButton} />
+      </View>
+
+      {/* Content */}
+      <View style={styles.content}>
+        {/* Hero Amount */}
+        <Animated.View entering={FadeInUp.delay(100).duration(300)} style={styles.heroSection}>
+          <Text style={[styles.heroAmountLarge, { color: textColor }]}>
+            ${amountUsd.toFixed(2)}
+          </Text>
+          <View style={[styles.tokenBadge, { backgroundColor: primaryColor }]}>
+            {tokenLogoUri && (
+              <Image source={{ uri: tokenLogoUri }} style={styles.tokenBadgeImage} />
             )}
-          </Animated.View>
-
-          {/* Token Selection */}
-          <Animated.View entering={FadeInUp.delay(200).duration(300)}>
-            <ThemedText style={[styles.inputLabel, { color: mutedColor }]}>
-              TOKEN
-            </ThemedText>
-            <View style={styles.tokenGrid}>
-              {TOKENS.map((token) => (
-                <Pressable
-                  key={token.symbol}
-                  onPress={() => setSelectedToken(token)}
-                  style={({ pressed }) => [
-                    styles.tokenOption,
-                    { borderColor },
-                    selectedToken.symbol === token.symbol && {
-                      borderColor: primaryColor,
-                      backgroundColor: `${primaryColor}10`,
-                    },
-                    pressed && styles.pressed,
-                  ]}
-                >
-                  <ThemedText
-                    style={[
-                      styles.tokenSymbol,
-                      selectedToken.symbol === token.symbol && { color: primaryColor },
-                    ]}
-                  >
-                    {token.symbol}
-                  </ThemedText>
-                  <ThemedText style={[styles.tokenName, { color: mutedColor }]}>
-                    {token.name}
-                  </ThemedText>
-                </Pressable>
-              ))}
-            </View>
-          </Animated.View>
-
-          {/* Memo Input */}
-          <Animated.View entering={FadeInUp.delay(300).duration(300)}>
-            <ThemedText style={[styles.inputLabel, { color: mutedColor }]}>
-              MEMO (OPTIONAL)
-            </ThemedText>
-            <TextInput
-              style={[styles.memoInput, { borderColor, color: textColor }]}
-              value={memo}
-              onChangeText={setMemo}
-              placeholder="What's this for?"
-              placeholderTextColor={mutedColor}
-              multiline
-              maxLength={100}
-            />
-          </Animated.View>
-
-          {/* Error */}
-          {error && (
-            <View style={styles.errorContainer}>
-              <Ionicons name="alert-circle" size={18} color="#F44336" />
-              <ThemedText style={styles.errorText}>{error}</ThemedText>
-            </View>
-          )}
-        </ScrollView>
-
-        {/* Generate Button */}
-        <Animated.View
-          entering={FadeInUp.delay(400).duration(300)}
-          style={styles.generateButtonContainer}
-        >
-          <Pressable
-            onPress={handleGenerate}
-            disabled={numericAmount <= 0 || isCreating}
-            style={({ pressed }) => [
-              styles.generateButton,
-              { backgroundColor: primaryColor },
-              (numericAmount <= 0 || isCreating) && styles.buttonDisabled,
-              pressed && styles.pressed,
-            ]}
-          >
-            {isCreating ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <>
-                <Ionicons name="qr-code" size={20} color="#fff" />
-                <ThemedText style={styles.generateButtonText}>Generate Link</ThemedText>
-              </>
-            )}
-          </Pressable>
+            <Text style={styles.tokenBadgeText}>{tokenSymbol}</Text>
+          </View>
         </Animated.View>
-      </SafeAreaView>
+
+        {/* Optional Memo */}
+        <Animated.View entering={FadeInUp.delay(200).duration(300)} style={styles.memoSection}>
+          {showMemoInput ? (
+            <View style={[styles.memoInputContainer, { backgroundColor: cardBg }]}>
+              <TextInput
+                style={[styles.memoInput, { color: textColor }]}
+                value={memo}
+                onChangeText={setMemo}
+                placeholder="What's this for?"
+                placeholderTextColor={mutedColor}
+                autoFocus
+                maxLength={100}
+              />
+              {memo.length > 0 && (
+                <Pressable onPress={() => setMemo("")} style={styles.memoClear}>
+                  <Ionicons name="close-circle" size={18} color={mutedColor} />
+                </Pressable>
+              )}
+            </View>
+          ) : (
+            <Pressable
+              onPress={() => setShowMemoInput(true)}
+              style={({ pressed }) => [
+                styles.addMemoButton,
+                { backgroundColor: cardBg },
+                pressed && styles.pressed,
+              ]}
+            >
+              <Ionicons name="add" size={20} color={primaryColor} />
+              <Text style={[styles.addMemoText, { color: primaryColor }]}>Add a note</Text>
+            </Pressable>
+          )}
+        </Animated.View>
+
+        {/* Error */}
+        {error && (
+          <Animated.View entering={FadeIn.duration(200)} style={styles.errorContainer}>
+            <Ionicons name="alert-circle" size={18} color="#F44336" />
+            <Text style={styles.errorText}>{error}</Text>
+          </Animated.View>
+        )}
+      </View>
+
+      {/* Generate Button */}
+      <Animated.View
+        entering={FadeInDown.delay(300).duration(300)}
+        style={[styles.bottomActions, { paddingBottom: insets.bottom + 16 }]}
+      >
+        <Pressable
+          onPress={handleGenerate}
+          disabled={amountUsd <= 0 || isCreating}
+          style={({ pressed }) => [
+            styles.generateButton,
+            { backgroundColor: primaryColor },
+            (amountUsd <= 0 || isCreating) && styles.buttonDisabled,
+            pressed && styles.pressed,
+          ]}
+        >
+          {isCreating ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <>
+              <Ionicons name="qr-code" size={20} color="#fff" />
+              <Text style={styles.generateButtonText}>Generate Link</Text>
+            </>
+          )}
+        </Pressable>
+      </Animated.View>
     </ThemedView>
   );
 }
@@ -414,15 +424,12 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  safeArea: {
-    flex: 1,
-  },
   header: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingBottom: 8,
   },
   headerButton: {
     width: 44,
@@ -438,68 +445,88 @@ const styles = StyleSheet.create({
   scrollView: {
     flex: 1,
   },
-  scrollContent: {
-    paddingHorizontal: 20,
-    paddingTop: 8,
-    paddingBottom: 24,
-  },
-  inputLabel: {
-    fontSize: 11,
-    letterSpacing: 1.5,
-    fontWeight: "600",
-    marginBottom: 8,
-    marginTop: 20,
-  },
-  amountInputContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    borderWidth: 1.5,
-    borderRadius: 16,
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-  },
-  currencyPrefix: {
-    fontSize: 32,
-    fontWeight: "600",
-    marginRight: 4,
-  },
-  amountInput: {
+  content: {
     flex: 1,
-    fontSize: 32,
-    fontWeight: "600",
+    paddingHorizontal: 24,
   },
-  conversionText: {
-    fontSize: 13,
-    marginTop: 8,
-    marginLeft: 4,
-  },
-  tokenGrid: {
-    flexDirection: "row",
-    gap: 12,
-  },
-  tokenOption: {
-    flex: 1,
-    padding: 16,
-    borderRadius: 14,
-    borderWidth: 1.5,
+  successContent: {
+    paddingHorizontal: 24,
+    paddingTop: 16,
     alignItems: "center",
   },
-  tokenSymbol: {
+
+  // Hero Amount
+  heroSection: {
+    alignItems: "center",
+    paddingTop: 48,
+    paddingBottom: 32,
+  },
+  heroAmountLarge: {
+    fontSize: 56,
+    fontWeight: "700",
+    marginBottom: 16,
+  },
+  heroAmount: {
+    alignItems: "center",
+    marginBottom: 24,
+  },
+  heroAmountText: {
+    fontSize: 44,
+    fontWeight: "700",
+    marginBottom: 12,
+  },
+  tokenBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingLeft: 6,
+    paddingRight: 14,
+    paddingVertical: 8,
+    borderRadius: 24,
+  },
+  tokenBadgeImage: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+  },
+  tokenBadgeText: {
+    color: "#fff",
     fontSize: 16,
     fontWeight: "600",
   },
-  tokenName: {
-    fontSize: 11,
-    marginTop: 2,
+
+  // Memo Section
+  memoSection: {
+    width: "100%",
+  },
+  addMemoButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 14,
+    borderRadius: 14,
+  },
+  addMemoText: {
+    fontSize: 15,
+    fontWeight: "500",
+  },
+  memoInputContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderRadius: 14,
+    paddingHorizontal: 16,
   },
   memoInput: {
-    borderWidth: 1.5,
-    borderRadius: 14,
-    padding: 16,
-    fontSize: 15,
-    minHeight: 80,
-    textAlignVertical: "top",
+    flex: 1,
+    fontSize: 16,
+    paddingVertical: 14,
   },
+  memoClear: {
+    padding: 4,
+  },
+
+  // Error
   errorContainer: {
     flexDirection: "row",
     alignItems: "center",
@@ -514,9 +541,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     flex: 1,
   },
-  generateButtonContainer: {
-    paddingHorizontal: 20,
-    paddingVertical: 16,
+
+  // Bottom Actions
+  bottomActions: {
+    paddingHorizontal: 24,
+    paddingTop: 16,
   },
   generateButton: {
     flexDirection: "row",
@@ -538,7 +567,8 @@ const styles = StyleSheet.create({
     opacity: 0.8,
     transform: [{ scale: 0.98 }],
   },
-  // Generated Link View
+
+  // Success State
   successBadge: {
     flexDirection: "row",
     alignItems: "center",
@@ -547,66 +577,55 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 16,
     borderRadius: 20,
-    alignSelf: "center",
     marginBottom: 20,
   },
   successText: {
-    fontSize: 14,
-    fontWeight: "500",
+    fontSize: 15,
+    fontWeight: "600",
   },
-  amountDisplay: {
-    alignItems: "center",
-    marginBottom: 24,
-  },
-  amountLarge: {
-    fontSize: 32,
-    fontWeight: "700",
-  },
-  amountUsd: {
-    fontSize: 16,
-    marginTop: 4,
-  },
-  qrContainer: {
-    alignItems: "center",
+  qrCard: {
+    backgroundColor: "#fff",
     padding: 24,
-    borderRadius: 20,
-    borderWidth: 1,
+    borderRadius: 24,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 8,
     marginBottom: 16,
   },
-  qrLabel: {
-    fontSize: 12,
-    marginTop: 16,
-    textAlign: "center",
-  },
-  linkCard: {
-    padding: 16,
-    borderRadius: 14,
-    borderWidth: 1,
-  },
-  linkLabel: {
-    fontSize: 10,
-    letterSpacing: 1.5,
-    marginBottom: 6,
-  },
-  linkText: {
+  scanHint: {
     fontSize: 14,
-    fontFamily: "monospace",
+    textAlign: "center",
+    marginBottom: 8,
   },
-  expiryNote: {
+  expiryRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
     gap: 6,
-    marginTop: 16,
+    marginBottom: 16,
   },
   expiryText: {
-    fontSize: 12,
+    fontSize: 13,
   },
-  actionButtons: {
+  memoDisplay: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 12,
+    marginTop: 8,
+    width: "100%",
+  },
+  memoDisplayText: {
+    flex: 1,
+    fontSize: 14,
+  },
+  actionRow: {
     flexDirection: "row",
     gap: 12,
-    paddingHorizontal: 20,
-    paddingVertical: 16,
+    marginBottom: 16,
   },
   actionButton: {
     flex: 1,
@@ -614,26 +633,25 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
-    paddingVertical: 14,
+    paddingVertical: 16,
     borderRadius: 14,
-    borderWidth: 1.5,
   },
-  actionButtonText: {
+  secondaryAction: {
+    backgroundColor: "rgba(0,0,0,0.05)",
+  },
+  secondaryActionText: {
     fontSize: 15,
-    fontWeight: "500",
+    fontWeight: "600",
   },
-  primaryActionButton: {
-    borderWidth: 0,
-  },
-  primaryActionButtonText: {
+  primaryAction: {},
+  primaryActionText: {
     color: "#fff",
     fontSize: 15,
     fontWeight: "600",
   },
-  newRequestButton: {
+  newRequestLink: {
     alignItems: "center",
     paddingVertical: 12,
-    marginBottom: 16,
   },
   newRequestText: {
     fontSize: 14,

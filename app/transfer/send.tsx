@@ -16,6 +16,8 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  Image,
+  Text,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
@@ -67,39 +69,51 @@ export default function SendScreen() {
   // State
   const [inviteModalVisible, setInviteModalVisible] = useState(false);
   const [invitePhone, setInvitePhone] = useState("");
+  const [pendingRecipient, setPendingRecipient] = useState<{
+    resolved: ResolvedAddress;
+    contact?: Contact;
+  } | null>(null);
 
-  // Handle recipient selection
+  // Handle recipient selection - store pending recipient
   const handleRecipientSelect = useCallback(
     (resolved: ResolvedAddress, contact?: Contact) => {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-
-      // Navigate to confirmation with the selected recipient
-      (router.push as any)({
-        pathname: "/transfer/confirmation",
-        params: {
-          recipient: JSON.stringify({
-            input: resolved.input,
-            address: resolved.address,
-            displayName: resolved.displayName || contact?.name || resolved.input,
-            type: resolved.type,
-            contactId: contact?.id,
-          }),
-          token: params.token,
-          amount: params.amount,
-          fees: JSON.stringify({
-            networkFee: fees.networkFee,
-            networkFeeUsd: fees.networkFeeUsd,
-            platformFee: fees.platformFee,
-            priorityFee: fees.priorityFee,
-            ataRent: fees.ataRent,
-            totalFeesUsd: fees.totalFeesUsd,
-            totalCostUsd: fees.totalCostUsd,
-          }),
-        },
-      });
+      setPendingRecipient({ resolved, contact });
     },
-    [params.token, params.amount, amount, fees]
+    []
   );
+
+  // Handle continue - navigate to confirmation
+  const handleContinue = useCallback(() => {
+    if (!pendingRecipient) return;
+
+    const { resolved, contact } = pendingRecipient;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+    (router.push as any)({
+      pathname: "/transfer/confirmation",
+      params: {
+        recipient: JSON.stringify({
+          input: resolved.input,
+          address: resolved.address,
+          displayName: resolved.displayName || contact?.name || resolved.input,
+          type: resolved.type,
+          contactId: contact?.id,
+        }),
+        token: params.token,
+        amount: params.amount,
+        fees: JSON.stringify({
+          networkFee: fees.networkFee,
+          networkFeeUsd: fees.networkFeeUsd,
+          platformFee: fees.platformFee,
+          priorityFee: fees.priorityFee,
+          ataRent: fees.ataRent,
+          totalFeesUsd: fees.totalFeesUsd,
+          totalCostUsd: fees.totalCostUsd,
+        }),
+      },
+    });
+  }, [pendingRecipient, params.token, params.amount, fees]);
 
   // Handle invite
   const handleInvite = useCallback((phoneNumber: string) => {
@@ -144,21 +158,35 @@ export default function SendScreen() {
           >
             <Ionicons name="arrow-back" size={24} color={textColor} />
           </Pressable>
-          <ThemedText style={styles.title}>Send To</ThemedText>
-          <View style={styles.headerSpacer} />
+
+          <ThemedText style={styles.headerTitle}>Send</ThemedText>
+
+          {/* Right: QR Button */}
+          <Pressable
+            onPress={handleScanQR}
+            style={({ pressed }) => [styles.qrButton, pressed && styles.pressed]}
+          >
+            <Ionicons name="qr-code-outline" size={22} color={primaryColor} />
+          </Pressable>
         </View>
 
-        {/* Amount Display */}
-        {amount && token && (
-          <View style={styles.amountCard}>
-            <ThemedText style={[styles.amountLabel, { color: mutedColor }]}>
-              Sending
-            </ThemedText>
-            <ThemedText style={styles.amountValue}>
-              ${amount.amount?.toFixed(2)} {token.symbol}
-            </ThemedText>
-          </View>
-        )}
+        {/* Amount + Token Badge */}
+        <View style={styles.amountRow}>
+          <Text style={[styles.amountText, { color: textColor }]}>
+            ${amount?.amount?.toFixed(2) || '0.00'}
+          </Text>
+          {token && (
+            <View style={[styles.tokenBadge, { backgroundColor: primaryColor }]}>
+              {token.logoUri && (
+                <Image
+                  source={{ uri: token.logoUri }}
+                  style={styles.tokenImage}
+                />
+              )}
+              <Text style={styles.tokenText}>{token.symbol}</Text>
+            </View>
+          )}
+        </View>
 
         {/* Recipient Input */}
         <ScrollView
@@ -168,19 +196,40 @@ export default function SendScreen() {
         >
           <RecipientInput
             onSelect={handleRecipientSelect}
-            onScanQR={handleScanQR}
             onInvite={handleInvite}
-            placeholder="Name, @username, phone, or address"
+            placeholder="Name, phone, or address"
             autoFocus
           />
-
-          {/* Helper text */}
-          <View style={styles.helperSection}>
-            <ThemedText style={[styles.helperText, { color: mutedColor }]}>
-              Enter a Solana address, .sol domain, phone number, or email to send funds.
-            </ThemedText>
-          </View>
         </ScrollView>
+
+        {/* Continue Button - shown when recipient is selected */}
+        {pendingRecipient && (
+          <View style={[styles.bottomContainer, { paddingBottom: insets.bottom + 16 }]}>
+            <View style={styles.selectedRecipient}>
+              <Ionicons name="person-circle-outline" size={20} color={primaryColor} />
+              <Text style={[styles.selectedRecipientText, { color: textColor }]} numberOfLines={1}>
+                {pendingRecipient.contact?.name || pendingRecipient.resolved.displayName || pendingRecipient.resolved.input}
+              </Text>
+              <Pressable
+                onPress={() => setPendingRecipient(null)}
+                style={styles.clearRecipient}
+              >
+                <Ionicons name="close-circle" size={20} color={mutedColor} />
+              </Pressable>
+            </View>
+            <Pressable
+              onPress={handleContinue}
+              style={({ pressed }) => [
+                styles.continueButton,
+                { backgroundColor: primaryColor },
+                pressed && styles.pressed,
+              ]}
+            >
+              <Text style={styles.continueButtonText}>Review</Text>
+              <Ionicons name="arrow-forward" size={20} color="#fff" />
+            </Pressable>
+          </View>
+        )}
       </KeyboardAvoidingView>
 
       {/* Invite Modal */}
@@ -211,7 +260,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 16,
-    paddingBottom: 16,
+    paddingBottom: 8,
   },
   backButton: {
     width: 40,
@@ -220,36 +269,52 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  title: {
+  headerTitle: {
     flex: 1,
     fontSize: 18,
     fontWeight: "600",
     textAlign: "center",
-    marginRight: 40, // Balance the back button
   },
-  headerSpacer: {
+  qrButton: {
     width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  amountRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+  },
+  amountText: {
+    fontSize: 32,
+    fontWeight: "700",
+  },
+  tokenBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingLeft: 5,
+    paddingRight: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+  },
+  tokenImage: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+  },
+  tokenText: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "600",
   },
   pressed: {
     opacity: 0.6,
-  },
-  amountCard: {
-    marginHorizontal: 16,
-    marginBottom: 16,
-    padding: 16,
-    borderRadius: 12,
-    backgroundColor: "rgba(0,229,255,0.1)",
-    borderWidth: 1,
-    borderColor: "rgba(0,229,255,0.2)",
-    alignItems: "center",
-  },
-  amountLabel: {
-    fontSize: 13,
-    marginBottom: 4,
-  },
-  amountValue: {
-    fontSize: 24,
-    fontWeight: "600",
   },
   content: {
     flex: 1,
@@ -257,13 +322,41 @@ const styles = StyleSheet.create({
   contentContainer: {
     padding: 16,
   },
-  helperSection: {
-    marginTop: 24,
-    paddingHorizontal: 8,
+  bottomContainer: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(0,0,0,0.1)",
+    gap: 12,
   },
-  helperText: {
-    fontSize: 13,
-    lineHeight: 18,
-    textAlign: "center",
+  selectedRecipient: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: "rgba(0,0,0,0.05)",
+    borderRadius: 12,
+  },
+  selectedRecipientText: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: "500",
+  },
+  clearRecipient: {
+    padding: 4,
+  },
+  continueButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 16,
+    borderRadius: 14,
+  },
+  continueButtonText: {
+    color: "#fff",
+    fontSize: 17,
+    fontWeight: "600",
   },
 });
