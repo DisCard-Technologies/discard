@@ -150,21 +150,18 @@ export default function RootLayout() {
 
   // Mark app ready once fonts are loaded, errored, or after timeout
   useEffect(() => {
-    async function prepare() {
-      if (fontsLoaded || fontError) {
-        setIsReady(true);
-        await SplashScreen.hideAsync();
-        return;
-      }
-      // Timeout fallback - proceed after 3 seconds even if fonts haven't loaded
-      const timeout = setTimeout(async () => {
-        console.warn('[Layout] Font loading timeout - proceeding without custom fonts');
-        setIsReady(true);
-        await SplashScreen.hideAsync();
-      }, 3000);
-      return () => clearTimeout(timeout);
+    if (fontsLoaded || fontError) {
+      setIsReady(true);
+      SplashScreen.hideAsync();
+      return;
     }
-    prepare();
+    // Timeout fallback - proceed after 3 seconds even if fonts haven't loaded
+    const timeout = setTimeout(() => {
+      console.warn('[Layout] Font loading timeout - proceeding without custom fonts');
+      setIsReady(true);
+      SplashScreen.hideAsync();
+    }, 3000);
+    return () => clearTimeout(timeout);
   }, [fontsLoaded, fontError]);
 
   // Always render the navigation tree - splash screen handles the loading state
