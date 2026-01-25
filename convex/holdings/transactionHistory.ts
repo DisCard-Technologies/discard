@@ -68,6 +68,7 @@ interface ParsedTransaction {
   counterpartyAddress?: string;
   tokenMint: string;
   tokenSymbol: string;
+  tokenLogoUri?: string;
   amount: number;
   amountUsd?: number;
   fee: number;
@@ -76,16 +77,40 @@ interface ParsedTransaction {
   source?: string;
 }
 
-// Well-known token symbols
-const KNOWN_TOKENS: Record<string, string> = {
-  So11111111111111111111111111111111111111112: "SOL",
-  EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v: "USDC",
-  Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB: "USDT",
-  JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN: "JUP",
-  DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263: "BONK",
-  mSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK7ytfqcJm7So: "mSOL",
-  bSo13r4TkiE4KumL71LsHTPpL2euBYLFx6h9HP3piy1: "bSOL",
-  J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn: "jitoSOL",
+// Well-known token metadata (symbol and logo)
+const KNOWN_TOKENS: Record<string, { symbol: string; logoUri: string }> = {
+  So11111111111111111111111111111111111111112: {
+    symbol: "SOL",
+    logoUri: "https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png",
+  },
+  EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v: {
+    symbol: "USDC",
+    logoUri: "https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v/logo.png",
+  },
+  Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB: {
+    symbol: "USDT",
+    logoUri: "https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB/logo.svg",
+  },
+  JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN: {
+    symbol: "JUP",
+    logoUri: "https://static.jup.ag/jup/icon.png",
+  },
+  DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263: {
+    symbol: "BONK",
+    logoUri: "https://arweave.net/hQiPZOsRZXGXBJd_82PhVdlM_hACsT_q6wqwf5cSY7I",
+  },
+  mSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK7ytfqcJm7So: {
+    symbol: "mSOL",
+    logoUri: "https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/mSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK7ytfqcJm7So/logo.png",
+  },
+  bSo13r4TkiE4KumL71LsHTPpL2euBYLFx6h9HP3piy1: {
+    symbol: "bSOL",
+    logoUri: "https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/bSo13r4TkiE4KumL71LsHTPpL2euBYLFx6h9HP3piy1/logo.png",
+  },
+  J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn: {
+    symbol: "jitoSOL",
+    logoUri: "https://storage.googleapis.com/token-metadata/JitoSOL-256.png",
+  },
 };
 
 // Native SOL mint address constant
@@ -96,12 +121,23 @@ const NATIVE_SOL_MINT = "So11111111111111111111111111111111111111112";
 // ============================================================================
 
 /**
+ * Get token metadata (symbol and logo) for a mint
+ */
+function getTokenMetadata(mint: string): { symbol: string; logoUri?: string } {
+  const known = KNOWN_TOKENS[mint];
+  if (known) {
+    return { symbol: known.symbol, logoUri: known.logoUri };
+  }
+  return { symbol: mint.slice(0, 4).toUpperCase() };
+}
+
+/**
  * Classify transaction type based on Helius response
  */
 function classifyTransaction(
   tx: HeliusTransaction,
   walletAddress: string
-): { type: TransactionType; counterparty?: string; tokenMint: string; tokenSymbol: string; amount: number } {
+): { type: TransactionType; counterparty?: string; tokenMint: string; tokenSymbol: string; tokenLogoUri?: string; amount: number } {
   const walletLower = walletAddress.toLowerCase();
 
   // Check token transfers first (SPL tokens)
@@ -122,11 +158,13 @@ function classifyTransaction(
         (t) => t.fromUserAccount?.toLowerCase() === walletLower
       );
       if (outgoing) {
+        const meta = getTokenMetadata(outgoing.mint);
         return {
           type: "swap",
           counterparty: outgoing.toUserAccount,
           tokenMint: outgoing.mint,
-          tokenSymbol: KNOWN_TOKENS[outgoing.mint] || outgoing.mint.slice(0, 4).toUpperCase(),
+          tokenSymbol: meta.symbol,
+          tokenLogoUri: meta.logoUri,
           amount: outgoing.tokenAmount,
         };
       }
@@ -138,11 +176,13 @@ function classifyTransaction(
         (t) => t.fromUserAccount?.toLowerCase() === walletLower
       );
       if (transfer) {
+        const meta = getTokenMetadata(transfer.mint);
         return {
           type: "send",
           counterparty: transfer.toUserAccount,
           tokenMint: transfer.mint,
-          tokenSymbol: KNOWN_TOKENS[transfer.mint] || transfer.mint.slice(0, 4).toUpperCase(),
+          tokenSymbol: meta.symbol,
+          tokenLogoUri: meta.logoUri,
           amount: transfer.tokenAmount,
         };
       }
@@ -154,11 +194,13 @@ function classifyTransaction(
         (t) => t.toUserAccount?.toLowerCase() === walletLower
       );
       if (transfer) {
+        const meta = getTokenMetadata(transfer.mint);
         return {
           type: "receive",
           counterparty: transfer.fromUserAccount,
           tokenMint: transfer.mint,
-          tokenSymbol: KNOWN_TOKENS[transfer.mint] || transfer.mint.slice(0, 4).toUpperCase(),
+          tokenSymbol: meta.symbol,
+          tokenLogoUri: meta.logoUri,
           amount: transfer.tokenAmount,
         };
       }
@@ -168,6 +210,7 @@ function classifyTransaction(
   // Check native SOL transfers
   if (tx.nativeTransfers && tx.nativeTransfers.length > 0) {
     const transfers = tx.nativeTransfers;
+    const solMeta = getTokenMetadata(NATIVE_SOL_MINT);
 
     const fromWallet = transfers.some(
       (t) => t.fromUserAccount?.toLowerCase() === walletLower
@@ -186,7 +229,8 @@ function classifyTransaction(
           type: "send",
           counterparty: transfer.toUserAccount,
           tokenMint: NATIVE_SOL_MINT,
-          tokenSymbol: "SOL",
+          tokenSymbol: solMeta.symbol,
+          tokenLogoUri: solMeta.logoUri,
           amount: transfer.amount / 1e9, // Convert lamports to SOL
         };
       }
@@ -202,7 +246,8 @@ function classifyTransaction(
           type: "receive",
           counterparty: transfer.fromUserAccount,
           tokenMint: NATIVE_SOL_MINT,
-          tokenSymbol: "SOL",
+          tokenSymbol: solMeta.symbol,
+          tokenLogoUri: solMeta.logoUri,
           amount: transfer.amount / 1e9, // Convert lamports to SOL
         };
       }
@@ -223,14 +268,16 @@ function classifyTransaction(
         return {
           type: "receive",
           tokenMint: NATIVE_SOL_MINT,
-          tokenSymbol: "SOL",
+          tokenSymbol: solMeta.symbol,
+          tokenLogoUri: solMeta.logoUri,
           amount: netFlow / 1e9,
         };
       } else if (netFlow < 0) {
         return {
           type: "send",
           tokenMint: NATIVE_SOL_MINT,
-          tokenSymbol: "SOL",
+          tokenSymbol: solMeta.symbol,
+          tokenLogoUri: solMeta.logoUri,
           amount: Math.abs(netFlow) / 1e9,
         };
       }
@@ -238,10 +285,12 @@ function classifyTransaction(
   }
 
   // Unknown type
+  const solMeta = getTokenMetadata(NATIVE_SOL_MINT);
   return {
     type: "unknown",
     tokenMint: NATIVE_SOL_MINT,
-    tokenSymbol: "SOL",
+    tokenSymbol: solMeta.symbol,
+    tokenLogoUri: solMeta.logoUri,
     amount: 0,
   };
 }
@@ -253,7 +302,7 @@ function parseTransaction(
   tx: HeliusTransaction,
   walletAddress: string
 ): ParsedTransaction {
-  const { type, counterparty, tokenMint, tokenSymbol, amount } = classifyTransaction(tx, walletAddress);
+  const { type, counterparty, tokenMint, tokenSymbol, tokenLogoUri, amount } = classifyTransaction(tx, walletAddress);
 
   return {
     signature: tx.signature,
@@ -261,6 +310,7 @@ function parseTransaction(
     counterpartyAddress: counterparty,
     tokenMint,
     tokenSymbol,
+    tokenLogoUri,
     amount,
     fee: tx.fee / 1e9, // Convert lamports to SOL
     blockTime: tx.timestamp,
@@ -406,6 +456,7 @@ export const upsertTransactions = internalMutation({
         counterpartyAddress: v.optional(v.string()),
         tokenMint: v.string(),
         tokenSymbol: v.string(),
+        tokenLogoUri: v.optional(v.string()),
         amount: v.number(),
         amountUsd: v.optional(v.number()),
         fee: v.number(),
@@ -440,6 +491,7 @@ export const upsertTransactions = internalMutation({
           counterpartyAddress: tx.counterpartyAddress,
           tokenMint: tx.tokenMint,
           tokenSymbol: tx.tokenSymbol,
+          tokenLogoUri: tx.tokenLogoUri,
           amount: tx.amount,
           amountUsd: tx.amountUsd,
           fee: tx.fee,

@@ -1646,6 +1646,7 @@ export default defineSchema({
     counterpartyAddress: v.optional(v.string()),
     tokenMint: v.string(),
     tokenSymbol: v.string(),
+    tokenLogoUri: v.optional(v.string()),
     amount: v.number(),              // Human-readable amount
     amountUsd: v.optional(v.number()), // USD value at time of fetch
     fee: v.number(),                 // Transaction fee in SOL

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { StyleSheet, View, Pressable } from 'react-native';
+import { StyleSheet, View, Pressable, Image } from 'react-native';
 import Animated, {
   useAnimatedStyle,
   withSpring,
@@ -23,6 +23,7 @@ export interface StackTransaction {
   fiatValue: string;
   fee?: string;
   estimatedTime?: string;
+  tokenLogoUri?: string;
 }
 
 interface TransactionStackProps {
@@ -151,9 +152,16 @@ export function TransactionStack({
                     {tx.type.charAt(0).toUpperCase() + tx.type.slice(1)}
                   </ThemedText>
                   <View style={styles.addressRow}>
-                    <View style={styles.addressDot}>
-                      <ThemedText style={[styles.diamond, { color: primaryColor }]}>◆</ThemedText>
-                    </View>
+                    {tx.tokenLogoUri ? (
+                      <Image
+                        source={{ uri: tx.tokenLogoUri }}
+                        style={styles.tokenLogo}
+                      />
+                    ) : (
+                      <View style={styles.addressDot}>
+                        <ThemedText style={[styles.diamond, { color: primaryColor }]}>◆</ThemedText>
+                      </View>
+                    )}
                     <ThemedText style={[styles.address, { color: mutedColor }]}>
                       {tx.address}
                     </ThemedText>
@@ -262,6 +270,11 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(16, 185, 129, 0.2)',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  tokenLogo: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
   },
   diamond: {
     fontSize: 8,

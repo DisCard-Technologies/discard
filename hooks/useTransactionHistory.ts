@@ -9,6 +9,18 @@ import { useQuery, useAction } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { StackTransaction, TransactionType } from "@/components/transaction-stack";
 
+// Known token logos for in-app transfers
+const TOKEN_LOGOS: Record<string, string> = {
+  SOL: "https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png",
+  USDC: "https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v/logo.png",
+  USDT: "https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB/logo.svg",
+  JUP: "https://static.jup.ag/jup/icon.png",
+  BONK: "https://arweave.net/hQiPZOsRZXGXBJd_82PhVdlM_hACsT_q6wqwf5cSY7I",
+  mSOL: "https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/mSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK7ytfqcJm7So/logo.png",
+  bSOL: "https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/bSo13r4TkiE4KumL71LsHTPpL2euBYLFx6h9HP3piy1/logo.png",
+  jitoSOL: "https://storage.googleapis.com/token-metadata/JitoSOL-256.png",
+};
+
 interface UseTransactionHistoryOptions {
   /** Maximum number of transactions to fetch */
   limit?: number;
@@ -145,6 +157,7 @@ export function useTransactionHistory(
           tokenAmount: `-${formattedAmount} ${transfer.token}`,
           fiatValue: `$${(transfer.amountUsd / 100).toFixed(2)}`,
           fee: feeFormatted,
+          tokenLogoUri: TOKEN_LOGOS[transfer.token],
         });
       }
     }
@@ -191,6 +204,7 @@ export function useTransactionHistory(
           tokenAmount: `${amountPrefix}${formattedAmount} ${tx.tokenSymbol}`,
           fiatValue,
           fee: feeFormatted,
+          tokenLogoUri: tx.tokenLogoUri,
         });
       }
     }
