@@ -421,19 +421,69 @@ export function RecipientInput({
         </Animated.View>
       )}
 
+      {/* Valid Address Card - for direct wallet addresses */}
+      {resolved?.isValid && resolved.type === "address" && (
+        <Animated.View
+          entering={FadeIn.duration(200)}
+          style={[styles.resolvedCard, { backgroundColor: inputBg, borderColor }]}
+        >
+          <View style={styles.addressCardContent}>
+            <View style={styles.addressCardLeft}>
+              <View style={styles.resolvedHeader}>
+                <Ionicons name="checkmark-circle" size={16} color="#4CAF50" />
+                <ThemedText style={styles.resolvedLabel}>Valid address</ThemedText>
+              </View>
+              <ThemedText style={[styles.resolvedAddress, { color: mutedColor }]}>
+                {formatAddress(resolved.address, 8)}
+              </ThemedText>
+            </View>
+            <Pressable
+              onPress={() => {
+                Keyboard.dismiss();
+                onSelect(resolved, undefined);
+              }}
+              style={({ pressed }) => [
+                styles.useAddressButton,
+                { backgroundColor: primaryColor },
+                pressed && styles.pressed,
+              ]}
+            >
+              <ThemedText style={styles.useAddressButtonText}>Use</ThemedText>
+            </Pressable>
+          </View>
+        </Animated.View>
+      )}
+
       {/* Resolved Address Display - for .sol domains */}
       {resolved?.isValid && resolved.type === "sol_name" && (
         <Animated.View
           entering={FadeIn.duration(200)}
           style={[styles.resolvedCard, { backgroundColor: inputBg, borderColor }]}
         >
-          <View style={styles.resolvedHeader}>
-            <Ionicons name="checkmark-circle" size={16} color="#4CAF50" />
-            <ThemedText style={styles.resolvedLabel}>Resolved to</ThemedText>
+          <View style={styles.addressCardContent}>
+            <View style={styles.addressCardLeft}>
+              <View style={styles.resolvedHeader}>
+                <Ionicons name="checkmark-circle" size={16} color="#4CAF50" />
+                <ThemedText style={styles.resolvedLabel}>Resolved to</ThemedText>
+              </View>
+              <ThemedText style={[styles.resolvedAddress, { color: mutedColor }]}>
+                {formatAddress(resolved.address, 8)}
+              </ThemedText>
+            </View>
+            <Pressable
+              onPress={() => {
+                Keyboard.dismiss();
+                onSelect(resolved, undefined);
+              }}
+              style={({ pressed }) => [
+                styles.useAddressButton,
+                { backgroundColor: primaryColor },
+                pressed && styles.pressed,
+              ]}
+            >
+              <ThemedText style={styles.useAddressButtonText}>Use</ThemedText>
+            </Pressable>
           </View>
-          <ThemedText style={[styles.resolvedAddress, { color: mutedColor }]}>
-            {resolved.address}
-          </ThemedText>
         </Animated.View>
       )}
 
@@ -443,20 +493,37 @@ export function RecipientInput({
           entering={FadeIn.duration(200)}
           style={[styles.resolvedCard, { backgroundColor: inputBg, borderColor }]}
         >
-          <View style={styles.resolvedHeader}>
-            <Ionicons name="checkmark-circle" size={16} color="#4CAF50" />
-            <ThemedText style={styles.resolvedLabel}>
-              DisCard user found
-            </ThemedText>
+          <View style={styles.addressCardContent}>
+            <View style={styles.addressCardLeft}>
+              <View style={styles.resolvedHeader}>
+                <Ionicons name="checkmark-circle" size={16} color="#4CAF50" />
+                <ThemedText style={styles.resolvedLabel}>
+                  DisCard user found
+                </ThemedText>
+              </View>
+              {resolved.displayName && (
+                <ThemedText style={styles.resolvedUserName}>
+                  {resolved.displayName}
+                </ThemedText>
+              )}
+              <ThemedText style={[styles.resolvedAddress, { color: mutedColor }]}>
+                {formatAddress(resolved.address, 6)}
+              </ThemedText>
+            </View>
+            <Pressable
+              onPress={() => {
+                Keyboard.dismiss();
+                onSelect(resolved, undefined);
+              }}
+              style={({ pressed }) => [
+                styles.useAddressButton,
+                { backgroundColor: primaryColor },
+                pressed && styles.pressed,
+              ]}
+            >
+              <ThemedText style={styles.useAddressButtonText}>Use</ThemedText>
+            </Pressable>
           </View>
-          {resolved.displayName && (
-            <ThemedText style={styles.resolvedUserName}>
-              {resolved.displayName}
-            </ThemedText>
-          )}
-          <ThemedText style={[styles.resolvedAddress, { color: mutedColor }]}>
-            {formatAddress(resolved.address, 6)}
-          </ThemedText>
         </Animated.View>
       )}
 
@@ -602,6 +669,14 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
   },
+  addressCardContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  addressCardLeft: {
+    flex: 1,
+  },
   resolvedHeader: {
     flexDirection: "row",
     alignItems: "center",
@@ -621,6 +696,16 @@ const styles = StyleSheet.create({
   resolvedAddress: {
     fontSize: 12,
     fontFamily: "monospace",
+  },
+  useAddressButton: {
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 10,
+  },
+  useAddressButtonText: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "600",
   },
   inviteCard: {
     marginTop: 12,
