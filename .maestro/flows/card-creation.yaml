@@ -21,66 +21,33 @@ tags:
 # Wait for cards screen
 - waitForAnimationToEnd
 
-# Tap create card button (+ icon or "Create Card" text)
+# Tap create card button
 - tapOn:
     id: "create-card-button"
-    optional: true
-
-- tapOn:
-    text: "Create Card"
-    optional: true
-
-- tapOn:
-    text: "+"
-    optional: true
 
 # Wait for card creation modal
 - waitForAnimationToEnd
 
-# Verify card creation screen
+# Verify card creation screen - Choose Card Type
 - assertVisible:
-    anyOf:
-      - "New Card"
-      - "Create Card"
-      - "Card Name"
+    text: "Choose Card Type"
     timeout: 5000
 
-# Enter card nickname
-- inputText:
-    id: "card-nickname-input"
-    text: "Shopping Card"
-    optional: true
-
-- inputText:
-    text: "Shopping Card"
-    optional: true
-
-# Select card color (tap on color option)
+# Select Wallet Card (Marqeta) provider
 - tapOn:
-    id: "color-green"
-    optional: true
+    id: "provider-marqeta"
 
-# Set spending limit (if available)
-- runFlow:
-    when:
-      visible: "Spending Limit"
-    commands:
-      - inputText:
-          id: "spending-limit-input"
-          text: "500"
+# Wait for details step
+- waitForAnimationToEnd
+
+# Enter card nickname
+- tapOn:
+    id: "card-nickname-input"
+- inputText: "Shopping Card"
 
 # Tap create/confirm button
 - tapOn:
-    text: "Create"
-    optional: true
-
-- tapOn:
-    text: "Confirm"
-    optional: true
-
-- tapOn:
-    text: "Done"
-    optional: true
+    id: "create-card-confirm"
 
 # Wait for card creation to complete
 - waitForAnimationToEnd:

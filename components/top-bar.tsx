@@ -54,10 +54,11 @@ export function TopBar({ walletAddress, onPortfolioTap, onCardTap, cardCount = 0
   };
 
   return (
-    <View style={styles.container}>
+    <View style={styles.container} testID="top-bar">
       {/* Left: Portfolio Icon */}
       <Pressable
         onPress={handlePortfolioTap}
+        testID="topbar-portfolio"
         style={({ pressed }) => [
           styles.iconButton,
           {
@@ -77,6 +78,7 @@ export function TopBar({ walletAddress, onPortfolioTap, onCardTap, cardCount = 0
       {/* Center: Wallet Address Pill */}
       <Pressable
         onPress={handleCopyAddress}
+        testID="topbar-wallet-address"
         style={({ pressed }) => [
           styles.addressPill,
           { backgroundColor: cardBg, borderColor },
@@ -103,6 +105,7 @@ export function TopBar({ walletAddress, onPortfolioTap, onCardTap, cardCount = 0
       {/* Right: Card Icon with Badge */}
       <Pressable
         onPress={handleCardTap}
+        testID="topbar-cards"
         style={({ pressed }) => [
           styles.iconButton,
           {

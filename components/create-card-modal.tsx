@@ -40,9 +40,9 @@ interface CreateCardModalProps {
 const PROVIDERS = {
   marqeta: {
     id: 'marqeta' as Provider,
-    name: 'Standard Card',
-    description: 'Full-featured card with real-time spending from your wallet',
-    icon: 'card-outline',
+    name: 'Wallet Card',
+    description: 'Spend directly from your crypto wallet with real-time funding',
+    icon: 'wallet-outline',
     features: [
       'Funds stay in wallet until you spend',
       'Real-time balance updates',
@@ -55,14 +55,14 @@ const PROVIDERS = {
   },
   starpay: {
     id: 'starpay' as Provider,
-    name: 'Instant Card',
-    description: 'Quick prepaid card with no verification required',
+    name: 'Prepaid Card',
+    description: 'Load funds upfront for instant, private spending',
     icon: 'flash-outline',
     features: [
-      'No KYC required',
+      'No verification required',
       'Instant activation',
       'Privacy-preserving',
-      'Apple Pay / Google Pay',
+      'Works everywhere',
     ],
     requiresKyc: false,
     requiresInitialAmount: true,
@@ -219,6 +219,7 @@ export function CreateCardModal({ visible, onClose, onSuccess }: CreateCardModal
           <Pressable
             key={provider.id}
             onPress={() => handleSelectProvider(provider.id)}
+            testID={`provider-${provider.id}`}
             style={({ pressed }) => [
               styles.providerCard,
               { backgroundColor: cardBg, borderColor },
@@ -239,12 +240,12 @@ export function CreateCardModal({ visible, onClose, onSuccess }: CreateCardModal
                 <ThemedText style={styles.providerName}>{provider.name}</ThemedText>
                 {provider.requiresKyc && (
                   <View style={[styles.badge, { backgroundColor: `${primaryColor}20` }]}>
-                    <ThemedText style={[styles.badgeText, { color: primaryColor }]}>KYC</ThemedText>
+                    <ThemedText style={[styles.badgeText, { color: primaryColor }]}>ID Required</ThemedText>
                   </View>
                 )}
                 {!provider.requiresKyc && (
                   <View style={[styles.badge, { backgroundColor: 'rgba(34, 197, 94, 0.2)' }]}>
-                    <ThemedText style={[styles.badgeText, { color: '#22c55e' }]}>No KYC</ThemedText>
+                    <ThemedText style={[styles.badgeText, { color: '#22c55e' }]}>No ID Needed</ThemedText>
                   </View>
                 )}
               </View>
@@ -309,6 +310,7 @@ export function CreateCardModal({ visible, onClose, onSuccess }: CreateCardModal
             value={nickname}
             onChangeText={setNickname}
             maxLength={30}
+            testID="card-nickname-input"
           />
         </View>
 
@@ -326,6 +328,7 @@ export function CreateCardModal({ visible, onClose, onSuccess }: CreateCardModal
                   <Pressable
                     key={preset.value}
                     onPress={() => handleSelectAmount(preset.value)}
+                    testID={`amount-${preset.value}`}
                     style={[
                       styles.presetButton,
                       { backgroundColor: inputBg, borderColor },
@@ -414,6 +417,7 @@ export function CreateCardModal({ visible, onClose, onSuccess }: CreateCardModal
         <Pressable
           onPress={handleCreateCard}
           disabled={isCreating || (selectedProvider === 'starpay' && !initialAmount)}
+          testID="create-card-confirm"
           style={({ pressed }) => [
             styles.createButton,
             { backgroundColor: primaryColor },

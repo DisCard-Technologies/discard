@@ -445,6 +445,7 @@ export function CardScreenContent({ topInset = 0 }: CardScreenContentProps) {
             </ThemedText>
             <Pressable
               onPress={handleOpenCreateModal}
+              testID="create-card-button"
               style={({ pressed }) => [
                 styles.createCardButton,
                 { backgroundColor: primaryColor },
@@ -578,16 +579,16 @@ export function CardScreenContent({ topInset = 0 }: CardScreenContentProps) {
 
           {/* Circular Action Buttons */}
           <View style={[styles.actionButtonsRow, isExpanded && { marginTop: 48 }]}>
-            <Pressable onPress={toggleDetails} disabled={loadingSecrets} style={styles.actionButton}>
+            <Pressable onPress={toggleDetails} disabled={loadingSecrets} style={styles.actionButton} testID="card-toggle-details">
               <View style={[styles.actionButtonCircle, { backgroundColor: cardBg, borderColor }]}>
                 <Ionicons name={showDetails ? "eye-outline" : "eye-off-outline"} size={22} color={textColor} />
               </View>
               <ThemedText style={[styles.actionButtonLabel, { color: mutedColor }]}>
-                {showDetails ? 'Show data' : 'Hide data'}
+                {showDetails ? 'Hide' : 'Show'}
               </ThemedText>
             </Pressable>
 
-            <Pressable onPress={handleToggleFreeze} style={styles.actionButton}>
+            <Pressable onPress={handleToggleFreeze} style={styles.actionButton} testID="card-toggle-freeze">
               <View style={[
                 styles.actionButtonCircle,
                 { backgroundColor: cardFrozen ? `${primaryColor}20` : cardBg, borderColor: cardFrozen ? primaryColor : borderColor }
@@ -599,11 +600,11 @@ export function CardScreenContent({ topInset = 0 }: CardScreenContentProps) {
               </ThemedText>
             </Pressable>
 
-            <Pressable onPress={() => console.log('[Card] Edit card settings')} style={styles.actionButton}>
+            <Pressable onPress={() => console.log('[Card] Edit card settings')} style={styles.actionButton} testID="card-edit-settings">
               <View style={[styles.actionButtonCircle, { backgroundColor: cardBg, borderColor }]}>
                 <Ionicons name="settings-outline" size={22} color={textColor} />
               </View>
-              <ThemedText style={[styles.actionButtonLabel, { color: mutedColor }]}>Edit card</ThemedText>
+              <ThemedText style={[styles.actionButtonLabel, { color: mutedColor }]}>Edit</ThemedText>
             </Pressable>
           </View>
         </View>
@@ -642,27 +643,11 @@ export function CardScreenContent({ topInset = 0 }: CardScreenContentProps) {
             <View style={styles.drawerContent}>
               <ThemedText style={styles.drawerTitle}>Manage Card</ThemedText>
 
-              {/* Apple Pay */}
-              <Pressable
-                style={({ pressed }) => [styles.drawerItem, styles.drawerItemDisabled, pressed && styles.drawerItemPressed]}
-                onPress={() => console.log('[Card] Apple Pay - coming soon')}
-              >
-                <View style={[styles.drawerItemIcon, { backgroundColor: '#000', opacity: 0.5 }]}>
-                  <ThemedText style={styles.applePayText}>Pay</ThemedText>
-                </View>
-                <View style={styles.drawerItemContent}>
-                  <ThemedText style={[styles.drawerItemTitle, { opacity: 0.5 }]}>Apple Pay</ThemedText>
-                  <ThemedText style={[styles.drawerItemSubtitle, { color: mutedColor }]}>
-                    Coming soon
-                  </ThemedText>
-                </View>
-                <Ionicons name="chevron-forward" size={20} color={mutedColor} style={{ opacity: 0.5 }} />
-              </Pressable>
-
               {/* Payment Method */}
               <Pressable
                 style={({ pressed }) => [styles.drawerItem, pressed && styles.drawerItemPressed]}
                 onPress={() => console.log('[Card] Payment method settings')}
+                testID="card-payment-method"
               >
                 <View style={[styles.drawerItemIcon, { backgroundColor: `${primaryColor}20` }]}>
                   <ThemedText style={[styles.solanaSymbol, { color: primaryColor }]}>◎</ThemedText>
@@ -681,21 +666,42 @@ export function CardScreenContent({ topInset = 0 }: CardScreenContentProps) {
                 <Ionicons name="chevron-forward" size={20} color={mutedColor} />
               </Pressable>
 
-              {/* Card Design */}
+              {/* Spending Limits */}
               <Pressable
-                style={({ pressed }) => [styles.drawerItem, styles.drawerItemDisabled, pressed && styles.drawerItemPressed]}
-                onPress={() => console.log('[Card] Card design - coming soon')}
+                style={({ pressed }) => [styles.drawerItem, pressed && styles.drawerItemPressed]}
+                onPress={() => console.log('[Card] Spending limits')}
+                testID="card-spending-limits"
               >
-                <View style={[styles.drawerItemIcon, { backgroundColor: 'rgba(168, 85, 247, 0.2)', opacity: 0.5 }]}>
-                  <Ionicons name="color-palette" size={18} color="#a855f7" />
+                <View style={[styles.drawerItemIcon, { backgroundColor: 'rgba(251, 191, 36, 0.2)' }]}>
+                  <Ionicons name="speedometer-outline" size={18} color="#fbbf24" />
                 </View>
                 <View style={styles.drawerItemContent}>
-                  <ThemedText style={[styles.drawerItemTitle, { opacity: 0.5 }]}>Card Design</ThemedText>
+                  <ThemedText style={styles.drawerItemTitle}>Spending Limits</ThemedText>
                   <ThemedText style={[styles.drawerItemSubtitle, { color: mutedColor }]}>
-                    Coming soon
+                    ${((activeCard?.spendingLimit || 100000) / 100).toLocaleString()} per transaction
                   </ThemedText>
                 </View>
-                <Ionicons name="chevron-forward" size={20} color={mutedColor} style={{ opacity: 0.5 }} />
+                <Ionicons name="chevron-forward" size={20} color={mutedColor} />
+              </Pressable>
+
+              {/* Delete Card */}
+              <Pressable
+                style={({ pressed }) => [styles.drawerItem, pressed && styles.drawerItemPressed]}
+                onPress={() => Alert.alert('Delete Card', 'Are you sure you want to delete this card? This action cannot be undone.', [
+                  { text: 'Cancel', style: 'cancel' },
+                  { text: 'Delete', style: 'destructive', onPress: () => console.log('[Card] Delete card') }
+                ])}
+                testID="card-delete"
+              >
+                <View style={[styles.drawerItemIcon, { backgroundColor: 'rgba(239, 68, 68, 0.2)' }]}>
+                  <Ionicons name="trash-outline" size={18} color="#ef4444" />
+                </View>
+                <View style={styles.drawerItemContent}>
+                  <ThemedText style={[styles.drawerItemTitle, { color: '#ef4444' }]}>Delete Card</ThemedText>
+                  <ThemedText style={[styles.drawerItemSubtitle, { color: mutedColor }]}>
+                    Permanently remove this card
+                  </ThemedText>
+                </View>
               </Pressable>
             </View>
           </Animated.View>

@@ -70,10 +70,11 @@ export function QuickActions({
   };
 
   return (
-    <View style={styles.container}>
+    <View style={styles.container} testID="home-quick-actions">
       {actions.map((action) => (
         <Pressable
           key={action.id}
+          testID={`quick-action-${action.id}`}
           style={({ pressed }) => [
             styles.actionButton,
             pressed && styles.actionButtonPressed,

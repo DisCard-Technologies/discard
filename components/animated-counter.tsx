@@ -15,6 +15,7 @@ interface AnimatedCounterProps {
   suffix?: string;
   style?: TextStyle;
   decimals?: number;
+  testID?: string;
 }
 
 export function AnimatedCounter({
@@ -23,6 +24,7 @@ export function AnimatedCounter({
   suffix = '',
   style,
   decimals = 0,
+  testID,
 }: AnimatedCounterProps) {
   const textColor = useThemeColor({}, 'text');
   const animatedValue = useSharedValue(value);
@@ -66,6 +68,7 @@ export function AnimatedCounter({
 
   return (
     <Animated.Text
+      testID={testID}
       style={[
         styles.counter,
         { color: textColor },

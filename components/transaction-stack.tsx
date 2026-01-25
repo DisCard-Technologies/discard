@@ -29,6 +29,7 @@ interface TransactionStackProps {
   transactions: StackTransaction[];
   onTransactionTap?: (transaction: StackTransaction) => void;
   maxVisible?: number;
+  testID?: string;
 }
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
@@ -37,6 +38,7 @@ export function TransactionStack({
   transactions,
   onTransactionTap,
   maxVisible = 3,
+  testID,
 }: TransactionStackProps) {
   const colorScheme = useColorScheme();
   const colors = Colors[colorScheme ?? 'dark'];
@@ -48,7 +50,7 @@ export function TransactionStack({
 
   if (transactions.length === 0) {
     return (
-      <View style={styles.emptyContainer}>
+      <View style={styles.emptyContainer} testID={testID ? `${testID}-empty` : undefined}>
         <View style={[styles.emptyIconContainer, { borderColor }]}>
           <Ionicons name="receipt-outline" size={24} color={mutedColor} />
         </View>
@@ -104,7 +106,7 @@ export function TransactionStack({
   const visibleTransactions = getVisibleTransactions();
 
   return (
-    <View style={styles.container}>
+    <View style={styles.container} testID={testID}>
       {visibleTransactions.map((tx, index) => {
         const stackIndex = tx.stackIndex;
         const isTop = stackIndex === 0;

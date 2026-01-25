@@ -1,9 +1,8 @@
-import { useState, useMemo } from 'react';
-import { StyleSheet, View, Pressable, Keyboard } from 'react-native';
+import { useMemo } from 'react';
+import { StyleSheet, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
-import Animated, { useSharedValue, useAnimatedStyle, withTiming } from 'react-native-reanimated';
 import { useQuery } from 'convex/react';
 import { api } from '@/convex/_generated/api';
 
@@ -18,8 +17,6 @@ import { useAuth } from '@/stores/authConvex';
 import { useFunding } from '@/stores/fundingConvex';
 import { useTokenHoldings } from '@/hooks/useTokenHoldings';
 import { positiveColor, negativeColor } from '@/constants/theme';
-
-const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 // Props for the content component when used in pager
 export interface HomeScreenContentProps {
@@ -113,26 +110,6 @@ export function HomeScreenContent({ topInset = 0 }: HomeScreenContentProps) {
     });
   }, [recentTransfers]);
 
-  // Backdrop overlay animation
-  const backdropOpacity = useSharedValue(0);
-  const [isCommandBarFocused, setIsCommandBarFocused] = useState(false);
-
-  const handleCommandBarFocusChange = (focused: boolean) => {
-    setIsCommandBarFocused(focused);
-    backdropOpacity.value = withTiming(focused ? 1 : 0, { duration: 200 });
-  };
-
-  const handleBackdropPress = () => {
-    Keyboard.dismiss();
-    setIsCommandBarFocused(false);
-    backdropOpacity.value = withTiming(0, { duration: 200 });
-  };
-
-  const backdropAnimatedStyle = useAnimatedStyle(() => ({
-    opacity: backdropOpacity.value,
-    pointerEvents: backdropOpacity.value > 0 ? 'auto' : 'none',
-  }));
-
   // Quick action handlers
   const handleSend = () => router.push('/(tabs)/transfer');
   const handleReceive = () => router.push('/receive');
@@ -171,14 +148,14 @@ export function HomeScreenContent({ topInset = 0 }: HomeScreenContentProps) {
       {/* Main Content */}
       <View style={styles.content}>
         {/* Hero Section - Balance Display */}
-        <View style={[styles.heroSection, { paddingTop: topInset + 16 }]}>
+        <View style={[styles.heroSection, { paddingTop: topInset + 16 }]} testID="home-hero-section">
           <ThemedText style={[styles.balanceLabel, { color: mutedColor }]}>
             Spendable Balance
           </ThemedText>
-          <AnimatedCounter value={netWorth} prefix="$" style={styles.balanceText} />
+          <AnimatedCounter value={netWorth} prefix="$" style={styles.balanceText} testID="home-balance" />
 
           {/* Daily Change Badge */}
-          <View style={styles.changeContainer}>
+          <View style={styles.changeContainer} testID="home-daily-change">
             <View
               style={[
                 styles.changeBadge,
@@ -198,7 +175,7 @@ export function HomeScreenContent({ topInset = 0 }: HomeScreenContentProps) {
         </View>
 
         {/* Transaction Stack */}
-        <TransactionStack transactions={transactions} onTransactionTap={handleTransactionTap} />
+        <TransactionStack transactions={transactions} onTransactionTap={handleTransactionTap} testID="home-transactions" />
 
         {/* Quick Actions */}
         <QuickActions
@@ -209,12 +186,6 @@ export function HomeScreenContent({ topInset = 0 }: HomeScreenContentProps) {
           onFund={handleFund}
         />
       </View>
-
-      {/* Backdrop Overlay */}
-      <AnimatedPressable
-        style={[styles.backdrop, backdropAnimatedStyle]}
-        onPress={handleBackdropPress}
-      />
     </ThemedView>
   );
 }
@@ -240,11 +211,6 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-  },
-  backdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    zIndex: 100,
   },
   heroSection: {
     alignItems: 'center',
