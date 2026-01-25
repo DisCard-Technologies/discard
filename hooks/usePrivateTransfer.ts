@@ -10,7 +10,7 @@
  */
 
 import { useState, useCallback } from "react";
-import { PublicKey } from "@solana/web3.js";
+import { PublicKey, Keypair } from "@solana/web3.js";
 import { getRangeComplianceService, type TransferComplianceCheck } from "@/services/rangeComplianceClient";
 import {
   getShadowWireService,
@@ -125,14 +125,24 @@ export function usePrivateTransfer() {
 
   /**
    * Execute a private transfer via ShadowWire
+   *
+   * @param senderAddress - Sender's wallet address
+   * @param recipientStealthAddress - Recipient's stealth address
+   * @param amount - Amount in lamports
+   * @param tokenMint - Optional token mint (native SOL if not specified)
+   * @param signer - Optional signer keypair for REAL transaction submission
    */
   const executePrivateTransfer = useCallback(async (
     senderAddress: string,
     recipientStealthAddress: string,
     amount: number,
-    tokenMint?: string
+    tokenMint?: string,
+    signer?: Keypair
   ): Promise<PrivateTransferResult> => {
-    console.log("[PrivateTransfer] Executing private transfer...");
+    console.log("[PrivateTransfer] Executing private transfer...", {
+      hasRealSigner: !!signer,
+      amount,
+    });
     setIsLoading(true);
     setState({ status: "transferring" });
 
@@ -142,6 +152,7 @@ export function usePrivateTransfer() {
         recipientStealthAddress,
         amount,
         tokenMint,
+        signer,
       });
 
       setState({
@@ -214,14 +225,24 @@ export function usePrivateTransfer() {
    * - Reduced rent costs (1000x)
    * - ZK validity proofs
    * - Compressed state storage
+   *
+   * @param senderAddress - Sender's wallet address
+   * @param recipientStealthAddress - Recipient's stealth address
+   * @param amount - Amount in lamports
+   * @param tokenMint - Optional token mint
+   * @param signer - Optional signer keypair for REAL transaction submission
    */
   const executeZkPrivateTransfer = useCallback(async (
     senderAddress: string,
     recipientStealthAddress: string,
     amount: number,
-    tokenMint?: string
+    tokenMint?: string,
+    signer?: Keypair
   ): Promise<ZkPrivateTransferResult> => {
-    console.log("[PrivateTransfer] Executing ZK-compressed private transfer...");
+    console.log("[PrivateTransfer] Executing ZK-compressed private transfer...", {
+      hasRealSigner: !!signer,
+      amount,
+    });
     setIsLoading(true);
     setState({ status: "transferring" });
 
@@ -233,6 +254,7 @@ export function usePrivateTransfer() {
           recipientStealthAddress,
           amount,
           tokenMint,
+          signer,
         },
         payerPubkey
       );
@@ -250,12 +272,13 @@ export function usePrivateTransfer() {
       return result;
     } catch (error) {
       console.error("[PrivateTransfer] ZK transfer failed:", error);
-      // Fall back to regular private transfer
+      // Fall back to regular private transfer (with signer for real tx)
       const fallbackResult = await executePrivateTransfer(
         senderAddress,
         recipientStealthAddress,
         amount,
-        tokenMint
+        tokenMint,
+        signer
       );
       return fallbackResult;
     }

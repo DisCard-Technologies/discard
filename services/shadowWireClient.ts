@@ -68,12 +68,14 @@ export interface PrivateTransferRequest {
   senderAddress: string;
   /** Recipient's stealth address (generated from their viewing key) */
   recipientStealthAddress: string;
-  /** Amount to transfer (base units) */
+  /** Amount to transfer (base units - lamports for SOL) */
   amount: number;
   /** Token mint address (native SOL if not specified) */
   tokenMint?: string;
   /** Optional memo (encrypted) */
   encryptedMemo?: string;
+  /** Optional signer keypair for real transaction submission */
+  signer?: Keypair;
 }
 
 export interface PrivateTransferResult {
@@ -453,14 +455,18 @@ export class ShadowWireService {
 
       // 4. Build and submit transaction via relayer
       // Using relayer for additional privacy (hides sender IP)
+      // If signer is provided, submits a REAL transaction
       const result = await this.submitViaRelayer({
         proof: ringProof,
         encryptedNote,
         amount: request.amount,
         tokenMint: request.tokenMint,
+        signer: request.signer,
+        recipientAddress: request.recipientStealthAddress,
       });
 
-      console.log("[ShadowWire] Private transfer submitted:", result.txSignature);
+      const isReal = !result.txSignature.startsWith("sw_");
+      console.log("[ShadowWire] Private transfer submitted:", result.txSignature, isReal ? "(REAL)" : "(demo)");
 
       return {
         success: true,
@@ -578,11 +584,14 @@ export class ShadowWireService {
       }
 
       // 5. Submit via relayer with ZK proof
+      // If signer is provided, submits a REAL transaction
       const relayerResult = await this.submitViaRelayer({
         proof: zkProof ? JSON.stringify(zkProof) : stateHash,
         encryptedNote,
         amount: request.amount,
         tokenMint: request.tokenMint,
+        signer: request.signer,
+        recipientAddress: request.recipientStealthAddress,
       });
 
       console.log("[ShadowWire] ZK private transfer submitted:", relayerResult.txSignature);
@@ -622,8 +631,8 @@ export class ShadowWireService {
     try {
       // Create ring with sender at random position
       const ringMembers = [...decoys];
-      const senderIndex = Math.floor(Math.random() * (ringMembers.length + 1));
-      ringMembers.splice(senderIndex, 0, senderAddress);
+      const signerIndex = Math.floor(Math.random() * (ringMembers.length + 1));
+      ringMembers.splice(signerIndex, 0, senderAddress);
 
       // Create message to sign (hash of transfer details)
       const messageData = new TextEncoder().encode(
@@ -637,15 +646,15 @@ export class ShadowWireService {
 
       // Convert addresses to public keys
       const ringPublicKeys = ringMembers.map(addr => bs58.decode(addr).slice(0, 32));
-      
+
       // Get sender's private key (in production, from wallet)
       // For demo, derive from address hash
-      const senderPrivateKey = sha256(new TextEncoder().encode(senderAddress)).slice(0, 32);
+      const signerPrivateKey = sha256(new TextEncoder().encode(senderAddress)).slice(0, 32);
 
       // Generate proper ring signature
       const ringSignature = generateRingSignature({
         message: messageData,
-        signerPrivateKey: senderPrivateKey,
+        signerPrivateKey,
         signerIndex,
         ringPublicKeys,
       });
@@ -1205,18 +1214,140 @@ export class ShadowWireService {
   }
 
   /**
+   * Submit a REAL transaction to the Solana network
+   *
+   * This method builds and submits an actual on-chain transfer to the
+   * stealth address. The privacy is maintained through:
+   * - Stealth addresses (recipient identity hidden)
+   * - Future: relayer submission (sender IP hidden)
+   *
+   * @param params - Transaction parameters including signer
+   * @returns Real transaction signature
+   */
+  private async submitRealTransaction(params: {
+    signer: Keypair;
+    recipientAddress: string;
+    amountLamports: number;
+    tokenMint?: string;
+  }): Promise<{ txSignature: string; nullifier: string }> {
+    // Native SOL mint address (wrapped SOL)
+    const NATIVE_SOL_MINT = "So11111111111111111111111111111111111111112";
+
+    // Check if this is a native SOL transfer
+    const isNativeSol = !params.tokenMint ||
+      params.tokenMint === "native" ||
+      params.tokenMint === NATIVE_SOL_MINT;
+
+    console.log("[ShadowWire] Submitting REAL transaction to Solana...", {
+      from: params.signer.publicKey.toBase58().slice(0, 8) + "...",
+      to: params.recipientAddress.slice(0, 8) + "...",
+      amount: params.amountLamports / LAMPORTS_PER_SOL,
+      network: RPC_URL.includes("devnet") ? "devnet" : "mainnet",
+      isNativeSol,
+      tokenMint: params.tokenMint?.slice(0, 8),
+    });
+
+    try {
+      // Build the transaction
+      const transaction = new Transaction();
+
+      // For native SOL transfer
+      if (isNativeSol) {
+        transaction.add(
+          SystemProgram.transfer({
+            fromPubkey: params.signer.publicKey,
+            toPubkey: new PublicKey(params.recipientAddress),
+            lamports: params.amountLamports,
+          })
+        );
+      } else {
+        // For SPL tokens, we'd need to add token transfer instructions
+        // TODO: Implement SPL token transfer
+        throw new Error("SPL token transfers not yet supported in real mode");
+      }
+
+      // Get recent blockhash
+      const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash("confirmed");
+      transaction.recentBlockhash = blockhash;
+      transaction.lastValidBlockHeight = lastValidBlockHeight;
+      transaction.feePayer = params.signer.publicKey;
+
+      // Sign the transaction
+      transaction.sign(params.signer);
+
+      // Submit to the network
+      const txSignature = await this.connection.sendRawTransaction(
+        transaction.serialize(),
+        {
+          skipPreflight: false,
+          preflightCommitment: "confirmed",
+        }
+      );
+
+      console.log("[ShadowWire] Transaction sent:", txSignature);
+
+      // Wait for confirmation
+      const confirmation = await this.connection.confirmTransaction(
+        {
+          signature: txSignature,
+          blockhash,
+          lastValidBlockHeight,
+        },
+        "confirmed"
+      );
+
+      if (confirmation.value.err) {
+        throw new Error(`Transaction failed: ${JSON.stringify(confirmation.value.err)}`);
+      }
+
+      console.log("[ShadowWire] Transaction confirmed:", txSignature);
+
+      // Generate nullifier for tracking
+      const nullifierData = new TextEncoder().encode(
+        `${txSignature}:${params.recipientAddress}:${Date.now()}`
+      );
+      const nullifier = bs58.encode(sha256(nullifierData));
+
+      return {
+        txSignature,
+        nullifier,
+      };
+    } catch (error) {
+      console.error("[ShadowWire] Real transaction failed:", error);
+      throw error;
+    }
+  }
+
+  /**
    * Submit transaction via ShadowWire relayer for privacy
    *
    * The relayer hides the sender's IP address and submits the
    * transaction on their behalf.
+   *
+   * If a signer is provided, submits a REAL transaction.
+   * Otherwise, returns a mock signature (demo mode).
    */
   private async submitViaRelayer(params: {
     proof: string;
     encryptedNote: PrivateNote;
     amount: number;
     tokenMint?: string;
+    signer?: Keypair;
+    recipientAddress?: string;
   }): Promise<{ txSignature: string; nullifier: string }> {
-    console.log("[ShadowWire] Submitting via relayer...");
+    // If signer and recipient are provided, submit a REAL transaction
+    if (params.signer && params.recipientAddress) {
+      console.log("[ShadowWire] Signer provided - submitting REAL transaction");
+      return this.submitRealTransaction({
+        signer: params.signer,
+        recipientAddress: params.recipientAddress,
+        amountLamports: params.amount,
+        tokenMint: params.tokenMint,
+      });
+    }
+
+    // Otherwise, use mock/demo mode
+    console.log("[ShadowWire] No signer - using demo mode (mock transaction)");
 
     try {
       // Generate nullifier from proof and commitment
@@ -1237,33 +1368,13 @@ export class ShadowWireService {
       );
       const txHash = sha256(txData);
 
-      // For hackathon: Store in local state / Convex
-      // In production: POST to actual relayer endpoint
-      // try {
-      //   const response = await fetch(`${this.relayerUrl}/submit`, {
-      //     method: 'POST',
-      //     headers: { 'Content-Type': 'application/json' },
-      //     body: JSON.stringify({
-      //       proof: params.proof,
-      //       encryptedNote: params.encryptedNote,
-      //       amount: params.amount,
-      //       tokenMint: params.tokenMint,
-      //     }),
-      //   });
-      //   if (response.ok) {
-      //     return await response.json();
-      //   }
-      // } catch (e) {
-      //   console.log("[ShadowWire] Relayer unavailable, using local mode");
-      // }
-
       const txSignature = bs58.encode(txHash);
       const nullifierEncoded = bs58.encode(nullifier);
 
-      console.log("[ShadowWire] Transaction submitted:", txSignature.slice(0, 16) + "...");
+      console.log("[ShadowWire] Mock transaction submitted:", txSignature.slice(0, 16) + "...");
 
       return {
-        txSignature: `sw_${txSignature}`,
+        txSignature: `sw_demo_${txSignature}`,
         nullifier: nullifierEncoded,
       };
     } catch (error) {
@@ -1284,9 +1395,17 @@ export class ShadowWireService {
    */
   isAvailable(): boolean {
     try {
-      // Check crypto library availability
-      const hasNacl = typeof nacl !== "undefined" && typeof nacl.box === "object";
-      const hasSha256 = typeof sha256Hash !== "undefined";
+      // Check crypto library availability with more robust checks
+      // nacl.box is an object with methods like keyPair, open, etc.
+      let hasNacl = false;
+      try {
+        // Try to actually use nacl to verify it works
+        hasNacl = nacl && typeof nacl.box?.keyPair === "function";
+      } catch {
+        hasNacl = false;
+      }
+
+      const hasSha256 = typeof sha256Hash === "function";
       const hasConnection = !!this.connection;
 
       // All checks must pass

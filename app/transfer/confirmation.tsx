@@ -57,9 +57,12 @@ import type {
 // Constants
 // ============================================================================
 
+// Use Helius RPC URL for consistency with the rest of the app
+// Prefer Helius devnet, then generic Solana RPC, finally devnet fallback
 const SOLANA_RPC_URL =
+  process.env.EXPO_PUBLIC_HELIUS_RPC_URL ||
   process.env.EXPO_PUBLIC_SOLANA_RPC_URL ||
-  "https://api.mainnet-beta.solana.com";
+  "https://api.devnet.solana.com";
 
 const TURNKEY_RP_ID = process.env.EXPO_PUBLIC_TURNKEY_RP_ID || "www.discard.tech";
 const TURNKEY_ORG_ID = process.env.EXPO_PUBLIC_TURNKEY_ORG_ID || "";
@@ -227,6 +230,13 @@ export default function TransferConfirmationScreen() {
         });
         setExecutionPhase("shielding");
 
+        // Get local keypair for signing real transactions
+        const localKeypair = await getLocalSolanaKeypair();
+        if (!localKeypair) {
+          console.warn("[Confirmation] No local keypair, falling back to regular transfer");
+          // Fall through to regular transfer
+        }
+
         // Generate stealth address for recipient - use ZK compressed when available
         const stealthAddress = isZkCompressionAvailable
           ? await generateZkCompressedStealthAddress(recipient.address, walletAddress)
@@ -234,7 +244,7 @@ export default function TransferConfirmationScreen() {
         if (!stealthAddress) {
           console.warn("[Confirmation] Stealth address generation failed, falling back to regular transfer");
           // Fall through to regular transfer
-        } else {
+        } else if (localKeypair) {
           // Create Convex transfer record for private transfer
           transferId = await createTransfer({
             recipientType: recipient.type,
@@ -258,19 +268,33 @@ export default function TransferConfirmationScreen() {
             credentialId: credentialId || undefined,
           });
 
+          // Parse amount to lamports (base units) for the transfer
+          const amountLamports = typeof amount.amountBaseUnits === 'string'
+            ? Number(amount.amountBaseUnits)
+            : Number(amount.amountBaseUnits);
+
+          console.log("[Confirmation] Private transfer with signer:", {
+            from: localKeypair.publicKey.toBase58().slice(0, 8) + "...",
+            to: stealthAddress.publicAddress.slice(0, 8) + "...",
+            amountLamports,
+          });
+
           // Execute private transfer - use ZK compressed when available
+          // Pass the signer keypair for REAL on-chain transactions
           const privateResult = isZkCompressionAvailable
             ? await executeZkPrivateTransfer(
-                walletAddress,
+                localKeypair.publicKey.toBase58(),
                 stealthAddress.publicAddress,
-                Number(amount.amount),
-                token.mint === "native" ? undefined : token.mint
+                amountLamports,
+                token.mint === "native" ? undefined : token.mint,
+                localKeypair
               )
             : await executePrivateTransfer(
-                walletAddress,
+                localKeypair.publicKey.toBase58(),
                 stealthAddress.publicAddress,
-                Number(amount.amount),
-                token.mint === "native" ? undefined : token.mint
+                amountLamports,
+                token.mint === "native" ? undefined : token.mint,
+                localKeypair
               );
 
           if (privateResult.success && privateResult.txSignature) {
@@ -287,12 +311,19 @@ export default function TransferConfirmationScreen() {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
             // Navigate to success screen
+            // Use correct explorer based on network
+            const isDevnet = SOLANA_RPC_URL.includes("devnet");
+            const explorerBase = isDevnet
+              ? "https://explorer.solana.com/tx"
+              : "https://solscan.io/tx";
+            const explorerCluster = isDevnet ? "?cluster=devnet" : "";
+
             const result: TransferResult = {
               signature: privateResult.txSignature,
               confirmationTimeMs,
               withinTarget: confirmationTimeMs < 200,
               transferId,
-              explorerUrl: `https://solscan.io/tx/${privateResult.txSignature}`,
+              explorerUrl: `${explorerBase}/${privateResult.txSignature}${explorerCluster}`,
             };
 
             router.push({
@@ -324,12 +355,26 @@ export default function TransferConfirmationScreen() {
       }
 
       // Fallback: Regular transaction flow (when ShadowWire unavailable)
-      console.log("[Confirmation] Using regular transfer flow");
+      console.log("[Confirmation] Using regular transfer flow", {
+        privateTransferAvailable: isPrivateTransferAvailable,
+        zkCompressionAvailable: isZkCompressionAvailable,
+      });
 
       // Step 2b: Build transaction
       setExecutionPhase("building");
 
-      console.log("[Confirmation] Using RPC:", SOLANA_RPC_URL);
+      // Log transfer details for debugging
+      const isDevnet = SOLANA_RPC_URL.includes("devnet");
+      console.log("[Confirmation] Transfer details:", {
+        rpc: SOLANA_RPC_URL.slice(0, 50) + "...",
+        network: isDevnet ? "devnet" : "mainnet",
+        from: walletAddress?.slice(0, 8) + "...",
+        to: recipient.address.slice(0, 8) + "...",
+        amount: amount.amount,
+        amountBaseUnits: amount.amountBaseUnits?.toString(),
+        token: token.symbol,
+      });
+
       const connection = new Connection(SOLANA_RPC_URL, "confirmed");
       const fromPubkey = new PublicKey(walletAddress);
       const toPubkey = new PublicKey(recipient.address);
@@ -358,10 +403,13 @@ export default function TransferConfirmationScreen() {
       }
 
       // Step 3: Simulate transaction
+      console.log("[Confirmation] Simulating transaction...");
       const simulation = await simulateTransaction(connection, txResult.transaction);
       if (!simulation.success) {
+        console.error("[Confirmation] Simulation failed:", simulation.error, simulation.logs);
         throw new Error(simulation.error || "Transaction simulation failed");
       }
+      console.log("[Confirmation] Simulation passed");
 
       // Step 4: Create Convex transfer record
       transferId = await createTransfer({
@@ -412,7 +460,17 @@ export default function TransferConfirmationScreen() {
         // 1. Use the local keypair's address as sender
         // 2. Disable gas subsidization (we don't have the gas authority's key)
         const localPubkey = localKeypair.publicKey;
-        console.log("[Confirmation] Using local keypair:", localPubkey.toBase58());
+        const localAddress = localPubkey.toBase58();
+
+        // Warn if local keypair doesn't match the displayed wallet address
+        if (localAddress !== walletAddress) {
+          console.warn("[Confirmation] Address mismatch!", {
+            displayed: walletAddress?.slice(0, 12) + "...",
+            localKeypair: localAddress.slice(0, 12) + "...",
+          });
+        }
+
+        console.log("[Confirmation] Using local keypair:", localAddress.slice(0, 12) + "...");
         console.log("[Confirmation] Rebuilding transaction without gas subsidization");
 
         // Rebuild transaction with local keypair's address and no gas subsidy
@@ -532,16 +590,43 @@ export default function TransferConfirmationScreen() {
       // Show user-friendly error message
       let errorMessage = "Transfer failed. Please try again.";
       if (err instanceof Error) {
-        if (err.message.includes("cancelled")) {
+        const msg = err.message;
+        if (msg.includes("cancelled")) {
           errorMessage = "Transfer cancelled";
-        } else if (err.message.includes("insufficient") || err.message.includes("balance")) {
+        } else if (msg.includes("insufficient") || msg.includes("balance") || msg.includes("0x1")) {
           errorMessage = "Insufficient balance for this transfer";
-        } else if (err.message.includes("simulation")) {
+        } else if (msg.includes("simulation")) {
           errorMessage = "Transaction validation failed. Please check your balance.";
-        } else if (err.message.includes("confirm")) {
+        } else if (msg.includes("confirm")) {
           errorMessage = "Network confirmation failed. Your funds are safe - please try again.";
+        } else if (msg.includes("InstructionError")) {
+          // Parse Solana InstructionError for better messaging
+          try {
+            // Example: {"InstructionError":[2,{"Custom":1}]}
+            const match = msg.match(/Custom["\s:]+(\d+)/);
+            if (match) {
+              const customCode = parseInt(match[1], 10);
+              if (customCode === 1) {
+                errorMessage = "Insufficient funds or invalid account. Please check your balance.";
+              } else if (customCode === 0) {
+                errorMessage = "Invalid instruction data";
+              } else {
+                errorMessage = `Transaction failed (error code: ${customCode})`;
+              }
+            } else if (msg.includes("InsufficientFunds")) {
+              errorMessage = "Insufficient balance for this transfer";
+            } else if (msg.includes("AccountNotFound")) {
+              errorMessage = "Recipient account not found on this network";
+            } else {
+              errorMessage = "Transaction failed on the network. Please try again.";
+            }
+          } catch {
+            errorMessage = "Transaction failed. Please try again.";
+          }
+        } else if (msg.includes("blockhash") || msg.includes("expired")) {
+          errorMessage = "Transaction expired. Please try again.";
         } else {
-          errorMessage = err.message;
+          errorMessage = msg;
         }
       }
 
@@ -551,7 +636,7 @@ export default function TransferConfirmationScreen() {
       setIsConfirming(false);
       setExecutionPhase("idle");
     }
-  }, [recipient, token, amount, fees, userId, walletAddress, turnkey, params, createTransfer, updateTransferStatus, credentialId, privacyState, isPrivateTransferAvailable, generateStealthAddress, executePrivateTransfer]);
+  }, [recipient, token, amount, fees, userId, walletAddress, turnkey, params, createTransfer, updateTransferStatus, credentialId, privacyState, isPrivateTransferAvailable, isZkCompressionAvailable, generateStealthAddress, generateZkCompressedStealthAddress, executePrivateTransfer, executeZkPrivateTransfer]);
 
   // Show error if params missing
   if (!recipient || !token || !amount || !fees) {

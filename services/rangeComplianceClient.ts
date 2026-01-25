@@ -19,7 +19,7 @@
 // Configuration
 // ============================================================================
 
-const RANGE_API_KEY = process.env.EXPO_PUBLIC_RANGE_API_KEY || "";
+const RANGE_API_KEY = process.env.EXPO_PUBLIC_RANGE_API_KEY || process.env.RANGE_API_KEY || "";
 const RANGE_API_BASE_URL = "https://api.range.org";
 const FARADAY_API_BASE_URL = "https://api.faraday.range.org";
 
