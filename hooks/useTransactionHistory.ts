@@ -157,7 +157,7 @@ export function useTransactionHistory(
         result.push({
           id: transfer._id,
           type: "send" as TransactionType,
-          address: transfer.recipientDisplayName || shortAddr,
+          address: shortAddr, // Always show truncated address
           tokenAmount: `-${formattedAmount} ${transfer.token}`,
           fiatValue: `$${(transfer.amountUsd / 100).toFixed(2)}`,
           fee: feeFormatted,
