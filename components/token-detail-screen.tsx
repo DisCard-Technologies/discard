@@ -1,9 +1,9 @@
 import { useState, useCallback, useMemo, useRef } from 'react';
 import { StyleSheet, View, Pressable, Image, Dimensions, Linking, Modal } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Svg, { Path, Defs, LinearGradient as SvgLinearGradient, Stop, Circle } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import Svg, { Path, Defs, LinearGradient as SvgLinearGradient, Stop, Circle } from 'react-native-svg';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -12,8 +12,6 @@ import Animated, {
   runOnJS,
   FadeIn,
   FadeOut,
-  useAnimatedRef,
-  scrollTo,
 } from 'react-native-reanimated';
 import { Gesture, GestureDetector, ScrollView } from 'react-native-gesture-handler';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -24,6 +22,15 @@ import { useThemeColor } from '@/hooks/use-theme-color';
 import { useTokenHistory, useTokenPerformance, TimePeriod } from '@/hooks/useTokenHistory';
 import { useTokenDetail } from '@/hooks/useTokenDetail';
 import { primaryColor, positiveColor, negativeColor, Fonts } from '@/constants/theme';
+
+// Extracted components
+import { ScreenHeader } from '@/components/ui/layout/ScreenHeader';
+import { TimePeriodSelector } from '@/components/ui/layout/TimePeriodSelector';
+import { PriceChart, createChartPath, createAreaPath, generateFallbackChartData, useChartPath } from '@/components/charts';
+import { TokenIcon } from '@/components/tokens/TokenIcon';
+import { TokenHeroSection } from '@/components/tokens/TokenHeroSection';
+import { TokenActions, type TokenAction } from '@/components/tokens/TokenActions';
+import { TokenStats, type TokenStat } from '@/components/tokens/TokenStats';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const CHART_WIDTH = SCREEN_WIDTH - 48;
@@ -87,56 +94,7 @@ interface TokenDetailProps {
   onTransactionPress?: (transaction: RecentTransaction) => void;
 }
 
-// Generate fallback chart data (used when historical data isn't available yet)
-function generateFallbackChartData(currentPrice: number): number[] {
-  const points: number[] = [];
-  let value = currentPrice;
-  for (let i = 0; i < 50; i++) {
-    value += (Math.random() - 0.48) * (currentPrice * 0.02);
-    value = Math.max(currentPrice * 0.7, Math.min(currentPrice * 1.3, value));
-    points.push(value);
-  }
-  // Ensure last point matches current price
-  points[points.length - 1] = currentPrice;
-  return points;
-}
-
-// Create SVG path from data points
-function createChartPath(data: number[], width: number, height: number): { path: string; lastPoint: { x: number; y: number } } {
-  if (data.length === 0) return { path: '', lastPoint: { x: 0, y: 0 } };
-
-  const minValue = Math.min(...data);
-  const maxValue = Math.max(...data);
-  const range = maxValue - minValue || 1;
-
-  const xStep = width / (data.length - 1);
-  const padding = 8;
-  const chartHeight = height - padding * 2;
-
-  const points = data.map((value, index) => {
-    const x = index * xStep;
-    const y = padding + chartHeight - ((value - minValue) / range) * chartHeight;
-    return { x, y };
-  });
-
-  let path = `M ${points[0].x} ${points[0].y}`;
-  for (let i = 1; i < points.length; i++) {
-    const prev = points[i - 1];
-    const curr = points[i];
-    const midX = (prev.x + curr.x) / 2;
-    path += ` Q ${prev.x} ${prev.y} ${midX} ${(prev.y + curr.y) / 2}`;
-  }
-  path += ` L ${points[points.length - 1].x} ${points[points.length - 1].y}`;
-
-  return { path, lastPoint: points[points.length - 1] };
-}
-
-function createAreaPath(linePath: string, width: number, height: number, dataLength: number): string {
-  if (!linePath) return '';
-  const xStep = width / (dataLength - 1);
-  const lastX = (dataLength - 1) * xStep;
-  return `${linePath} L ${lastX} ${height} L 0 ${height} Z`;
-}
+// Chart path generation now imported from @/components/charts
 
 
 export function TokenDetailScreen({

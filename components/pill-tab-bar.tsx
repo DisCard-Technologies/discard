@@ -25,6 +25,9 @@ import { GoalChipsRow, GoalChipData } from '@/components/goal-chips-row';
 import { GoalOverflowPopover } from '@/components/goal-overflow-popover';
 import { useGoalChips } from '@/hooks/useGoalChips';
 
+// Note: PillNavBar and CommandBar are available as extracted components in @/components/navigation
+// This file is kept for backward compatibility but can be refactored to use those components
+
 type IconName = 'home' | 'swap-horizontal' | 'search' | 'grid';
 
 interface TabConfig {

@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { StyleSheet, View, Pressable, ScrollView, Dimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import Svg, { Path, Defs, LinearGradient, Stop, Circle, Line, Text as SvgText } from 'react-native-svg';
+import Svg, { Path, Defs, LinearGradient, Stop, Circle, Line } from 'react-native-svg';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -10,16 +10,15 @@ import { useThemeColor } from '@/hooks/use-theme-color';
 import { useMarketHistory, TimePeriod as TokenTimePeriod } from '@/hooks/useTokenHistory';
 import { positiveColor, negativeColor } from '@/constants/theme';
 
+// Extracted components
+import { TimePeriodSelector, type TimePeriod as UIPeriod } from '@/components/ui/layout/TimePeriodSelector';
+import { MarketHeader } from '@/components/markets/MarketHeader';
+import { OutcomeProbabilities, type MarketOutcome } from '@/components/markets/OutcomeProbabilities';
+import { PositionCard } from '@/components/markets/PositionCard';
+
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-interface MarketOutcome {
-  id: string;
-  label: string;
-  probability: number;
-  icon?: string;
-  scoreBadge?: string;
-  color?: string;
-}
+// MarketOutcome type now imported from @/components/markets
 
 interface MarketDetailProps {
   market: {
