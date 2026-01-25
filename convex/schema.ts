@@ -1632,6 +1632,32 @@ export default defineSchema({
     .index("by_idempotency", ["idempotencyKey"])
     .index("by_created", ["createdAt"]),
 
+  // ============ ON-CHAIN TRANSACTIONS CACHE ============
+  // Cached on-chain transaction history from Helius Enhanced API
+  onChainTransactions: defineTable({
+    walletAddress: v.string(),
+    signature: v.string(),
+    type: v.union(
+      v.literal("send"),
+      v.literal("receive"),
+      v.literal("swap"),
+      v.literal("unknown")
+    ),
+    counterpartyAddress: v.optional(v.string()),
+    tokenMint: v.string(),
+    tokenSymbol: v.string(),
+    amount: v.number(),              // Human-readable amount
+    amountUsd: v.optional(v.number()), // USD value at time of fetch
+    fee: v.number(),                 // Transaction fee in SOL
+    blockTime: v.number(),           // Unix timestamp
+    description: v.optional(v.string()),  // Helius parsed description
+    source: v.optional(v.string()),       // Program source (Jupiter, etc.)
+    fetchedAt: v.number(),
+  })
+    .index("by_wallet", ["walletAddress"])
+    .index("by_wallet_time", ["walletAddress", "blockTime"])
+    .index("by_signature", ["signature"]),
+
   // ============ PAYMENT REQUESTS ============
   // Payment request links for requesting money
   paymentRequests: defineTable({

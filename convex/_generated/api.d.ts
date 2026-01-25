@@ -47,6 +47,7 @@ import type * as funding_stripe from "../funding/stripe.js";
 import type * as goals_goals from "../goals/goals.js";
 import type * as holdings_dflow from "../holdings/dflow.js";
 import type * as holdings_jupiter from "../holdings/jupiter.js";
+import type * as holdings_transactionHistory from "../holdings/transactionHistory.js";
 import type * as hooks_merchants from "../hooks/merchants.js";
 import type * as hooks_policies from "../hooks/policies.js";
 import type * as http from "../http.js";
@@ -137,6 +138,7 @@ declare const fullApi: ApiFromModules<{
   "goals/goals": typeof goals_goals;
   "holdings/dflow": typeof holdings_dflow;
   "holdings/jupiter": typeof holdings_jupiter;
+  "holdings/transactionHistory": typeof holdings_transactionHistory;
   "hooks/merchants": typeof hooks_merchants;
   "hooks/policies": typeof hooks_policies;
   http: typeof http;

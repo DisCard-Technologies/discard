@@ -3,8 +3,6 @@ import { StyleSheet, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useQuery } from 'convex/react';
-import { api } from '@/convex/_generated/api';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -16,6 +14,7 @@ import { useThemeColor } from '@/hooks/use-theme-color';
 import { useAuth } from '@/stores/authConvex';
 import { useFunding } from '@/stores/fundingConvex';
 import { useTokenHoldings } from '@/hooks/useTokenHoldings';
+import { useTransactionHistory } from '@/hooks/useTransactionHistory';
 import { positiveColor, negativeColor } from '@/constants/theme';
 
 // Props for the content component when used in pager
@@ -72,43 +71,11 @@ export function HomeScreenContent({ topInset = 0 }: HomeScreenContentProps) {
 
   const isPositive = dailyChange >= 0;
 
-  // Real transaction data from Convex
-  const recentTransfers = useQuery(api.transfers.transfers.getRecent, { limit: 5 });
-
-  // Transform transfers to StackTransaction format
-  const transactions: StackTransaction[] = useMemo(() => {
-    if (!recentTransfers || recentTransfers.length === 0) {
-      return [];
-    }
-
-    return recentTransfers.map((transfer) => {
-      // Format address for display
-      const addr = transfer.recipientAddress;
-      const shortAddr = addr.length > 10 
-        ? `${addr.slice(0, 6)}...${addr.slice(-4)}`
-        : addr;
-
-      // Format amount
-      const amount = transfer.amount / Math.pow(10, transfer.tokenDecimals);
-      const formattedAmount = amount.toLocaleString(undefined, {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: transfer.tokenDecimals > 2 ? 4 : 2,
-      });
-
-      // Calculate total fee
-      const totalFee = transfer.networkFee + transfer.platformFee + (transfer.priorityFee || 0);
-      const feeFormatted = totalFee > 0 ? `$${(totalFee / 100).toFixed(2)}` : undefined;
-
-      return {
-        id: transfer._id,
-        type: 'send' as const,
-        address: transfer.recipientDisplayName || shortAddr,
-        tokenAmount: `-${formattedAmount} ${transfer.token}`,
-        fiatValue: `$${(transfer.amountUsd / 100).toFixed(2)}`,
-        fee: feeFormatted,
-      };
-    });
-  }, [recentTransfers]);
+  // Real transaction data - fetches on-chain history merged with in-app transfers
+  const { transactions, refresh: refreshTransactions } = useTransactionHistory(
+    user?.solanaAddress || null,
+    { limit: 10, mergeWithInApp: true }
+  );
 
   // Quick action handlers
   const handleSend = () => router.push('/(tabs)/transfer');
