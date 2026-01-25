@@ -7,7 +7,7 @@
  * - Biometric confirm button
  */
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import {
   StyleSheet,
   View,
@@ -89,6 +89,7 @@ export default function TransferConfirmationScreen() {
   const [executionPhase, setExecutionPhase] = useState<ExecutionPhase>("idle");
   const [error, setError] = useState<string | null>(null);
   const [complianceChecked, setComplianceChecked] = useState(false);
+  const complianceCheckingRef = useRef(false);
 
   // Privacy transfer hook - always enabled
   const {
@@ -137,33 +138,48 @@ export default function TransferConfirmationScreen() {
   // In dark mode, tint is white so button needs dark text; in light mode, tint is teal so white text
   const confirmButtonTextColor = isDark ? "#000" : "#fff";
 
-  // Parse params
-  let recipient: TransferRecipient | null = null;
-  let token: TransferToken | null = null;
-  let amount: TransferAmount | null = null;
-  let fees: TransferFees | null = null;
+  // Parse params - memoize to prevent new object refs on each render
+  const recipient = useMemo<TransferRecipient | null>(() => {
+    try {
+      return params.recipient ? JSON.parse(params.recipient) : null;
+    } catch { return null; }
+  }, [params.recipient]);
 
-  try {
-    if (params.recipient) recipient = JSON.parse(params.recipient);
-    if (params.token) token = JSON.parse(params.token);
-    if (params.amount) amount = JSON.parse(params.amount);
-    if (params.fees) fees = JSON.parse(params.fees);
-  } catch (e) {
-    console.error("[Confirmation] Failed to parse params:", e);
-  }
+  const token = useMemo<TransferToken | null>(() => {
+    try {
+      return params.token ? JSON.parse(params.token) : null;
+    } catch { return null; }
+  }, [params.token]);
+
+  const amount = useMemo<TransferAmount | null>(() => {
+    try {
+      return params.amount ? JSON.parse(params.amount) : null;
+    } catch { return null; }
+  }, [params.amount]);
+
+  const fees = useMemo<TransferFees | null>(() => {
+    try {
+      return params.fees ? JSON.parse(params.fees) : null;
+    } catch { return null; }
+  }, [params.fees]);
 
   const createsAta = params.createsAta === "true";
   const memo = params.memo;
 
-  // Auto-run compliance check on mount
+  // Auto-run compliance check on mount (once only)
   useEffect(() => {
-    if (!complianceChecked && recipient && walletAddress && amount) {
-      checkTransferCompliance(
-        walletAddress,
-        recipient.address,
-        amount.amountUsd || 0
-      ).then(() => setComplianceChecked(true));
-    }
+    if (complianceChecked || complianceCheckingRef.current) return;
+    if (!recipient || !walletAddress || !amount) return;
+
+    complianceCheckingRef.current = true;
+    checkTransferCompliance(
+      walletAddress,
+      recipient.address,
+      amount.amountUsd || 0
+    ).finally(() => {
+      setComplianceChecked(true);
+      complianceCheckingRef.current = false;
+    });
   }, [complianceChecked, recipient, walletAddress, amount, checkTransferCompliance]);
 
   // Handle edit (go back)

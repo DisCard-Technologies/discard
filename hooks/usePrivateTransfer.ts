@@ -9,7 +9,7 @@
  * This hook wraps the standard transfer flow with privacy features.
  */
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { PublicKey, Keypair } from "@solana/web3.js";
 import { getRangeComplianceService, type TransferComplianceCheck } from "@/services/rangeComplianceClient";
 import {
@@ -63,9 +63,9 @@ export function usePrivateTransfer() {
   const [state, setState] = useState<PrivateTransferState>({ status: "idle" });
   const [isLoading, setIsLoading] = useState(false);
 
-  // Get service instances
-  const complianceService = getRangeComplianceService();
-  const shadowWireService = getShadowWireService();
+  // Get service instances - use useRef to maintain stable references
+  const complianceServiceRef = useRef(getRangeComplianceService());
+  const shadowWireServiceRef = useRef(getShadowWireService());
 
   /**
    * Check compliance before transfer
@@ -80,7 +80,7 @@ export function usePrivateTransfer() {
     setState({ status: "checking" });
 
     try {
-      const complianceCheck = await complianceService.checkTransferCompliance(
+      const complianceCheck = await complianceServiceRef.current.checkTransferCompliance(
         sourceAddress,
         destAddress,
         Math.round(amountUsd * 100)
@@ -121,7 +121,7 @@ export function usePrivateTransfer() {
       setIsLoading(false);
       return result;
     }
-  }, [complianceService]);
+  }, []);
 
   /**
    * Execute a private transfer via ShadowWire
@@ -156,7 +156,7 @@ export function usePrivateTransfer() {
     setState({ status: "transferring" });
 
     try {
-      const result = await shadowWireService.createPrivateTransfer({
+      const result = await shadowWireServiceRef.current.createPrivateTransfer({
         senderAddress,
         recipientStealthAddress,
         amount,
@@ -184,7 +184,7 @@ export function usePrivateTransfer() {
       setIsLoading(false);
       return result;
     }
-  }, [shadowWireService]);
+  }, []);
 
   /**
    * Generate a stealth address for receiving private transfers
@@ -194,12 +194,12 @@ export function usePrivateTransfer() {
   ): Promise<StealthAddress | null> => {
     console.log("[PrivateTransfer] Generating stealth address...");
     try {
-      return await shadowWireService.generateStealthAddress(recipientPubkey);
+      return await shadowWireServiceRef.current.generateStealthAddress(recipientPubkey);
     } catch (error) {
       console.error("[PrivateTransfer] Stealth address generation failed:", error);
       return null;
     }
-  }, [shadowWireService]);
+  }, []);
 
   /**
    * Generate a ZK-compressed stealth address using Light Protocol
@@ -214,7 +214,7 @@ export function usePrivateTransfer() {
     console.log("[PrivateTransfer] Generating ZK-compressed stealth address...");
     try {
       const payerPubkey = payer ? new PublicKey(payer) : undefined;
-      const result = await shadowWireService.generateCompressedStealthAddress(
+      const result = await shadowWireServiceRef.current.generateCompressedStealthAddress(
         recipientPubkey,
         payerPubkey
       );
@@ -225,9 +225,9 @@ export function usePrivateTransfer() {
     } catch (error) {
       console.error("[PrivateTransfer] ZK stealth address generation failed:", error);
       // Fall back to regular stealth address
-      return shadowWireService.generateStealthAddress(recipientPubkey);
+      return shadowWireServiceRef.current.generateStealthAddress(recipientPubkey);
     }
-  }, [shadowWireService]);
+  }, []);
 
   /**
    * Execute a ZK-compressed private transfer using Light Protocol
@@ -268,7 +268,7 @@ export function usePrivateTransfer() {
 
     try {
       const payerPubkey = new PublicKey(senderAddress);
-      const result = await shadowWireService.createZkPrivateTransfer(
+      const result = await shadowWireServiceRef.current.createZkPrivateTransfer(
         {
           senderAddress,
           recipientStealthAddress,
@@ -306,7 +306,7 @@ export function usePrivateTransfer() {
       );
       return fallbackResult;
     }
-  }, [shadowWireService, executePrivateTransfer]);
+  }, [executePrivateTransfer]);
 
   /**
    * Scan for incoming private transfers
@@ -317,12 +317,12 @@ export function usePrivateTransfer() {
   ) => {
     console.log("[PrivateTransfer] Scanning for incoming transfers...");
     try {
-      return await shadowWireService.scanForTransfers(viewingKey, fromBlock);
+      return await shadowWireServiceRef.current.scanForTransfers(viewingKey, fromBlock);
     } catch (error) {
       console.error("[PrivateTransfer] Scan failed:", error);
       return { transfers: [], scannedToBlock: 0 };
     }
-  }, [shadowWireService]);
+  }, []);
 
   /**
    * Check if user has initialized compressed account for ZK transfers
@@ -332,11 +332,11 @@ export function usePrivateTransfer() {
   ): Promise<boolean> => {
     try {
       const ownerPubkey = new PublicKey(ownerAddress);
-      return await shadowWireService.hasCompressedAccount(ownerPubkey);
+      return await shadowWireServiceRef.current.hasCompressedAccount(ownerPubkey);
     } catch {
       return false;
     }
-  }, [shadowWireService]);
+  }, []);
 
   /**
    * Initialize compressed account for first-time ZK users
@@ -350,7 +350,7 @@ export function usePrivateTransfer() {
     console.log("[PrivateTransfer] Initializing ZK account...");
     try {
       const ownerPubkey = new PublicKey(ownerAddress);
-      return await shadowWireService.initializeCompressedAccount(ownerPubkey);
+      return await shadowWireServiceRef.current.initializeCompressedAccount(ownerPubkey);
     } catch (error) {
       console.error("[PrivateTransfer] ZK account initialization failed:", error);
       return {
@@ -358,7 +358,7 @@ export function usePrivateTransfer() {
         error: error instanceof Error ? error.message : "Initialization failed",
       };
     }
-  }, [shadowWireService]);
+  }, []);
 
   /**
    * Reset state
@@ -369,7 +369,7 @@ export function usePrivateTransfer() {
   }, []);
 
   // Get ShadowWire status for ZK compression info
-  const shadowWireStatus = shadowWireService.getStatus();
+  const shadowWireStatus = shadowWireServiceRef.current.getStatus();
 
   return {
     // State
@@ -390,13 +390,13 @@ export function usePrivateTransfer() {
     initializeZkAccount,
 
     // Service availability
-    isComplianceAvailable: complianceService.isConfigured(),
-    isPrivateTransferAvailable: shadowWireService.isAvailable(),
+    isComplianceAvailable: complianceServiceRef.current.isConfigured(),
+    isPrivateTransferAvailable: shadowWireServiceRef.current.isAvailable(),
     isZkCompressionAvailable: shadowWireStatus.zkCompressionEnabled,
-    isRelayAvailable: shadowWireService.isRelayAvailable(),
+    isRelayAvailable: shadowWireServiceRef.current.isRelayAvailable(),
 
     // Relay pool info
-    relayPoolAddress: shadowWireService.getRelayPoolAddress(),
+    relayPoolAddress: shadowWireServiceRef.current.getRelayPoolAddress(),
 
     // Feature status
     shadowWireStatus,
