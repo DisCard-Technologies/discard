@@ -11,12 +11,12 @@ import { useState, useCallback, useEffect } from "react";
 import {
   StyleSheet,
   View,
-  SafeAreaView,
   Pressable,
   ActivityIndicator,
   Text,
   Image,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import Animated, { FadeIn, FadeInUp } from "react-native-reanimated";
@@ -71,6 +71,8 @@ type ExecutionPhase = "idle" | "building" | "signing" | "shielding" | "submittin
 // ============================================================================
 
 export default function TransferConfirmationScreen() {
+  const insets = useSafeAreaInsets();
+
   const params = useLocalSearchParams<{
     recipient: string;
     token: string;
@@ -555,23 +557,21 @@ export default function TransferConfirmationScreen() {
   if (!recipient || !token || !amount || !fees) {
     return (
       <ThemedView style={styles.container}>
-        <SafeAreaView style={styles.safeArea}>
-          <View style={styles.errorContainer}>
-            <Ionicons name="alert-circle" size={48} color={errorColor} />
-            <ThemedText style={[styles.errorTitle, { color: errorColor }]}>
-              Invalid Transfer Data
-            </ThemedText>
-            <ThemedText style={[styles.errorText, { color: mutedColor }]}>
-              Could not load transfer details.
-            </ThemedText>
-            <Pressable
-              onPress={handleClose}
-              style={[styles.closeButton, { borderColor: mutedColor }]}
-            >
-              <ThemedText>Close</ThemedText>
-            </Pressable>
-          </View>
-        </SafeAreaView>
+        <View style={[styles.errorContainer, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+          <Ionicons name="alert-circle" size={48} color={errorColor} />
+          <ThemedText style={[styles.errorTitle, { color: errorColor }]}>
+            Invalid Transfer Data
+          </ThemedText>
+          <ThemedText style={[styles.errorText, { color: mutedColor }]}>
+            Could not load transfer details.
+          </ThemedText>
+          <Pressable
+            onPress={handleClose}
+            style={[styles.closeButton, { borderColor: mutedColor }]}
+          >
+            <ThemedText>Close</ThemedText>
+          </Pressable>
+        </View>
       </ThemedView>
     );
   }
@@ -585,9 +585,8 @@ export default function TransferConfirmationScreen() {
 
   return (
     <ThemedView style={[styles.container, { backgroundColor: bgColor }]}>
-      <SafeAreaView style={styles.safeArea}>
-        {/* Header */}
-        <Animated.View entering={FadeIn.duration(200)} style={styles.header}>
+      {/* Header */}
+      <Animated.View entering={FadeIn.duration(200)} style={[styles.header, { paddingTop: insets.top + 8 }]}>
           <Pressable
             onPress={handleEdit}
             style={({ pressed }) => [styles.headerButton, pressed && styles.pressed]}
@@ -605,97 +604,96 @@ export default function TransferConfirmationScreen() {
           </Pressable>
         </Animated.View>
 
-        {/* Content - Simplified */}
-        <View style={styles.content}>
-          {/* Hero Amount */}
-          <Animated.View entering={FadeInUp.delay(100).duration(300)} style={styles.heroSection}>
-            <Text style={[styles.heroAmount, { color: textColor }]}>
-              ${amount.amountUsd.toFixed(2)}
-            </Text>
-            <View style={[styles.tokenBadge, { backgroundColor: primaryColor }]}>
-              {token.logoUri && (
-                <Image source={{ uri: token.logoUri }} style={styles.tokenImage} />
-              )}
-              <Text style={styles.tokenText}>{token.symbol}</Text>
-            </View>
-          </Animated.View>
-
-          {/* Arrow indicator */}
-          <Animated.View entering={FadeInUp.delay(150).duration(300)} style={styles.arrowSection}>
-            <View style={[styles.arrowLine, { backgroundColor: mutedColor }]} />
-            <Ionicons name="arrow-down" size={20} color={mutedColor} />
-            <View style={[styles.arrowLine, { backgroundColor: mutedColor }]} />
-          </Animated.View>
-
-          {/* Recipient */}
-          <Animated.View entering={FadeInUp.delay(200).duration(300)} style={styles.recipientSection}>
-            <View style={[styles.recipientAvatar, { backgroundColor: primaryColor }]}>
-              <Ionicons name="person" size={24} color="#fff" />
-            </View>
-            <Text style={[styles.recipientName, { color: textColor }]}>
-              {recipientDisplay}
-            </Text>
-            <Text style={[styles.recipientAddress, { color: mutedColor }]}>
-              {recipientAddress}
-            </Text>
-          </Animated.View>
-
-          {/* Fee + Privacy line */}
-          <Animated.View entering={FadeInUp.delay(250).duration(300)} style={styles.infoLine}>
-            <Text style={[styles.infoText, { color: mutedColor }]}>
-              Fee: ${totalFee.toFixed(2)}
-            </Text>
-            <View style={styles.infoDot} />
-            <Ionicons name="shield-checkmark" size={14} color={primaryColor} />
-            <Text style={[styles.infoText, { color: primaryColor }]}>Private</Text>
-          </Animated.View>
-
-          {/* Error Message */}
-          {error && (
-            <Animated.View entering={FadeIn.duration(200)} style={styles.errorBanner}>
-              <Ionicons name="alert-circle" size={18} color={errorColor} />
-              <ThemedText style={[styles.errorBannerText, { color: errorColor }]}>
-                {error}
-              </ThemedText>
-              <Pressable onPress={() => setError(null)}>
-                <Ionicons name="close-circle" size={20} color={errorColor} />
-              </Pressable>
-            </Animated.View>
-          )}
-        </View>
-
-        {/* Send Button */}
-        <Animated.View entering={FadeInUp.delay(300).duration(300)} style={styles.bottomActions}>
-          <Pressable
-            onPress={handleConfirm}
-            disabled={isConfirming}
-            style={({ pressed }) => [
-              styles.sendButton,
-              { backgroundColor: primaryColor },
-              pressed && styles.pressed,
-              isConfirming && styles.buttonDisabled,
-            ]}
-          >
-            {isConfirming ? (
-              <View style={styles.confirmingContent}>
-                <ActivityIndicator size="small" color={confirmButtonTextColor} />
-                <Text style={[styles.sendButtonText, { color: confirmButtonTextColor }]}>
-                  {executionPhase === "building" && "Building..."}
-                  {executionPhase === "signing" && "Signing..."}
-                  {executionPhase === "shielding" && "Shielding..."}
-                  {executionPhase === "submitting" && "Sending..."}
-                  {executionPhase === "confirming" && "Confirming..."}
-                  {executionPhase === "idle" && "Processing..."}
-                </Text>
-              </View>
-            ) : (
-              <Text style={[styles.sendButtonText, { color: confirmButtonTextColor }]}>
-                {error ? "Try Again" : "Send"}
-              </Text>
+      {/* Content - Simplified */}
+      <View style={styles.content}>
+        {/* Hero Amount */}
+        <Animated.View entering={FadeInUp.delay(100).duration(300)} style={styles.heroSection}>
+          <Text style={[styles.heroAmount, { color: textColor }]}>
+            ${amount.amountUsd.toFixed(2)}
+          </Text>
+          <View style={[styles.tokenBadge, { backgroundColor: primaryColor }]}>
+            {token.logoUri && (
+              <Image source={{ uri: token.logoUri }} style={styles.tokenImage} />
             )}
-          </Pressable>
+            <Text style={styles.tokenText}>{token.symbol}</Text>
+          </View>
         </Animated.View>
-      </SafeAreaView>
+
+        {/* Arrow indicator */}
+        <Animated.View entering={FadeInUp.delay(150).duration(300)} style={styles.arrowSection}>
+          <View style={[styles.arrowLine, { backgroundColor: mutedColor }]} />
+          <Ionicons name="arrow-down" size={20} color={mutedColor} />
+          <View style={[styles.arrowLine, { backgroundColor: mutedColor }]} />
+        </Animated.View>
+
+        {/* Recipient */}
+        <Animated.View entering={FadeInUp.delay(200).duration(300)} style={styles.recipientSection}>
+          <View style={[styles.recipientAvatar, { backgroundColor: primaryColor }]}>
+            <Ionicons name="person" size={24} color="#fff" />
+          </View>
+          <Text style={[styles.recipientName, { color: textColor }]}>
+            {recipientDisplay}
+          </Text>
+          <Text style={[styles.recipientAddress, { color: mutedColor }]}>
+            {recipientAddress}
+          </Text>
+        </Animated.View>
+
+        {/* Fee + Privacy line */}
+        <Animated.View entering={FadeInUp.delay(250).duration(300)} style={styles.infoLine}>
+          <Text style={[styles.infoText, { color: mutedColor }]}>
+            Fee: ${totalFee.toFixed(2)}
+          </Text>
+          <View style={styles.infoDot} />
+          <Ionicons name="shield-checkmark" size={14} color={primaryColor} />
+          <Text style={[styles.infoText, { color: primaryColor }]}>Private</Text>
+        </Animated.View>
+
+        {/* Error Message */}
+        {error && (
+          <Animated.View entering={FadeIn.duration(200)} style={styles.errorBanner}>
+            <Ionicons name="alert-circle" size={18} color={errorColor} />
+            <ThemedText style={[styles.errorBannerText, { color: errorColor }]}>
+              {error}
+            </ThemedText>
+            <Pressable onPress={() => setError(null)}>
+              <Ionicons name="close-circle" size={20} color={errorColor} />
+            </Pressable>
+          </Animated.View>
+        )}
+      </View>
+
+      {/* Send Button */}
+      <Animated.View entering={FadeInUp.delay(300).duration(300)} style={[styles.bottomActions, { paddingBottom: insets.bottom + 16 }]}>
+        <Pressable
+          onPress={handleConfirm}
+          disabled={isConfirming}
+          style={({ pressed }) => [
+            styles.sendButton,
+            { backgroundColor: primaryColor },
+            pressed && styles.pressed,
+            isConfirming && styles.buttonDisabled,
+          ]}
+        >
+          {isConfirming ? (
+            <View style={styles.confirmingContent}>
+              <ActivityIndicator size="small" color={confirmButtonTextColor} />
+              <Text style={[styles.sendButtonText, { color: confirmButtonTextColor }]}>
+                {executionPhase === "building" && "Building..."}
+                {executionPhase === "signing" && "Signing..."}
+                {executionPhase === "shielding" && "Shielding..."}
+                {executionPhase === "submitting" && "Sending..."}
+                {executionPhase === "confirming" && "Confirming..."}
+                {executionPhase === "idle" && "Processing..."}
+              </Text>
+            </View>
+          ) : (
+            <Text style={[styles.sendButtonText, { color: confirmButtonTextColor }]}>
+              {error ? "Try Again" : "Send"}
+            </Text>
+          )}
+        </Pressable>
+      </Animated.View>
     </ThemedView>
   );
 }
@@ -706,9 +704,6 @@ export default function TransferConfirmationScreen() {
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
-  },
-  safeArea: {
     flex: 1,
   },
   header: {
@@ -835,8 +830,7 @@ const styles = StyleSheet.create({
   // Bottom
   bottomActions: {
     paddingHorizontal: 20,
-    paddingVertical: 16,
-    paddingBottom: 8,
+    paddingTop: 16,
   },
   sendButton: {
     flexDirection: "row",
