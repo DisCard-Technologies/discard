@@ -456,12 +456,24 @@ export const refreshHoldings = action({
         ctx.runQuery
       );
 
-      // Update cache via mutation
-      await ctx.runMutation(internal.holdings.jupiter.updateCache, {
-        walletAddress: args.walletAddress,
-        holdings,
-        totalValueUsd,
-      });
+      // Update cache via mutation - handle OCC conflicts gracefully
+      // If another refresh is running for the same wallet, it may conflict
+      // In that case, the other refresh will have updated the cache
+      try {
+        await ctx.runMutation(internal.holdings.jupiter.updateCache, {
+          walletAddress: args.walletAddress,
+          holdings,
+          totalValueUsd,
+        });
+      } catch (error: any) {
+        // If OCC conflict (documents changed during mutation), another refresh succeeded
+        // We can safely return the holdings we fetched since the cache is up-to-date
+        if (error.message?.includes("Documents read from or written to")) {
+          console.log(`[Holdings] OCC conflict for ${args.walletAddress.slice(0, 8)}... - another refresh completed`);
+        } else {
+          throw error;
+        }
+      }
 
       return {
         holdings,
@@ -610,12 +622,21 @@ export const refreshHoldings = action({
       });
     }
 
-    // Update cache via mutation
-    await ctx.runMutation(internal.holdings.jupiter.updateCache, {
-      walletAddress: args.walletAddress,
-      holdings,
-      totalValueUsd,
-    });
+    // Update cache via mutation - handle OCC conflicts gracefully
+    try {
+      await ctx.runMutation(internal.holdings.jupiter.updateCache, {
+        walletAddress: args.walletAddress,
+        holdings,
+        totalValueUsd,
+      });
+    } catch (error: any) {
+      // If OCC conflict, another refresh succeeded - cache is up-to-date
+      if (error.message?.includes("Documents read from or written to")) {
+        console.log(`[Holdings] OCC conflict for ${args.walletAddress.slice(0, 8)}... - another refresh completed`);
+      } else {
+        throw error;
+      }
+    }
 
     return {
       holdings,

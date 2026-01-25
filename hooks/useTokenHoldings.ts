@@ -4,13 +4,17 @@
  * Fetches and subscribes to user's token holdings via Jupiter Ultra API.
  * Uses Convex for caching and real-time subscriptions.
  */
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useQuery, useAction } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type {
   JupiterHolding,
   UseTokenHoldingsReturn,
 } from "@/types/holdings.types";
+import {
+  acquireRefreshLock,
+  releaseRefreshLock,
+} from "./useHoldingsRefreshLock";
 
 interface UseTokenHoldingsOptions {
   /** Whether to auto-refresh periodically */
@@ -46,7 +50,6 @@ export function useTokenHoldings(
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
-  const refreshLockRef = useRef(false); // Prevent concurrent refreshes
 
   // Subscribe to cached holdings from Convex
   const cachedHoldings = useQuery(
@@ -57,17 +60,16 @@ export function useTokenHoldings(
   // Action to refresh from Jupiter API
   const refreshAction = useAction(api.holdings.jupiter.refreshHoldings);
 
-  // Refresh function with lock to prevent concurrent calls
+  // Refresh function with shared lock to prevent concurrent calls across hooks
   const refresh = useCallback(async () => {
     if (!walletAddress) return;
 
-    // Prevent concurrent refreshes (causes Convex OCC errors)
-    if (refreshLockRef.current) {
+    // Use shared lock to prevent concurrent refreshes from any hook
+    if (!acquireRefreshLock(walletAddress)) {
       console.log("[useTokenHoldings] Refresh already in progress, skipping");
       return;
     }
 
-    refreshLockRef.current = true;
     setIsRefreshing(true);
     setError(null);
 
@@ -81,7 +83,7 @@ export function useTokenHoldings(
       console.error("[useTokenHoldings] Refresh error:", err);
     } finally {
       setIsRefreshing(false);
-      refreshLockRef.current = false;
+      releaseRefreshLock(walletAddress);
     }
   }, [walletAddress, refreshAction]);
 

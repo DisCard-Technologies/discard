@@ -4,7 +4,7 @@
  * Filters token holdings to show only Real World Asset tokens.
  * RWA tokens are identified by their mint addresses.
  */
-import { useMemo } from "react";
+import { useMemo, useState, useCallback } from "react";
 import { useQuery, useAction } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import {
@@ -13,6 +13,10 @@ import {
   type RwaToken,
   type UseRwaHoldingsReturn,
 } from "@/types/holdings.types";
+import {
+  acquireRefreshLock,
+  releaseRefreshLock,
+} from "./useHoldingsRefreshLock";
 
 /**
  * Hook for fetching user's RWA (Real World Asset) token holdings
@@ -28,6 +32,9 @@ import {
 export function useRwaHoldings(
   walletAddress: string | null | undefined
 ): UseRwaHoldingsReturn {
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
   // Subscribe to RWA-only holdings from Convex
   const cachedHoldings = useQuery(
     api.holdings.jupiter.getRwaHoldings,
@@ -69,18 +76,38 @@ export function useRwaHoldings(
     [rwaTokens]
   );
 
-  // Refresh function
-  const refresh = async () => {
+  // Refresh function with shared lock to prevent concurrent calls across hooks
+  const refresh = useCallback(async () => {
     if (!walletAddress) return;
-    await refreshAction({ walletAddress });
-  };
+
+    // Use shared lock to prevent concurrent refreshes from any hook
+    if (!acquireRefreshLock(walletAddress)) {
+      console.log("[useRwaHoldings] Refresh already in progress, skipping");
+      return;
+    }
+
+    setIsRefreshing(true);
+    setError(null);
+
+    try {
+      await refreshAction({ walletAddress });
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Failed to refresh RWA holdings";
+      setError(message);
+      console.error("[useRwaHoldings] Refresh error:", err);
+    } finally {
+      setIsRefreshing(false);
+      releaseRefreshLock(walletAddress);
+    }
+  }, [walletAddress, refreshAction]);
 
   return {
     rwaTokens,
     totalValue,
     isLoading: cachedHoldings === undefined,
-    isRefreshing: false, // Inherits from useTokenHoldings
-    error: null,
+    isRefreshing,
+    error,
     refresh,
   };
 }
