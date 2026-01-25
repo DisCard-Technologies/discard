@@ -1,11 +1,5 @@
 import { View, StyleSheet } from 'react-native';
-import Animated, {
-  FadeIn,
-  FadeOut,
-  useAnimatedStyle,
-  useSharedValue,
-  withTiming,
-} from 'react-native-reanimated';
+import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 
 import { GoalChip, OverflowChip } from '@/components/goal-chip';
 

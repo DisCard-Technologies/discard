@@ -117,7 +117,6 @@ interface PillTabBarProps extends BottomTabBarProps {
 }
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
-const AnimatedView = Animated.createAnimatedComponent(View);
 
 const springConfig = {
   damping: 20,

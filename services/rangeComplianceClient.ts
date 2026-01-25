@@ -23,6 +23,18 @@ const RANGE_API_KEY = process.env.EXPO_PUBLIC_RANGE_API_KEY || process.env.RANGE
 const RANGE_API_BASE_URL = "https://api.range.org";
 const FARADAY_API_BASE_URL = "https://api.faraday.range.org";
 
+/** Cache TTL in milliseconds (5 minutes) */
+const CACHE_TTL_MS = 5 * 60 * 1000;
+
+/** Minimum delay between API requests in milliseconds */
+const MIN_REQUEST_DELAY_MS = 200;
+
+/** Max retries for rate-limited requests */
+const MAX_RETRIES = 3;
+
+/** Base delay for exponential backoff in milliseconds */
+const BACKOFF_BASE_MS = 1000;
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -104,11 +116,111 @@ export interface TransferComplianceCheck {
 // Range Compliance Service
 // ============================================================================
 
+interface CacheEntry<T> {
+  data: T;
+  expiresAt: number;
+}
+
 export class RangeComplianceService {
   private apiKey: string;
+  private sanctionsCache: Map<string, CacheEntry<SanctionsCheckResult>> = new Map();
+  private riskScoreCache: Map<string, CacheEntry<RiskScoreResult>> = new Map();
+  private inFlightRequests: Map<string, Promise<any>> = new Map();
+  private lastRequestTime: number = 0;
 
   constructor(apiKey?: string) {
     this.apiKey = apiKey || RANGE_API_KEY;
+  }
+
+  // ==========================================================================
+  // Rate Limiting & Caching Helpers
+  // ==========================================================================
+
+  /**
+   * Wait to respect rate limits
+   */
+  private async throttle(): Promise<void> {
+    const now = Date.now();
+    const timeSinceLastRequest = now - this.lastRequestTime;
+    if (timeSinceLastRequest < MIN_REQUEST_DELAY_MS) {
+      await new Promise(resolve => setTimeout(resolve, MIN_REQUEST_DELAY_MS - timeSinceLastRequest));
+    }
+    this.lastRequestTime = Date.now();
+  }
+
+  /**
+   * Sleep for exponential backoff
+   */
+  private async sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  /**
+   * Get cached result if valid
+   */
+  private getCached<T>(cache: Map<string, CacheEntry<T>>, key: string): T | null {
+    const entry = cache.get(key);
+    if (entry && entry.expiresAt > Date.now()) {
+      return entry.data;
+    }
+    if (entry) {
+      cache.delete(key);
+    }
+    return null;
+  }
+
+  /**
+   * Set cache entry
+   */
+  private setCache<T>(cache: Map<string, CacheEntry<T>>, key: string, data: T): void {
+    cache.set(key, {
+      data,
+      expiresAt: Date.now() + CACHE_TTL_MS,
+    });
+  }
+
+  /**
+   * Deduplicate in-flight requests
+   */
+  private async dedupeRequest<T>(key: string, requestFn: () => Promise<T>): Promise<T> {
+    const inFlight = this.inFlightRequests.get(key);
+    if (inFlight) {
+      console.log("[RangeCompliance] Deduplicating request for:", key.slice(0, 16) + "...");
+      return inFlight;
+    }
+
+    const promise = requestFn().finally(() => {
+      this.inFlightRequests.delete(key);
+    });
+
+    this.inFlightRequests.set(key, promise);
+    return promise;
+  }
+
+  /**
+   * Fetch with retry and exponential backoff for rate limiting
+   */
+  private async fetchWithRetry(
+    url: string,
+    options: RequestInit,
+    retries: number = MAX_RETRIES
+  ): Promise<Response> {
+    await this.throttle();
+
+    const response = await fetch(url, options);
+
+    if (response.status === 429 && retries > 0) {
+      const retryAfter = response.headers.get("Retry-After");
+      const delay = retryAfter
+        ? parseInt(retryAfter, 10) * 1000
+        : BACKOFF_BASE_MS * Math.pow(2, MAX_RETRIES - retries);
+
+      console.log(`[RangeCompliance] Rate limited, retrying in ${delay}ms (${retries} retries left)`);
+      await this.sleep(delay);
+      return this.fetchWithRetry(url, options, retries - 1);
+    }
+
+    return response;
   }
 
   // ==========================================================================
@@ -130,6 +242,27 @@ export class RangeComplianceService {
     address: string,
     chain: string = "solana"
   ): Promise<SanctionsCheckResult> {
+    const cacheKey = `${chain}:${address}`;
+
+    // Check cache first
+    const cached = this.getCached(this.sanctionsCache, cacheKey);
+    if (cached) {
+      console.log("[RangeCompliance] Cache hit for:", address.slice(0, 8) + "...");
+      return cached;
+    }
+
+    // Deduplicate concurrent requests for the same address
+    return this.dedupeRequest(cacheKey, () => this.checkSanctionsInternal(address, chain, cacheKey));
+  }
+
+  /**
+   * Internal sanctions check (called after cache/dedup checks)
+   */
+  private async checkSanctionsInternal(
+    address: string,
+    chain: string,
+    cacheKey: string
+  ): Promise<SanctionsCheckResult> {
     console.log("[RangeCompliance] Checking sanctions for:", address.slice(0, 8) + "...");
 
     try {
@@ -138,7 +271,7 @@ export class RangeComplianceService {
         return this.getSafeDefaultResult(address);
       }
 
-      const response = await fetch(
+      const response = await this.fetchWithRetry(
         `${RANGE_API_BASE_URL}/v1/risk/sanctions?address=${address}&chain=${chain}&include_details=true`,
         {
           headers: {
@@ -168,6 +301,9 @@ export class RangeComplianceService {
         })),
         checkedAt: Date.now(),
       };
+
+      // Cache the result
+      this.setCache(this.sanctionsCache, cacheKey, result);
 
       console.log("[RangeCompliance] Sanctions check result:", {
         sanctioned: result.isOfacSanctioned,
@@ -199,6 +335,27 @@ export class RangeComplianceService {
     address: string,
     chain: string = "solana"
   ): Promise<RiskScoreResult> {
+    const cacheKey = `risk:${chain}:${address}`;
+
+    // Check cache first
+    const cached = this.getCached(this.riskScoreCache, cacheKey);
+    if (cached) {
+      console.log("[RangeCompliance] Risk score cache hit for:", address.slice(0, 8) + "...");
+      return cached;
+    }
+
+    // Deduplicate concurrent requests
+    return this.dedupeRequest(cacheKey, () => this.getRiskScoreInternal(address, chain, cacheKey));
+  }
+
+  /**
+   * Internal risk score fetch (called after cache/dedup checks)
+   */
+  private async getRiskScoreInternal(
+    address: string,
+    chain: string,
+    cacheKey: string
+  ): Promise<RiskScoreResult> {
     console.log("[RangeCompliance] Getting risk score for:", address.slice(0, 8) + "...");
 
     try {
@@ -206,7 +363,7 @@ export class RangeComplianceService {
         return this.getDefaultRiskScore(address);
       }
 
-      const response = await fetch(
+      const response = await this.fetchWithRetry(
         `${RANGE_API_BASE_URL}/v1/risk/score?address=${address}&chain=${chain}`,
         {
           headers: {
@@ -223,13 +380,18 @@ export class RangeComplianceService {
 
       const data = await response.json();
 
-      return {
+      const result: RiskScoreResult = {
         address,
         score: data.score || 0,
         riskLevel: this.scoreToLevel(data.score || 0),
         factors: data.factors || [],
         scoredAt: Date.now(),
       };
+
+      // Cache the result
+      this.setCache(this.riskScoreCache, cacheKey, result);
+
+      return result;
     } catch (error) {
       console.error("[RangeCompliance] Risk score failed:", error);
       return this.getDefaultRiskScore(address);
@@ -439,6 +601,25 @@ export class RangeComplianceService {
    */
   isConfigured(): boolean {
     return !!this.apiKey;
+  }
+
+  /**
+   * Clear all caches (useful for testing or when addresses need rechecking)
+   */
+  clearCache(): void {
+    this.sanctionsCache.clear();
+    this.riskScoreCache.clear();
+    console.log("[RangeCompliance] Cache cleared");
+  }
+
+  /**
+   * Get cache statistics
+   */
+  getCacheStats(): { sanctionsEntries: number; riskScoreEntries: number } {
+    return {
+      sanctionsEntries: this.sanctionsCache.size,
+      riskScoreEntries: this.riskScoreCache.size,
+    };
   }
 }
 

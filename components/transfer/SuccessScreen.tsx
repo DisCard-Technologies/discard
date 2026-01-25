@@ -321,11 +321,10 @@ export function SuccessScreen({
         </Animated.View>
 
         {/* Arrow */}
-        <Animated.View
-          entering={FadeIn.delay(350).duration(200)}
-          style={styles.arrowContainer}
-        >
-          <Ionicons name="arrow-down" size={24} color={mutedColor} />
+        <Animated.View entering={FadeIn.delay(350).duration(200)}>
+          <View style={styles.arrowContainer}>
+            <Ionicons name="arrow-down" size={24} color={mutedColor} />
+          </View>
         </Animated.View>
 
         {/* Recipient */}
