@@ -53,13 +53,13 @@ export function QuickActions({
     {
       id: 'swap',
       icon: 'swap-horizontal-outline',
-      label: 'Swap',
+      label: 'Trade',
       onPress: onSwap || (() => {}),
     },
     {
       id: 'fund',
       icon: 'card-outline',
-      label: 'Fund',
+      label: 'Deposit',
       onPress: onFund || (() => {}),
     },
   ];
