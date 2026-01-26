@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FloatingNavBar } from '@/components/floating-nav-bar';
 import { FloatingCommandBar } from '@/components/floating-command-bar';
+import { ErrorBoundary } from '@/components/ui/error-boundary';
 
 export default function TabLayout() {
   const insets = useSafeAreaInsets();
@@ -19,20 +20,22 @@ export default function TabLayout() {
 
   return (
     <View style={styles.container}>
-      <Tabs
-        tabBar={(props) => <FloatingNavBar {...props} />}
-        screenOptions={{
-          headerShown: false,
-        }}
-      >
-        <Tabs.Screen name="index" />
-        <Tabs.Screen name="explore" />
-        <Tabs.Screen name="transfer" />
-        <Tabs.Screen name="menu" />
-        {/* Hidden screens - embedded in SwipeableMainView pager, accessible via swipe gestures */}
-        <Tabs.Screen name="portfolio" options={{ href: null }} />
-        <Tabs.Screen name="card" options={{ href: null }} />
-      </Tabs>
+      <ErrorBoundary>
+        <Tabs
+          tabBar={(props) => <FloatingNavBar {...props} />}
+          screenOptions={{
+            headerShown: false,
+          }}
+        >
+          <Tabs.Screen name="index" />
+          <Tabs.Screen name="explore" />
+          <Tabs.Screen name="transfer" />
+          <Tabs.Screen name="menu" />
+          {/* Hidden screens - embedded in SwipeableMainView pager, accessible via swipe gestures */}
+          <Tabs.Screen name="portfolio" options={{ href: null }} />
+          <Tabs.Screen name="card" options={{ href: null }} />
+        </Tabs>
+      </ErrorBoundary>
 
       {!hideCommandBar && <FloatingCommandBar bottomOffset={commandBarBottomOffset} />}
     </View>
