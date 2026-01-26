@@ -3,12 +3,16 @@
  *
  * Wraps the official MoonPay SDK with Convex URL signing.
  * Provides buy and sell flows for crypto on/off-ramp.
+ *
+ * PRIVACY FEATURE: For Solana deposits, uses single-use deposit addresses
+ * to break the link between MoonPay KYC and user's spending wallet.
  */
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, useRef } from 'react';
 import { useMoonPaySdk } from '@moonpay/react-native-moonpay-sdk';
 import { useAction } from 'convex/react';
 import { api } from '@/convex/_generated/api';
 import * as WebBrowser from 'expo-web-browser';
+import { emitRefreshEvent } from '@/hooks/useRefreshStrategy';
 
 // Get environment config
 const MOONPAY_API_KEY = process.env.EXPO_PUBLIC_MOONPAY_API_KEY || '';
@@ -16,6 +20,13 @@ const MOONPAY_ENVIRONMENT = (process.env.EXPO_PUBLIC_MOONPAY_ENVIRONMENT || 'san
 
 // Currencies that use Solana addresses (suffix _sol or 'sol')
 const SOLANA_CURRENCIES = ['sol', 'usdc_sol', 'usdt_sol', 'bonk_sol'];
+
+/**
+ * Check if currency uses Solana network
+ */
+function isSolanaCurrency(currencyCode: string): boolean {
+  return SOLANA_CURRENCIES.includes(currencyCode.toLowerCase()) || currencyCode.toLowerCase() === 'sol';
+}
 
 // Helper to determine which wallet address to use
 function getWalletAddressForCurrency(
@@ -37,6 +48,13 @@ interface UseMoonPayOptions {
   solanaAddress?: string | null;
   ethereumAddress?: string | null;
   defaultCurrency?: string;
+  /**
+   * Use single-use privacy addresses for deposits (Solana only).
+   * When enabled, creates a fresh deposit address that auto-shields
+   * to Privacy Cash pool, breaking the KYC → wallet link.
+   * Default: true
+   */
+  usePrivacyAddress?: boolean;
 }
 
 interface UseMoonPayReturn {
@@ -57,9 +75,18 @@ interface UseMoonPayReturn {
  * Hook for MoonPay buy/sell flows
  */
 export function useMoonPay(options: UseMoonPayOptions = {}): UseMoonPayReturn {
-  const { walletAddress, solanaAddress, ethereumAddress, defaultCurrency = 'eth' } = options;
+  const {
+    walletAddress,
+    solanaAddress,
+    ethereumAddress,
+    defaultCurrency = 'eth',
+    usePrivacyAddress = true,
+  } = options;
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Cache for single-use deposit address (reused within session if not expired)
+  const privacyAddressCache = useRef<{ address: string; expiresAt: number } | null>(null);
 
   // Determine which wallet address to use based on currency
   // If legacy walletAddress is provided, use it; otherwise determine from currency
@@ -69,8 +96,9 @@ export function useMoonPay(options: UseMoonPayOptions = {}): UseMoonPayReturn {
     ethereumAddress
   );
 
-  // Convex action for signing URLs
+  // Convex actions
   const signUrl = useAction(api.funding.moonpay.signUrl);
+  const createSingleUseAddress = useAction(api.funding.moonpay.createSingleUseDepositAddress);
 
   // Buy SDK instance
   const buySdk = useMoonPaySdk({
@@ -153,6 +181,34 @@ export function useMoonPay(options: UseMoonPayOptions = {}): UseMoonPayReturn {
   }, [effectiveWalletAddress, buySdk.ready, sellSdk.ready]);
 
   /**
+   * Get or create a single-use privacy deposit address
+   */
+  const getPrivacyAddress = useCallback(async (): Promise<string | null> => {
+    // Check cache first
+    if (privacyAddressCache.current && privacyAddressCache.current.expiresAt > Date.now()) {
+      console.log('[MoonPay] Using cached privacy address:', privacyAddressCache.current.address);
+      return privacyAddressCache.current.address;
+    }
+
+    try {
+      console.log('[MoonPay] Creating single-use privacy deposit address...');
+      const result = await createSingleUseAddress({});
+
+      // Cache for reuse within this session
+      privacyAddressCache.current = {
+        address: result.depositAddress,
+        expiresAt: result.expiresAt,
+      };
+
+      console.log('[MoonPay] Privacy address created:', result.depositAddress);
+      return result.depositAddress;
+    } catch (err) {
+      console.warn('[MoonPay] Failed to create privacy address, falling back to main wallet:', err);
+      return null;
+    }
+  }, [createSingleUseAddress]);
+
+  /**
    * Open buy flow in browser
    */
   const openBuy = useCallback(
@@ -164,8 +220,24 @@ export function useMoonPay(options: UseMoonPayOptions = {}): UseMoonPayReturn {
         const currency = buyOptions?.currencyCode || defaultCurrency;
         const amount = buyOptions?.baseCurrencyAmount;
 
-        // Get the correct wallet address for the selected currency
-        const walletAddr = getWalletAddressForCurrency(currency, solanaAddress, ethereumAddress);
+        // Determine the deposit address
+        let walletAddr: string | undefined;
+
+        // For Solana currencies with privacy enabled, use single-use address
+        if (usePrivacyAddress && isSolanaCurrency(currency)) {
+          const privacyAddr = await getPrivacyAddress();
+          if (privacyAddr) {
+            walletAddr = privacyAddr;
+            console.log('[MoonPay] Using privacy deposit address:', walletAddr);
+          } else {
+            // Fallback to main wallet if privacy address creation fails
+            walletAddr = getWalletAddressForCurrency(currency, solanaAddress, ethereumAddress);
+            console.log('[MoonPay] Fallback to main wallet:', walletAddr);
+          }
+        } else {
+          // Non-Solana or privacy disabled - use main wallet
+          walletAddr = getWalletAddressForCurrency(currency, solanaAddress, ethereumAddress);
+        }
 
         // Build the MoonPay URL with all params including amount
         const baseUrl = MOONPAY_ENVIRONMENT === 'sandbox'
@@ -190,6 +262,10 @@ export function useMoonPay(options: UseMoonPayOptions = {}): UseMoonPayReturn {
         // Open the signed URL
         const signedUrl = `${urlToSign}&signature=${encodeURIComponent(signature)}`;
         await WebBrowser.openBrowserAsync(signedUrl);
+
+        // Trigger refresh when browser closes (deposit may have completed)
+        // The actual refresh will happen via webhook → auto-shield → event
+        emitRefreshEvent('deposit_completed');
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Failed to open MoonPay';
         setError(message);
@@ -198,7 +274,7 @@ export function useMoonPay(options: UseMoonPayOptions = {}): UseMoonPayReturn {
         setIsLoading(false);
       }
     },
-    [defaultCurrency, solanaAddress, ethereumAddress, signUrl]
+    [defaultCurrency, solanaAddress, ethereumAddress, signUrl, usePrivacyAddress, getPrivacyAddress]
   );
 
   /**
@@ -261,18 +337,22 @@ export function useMoonPay(options: UseMoonPayOptions = {}): UseMoonPayReturn {
 }
 
 /**
- * Simplified hook for quick USDC deposit
+ * Simplified hook for quick USDC deposit on Solana
+ *
+ * Uses single-use privacy addresses by default to break
+ * the KYC → wallet link for enhanced privacy.
  */
 export function useQuickDeposit(walletAddress?: string | null) {
   const moonpay = useMoonPay({
-    walletAddress,
-    defaultCurrency: 'usdc',
+    solanaAddress: walletAddress,
+    defaultCurrency: 'usdc_sol', // Solana USDC for privacy address support
+    usePrivacyAddress: true,
   });
 
   const deposit = useCallback(
     async (amount?: number) => {
       await moonpay.openBuy({
-        currencyCode: 'usdc',
+        currencyCode: 'usdc_sol',
         baseCurrencyAmount: amount,
       });
     },

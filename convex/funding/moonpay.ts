@@ -10,7 +10,7 @@
 import { action, internalAction, internalMutation, internalQuery, mutation, query } from "../_generated/server";
 import { v } from "convex/values";
 import { Doc, Id } from "../_generated/dataModel";
-import { internal } from "../_generated/api";
+import { internal, api } from "../_generated/api";
 
 // MoonPay configuration
 const MOONPAY_API_KEY = process.env.MOONPAY_API_KEY;
@@ -231,6 +231,98 @@ export const signUrl = action({
     console.log("[MoonPay] Generated signature:", signature);
 
     return { signature };
+  },
+});
+
+/**
+ * Create a single-use deposit address for privacy-preserving MoonPay deposits
+ *
+ * Flow:
+ * 1. Creates a new Turnkey wallet with restricted session key
+ * 2. Session key can only sign transfers to Privacy Cash pool
+ * 3. Returns single-use address for MoonPay deposit
+ * 4. After deposit, auto-shield moves funds to shielded pool
+ * 5. Session key is revoked after use
+ *
+ * This breaks the KYC → wallet link: MoonPay sees single-use address,
+ * user spends from shielded pool (unlinkable).
+ */
+export const createSingleUseDepositAddress = action({
+  args: {},
+  handler: async (ctx): Promise<{
+    depositAddress: string;
+    expiresAt: number;
+  }> => {
+    // Get authenticated user
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Not authenticated");
+    }
+
+    // Get user record
+    const user = await ctx.runQuery(internal.funding.moonpay.getUserByCredential, {
+      credentialId: identity.subject,
+    });
+
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    // Check for existing pending deposit address (reuse if not expired)
+    const existingAddress = await ctx.runQuery(internal.funding.moonpay.getPendingDepositAddress, {
+      userId: user._id,
+    });
+
+    if (existingAddress && existingAddress.expiresAt > Date.now()) {
+      console.log("[MoonPay] Reusing existing deposit address:", existingAddress.address);
+      return {
+        depositAddress: existingAddress.address,
+        expiresAt: existingAddress.expiresAt,
+      };
+    }
+
+    // Get user's Turnkey sub-organization
+    const turnkeyOrg = await ctx.runQuery(api.tee.turnkey.getByUserId, {
+      userId: user._id,
+    });
+
+    if (!turnkeyOrg) {
+      throw new Error("Turnkey organization not found - please complete wallet setup first");
+    }
+
+    // Get Privacy Cash pool address
+    const PRIVACY_CASH_POOL = process.env.PRIVACY_CASH_POOL_ADDRESS;
+    if (!PRIVACY_CASH_POOL) {
+      throw new Error("Privacy Cash pool not configured");
+    }
+
+    // Create single-use deposit wallet via Turnkey
+    const walletName = `deposit-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+    const depositWallet = await ctx.runAction(internal.tee.turnkey.createDepositWallet, {
+      subOrganizationId: turnkeyOrg.subOrganizationId,
+      walletName,
+      destinationAddress: PRIVACY_CASH_POOL,
+    });
+
+    // Store deposit address with 30-minute expiry
+    const expiresAt = Date.now() + 30 * 60 * 1000; // 30 minutes
+
+    await ctx.runMutation(internal.funding.moonpay.storeDepositAddress, {
+      userId: user._id,
+      address: depositWallet.depositAddress,
+      walletId: depositWallet.walletId,
+      sessionKeyId: depositWallet.sessionKeyId,
+      policyId: depositWallet.policyId,
+      expiresAt,
+    });
+
+    console.log("[MoonPay] Created single-use deposit address:", depositWallet.depositAddress);
+
+    return {
+      depositAddress: depositWallet.depositAddress,
+      expiresAt,
+    };
   },
 });
 
@@ -476,6 +568,61 @@ export const getTransactionInternal = internalQuery({
   },
   handler: async (ctx, args): Promise<Doc<"moonpayTransactions"> | null> => {
     return await ctx.db.get(args.transactionId);
+  },
+});
+
+/**
+ * Get user by credential ID (for action context)
+ */
+export const getUserByCredential = internalQuery({
+  args: { credentialId: v.string() },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("users")
+      .withIndex("by_credential", (q) => q.eq("credentialId", args.credentialId))
+      .first();
+  },
+});
+
+/**
+ * Get pending deposit address for user (to reuse if not expired)
+ */
+export const getPendingDepositAddress = internalQuery({
+  args: { userId: v.id("users") },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("depositAddresses")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .filter((q) => q.eq(q.field("status"), "pending"))
+      .first();
+  },
+});
+
+/**
+ * Store a new single-use deposit address
+ */
+export const storeDepositAddress = internalMutation({
+  args: {
+    userId: v.id("users"),
+    address: v.string(),
+    walletId: v.string(),
+    sessionKeyId: v.string(),
+    policyId: v.string(),
+    expiresAt: v.number(),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.insert("depositAddresses", {
+      userId: args.userId,
+      address: args.address,
+      walletId: args.walletId,
+      sessionKeyId: args.sessionKeyId,
+      policyId: args.policyId,
+      status: "pending",
+      expiresAt: args.expiresAt,
+      createdAt: Date.now(),
+    });
+
+    console.log("[MoonPay] Stored deposit address:", args.address, "expires:", new Date(args.expiresAt).toISOString());
   },
 });
 
