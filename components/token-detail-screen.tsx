@@ -149,7 +149,7 @@ export function TokenDetailScreen({
   const mutedColor = useThemeColor({ light: '#687076', dark: '#9BA1A6' }, 'icon');
   const textColor = useThemeColor({}, 'text');
   const cardBg = useThemeColor({ light: '#f4f4f5', dark: '#1a1f25' }, 'background');
-  const drawerBg = useThemeColor({ light: '#ffffff', dark: '#1c1c1e' }, 'background');
+  const drawerBg = useThemeColor({ light: '#f4f4f5', dark: '#1a1f25' }, 'background');
   const borderColor = useThemeColor(
     { light: 'rgba(0,0,0,0.08)', dark: 'rgba(255,255,255,0.1)' },
     'background'
