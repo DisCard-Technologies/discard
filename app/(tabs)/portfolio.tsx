@@ -90,7 +90,6 @@ function createAreaPath(linePath: string, width: number, height: number, dataLen
 
 // Drawer constants
 const DRAWER_CLOSED_HEIGHT = 340;
-const DRAWER_OPEN_HEIGHT = SCREEN_HEIGHT - 100;
 const SPRING_CONFIG = { damping: 30, stiffness: 300, mass: 1 };
 
 export function PortfolioScreenContent({ topInset = 0 }: PortfolioScreenContentProps) {
@@ -98,12 +97,15 @@ export function PortfolioScreenContent({ topInset = 0 }: PortfolioScreenContentP
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
 
+  // Dynamic drawer height - expands to just under top bar (topInset includes safe area + TopBar height)
+  const drawerOpenHeight = SCREEN_HEIGHT - topInset - 12;
+
   const primaryColor = useThemeColor({}, 'tint');
   const mutedColor = useThemeColor({ light: '#687076', dark: '#9BA1A6' }, 'icon');
   const textColor = useThemeColor({}, 'text');
   const cardBg = useThemeColor({ light: '#f4f4f5', dark: '#1c1c1e' }, 'background');
   const borderColor = useThemeColor({ light: 'rgba(0,0,0,0.08)', dark: 'rgba(255,255,255,0.1)' }, 'background');
-  const drawerBg = useThemeColor({ light: '#ffffff', dark: '#1c1c1e' }, 'background');
+  const drawerBg = useThemeColor({ light: '#f4f4f5', dark: '#1a1f25' }, 'background');
 
   // Real data from hooks
   const { user } = useAuth();
@@ -125,7 +127,7 @@ export function PortfolioScreenContent({ topInset = 0 }: PortfolioScreenContentP
   // Drawer animation
   const drawerTranslateY = useSharedValue(0);
   const startDragY = useSharedValue(0);
-  const maxTranslate = -(DRAWER_OPEN_HEIGHT - DRAWER_CLOSED_HEIGHT);
+  const maxTranslate = -(drawerOpenHeight - DRAWER_CLOSED_HEIGHT);
 
   // Calculate portfolio values
   const portfolioValue = tokenTotal || 0;
@@ -391,7 +393,7 @@ export function PortfolioScreenContent({ topInset = 0 }: PortfolioScreenContentP
             {
               backgroundColor: drawerBg,
               borderTopColor: borderColor,
-              height: DRAWER_OPEN_HEIGHT,
+              height: drawerOpenHeight,
               top: SCREEN_HEIGHT - DRAWER_CLOSED_HEIGHT - insets.bottom,
             },
             drawerAnimatedStyle,
