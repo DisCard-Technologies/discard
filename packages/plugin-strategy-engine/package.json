@@ -1,0 +1,74 @@
+{
+  "name": "@discard/plugin-strategy-engine",
+  "version": "1.0.0",
+  "description": "elizaOS plugin for DisCard Strategy Engine - persistent strategies, condition monitoring, and autonomous goal agents",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "type": "module",
+  "overrides": {
+    "tar": "^7.5.3",
+    "nanoid": "^3.3.8",
+    "devalue": "^5.1.2",
+    "svelte": "^5.28.0"
+  },
+  "scripts": {
+    "build": "tsup src/index.ts src/standalone.ts --format esm --dts --clean",
+    "dev": "tsup src/index.ts src/standalone.ts --format esm --dts --watch",
+    "start": "node dist/standalone.js",
+    "start:plugin": "node dist/index.js",
+    "proto:generate": "grpc_tools_node_protoc --plugin=protoc-gen-ts_proto=./node_modules/.bin/protoc-gen-ts_proto --ts_proto_out=./src/grpc/generated --ts_proto_opt=outputServices=grpc-js,esModuleInterop=true -I./src/grpc/proto ./src/grpc/proto/*.proto",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint src/",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "elizaos",
+    "plugin",
+    "discard",
+    "strategy",
+    "dca",
+    "stop-loss",
+    "take-profit",
+    "goal",
+    "autonomous-agent",
+    "yield-harvester"
+  ],
+  "author": "DisCard Technologies",
+  "license": "MIT",
+  "dependencies": {
+    "@elizaos/core": "^1.7.1",
+    "@grpc/grpc-js": "^1.12.5",
+    "@grpc/proto-loader": "^0.7.13",
+    "bullmq": "^5.34.8",
+    "ioredis": "^5.4.2",
+    "node-cron": "^3.0.3",
+    "uuid": "^11.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.10",
+    "@types/node-cron": "^3.0.11",
+    "@types/uuid": "^10.0.0",
+    "grpc-tools": "^1.12.4",
+    "ts-proto": "^2.6.1",
+    "tsup": "^8.4.0",
+    "typescript": "^5.8.3",
+    "vitest": "^3.1.1"
+  },
+  "peerDependencies": {
+    "@elizaos/core": ">=1.0.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "src/grpc/proto"
+  ]
+}

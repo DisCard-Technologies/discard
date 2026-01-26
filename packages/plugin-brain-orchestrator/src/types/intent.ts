@@ -10,6 +10,7 @@
  * Actions that can be parsed by the Brain
  */
 export type IntentAction =
+  // Transactional actions (immediate execution)
   | "fund_card"
   | "transfer"
   | "swap"
@@ -20,7 +21,34 @@ export type IntentAction =
   | "check_balance"
   | "view_transactions"
   | "set_limit"
+  // Strategic actions (persistent strategies)
+  | "create_dca"
+  | "create_stop_loss"
+  | "create_take_profit"
+  | "create_goal"
+  | "list_strategies"
+  | "pause_strategy"
+  | "resume_strategy"
+  | "cancel_strategy"
+  | "strategy_status"
   | "unknown";
+
+/**
+ * Helper to determine if an action is a strategy action
+ */
+export function isStrategyAction(action: IntentAction): boolean {
+  return [
+    "create_dca",
+    "create_stop_loss",
+    "create_take_profit",
+    "create_goal",
+    "list_strategies",
+    "pause_strategy",
+    "resume_strategy",
+    "cancel_strategy",
+    "strategy_status",
+  ].includes(action);
+}
 
 /**
  * Source types for funds

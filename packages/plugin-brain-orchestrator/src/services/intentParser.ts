@@ -40,6 +40,7 @@ const DEFAULT_CONFIG: IntentParserConfig = {
  * Action patterns for intent recognition
  */
 const ACTION_PATTERNS: Record<IntentAction, RegExp[]> = {
+  // === Transactional Actions ===
   fund_card: [
     /(?:add|load|fund|put|deposit)\s+(?:money|funds?|cash|\$?\d+)\s*(?:on|to|into)?\s*(?:my\s+)?card/i,
     /(?:top\s*up|reload)\s+(?:my\s+)?card/i,
@@ -81,6 +82,62 @@ const ACTION_PATTERNS: Record<IntentAction, RegExp[]> = {
   set_limit: [
     /(?:set|change|update|modify)\s+(?:my\s+)?(?:spending\s+)?limit/i,
     /limit\s+(?:to|at)\s+\$?\d+/i,
+  ],
+
+  // === Strategic Actions ===
+  create_dca: [
+    /(?:set\s*up|create|start|begin)\s+(?:a\s+)?dca/i,
+    /(?:set\s*up|create|start)\s+(?:a\s+)?dollar[\s-]?cost[\s-]?averag/i,
+    /buy\s+\$?\d+\s+(?:of\s+)?\w+\s+every\s+(?:hour|day|week|month)/i,
+    /(?:recurring|automatic|auto)\s+(?:buy|purchase)\s+(?:of\s+)?\w+/i,
+    /invest\s+\$?\d+\s+(?:in\s+)?\w+\s+(?:every|each)\s+(?:hour|day|week|month)/i,
+    /dca\s+(?:into|for)\s+\w+/i,
+  ],
+  create_stop_loss: [
+    /(?:set|create|add)\s+(?:a\s+)?stop[\s-]?loss/i,
+    /sell\s+(?:my\s+)?\w+\s+(?:if|when)\s+(?:price\s+)?(?:drops?|falls?|goes?)\s+(?:below|under)/i,
+    /protect\s+(?:my\s+)?\w+\s+(?:at|below)\s+\$?\d+/i,
+    /(?:if|when)\s+\w+\s+(?:drops?|falls?)\s+(?:below|under)\s+\$?\d+\s*,?\s*sell/i,
+  ],
+  create_take_profit: [
+    /(?:set|create|add)\s+(?:a\s+)?take[\s-]?profit/i,
+    /sell\s+(?:my\s+)?\w+\s+(?:if|when)\s+(?:price\s+)?(?:hits?|reaches?|goes?\s+(?:above|over))/i,
+    /(?:take|lock[\s-]?in)\s+profit\s+(?:at|when)\s+\$?\d+/i,
+    /(?:if|when)\s+\w+\s+(?:hits?|reaches?)\s+\$?\d+\s*,?\s*sell/i,
+  ],
+  create_goal: [
+    /(?:help\s+me\s+)?(?:save|accumulate)\s+\$?\d+/i,
+    /(?:i\s+want\s+to|goal\s+(?:is\s+)?to|set\s+(?:a\s+)?goal\s+to)\s+(?:save|accumulate|reach|grow)/i,
+    /(?:create|set\s*up|start)\s+(?:a\s+)?(?:savings?|investment|accumulation)\s+goal/i,
+    /(?:grow|build|increase)\s+(?:my\s+)?(?:portfolio|savings?|wealth)\s+to\s+\$?\d+/i,
+    /reach\s+\$?\d+\s+(?:by|before|within)/i,
+    /(?:help\s+me\s+)?(?:save|invest)\s+(?:for|towards?)\s+\w+/i,
+  ],
+  list_strategies: [
+    /(?:show|list|view|see|what(?:'s| is| are)?)\s+(?:my\s+)?(?:active\s+)?strateg(?:y|ies)/i,
+    /(?:show|list|view)\s+(?:my\s+)?(?:dca|stop[\s-]?loss|take[\s-]?profit|goal)s?/i,
+    /what\s+(?:strategies|automations?)\s+(?:do\s+i\s+have|are\s+active|are\s+running)/i,
+    /(?:my\s+)?(?:active|running|current)\s+strateg(?:y|ies)/i,
+  ],
+  pause_strategy: [
+    /(?:pause|hold|suspend)\s+(?:my\s+)?(?:dca|stop[\s-]?loss|take[\s-]?profit|goal|strategy)/i,
+    /(?:stop|halt)\s+(?:my\s+)?(?:dca|strategy)\s+(?:temporarily|for\s+now)/i,
+    /(?:put|place)\s+(?:my\s+)?(?:dca|strategy)\s+on\s+(?:hold|pause)/i,
+  ],
+  resume_strategy: [
+    /(?:resume|restart|continue|reactivate)\s+(?:my\s+)?(?:dca|stop[\s-]?loss|take[\s-]?profit|goal|strategy)/i,
+    /(?:unpause|start\s+again)\s+(?:my\s+)?(?:dca|strategy)/i,
+    /(?:take|remove)\s+(?:my\s+)?(?:dca|strategy)\s+off\s+(?:hold|pause)/i,
+  ],
+  cancel_strategy: [
+    /(?:cancel|stop|delete|remove|end)\s+(?:my\s+)?(?:dca|stop[\s-]?loss|take[\s-]?profit|goal|strategy)/i,
+    /(?:turn\s+off|disable)\s+(?:my\s+)?(?:dca|strategy)/i,
+    /(?:i\s+)?(?:don't|do\s+not)\s+want\s+(?:my\s+)?(?:dca|strategy)\s+anymore/i,
+  ],
+  strategy_status: [
+    /(?:how(?:'s| is)?|what(?:'s| is)?)\s+(?:my\s+)?(?:dca|stop[\s-]?loss|take[\s-]?profit|goal|strategy)\s+(?:doing|status|progress)/i,
+    /(?:check|show|view)\s+(?:my\s+)?(?:goal|dca|strategy)\s+(?:progress|status)/i,
+    /(?:progress|status)\s+(?:of|on)\s+(?:my\s+)?(?:goal|dca|strategy)/i,
   ],
   unknown: [],
 };
@@ -366,6 +423,18 @@ export class IntentParser {
         return intent.amount === undefined;
       case "pay_bill":
         return intent.merchant === undefined;
+      // Strategy actions - these require conversational flow, not simple field extraction
+      // Return false to let the strategy builder handle the conversation
+      case "create_dca":
+      case "create_stop_loss":
+      case "create_take_profit":
+      case "create_goal":
+      case "list_strategies":
+      case "pause_strategy":
+      case "resume_strategy":
+      case "cancel_strategy":
+      case "strategy_status":
+        return false;
       default:
         return false;
     }
@@ -411,6 +480,9 @@ export class IntentParser {
         { label: "Transfer money", value: "transfer", confidence: 0.8 },
         { label: "Swap crypto", value: "swap", confidence: 0.7 },
         { label: "Check balance", value: "check_balance", confidence: 0.7 },
+        { label: "Set up DCA", value: "create_dca", confidence: 0.7 },
+        { label: "Create a savings goal", value: "create_goal", confidence: 0.6 },
+        { label: "View my strategies", value: "list_strategies", confidence: 0.6 },
       ];
     }
     return undefined;
@@ -421,6 +493,7 @@ export class IntentParser {
    */
   private actionToVerb(action: IntentAction): string {
     const verbs: Record<IntentAction, string> = {
+      // Transactional
       fund_card: "add funds to your card",
       transfer: "transfer",
       swap: "swap",
@@ -431,6 +504,16 @@ export class IntentParser {
       check_balance: "check your balance",
       view_transactions: "view transactions",
       set_limit: "set a limit",
+      // Strategic
+      create_dca: "set up dollar-cost averaging",
+      create_stop_loss: "create a stop-loss",
+      create_take_profit: "create a take-profit order",
+      create_goal: "set up a savings goal",
+      list_strategies: "view your strategies",
+      pause_strategy: "pause your strategy",
+      resume_strategy: "resume your strategy",
+      cancel_strategy: "cancel your strategy",
+      strategy_status: "check your strategy status",
       unknown: "proceed",
     };
     return verbs[action];

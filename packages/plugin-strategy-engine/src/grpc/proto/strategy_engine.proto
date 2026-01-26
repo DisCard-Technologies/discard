@@ -1,0 +1,414 @@
+syntax = "proto3";
+
+package discard.strategy;
+
+option java_package = "com.discard.strategy";
+option java_multiple_files = true;
+
+// ============================================================================
+// Strategy Engine Service
+// ============================================================================
+
+service StrategyEngineService {
+  // Strategy CRUD
+  rpc CreateStrategy(CreateStrategyRequest) returns (CreateStrategyResponse);
+  rpc GetStrategy(GetStrategyRequest) returns (GetStrategyResponse);
+  rpc UpdateStrategy(UpdateStrategyRequest) returns (UpdateStrategyResponse);
+  rpc DeleteStrategy(DeleteStrategyRequest) returns (DeleteStrategyResponse);
+
+  // Strategy Lifecycle
+  rpc ActivateStrategy(ActivateStrategyRequest) returns (ActivateStrategyResponse);
+  rpc PauseStrategy(PauseStrategyRequest) returns (PauseStrategyResponse);
+  rpc ResumeStrategy(ResumeStrategyRequest) returns (ResumeStrategyResponse);
+  rpc CancelStrategy(CancelStrategyRequest) returns (CancelStrategyResponse);
+
+  // Strategy Queries
+  rpc ListStrategies(ListStrategiesRequest) returns (ListStrategiesResponse);
+  rpc ListActiveStrategies(ListActiveStrategiesRequest) returns (ListActiveStrategiesResponse);
+  rpc GetStrategyStatus(GetStrategyStatusRequest) returns (GetStrategyStatusResponse);
+
+  // Goal Progress
+  rpc GetGoalProgress(GetGoalProgressRequest) returns (GetGoalProgressResponse);
+
+  // Events
+  rpc GetStrategyEvents(GetStrategyEventsRequest) returns (GetStrategyEventsResponse);
+  rpc StreamStrategyEvents(StreamStrategyEventsRequest) returns (stream StrategyEventMessage);
+
+  // Health
+  rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
+  rpc GetAttestation(GetAttestationRequest) returns (GetAttestationResponse);
+}
+
+// ============================================================================
+// Strategy Types
+// ============================================================================
+
+enum StrategyType {
+  STRATEGY_TYPE_UNSPECIFIED = 0;
+  STRATEGY_TYPE_DCA = 1;
+  STRATEGY_TYPE_STOP_LOSS = 2;
+  STRATEGY_TYPE_TAKE_PROFIT = 3;
+  STRATEGY_TYPE_GOAL = 4;
+  STRATEGY_TYPE_CUSTOM = 5;
+}
+
+enum StrategyStatus {
+  STRATEGY_STATUS_UNSPECIFIED = 0;
+  STRATEGY_STATUS_DRAFT = 1;
+  STRATEGY_STATUS_PENDING = 2;
+  STRATEGY_STATUS_ACTIVE = 3;
+  STRATEGY_STATUS_PAUSED = 4;
+  STRATEGY_STATUS_TRIGGERED = 5;
+  STRATEGY_STATUS_COMPLETED = 6;
+  STRATEGY_STATUS_CANCELLED = 7;
+  STRATEGY_STATUS_FAILED = 8;
+}
+
+message Strategy {
+  string strategy_id = 1;
+  string user_id = 2;
+  StrategyType type = 3;
+  string name = 4;
+  string description = 5;
+  StrategyStatus status = 6;
+  string config_json = 7;  // JSON-encoded config
+  repeated TriggerCondition conditions = 8;
+  int64 created_at = 9;
+  int64 updated_at = 10;
+  int64 activated_at = 11;
+  int64 last_triggered_at = 12;
+  int64 last_executed_at = 13;
+  int64 completed_at = 14;
+  int32 total_executions = 15;
+  int32 successful_executions = 16;
+  int32 failed_executions = 17;
+  double total_amount_executed = 18;
+  double total_fee_paid = 19;
+  GoalProgress goal_progress = 20;
+  map<string, string> metadata = 21;
+  repeated string tags = 22;
+}
+
+message StrategySummary {
+  string strategy_id = 1;
+  string user_id = 2;
+  StrategyType type = 3;
+  string name = 4;
+  StrategyStatus status = 5;
+  int32 total_executions = 6;
+  int64 last_executed_at = 7;
+  int64 created_at = 8;
+}
+
+// ============================================================================
+// Condition Types
+// ============================================================================
+
+enum ConditionType {
+  CONDITION_TYPE_UNSPECIFIED = 0;
+  CONDITION_TYPE_PRICE = 1;
+  CONDITION_TYPE_TIME = 2;
+  CONDITION_TYPE_BALANCE = 3;
+  CONDITION_TYPE_PERCENTAGE_CHANGE = 4;
+  CONDITION_TYPE_CUSTOM = 5;
+}
+
+message TriggerCondition {
+  string condition_id = 1;
+  string strategy_id = 2;
+  ConditionType type = 3;
+  string config_json = 4;  // JSON-encoded condition config
+  bool enabled = 5;
+  bool is_met = 6;
+  int64 last_checked_at = 7;
+  string last_observed_value = 8;
+  int32 trigger_count = 9;
+  int64 last_triggered_at = 10;
+  int32 cooldown_seconds = 11;
+  bool in_cooldown = 12;
+  int32 priority = 13;
+  string description = 14;
+  int64 created_at = 15;
+  int64 updated_at = 16;
+}
+
+// ============================================================================
+// Goal Progress
+// ============================================================================
+
+message GoalProgress {
+  string goal_id = 1;
+  double target_amount = 2;
+  double current_amount = 3;
+  double progress_percentage = 4;
+  int64 projected_completion_date = 5;
+  bool on_track = 6;
+  int32 days_remaining = 7;
+  GoalContributions contributions = 8;
+  repeated GoalProgressSnapshot history = 9;
+  int64 last_updated_at = 10;
+}
+
+message GoalContributions {
+  double dca = 1;
+  double yield_earned = 2;
+  double trading_pnl = 3;
+  double price_appreciation = 4;
+  double manual_deposits = 5;
+}
+
+message GoalProgressSnapshot {
+  int64 timestamp = 1;
+  double amount = 2;
+  double progress_percentage = 3;
+  string note = 4;
+}
+
+// ============================================================================
+// Events
+// ============================================================================
+
+message StrategyEventMessage {
+  string event_id = 1;
+  string strategy_id = 2;
+  string user_id = 3;
+  string event_type = 4;
+  string payload_json = 5;  // JSON-encoded payload
+  int64 timestamp = 6;
+  int32 version = 7;
+  string correlation_id = 8;
+  EventActor actor = 9;
+}
+
+message EventActor {
+  string type = 1;  // "user", "system", "agent"
+  string id = 2;
+  string name = 3;
+}
+
+// ============================================================================
+// Request/Response Messages
+// ============================================================================
+
+// Create Strategy
+message CreateStrategyRequest {
+  string user_id = 1;
+  StrategyType type = 2;
+  string name = 3;
+  string description = 4;
+  string config_json = 5;
+  repeated TriggerCondition conditions = 6;
+  map<string, string> metadata = 7;
+  repeated string tags = 8;
+  bool activate_immediately = 9;
+}
+
+message CreateStrategyResponse {
+  bool success = 1;
+  Strategy strategy = 2;
+  string error = 3;
+}
+
+// Get Strategy
+message GetStrategyRequest {
+  string strategy_id = 1;
+}
+
+message GetStrategyResponse {
+  bool success = 1;
+  Strategy strategy = 2;
+  string error = 3;
+}
+
+// Update Strategy
+message UpdateStrategyRequest {
+  string strategy_id = 1;
+  string name = 2;
+  string description = 3;
+  string config_json = 4;
+  repeated TriggerCondition conditions = 5;
+  map<string, string> metadata = 6;
+  repeated string tags = 7;
+}
+
+message UpdateStrategyResponse {
+  bool success = 1;
+  Strategy strategy = 2;
+  string error = 3;
+}
+
+// Delete Strategy
+message DeleteStrategyRequest {
+  string strategy_id = 1;
+}
+
+message DeleteStrategyResponse {
+  bool success = 1;
+  string error = 2;
+}
+
+// Activate Strategy
+message ActivateStrategyRequest {
+  string strategy_id = 1;
+}
+
+message ActivateStrategyResponse {
+  bool success = 1;
+  Strategy strategy = 2;
+  string error = 3;
+}
+
+// Pause Strategy
+message PauseStrategyRequest {
+  string strategy_id = 1;
+}
+
+message PauseStrategyResponse {
+  bool success = 1;
+  Strategy strategy = 2;
+  string error = 3;
+}
+
+// Resume Strategy
+message ResumeStrategyRequest {
+  string strategy_id = 1;
+}
+
+message ResumeStrategyResponse {
+  bool success = 1;
+  Strategy strategy = 2;
+  string error = 3;
+}
+
+// Cancel Strategy
+message CancelStrategyRequest {
+  string strategy_id = 1;
+  string reason = 2;
+}
+
+message CancelStrategyResponse {
+  bool success = 1;
+  Strategy strategy = 2;
+  string error = 3;
+}
+
+// List Strategies
+message ListStrategiesRequest {
+  string user_id = 1;
+  repeated StrategyType types = 2;
+  repeated StrategyStatus statuses = 3;
+  repeated string tags = 4;
+  int64 created_after = 5;
+  int64 created_before = 6;
+  int32 offset = 7;
+  int32 limit = 8;
+  string sort_field = 9;
+  string sort_direction = 10;
+}
+
+message ListStrategiesResponse {
+  bool success = 1;
+  repeated StrategySummary strategies = 2;
+  int32 total = 3;
+  int32 offset = 4;
+  int32 limit = 5;
+  bool has_more = 6;
+  string error = 7;
+}
+
+// List Active Strategies
+message ListActiveStrategiesRequest {
+  // Empty - returns all active strategies for condition monitoring
+}
+
+message ListActiveStrategiesResponse {
+  bool success = 1;
+  repeated Strategy strategies = 2;
+  string error = 3;
+}
+
+// Get Strategy Status
+message GetStrategyStatusRequest {
+  string strategy_id = 1;
+}
+
+message GetStrategyStatusResponse {
+  bool success = 1;
+  StrategySummary summary = 2;
+  StrategyStatus status = 3;
+  int32 pending_conditions = 4;
+  int32 met_conditions = 5;
+  int64 next_scheduled_execution = 6;
+  string error = 7;
+}
+
+// Get Goal Progress
+message GetGoalProgressRequest {
+  string strategy_id = 1;
+}
+
+message GetGoalProgressResponse {
+  bool success = 1;
+  GoalProgress progress = 2;
+  string error = 3;
+}
+
+// Get Strategy Events
+message GetStrategyEventsRequest {
+  string strategy_id = 1;
+  repeated string event_types = 2;
+  int64 after = 3;
+  int64 before = 4;
+  int32 offset = 5;
+  int32 limit = 6;
+  string order = 7;  // "asc" or "desc"
+}
+
+message GetStrategyEventsResponse {
+  bool success = 1;
+  repeated StrategyEventMessage events = 2;
+  int32 total = 3;
+  int32 offset = 4;
+  int32 limit = 5;
+  bool has_more = 6;
+  string error = 7;
+}
+
+// Stream Strategy Events
+message StreamStrategyEventsRequest {
+  string strategy_id = 1;
+  string user_id = 2;
+  repeated string event_types = 3;
+}
+
+// Health Check
+message HealthCheckRequest {}
+
+message HealthCheckResponse {
+  bool healthy = 1;
+  string version = 2;
+  int64 uptime_ms = 3;
+  int32 active_strategies = 4;
+  int32 pending_conditions = 5;
+  StrategyEngineMetrics metrics = 6;
+}
+
+message StrategyEngineMetrics {
+  int64 total_strategies_created = 1;
+  int64 total_executions = 2;
+  int64 successful_executions = 3;
+  int64 failed_executions = 4;
+  int64 conditions_evaluated = 5;
+  int64 conditions_triggered = 6;
+  double average_execution_time_ms = 7;
+}
+
+// Get Attestation
+message GetAttestationRequest {}
+
+message GetAttestationResponse {
+  string attestation_quote = 1;
+  string mrenclave = 2;
+  string mrsigner = 3;
+  int64 timestamp = 4;
+}
