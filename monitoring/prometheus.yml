@@ -1,0 +1,50 @@
+# DisCard Prometheus Configuration
+#
+# Monitors the Brain-Soul-Strategy service mesh
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []
+
+rule_files: []
+
+scrape_configs:
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Brain Orchestrator metrics (if exposed)
+  - job_name: 'brain-orchestrator'
+    static_configs:
+      - targets: ['brain-orchestrator:8092']
+    metrics_path: /metrics
+    scrape_interval: 30s
+    scrape_timeout: 10s
+
+  # Soul Financial Armor metrics (if exposed)
+  - job_name: 'soul-financial'
+    static_configs:
+      - targets: ['soul-financial:50051']
+    metrics_path: /metrics
+    scrape_interval: 30s
+    scrape_timeout: 10s
+
+  # Strategy Engine metrics (if exposed)
+  - job_name: 'strategy-engine'
+    static_configs:
+      - targets: ['strategy-engine:50053']
+    metrics_path: /metrics
+    scrape_interval: 30s
+    scrape_timeout: 10s
+
+  # Redis metrics (requires redis_exporter sidecar)
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis-exporter:9121']
+    scrape_interval: 30s

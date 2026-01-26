@@ -1,0 +1,231 @@
+# DisCard AI Agent Services - Phala dstack Deployment
+#
+# This docker-compose configuration deploys the Brain-Soul-Strategy
+# architecture for Phala dstack TEE execution.
+#
+# Usage:
+#   docker-compose -f docker-compose.dstack.yaml up -d
+#
+# Services:
+#   - brain-orchestrator: Intent parsing, planning, LLM inference
+#   - soul-financial: Verification, velocity checks, attestation
+#   - strategy-engine: Persistent strategies, condition monitoring
+#   - redis: Strategy state storage
+#
+# Port mapping:
+#   - 50051: Soul (Financial Armor) gRPC
+#   - 50052: Brain Orchestrator gRPC
+#   - 50053: Strategy Engine gRPC
+#   - 8092: Brain HTTP API (optional, for direct client access)
+
+version: '3.8'
+
+services:
+  # ============================================================================
+  # Brain Orchestrator - Intent Parsing & Planning
+  # ============================================================================
+  brain-orchestrator:
+    build:
+      context: ./packages/plugin-brain-orchestrator
+      dockerfile: Dockerfile
+    container_name: discard-brain
+    command: ["node", "dist/server.js"]
+    environment:
+      # Service Configuration
+      - BRAIN_GRPC_PORT=50052
+      - BRAIN_HTTP_PORT=8092
+      - BRAIN_HOST=0.0.0.0
+      # Soul Connection
+      - SOUL_GRPC_URL=soul-financial:50051
+      # Strategy Engine Connection
+      - STRATEGY_ENGINE_URL=strategy-engine:50053
+      # LLM Configuration (Phala Confidential AI)
+      - PHALA_AI_API_KEY=${PHALA_AI_API_KEY}
+      - PHALA_AI_API_URL=${PHALA_AI_API_URL:-https://api.redpill.ai/v1}
+      - LLM_MODEL=${LLM_MODEL:-meta-llama/llama-3.3-70b-instruct}
+      # TLS Configuration
+      - ENABLE_TLS=${ENABLE_TLS:-false}
+      - TLS_CERT=${TLS_CERT:-}
+      - TLS_KEY=${TLS_KEY:-}
+      - TLS_CA=${TLS_CA:-}
+      # TEE Configuration
+      - TEE_ENABLED=${TEE_ENABLED:-true}
+      - ATTESTATION_REFRESH_INTERVAL=3600000
+    ports:
+      - "50052:50052"
+      - "8092:8092"
+    networks:
+      - discard-network
+    depends_on:
+      - soul-financial
+      - strategy-engine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('net').connect(50052, 'localhost', () => process.exit(0)).on('error', () => process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 4G
+        reservations:
+          cpus: '1.0'
+          memory: 2G
+
+  # ============================================================================
+  # Soul - Financial Armor (Verification & Compliance)
+  # ============================================================================
+  soul-financial:
+    build:
+      context: ./packages/plugin-financial-armor
+      dockerfile: Dockerfile
+    container_name: discard-soul
+    command: ["node", "dist/standalone.js"]
+    environment:
+      # Service Configuration
+      - SOUL_GRPC_PORT=50051
+      - SOUL_HOST=0.0.0.0
+      # Blockchain Configuration
+      - SOLANA_RPC_URL=${SOLANA_RPC_URL}
+      - SOLANA_WS_URL=${SOLANA_WS_URL:-}
+      # Turnkey Configuration
+      - TURNKEY_API_PUBLIC_KEY=${TURNKEY_API_PUBLIC_KEY}
+      - TURNKEY_API_PRIVATE_KEY=${TURNKEY_API_PRIVATE_KEY}
+      - TURNKEY_ORGANIZATION_ID=${TURNKEY_ORGANIZATION_ID}
+      # Range Compliance
+      - RANGE_API_KEY=${RANGE_API_KEY:-}
+      - RANGE_API_URL=${RANGE_API_URL:-https://api.range.org}
+      # TLS Configuration
+      - ENABLE_TLS=${ENABLE_TLS:-false}
+      - TLS_CERT=${TLS_CERT:-}
+      - TLS_KEY=${TLS_KEY:-}
+      - TLS_CA=${TLS_CA:-}
+      # TEE Configuration
+      - TEE_ENABLED=${TEE_ENABLED:-true}
+      - ATTESTATION_REFRESH_INTERVAL=3600000
+    ports:
+      - "50051:50051"
+    networks:
+      - discard-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('net').connect(50051, 'localhost', () => process.exit(0)).on('error', () => process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.5'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+
+  # ============================================================================
+  # Strategy Engine - Persistent Strategies & Condition Monitoring
+  # ============================================================================
+  strategy-engine:
+    build:
+      context: ./packages/plugin-strategy-engine
+      dockerfile: Dockerfile
+    container_name: discard-strategy
+    command: ["node", "dist/standalone.js"]
+    environment:
+      # Service Configuration
+      - STRATEGY_ENGINE_PORT=50053
+      - STRATEGY_ENGINE_HOST=0.0.0.0
+      # Brain Connection (for execution)
+      - BRAIN_URL=brain-orchestrator:50052
+      # Redis Configuration
+      - REDIS_URL=redis://redis:6379
+      # Price Feed Configuration
+      - JUPITER_API_URL=${JUPITER_API_URL:-https://price.jup.ag/v6}
+      - PYTH_PRICE_FEED_URL=${PYTH_PRICE_FEED_URL:-https://hermes.pyth.network}
+      - BIRDEYE_API_KEY=${BIRDEYE_API_KEY:-}
+      # TLS Configuration
+      - ENABLE_TLS=${ENABLE_TLS:-false}
+      - TLS_CERT=${TLS_CERT:-}
+      - TLS_KEY=${TLS_KEY:-}
+      - TLS_CA=${TLS_CA:-}
+      # TEE Configuration
+      - TEE_ENABLED=${TEE_ENABLED:-true}
+    ports:
+      - "50053:50053"
+    networks:
+      - discard-network
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('net').connect(50053, 'localhost', () => process.exit(0)).on('error', () => process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.5'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+
+  # ============================================================================
+  # Redis - Strategy State Storage
+  # ============================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: discard-redis
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    volumes:
+      - strategy-state:/data
+    networks:
+      - discard-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+
+# ============================================================================
+# Networks
+# ============================================================================
+networks:
+  discard-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+
+# ============================================================================
+# Volumes
+# ============================================================================
+volumes:
+  strategy-state:
+    driver: local
+
+# ============================================================================
+# Production Overrides (use with docker-compose -f ... -f docker-compose.prod.yaml)
+# ============================================================================
+# For production, create a docker-compose.prod.yaml with:
+# - TLS certificates mounted
+# - Resource limits tuned for production
+# - Logging configured
+# - Secrets management
