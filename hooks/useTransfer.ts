@@ -34,6 +34,7 @@ import {
   getFiredancerClient,
   type ConfirmationResult,
 } from "@/lib/solana/firedancer-client";
+import { emitRefreshEvent } from "@/hooks/useRefreshStrategy";
 
 // ============================================================================
 // Types
@@ -576,6 +577,9 @@ export function useTransfer(options: UseTransferOptions): UseTransferReturn {
       setResultState(transferResult);
       setState("success");
       onSuccess?.(transferResult);
+
+      // Trigger holdings refresh across the app
+      emitRefreshEvent("transfer_sent");
     } catch (err) {
       console.error("[useTransfer] Transfer failed:", err);
 

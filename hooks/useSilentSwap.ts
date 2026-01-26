@@ -20,6 +20,7 @@ import {
   type SilentSwapChain,
   type SwapRequest,
 } from "@/services/silentSwapClient";
+import { emitRefreshEvent } from "@/hooks/useRefreshStrategy";
 
 // ============================================================================
 // Types
@@ -151,6 +152,8 @@ export function useSilentSwap() {
             result,
             currentStep: "Swap completed",
           });
+          // Trigger holdings refresh across the app
+          emitRefreshEvent("swap_completed");
         } else {
           setState({
             phase: "failed",

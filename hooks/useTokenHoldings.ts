@@ -15,6 +15,7 @@ import {
   acquireRefreshLock,
   releaseRefreshLock,
 } from "./useHoldingsRefreshLock";
+import { useSmartRefresh, useStaleness } from "./useRefreshStrategy";
 
 interface UseTokenHoldingsOptions {
   /** Whether to auto-refresh periodically */
@@ -23,6 +24,10 @@ interface UseTokenHoldingsOptions {
   refreshInterval?: number;
   /** Whether to fetch immediately on mount */
   fetchOnMount?: boolean;
+  /** Whether to refresh on app foreground. Default: true */
+  refreshOnForeground?: boolean;
+  /** Whether to refresh on transaction events. Default: true */
+  refreshOnEvents?: boolean;
 }
 
 /**
@@ -45,6 +50,8 @@ export function useTokenHoldings(
     autoRefresh = true,
     refreshInterval = 60000, // 60s to avoid race conditions
     fetchOnMount = true,
+    refreshOnForeground = true,
+    refreshOnEvents = true,
   } = options;
 
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -102,6 +109,19 @@ export function useTokenHoldings(
     return () => clearInterval(interval);
   }, [autoRefresh, refreshInterval, walletAddress, refresh]);
 
+  // Smart refresh: foreground + event-driven
+  useSmartRefresh({
+    refresh,
+    enabled: !!walletAddress && (refreshOnForeground || refreshOnEvents),
+    minBackgroundTime: 10000, // Refresh if backgrounded 10s+
+  });
+
+  // Track data staleness
+  const staleness = useStaleness({
+    lastUpdated,
+    staleAfter: 5 * 60 * 1000, // 5 minutes
+  });
+
   // Transform cached data to JupiterHolding[]
   const holdings: JupiterHolding[] = useMemo(() => {
     if (!cachedHoldings) return [];
@@ -136,6 +156,9 @@ export function useTokenHoldings(
     error,
     refresh,
     lastUpdated,
+    // Staleness info for UI hints
+    isStale: staleness.isStale,
+    ageText: staleness.ageText,
   };
 }
 

@@ -268,6 +268,10 @@ export interface UseTokenHoldingsReturn {
   error: string | null;
   refresh: () => Promise<void>;
   lastUpdated: Date | null;
+  /** Whether data is stale (>5 min old) */
+  isStale: boolean;
+  /** Human-readable age (e.g., "2m ago", "1h ago") */
+  ageText: string | null;
 }
 
 export interface UseRwaHoldingsReturn {
