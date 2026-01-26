@@ -35,7 +35,6 @@ const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const CHART_WIDTH = SCREEN_WIDTH - 48;
 const CHART_HEIGHT = 100;
 
-type TabType = 'tokens' | 'predictions';
 type TimePeriod = 'H' | 'D' | 'W' | 'M' | 'Y' | 'Max';
 
 // Generate mock chart data
@@ -117,11 +116,11 @@ export function PortfolioScreenContent({ topInset = 0 }: PortfolioScreenContentP
   } = useTokenHoldings(walletAddress);
 
   // State
-  const [activeTab, setActiveTab] = useState<TabType>('tokens');
   const [selectedFilter, setSelectedFilter] = useState('all');
   const [selectedPeriod, setSelectedPeriod] = useState<TimePeriod>('D');
   const [chartData] = useState(() => generateChartData());
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [isSummaryExpanded, setIsSummaryExpanded] = useState(false);
 
   // Drawer animation
   const drawerTranslateY = useSharedValue(0);
@@ -130,7 +129,24 @@ export function PortfolioScreenContent({ topInset = 0 }: PortfolioScreenContentP
 
   // Calculate portfolio values
   const portfolioValue = tokenTotal || 0;
-  const predictionsValue = 0; // Placeholder for predictions
+
+  // Categorize holdings: USDC = Cash, everything else = Investments
+  const { cashTotal, investmentsTotal, cashHoldings, investmentHoldings } = useMemo(() => {
+    if (!tokenHoldings || tokenHoldings.length === 0) {
+      return { cashTotal: 0, investmentsTotal: 0, cashHoldings: [], investmentHoldings: [] };
+    }
+
+    // USDC only = Cash (Coinbase-inspired model)
+    const cash = tokenHoldings.filter(h => h.symbol.toUpperCase() === 'USDC');
+    const investments = tokenHoldings.filter(h => h.symbol.toUpperCase() !== 'USDC');
+
+    return {
+      cashTotal: cash.reduce((sum, h) => sum + h.valueUsd, 0),
+      investmentsTotal: investments.reduce((sum, h) => sum + h.valueUsd, 0),
+      cashHoldings: cash,
+      investmentHoldings: investments,
+    };
+  }, [tokenHoldings]);
 
   // Calculate real daily change from token holdings
   const dailyChange = useMemo(() => {
@@ -300,28 +316,71 @@ export function PortfolioScreenContent({ topInset = 0 }: PortfolioScreenContentP
           </ThemedText>
         </View>
 
-        {/* Summary Card - Pill Style */}
-        <View style={[styles.summaryPill, { backgroundColor: cardBg, borderColor }]}>
-          <View style={styles.summaryHalf}>
-            <Ionicons name="diamond-outline" size={18} color={mutedColor} />
-            <View style={styles.summaryTextGroup}>
-              <ThemedText style={[styles.summaryLabel, { color: mutedColor }]}>All Tokens</ThemedText>
-              <ThemedText style={styles.summaryValue}>
-                $ {portfolioValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </ThemedText>
+        {/* Summary Card - Cash | Investments (Expandable) */}
+        <Pressable
+          style={styles.summaryPressable}
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            setIsSummaryExpanded(!isSummaryExpanded);
+          }}
+        >
+          <ThemedView
+            style={[
+              styles.summaryPill,
+              { borderColor, borderRadius: isSummaryExpanded ? 16 : 999 }
+            ]}
+            lightColor="#f4f4f5"
+            darkColor="#1a1f25"
+          >
+            <View style={styles.summaryContent}>
+              <View style={styles.summaryHalf}>
+                <Ionicons name="wallet-outline" size={18} color={positiveColor} />
+                <View style={styles.summaryTextGroup}>
+                  <ThemedText style={[styles.summaryLabel, { color: mutedColor }]}>Cash</ThemedText>
+                  <ThemedText style={styles.summaryValue}>
+                    $ {cashTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </ThemedText>
+                </View>
+              </View>
+              <View style={[styles.summaryDivider, { backgroundColor: borderColor }]} />
+              <View style={styles.summaryHalf}>
+                <Ionicons name="trending-up-outline" size={18} color={primaryColor} />
+                <View style={styles.summaryTextGroup}>
+                  <ThemedText style={[styles.summaryLabel, { color: mutedColor }]}>Investments</ThemedText>
+                  <ThemedText style={styles.summaryValue}>
+                    $ {investmentsTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </ThemedText>
+                </View>
+              </View>
             </View>
-          </View>
-          <View style={[styles.summaryDivider, { backgroundColor: borderColor }]} />
-          <View style={styles.summaryHalf}>
-            <Ionicons name="trending-up-outline" size={18} color={mutedColor} />
-            <View style={styles.summaryTextGroup}>
-              <ThemedText style={[styles.summaryLabel, { color: mutedColor }]}>Predictions</ThemedText>
-              <ThemedText style={styles.summaryValue}>
-                $ {predictionsValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </ThemedText>
-            </View>
-          </View>
-        </View>
+
+            {/* Expanded Content - Balance Distribution */}
+            {isSummaryExpanded && portfolioValue > 0 && (
+              <View style={[styles.summaryExpandedContent, { borderTopColor: borderColor }]}>
+                <View style={[styles.balanceBarTrack, { backgroundColor: `${mutedColor}30` }]}>
+                  <View
+                    style={[
+                      styles.balanceBarFill,
+                      {
+                        width: `${Math.min((cashTotal / portfolioValue) * 100, 100)}%`,
+                        backgroundColor: positiveColor
+                      }
+                    ]}
+                  />
+                </View>
+                <View style={styles.balanceBarLabels}>
+                  <ThemedText style={[styles.balanceBarLabel, { color: positiveColor }]}>
+                    {((cashTotal / portfolioValue) * 100).toFixed(0)}% cash
+                  </ThemedText>
+                  <ThemedText style={[styles.balanceBarLabel, { color: mutedColor }]}>
+                    {((investmentsTotal / portfolioValue) * 100).toFixed(0)}% invested
+                  </ThemedText>
+                </View>
+              </View>
+            )}
+          </ThemedView>
+        </Pressable>
+
       </View>
 
       {/* Draggable Drawer */}
@@ -343,44 +402,7 @@ export function PortfolioScreenContent({ topInset = 0 }: PortfolioScreenContentP
             <View style={[styles.drawerHandleBar, { backgroundColor: mutedColor }]} />
           </Pressable>
 
-          {/* Tab Toggle */}
-          <View style={[styles.tabToggle, { backgroundColor: cardBg }]}>
-            <Pressable
-              onPress={() => { setActiveTab('tokens'); Haptics.selectionAsync(); }}
-              style={[
-                styles.tabButton,
-                activeTab === 'tokens' && [styles.tabButtonActive, { backgroundColor: drawerBg }],
-              ]}
-            >
-              <ThemedText
-                style={[
-                  styles.tabButtonText,
-                  { color: activeTab === 'tokens' ? textColor : mutedColor },
-                ]}
-              >
-                Tokens
-              </ThemedText>
-            </Pressable>
-            <Pressable
-              onPress={() => { setActiveTab('predictions'); Haptics.selectionAsync(); }}
-              style={[
-                styles.tabButton,
-                activeTab === 'predictions' && [styles.tabButtonActive, { backgroundColor: drawerBg }],
-              ]}
-            >
-              <ThemedText
-                style={[
-                  styles.tabButtonText,
-                  { color: activeTab === 'predictions' ? textColor : mutedColor },
-                ]}
-              >
-                Predictions
-              </ThemedText>
-            </Pressable>
-          </View>
-
-          {activeTab === 'tokens' ? (
-            <ScrollView
+          <ScrollView
               style={styles.drawerContent}
               showsVerticalScrollIndicator={false}
               bounces={true}
@@ -432,7 +454,7 @@ export function PortfolioScreenContent({ topInset = 0 }: PortfolioScreenContentP
                 <ThemedText style={styles.filteredBalance}>
                   $ {displayedBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </ThemedText>
-                <ThemedText style={[styles.balanceDate, { color: isPositive ? positiveColor : negativeColor }]}>
+                <ThemedText style={[styles.balanceDate, { color: textColor }]}>
                   {isPositive ? '+' : ''}{dailyChange.toFixed(2)}% {formattedDate}
                 </ThemedText>
               </View>
@@ -476,99 +498,218 @@ export function PortfolioScreenContent({ topInset = 0 }: PortfolioScreenContentP
                 ))}
               </View>
 
-              {/* Holdings List */}
+              {/* Holdings List - Grouped by Cash and Investments */}
               <View style={styles.holdingsSection}>
-                <View style={styles.holdingsHeader}>
-                  <ThemedText style={[styles.holdingsTitle, { color: textColor }]}>Holdings</ThemedText>
-                  <Ionicons name="chevron-up" size={16} color={primaryColor} />
-                </View>
-
                 {tokensLoading ? (
                   <View style={styles.loadingContainer}>
                     <ActivityIndicator size="large" color={primaryColor} />
                     <ThemedText style={[styles.loadingText, { color: mutedColor }]}>Loading holdings...</ThemedText>
                   </View>
-                ) : displayedHoldings.length > 0 ? (
-                  displayedHoldings.map((token) => (
-                    <Pressable
-                      key={token.mint}
-                      style={styles.tokenRow}
-                      onPress={() => {
-                        Haptics.selectionAsync();
-                        router.push({
-                          pathname: '/token-detail',
-                          params: {
-                            id: token.mint,
-                            symbol: token.symbol,
-                            name: token.name || token.symbol,
-                            price: token.priceUsd.toString(),
-                            change24h: (token.change24h || 0).toString(),
-                            logoUri: token.logoUri || '',
-                            // Owned token data
-                            balance: token.balanceFormatted.toString(),
-                            value: token.valueUsd.toString(),
-                          },
-                        });
-                      }}
-                    >
-                      <View style={[styles.tokenIcon, { backgroundColor: cardBg }]}>
-                        {token.logoUri ? (
-                          <Image source={{ uri: token.logoUri }} style={styles.tokenIconImage} />
-                        ) : (
-                          <ThemedText style={styles.tokenIconText}>{token.symbol.charAt(0)}</ThemedText>
-                        )}
-                      </View>
-                      <View style={styles.tokenInfo}>
-                        <ThemedText style={styles.tokenName}>{token.name || token.symbol}</ThemedText>
-                        <View style={styles.tokenPriceRow}>
-                          <ThemedText style={[styles.tokenPrice, { color: mutedColor }]}>
-                            $ {token.priceUsd < 1 ? token.priceUsd.toFixed(6) : token.priceUsd.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                ) : selectedFilter !== 'all' ? (
+                  // Filtered view - show specific token
+                  <>
+                    <View style={styles.holdingsHeader}>
+                      <ThemedText style={[styles.holdingsTitle, { color: textColor }]}>Holdings</ThemedText>
+                    </View>
+                    {displayedHoldings.map((token) => (
+                      <Pressable
+                        key={token.mint}
+                        style={styles.tokenRow}
+                        onPress={() => {
+                          Haptics.selectionAsync();
+                          router.push({
+                            pathname: '/token-detail',
+                            params: {
+                              id: token.mint,
+                              symbol: token.symbol,
+                              name: token.name || token.symbol,
+                              price: token.priceUsd.toString(),
+                              change24h: (token.change24h || 0).toString(),
+                              logoUri: token.logoUri || '',
+                              balance: token.balanceFormatted.toString(),
+                              value: token.valueUsd.toString(),
+                            },
+                          });
+                        }}
+                      >
+                        <View style={[styles.tokenIcon, { backgroundColor: cardBg }]}>
+                          {token.logoUri ? (
+                            <Image source={{ uri: token.logoUri }} style={styles.tokenIconImage} />
+                          ) : (
+                            <ThemedText style={styles.tokenIconText}>{token.symbol.charAt(0)}</ThemedText>
+                          )}
+                        </View>
+                        <View style={styles.tokenInfo}>
+                          <ThemedText style={styles.tokenName}>{token.name || token.symbol}</ThemedText>
+                          <View style={styles.tokenPriceRow}>
+                            <ThemedText style={[styles.tokenPrice, { color: mutedColor }]}>
+                              $ {token.priceUsd < 1 ? token.priceUsd.toFixed(6) : token.priceUsd.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                            </ThemedText>
+                            <ThemedText
+                              style={[
+                                styles.tokenChange,
+                                { color: (token.change24h || 0) >= 0 ? positiveColor : negativeColor },
+                              ]}
+                            >
+                              {(token.change24h || 0) >= 0 ? '+' : ''}{(token.change24h || 0).toFixed(2)}%
+                            </ThemedText>
+                          </View>
+                        </View>
+                        <View style={styles.tokenValue}>
+                          <ThemedText style={styles.tokenHoldings}>
+                            {token.balanceFormatted.toLocaleString()}
                           </ThemedText>
-                          <ThemedText
-                            style={[
-                              styles.tokenChange,
-                              { color: (token.change24h || 0) >= 0 ? positiveColor : negativeColor },
-                            ]}
-                          >
-                            {(token.change24h || 0) >= 0 ? '+' : ''}{(token.change24h || 0).toFixed(2)}%
+                          <ThemedText style={[styles.tokenFiatValue, { color: mutedColor }]}>
+                            $ {token.valueUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </ThemedText>
                         </View>
-                      </View>
-                      <View style={styles.tokenValue}>
-                        <ThemedText style={styles.tokenHoldings}>
-                          {token.balanceFormatted.toLocaleString()}
-                        </ThemedText>
-                        <ThemedText style={[styles.tokenFiatValue, { color: mutedColor }]}>
-                          $ {token.valueUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </ThemedText>
-                      </View>
-                    </Pressable>
-                  ))
+                      </Pressable>
+                    ))}
+                  </>
+                ) : (cashHoldings.length > 0 || investmentHoldings.length > 0) ? (
+                  // Grouped view - show Cash and Investments sections
+                  <>
+                    {/* Cash Section */}
+                    {cashHoldings.length > 0 && (
+                      <>
+                        <View style={styles.holdingsHeader}>
+                          <View style={styles.holdingsHeaderLeft}>
+                            <Ionicons name="wallet-outline" size={16} color={positiveColor} />
+                            <ThemedText style={[styles.holdingsTitle, { color: textColor }]}>Cash</ThemedText>
+                          </View>
+                          <ThemedText style={[styles.holdingsSubtotal, { color: mutedColor }]}>
+                            $ {cashTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </ThemedText>
+                        </View>
+                        {cashHoldings.map((token) => (
+                          <Pressable
+                            key={token.mint}
+                            style={styles.tokenRow}
+                            onPress={() => {
+                              Haptics.selectionAsync();
+                              router.push({
+                                pathname: '/token-detail',
+                                params: {
+                                  id: token.mint,
+                                  symbol: token.symbol,
+                                  name: token.name || token.symbol,
+                                  price: token.priceUsd.toString(),
+                                  change24h: (token.change24h || 0).toString(),
+                                  logoUri: token.logoUri || '',
+                                  balance: token.balanceFormatted.toString(),
+                                  value: token.valueUsd.toString(),
+                                },
+                              });
+                            }}
+                          >
+                            <View style={[styles.tokenIcon, { backgroundColor: cardBg }]}>
+                              {token.logoUri ? (
+                                <Image source={{ uri: token.logoUri }} style={styles.tokenIconImage} />
+                              ) : (
+                                <ThemedText style={styles.tokenIconText}>{token.symbol.charAt(0)}</ThemedText>
+                              )}
+                            </View>
+                            <View style={styles.tokenInfo}>
+                              <ThemedText style={styles.tokenName}>{token.name || token.symbol}</ThemedText>
+                              <ThemedText style={[styles.primaryAssetLabel, { color: positiveColor }]}>
+                                Primary spending asset
+                              </ThemedText>
+                            </View>
+                            <View style={styles.tokenValue}>
+                              <ThemedText style={styles.tokenHoldings}>
+                                {token.balanceFormatted.toLocaleString()}
+                              </ThemedText>
+                              <ThemedText style={[styles.tokenFiatValue, { color: mutedColor }]}>
+                                $ {token.valueUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </ThemedText>
+                            </View>
+                          </Pressable>
+                        ))}
+                      </>
+                    )}
+
+                    {/* Investments Section */}
+                    {investmentHoldings.length > 0 && (
+                      <>
+                        <View style={[styles.holdingsHeader, cashHoldings.length > 0 && { marginTop: 20 }]}>
+                          <View style={styles.holdingsHeaderLeft}>
+                            <Ionicons name="trending-up-outline" size={16} color={primaryColor} />
+                            <ThemedText style={[styles.holdingsTitle, { color: textColor }]}>Investments</ThemedText>
+                          </View>
+                          <ThemedText style={[styles.holdingsSubtotal, { color: mutedColor }]}>
+                            $ {investmentsTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </ThemedText>
+                        </View>
+                        {investmentHoldings.map((token) => (
+                          <Pressable
+                            key={token.mint}
+                            style={styles.tokenRow}
+                            onPress={() => {
+                              Haptics.selectionAsync();
+                              router.push({
+                                pathname: '/token-detail',
+                                params: {
+                                  id: token.mint,
+                                  symbol: token.symbol,
+                                  name: token.name || token.symbol,
+                                  price: token.priceUsd.toString(),
+                                  change24h: (token.change24h || 0).toString(),
+                                  logoUri: token.logoUri || '',
+                                  balance: token.balanceFormatted.toString(),
+                                  value: token.valueUsd.toString(),
+                                },
+                              });
+                            }}
+                          >
+                            <View style={[styles.tokenIcon, { backgroundColor: cardBg }]}>
+                              {token.logoUri ? (
+                                <Image source={{ uri: token.logoUri }} style={styles.tokenIconImage} />
+                              ) : (
+                                <ThemedText style={styles.tokenIconText}>{token.symbol.charAt(0)}</ThemedText>
+                              )}
+                            </View>
+                            <View style={styles.tokenInfo}>
+                              <ThemedText style={styles.tokenName}>{token.name || token.symbol}</ThemedText>
+                              <View style={styles.tokenPriceRow}>
+                                <ThemedText style={[styles.tokenPrice, { color: mutedColor }]}>
+                                  $ {token.priceUsd < 1 ? token.priceUsd.toFixed(6) : token.priceUsd.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                </ThemedText>
+                                <ThemedText
+                                  style={[
+                                    styles.tokenChange,
+                                    { color: (token.change24h || 0) >= 0 ? positiveColor : negativeColor },
+                                  ]}
+                                >
+                                  {(token.change24h || 0) >= 0 ? '+' : ''}{(token.change24h || 0).toFixed(2)}%
+                                </ThemedText>
+                              </View>
+                            </View>
+                            <View style={styles.tokenValue}>
+                              <ThemedText style={styles.tokenHoldings}>
+                                {token.balanceFormatted.toLocaleString()}
+                              </ThemedText>
+                              <ThemedText style={[styles.tokenFiatValue, { color: mutedColor }]}>
+                                $ {token.valueUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </ThemedText>
+                            </View>
+                          </Pressable>
+                        ))}
+                      </>
+                    )}
+                  </>
                 ) : (
                   <View style={styles.emptyState}>
                     <View style={[styles.emptyStateIcon, { backgroundColor: `${primaryColor}10` }]}>
-                      <Ionicons name="diamond-outline" size={32} color={primaryColor} />
+                      <Ionicons name="shield-checkmark-outline" size={32} color={primaryColor} />
                     </View>
-                    <ThemedText style={styles.emptyStateTitle}>No holdings yet</ThemedText>
+                    <ThemedText style={styles.emptyStateTitle}>Your wallet is ready</ThemedText>
                     <ThemedText style={[styles.emptyStateText, { color: mutedColor }]}>
-                      {walletAddress ? 'Your token holdings will appear here' : 'Connect your wallet to see holdings'}
+                      {walletAddress ? 'Add funds to get started. Your assets will appear here safely.' : 'Connect your wallet to see your holdings'}
                     </ThemedText>
                   </View>
                 )}
               </View>
             </ScrollView>
-          ) : (
-            /* Predictions Tab - Placeholder */
-            <View style={styles.predictionsPlaceholder}>
-              <View style={[styles.predictionsIcon, { backgroundColor: cardBg }]}>
-                <Ionicons name="trending-up" size={32} color={mutedColor} />
-              </View>
-              <ThemedText style={styles.predictionsTitle}>Predictions Coming Soon</ThemedText>
-              <ThemedText style={[styles.predictionsText, { color: mutedColor }]}>
-                Track your market predictions and forecast positions here.
-              </ThemedText>
-            </View>
-          )}
         </Animated.View>
       </GestureDetector>
     </ThemedView>
@@ -627,13 +768,17 @@ const styles = StyleSheet.create({
   },
 
   // Summary Pill
-  summaryPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  summaryPressable: {
+    alignSelf: 'stretch',
     marginTop: 20,
-    borderRadius: 999,
+  },
+  summaryPill: {
     borderWidth: 1,
     overflow: 'hidden',
+  },
+  summaryContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   summaryHalf: {
     flex: 1,
@@ -642,7 +787,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
     paddingVertical: 12,
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
   },
   summaryDivider: {
     width: 1,
@@ -657,6 +802,28 @@ const styles = StyleSheet.create({
   summaryValue: {
     fontSize: 14,
     fontWeight: '600',
+  },
+  summaryExpandedContent: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderTopWidth: 1,
+  },
+  balanceBarTrack: {
+    height: 6,
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  balanceBarFill: {
+    height: '100%',
+    borderRadius: 3,
+  },
+  balanceBarLabels: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 8,
+  },
+  balanceBarLabel: {
+    fontSize: 11,
   },
 
   // Drawer
@@ -687,32 +854,6 @@ const styles = StyleSheet.create({
   drawerContent: {
     flex: 1,
     paddingHorizontal: 16,
-  },
-
-  // Tab Toggle
-  tabToggle: {
-    flexDirection: 'row',
-    marginHorizontal: 16,
-    marginBottom: 12,
-    borderRadius: 12,
-    padding: 4,
-  },
-  tabButton: {
-    flex: 1,
-    paddingVertical: 10,
-    alignItems: 'center',
-    borderRadius: 8,
-  },
-  tabButtonActive: {
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
-  },
-  tabButtonText: {
-    fontSize: 14,
-    fontWeight: '500',
   },
 
   // Filter Pills
@@ -829,6 +970,19 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
   },
+  holdingsHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  holdingsSubtotal: {
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  primaryAssetLabel: {
+    fontSize: 11,
+    marginTop: 2,
+  },
   tokenRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -880,31 +1034,6 @@ const styles = StyleSheet.create({
   tokenFiatValue: {
     fontSize: 12,
     marginTop: 2,
-  },
-
-  // Predictions Placeholder
-  predictionsPlaceholder: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 32,
-  },
-  predictionsIcon: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 16,
-  },
-  predictionsTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 8,
-  },
-  predictionsText: {
-    fontSize: 14,
-    textAlign: 'center',
   },
 
   // Loading & Empty States

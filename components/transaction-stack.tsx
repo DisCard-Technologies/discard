@@ -134,7 +134,10 @@ export function TransactionStack({
             <ThemedView
               style={[
                 styles.card,
-                { borderColor },
+                {
+                  borderColor,
+                  borderRadius: isTop && isExpanded ? 16 : 999,
+                },
               ]}
               lightColor="#f4f4f5"
               darkColor="#1a1f25"
@@ -232,7 +235,6 @@ const styles = StyleSheet.create({
     top: 16,
   },
   card: {
-    borderRadius: 16,
     borderWidth: 1,
     overflow: 'hidden',
   },
