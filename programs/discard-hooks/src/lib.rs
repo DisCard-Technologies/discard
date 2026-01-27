@@ -187,6 +187,19 @@ pub mod discard_hooks {
     }
 
     // ========================================================================
+    // Confidential Transfer Hook (Token-2022 Encrypted Amounts)
+    // ========================================================================
+
+    /// Confidential transfer hook for encrypted amount transfers.
+    /// Validates card status, merchant/MCC rules, and velocity limits via ZK proof.
+    pub fn confidential_transfer_hook(
+        ctx: Context<ConfidentialTransferHook>,
+        proof_data: Vec<u8>,
+    ) -> Result<()> {
+        instructions::confidential_hook::confidential_handler(ctx, proof_data)
+    }
+
+    // ========================================================================
     // Emergency Controls
     // ========================================================================
 

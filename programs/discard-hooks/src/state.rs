@@ -52,6 +52,16 @@ pub struct CardConfig {
     /// Freeze information
     pub freeze_info: Option<FreezeInfo>,
 
+    /// Confidential transfer mode
+    /// When true, velocity enforcement uses ZK proofs instead of plaintext amounts
+    pub confidential_mode: bool,
+
+    /// Encrypted velocity counters (ElGamal ciphertexts)
+    /// Used when confidential_mode is true. Each is a 64-byte compressed Ristretto point pair.
+    pub encrypted_daily_total: Option<[u8; 64]>,
+    pub encrypted_weekly_total: Option<[u8; 64]>,
+    pub encrypted_monthly_total: Option<[u8; 64]>,
+
     /// Timestamps
     pub created_at: i64,
     pub updated_at: i64,
@@ -75,6 +85,10 @@ impl CardConfig {
         4 + (2 * MAX_MCC_CODES) + // mcc_whitelist vec
         4 + (2 * MAX_MCC_CODES) + // mcc_blocklist vec
         1 + FreezeInfo::SIZE + // freeze_info option
+        1 + // confidential_mode
+        1 + 64 + // encrypted_daily_total option
+        1 + 64 + // encrypted_weekly_total option
+        1 + 64 + // encrypted_monthly_total option
         8 + // created_at
         8 + // updated_at
         9; // last_transaction_at option

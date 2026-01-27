@@ -165,4 +165,20 @@ pub enum HookError {
 
     #[msg("Division by zero")]
     DivisionByZero,
+
+    // ========================================================================
+    // Confidential Transfer Errors (6900-6999)
+    // ========================================================================
+
+    #[msg("Confidential mode not enabled for this card")]
+    ConfidentialModeNotEnabled,
+
+    #[msg("Invalid ZK proof data")]
+    InvalidProofData,
+
+    #[msg("Velocity range proof verification failed")]
+    VelocityProofFailed,
+
+    #[msg("Encrypted velocity counter overflow")]
+    EncryptedCounterOverflow,
 }

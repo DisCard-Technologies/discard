@@ -1,5 +1,6 @@
 //! DisCard 2035 - Transfer Hook Instructions
 
+pub mod confidential_hook;
 pub mod config;
 pub mod emergency;
 pub mod mcc;
@@ -7,6 +8,7 @@ pub mod merchant;
 pub mod transfer_hook;
 pub mod velocity;
 
+pub use confidential_hook::*;
 pub use config::*;
 pub use emergency::*;
 pub use mcc::*;
