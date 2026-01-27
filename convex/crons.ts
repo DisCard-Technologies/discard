@@ -84,6 +84,18 @@ crons.interval(
   internal.crons.syncHistoricalPrices.run
 );
 
+// ============ AUDIT ANCHORING ============
+
+/**
+ * Anchor unanchored audit log entries to Solana every 15 minutes
+ * Builds SHA-256 Merkle tree and stores root on-chain for tamper evidence
+ */
+crons.interval(
+  "anchor-audit-batch",
+  { minutes: 15 },
+  internal.crons.anchorAuditBatch.run
+);
+
 // ============ METRICS CLEANUP ============
 
 /**

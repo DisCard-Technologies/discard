@@ -173,6 +173,25 @@ pub mod discard_state {
     }
 
     // ========================================================================
+    // Audit Anchoring Instructions
+    // ========================================================================
+
+    /// Anchor a batch of audit log Merkle root on-chain
+    pub fn anchor_audit_merkle_root(
+        ctx: Context<AnchorAuditMerkleRoot>,
+        merkle_root: [u8; 32],
+        batch_size: u32,
+        timestamp: i64,
+    ) -> Result<()> {
+        instructions::audit_anchor::anchor_audit_merkle_root(
+            ctx,
+            merkle_root,
+            batch_size,
+            timestamp,
+        )
+    }
+
+    // ========================================================================
     // Policy Instructions
     // ========================================================================
 
