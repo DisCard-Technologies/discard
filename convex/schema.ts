@@ -2654,7 +2654,15 @@ export default defineSchema({
       v.literal("breaker_reset"),
       v.literal("policy_created"),
       v.literal("policy_updated"),
-      v.literal("threshold_changed")
+      v.literal("threshold_changed"),
+      // Multi-sig approval events
+      v.literal("multisig_vote_submitted"),
+      v.literal("multisig_threshold_reached"),
+      v.literal("multisig_escalated"),
+      // Organization membership events
+      v.literal("member_added"),
+      v.literal("member_removed"),
+      v.literal("role_changed")
     ),
 
     // Related entities
@@ -2713,5 +2721,141 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_user", ["userId"]),
+
+  // ============================================================================
+  // INSTITUTIONAL FEATURES - Multi-Sig, Organizations, Compliance Proofs
+  // ============================================================================
+
+  // ============ ORGANIZATION MEMBERS ============
+  // Multi-sig organization membership with role-based access
+  organizationMembers: defineTable({
+    organizationId: v.id("turnkeyOrganizations"),
+    userId: v.id("users"),
+
+    // Role-based access
+    role: v.union(
+      v.literal("viewer"),
+      v.literal("operator"),
+      v.literal("admin"),
+      v.literal("auditor")
+    ),
+
+    // Granular permissions (derived from role, can be customized)
+    permissions: v.array(v.string()),
+
+    // Membership metadata
+    addedBy: v.id("users"),
+    status: v.union(
+      v.literal("active"),
+      v.literal("suspended"),
+      v.literal("revoked")
+    ),
+
+    // Timestamps
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_org", ["organizationId"])
+    .index("by_user", ["userId"])
+    .index("by_org_user", ["organizationId", "userId"])
+    .index("by_org_role", ["organizationId", "role"]),
+
+  // ============ MULTI-SIG APPROVAL QUEUE ============
+  // Extended approval queue supporting M-of-N organizational approvals
+  multiSigApprovals: defineTable({
+    // Links to existing approval
+    approvalId: v.id("approvalQueue"),
+    organizationId: v.id("turnkeyOrganizations"),
+
+    // Quorum configuration
+    requiredApprovals: v.number(),         // M (minimum votes needed)
+    totalApprovers: v.number(),            // N (total eligible voters)
+
+    // Vote tracking
+    approvalVotes: v.array(v.object({
+      userId: v.id("users"),
+      role: v.string(),
+      vote: v.union(
+        v.literal("approve"),
+        v.literal("reject"),
+        v.literal("abstain")
+      ),
+      timestamp: v.number(),
+      reason: v.optional(v.string()),
+    })),
+
+    // Role requirements (optional: require at least one admin vote)
+    requiredRoles: v.optional(v.array(v.string())),
+
+    // Escalation tracking
+    escalatedAt: v.optional(v.number()),
+    escalationReason: v.optional(v.string()),
+
+    // Status
+    status: v.union(
+      v.literal("pending"),
+      v.literal("quorum_reached"),
+      v.literal("approved"),
+      v.literal("rejected"),
+      v.literal("escalated"),
+      v.literal("expired")
+    ),
+
+    // Timestamps
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_approval", ["approvalId"])
+    .index("by_org", ["organizationId"])
+    .index("by_status", ["status"]),
+
+  // ============ COMPLIANCE PROOF ARCHIVE ============
+  // Archived ZK compliance proofs for auditing and re-verification
+  complianceProofArchive: defineTable({
+    userId: v.id("users"),
+    organizationId: v.optional(v.id("turnkeyOrganizations")),
+
+    // Proof identification
+    proofId: v.string(),                   // Unique proof identifier
+    proofType: v.string(),                 // kyc_level, age_threshold, sanctions, etc.
+    circuitId: v.optional(v.string()),     // Noir circuit identifier if applicable
+
+    // Public inputs (named key-value pairs)
+    publicInputs: v.any(),
+
+    // Proof data
+    proof: v.object({
+      format: v.union(
+        v.literal("noir_bb"),
+        v.literal("bulletproof"),
+        v.literal("schnorr")
+      ),
+      data: v.string(),                    // Base64-encoded proof
+    }),
+
+    // Verification
+    verificationKeyHash: v.string(),
+    nullifier: v.string(),                 // Replay protection
+
+    // On-chain anchor reference (if anchored)
+    anchorTxSignature: v.optional(v.string()),
+    anchorMerkleRoot: v.optional(v.string()),
+
+    // Issuer reference
+    issuerDid: v.optional(v.string()),
+
+    // Validity
+    generatedAt: v.number(),
+    expiresAt: v.number(),
+
+    // Archive status
+    verified: v.boolean(),
+    lastVerifiedAt: v.optional(v.number()),
+  })
+    .index("by_user", ["userId"])
+    .index("by_org", ["organizationId"])
+    .index("by_proof_type", ["proofType"])
+    .index("by_nullifier", ["nullifier"])
+    .index("by_proof_id", ["proofId"]),
 
 });
