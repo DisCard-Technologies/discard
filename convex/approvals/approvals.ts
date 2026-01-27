@@ -20,7 +20,6 @@ import {
   action,
 } from "../_generated/server";
 import { internal } from "../_generated/api";
-import { Id } from "../_generated/dataModel";
 
 // ============================================================================
 // Type Validators
@@ -230,13 +229,17 @@ export const approve = mutation({
       approvedAt: now,
     });
 
-    // Log audit event
-    await logApprovalEvent(ctx, approval.userId, {
+    // Log audit event via proper hash-chained pipeline
+    await ctx.scheduler.runAfter(0, internal.audit.auditLog.logEvent, {
+      userId: approval.userId,
       eventType: "approval_granted",
       intentId: approval.intentId,
       planId: approval.planId,
       approvalId: args.approvalId,
-      approvedBy: "user",
+      eventData: {
+        action: "approval_granted",
+        metadata: { approvedBy: "user" },
+      },
     });
 
     // Schedule execution
@@ -292,13 +295,18 @@ export const reject = mutation({
       updatedAt: now,
     });
 
-    // Log audit event
-    await logApprovalEvent(ctx, approval.userId, {
+    // Log audit event via proper hash-chained pipeline
+    await ctx.scheduler.runAfter(0, internal.audit.auditLog.logEvent, {
+      userId: approval.userId,
       eventType: "approval_rejected",
       intentId: approval.intentId,
       planId: approval.planId,
       approvalId: args.approvalId,
-      reason: args.reason,
+      eventData: {
+        action: "approval_rejected",
+        reason: args.reason,
+        metadata: {},
+      },
     });
 
     return { success: true, status: "rejected" };
@@ -347,12 +355,17 @@ export const cancelCountdown = mutation({
       updatedAt: now,
     });
 
-    // Log audit event
-    await logApprovalEvent(ctx, approval.userId, {
+    // Log audit event via proper hash-chained pipeline
+    await ctx.scheduler.runAfter(0, internal.audit.auditLog.logEvent, {
+      userId: approval.userId,
       eventType: "countdown_cancelled",
       intentId: approval.intentId,
       planId: approval.planId,
       approvalId: args.approvalId,
+      eventData: {
+        action: "countdown_cancelled",
+        metadata: {},
+      },
     });
 
     return { success: true, status: "cancelled" };
@@ -414,13 +427,17 @@ export const processAutoApproval = internalMutation({
       approvedAt: now,
     });
 
-    // Log audit event
-    await logApprovalEvent(ctx, approval.userId, {
+    // Log audit event via proper hash-chained pipeline
+    await ctx.scheduler.runAfter(0, internal.audit.auditLog.logEvent, {
+      userId: approval.userId,
       eventType: "approval_granted",
       intentId: approval.intentId,
       planId: approval.planId,
       approvalId: args.approvalId,
-      approvedBy: "auto",
+      eventData: {
+        action: "approval_granted",
+        metadata: { approvedBy: "auto" },
+      },
     });
 
     // Schedule execution
@@ -510,56 +527,8 @@ export function buildPreview(plan: {
   };
 }
 
-/**
- * Log an approval-related audit event
- */
-async function logApprovalEvent(
-  ctx: any,
-  userId: Id<"users">,
-  event: {
-    eventType: string;
-    intentId: Id<"intents">;
-    planId: Id<"executionPlans">;
-    approvalId: Id<"approvalQueue">;
-    approvedBy?: string;
-    reason?: string;
-  }
-) {
-  // Get last audit log entry for sequence number
-  const lastEntry = await ctx.db
-    .query("auditLog")
-    .withIndex("by_user", (q: any) => q.eq("userId", userId))
-    .order("desc")
-    .first();
-
-  const sequence = lastEntry ? lastEntry.sequence + 1 : 1;
-  const previousHash = lastEntry ? lastEntry.eventHash : "genesis";
-
-  // Create event data
-  const eventData = {
-    approvedBy: event.approvedBy,
-    reason: event.reason,
-    metadata: {},
-  };
-
-  // Calculate event hash (simplified - in production use proper SHA-256)
-  const eventHash = `${userId}-${sequence}-${event.eventType}-${Date.now()}`;
-
-  await ctx.db.insert("auditLog", {
-    userId,
-    eventId: `audit-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-    sequence,
-    eventType: event.eventType as any,
-    intentId: event.intentId,
-    planId: event.planId,
-    approvalId: event.approvalId,
-    eventData,
-    previousHash,
-    eventHash,
-    anchoredToChain: false,
-    timestamp: Date.now(),
-  });
-}
+// logApprovalEvent removed — all audit logging now routes through
+// internal.audit.auditLog.logEvent for proper hash-chained integrity.
 
 // ============================================================================
 // Countdown Calculation

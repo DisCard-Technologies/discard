@@ -7,7 +7,8 @@
  * Key features:
  * - Monotonic sequence numbers per user
  * - SHA-256 hash chain linking events
- * - Optional Solana anchoring via Merkle root
+ * - Deterministic event hashing with canonical serialization
+ * - On-chain Solana anchoring via Merkle root
  */
 
 import { v } from "convex/values";
@@ -39,7 +40,15 @@ const eventTypeValidator = v.union(
   v.literal("breaker_reset"),
   v.literal("policy_created"),
   v.literal("policy_updated"),
-  v.literal("threshold_changed")
+  v.literal("threshold_changed"),
+  // Multi-sig approval events
+  v.literal("multisig_vote_submitted"),
+  v.literal("multisig_threshold_reached"),
+  v.literal("multisig_escalated"),
+  // Organization membership events
+  v.literal("member_added"),
+  v.literal("member_removed"),
+  v.literal("role_changed")
 );
 
 const eventDataValidator = v.object({
@@ -192,7 +201,8 @@ export const createEntry = internalMutation({
 });
 
 /**
- * Log an event with automatic sequence and hash calculation
+ * Log an event with automatic sequence and hash calculation.
+ * Uses deterministic SHA-256 hashing with canonicalized inputs.
  */
 export const logEvent = internalMutation({
   args: {
@@ -217,18 +227,17 @@ export const logEvent = internalMutation({
     // Create event ID
     const eventId = `audit-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
-    // Calculate event hash (simplified - in production use proper SHA-256)
-    const hashInput = JSON.stringify({
+    const timestamp = Date.now();
+
+    // Calculate deterministic SHA-256 event hash
+    const eventHash = await computeEventHash({
       userId: args.userId,
       sequence,
       eventType: args.eventType,
       eventData: args.eventData,
       previousHash,
-      timestamp: Date.now(),
+      timestamp,
     });
-    const eventHash = simpleHash(hashInput);
-
-    const timestamp = Date.now();
 
     const id = await ctx.db.insert("auditLog", {
       userId: args.userId,
@@ -276,7 +285,8 @@ export const markAnchored = internalMutation({
 // ============================================================================
 
 /**
- * Verify the hash chain for a user's audit log
+ * Verify the hash chain for a user's audit log.
+ * Recomputes each entry's SHA-256 hash and validates chain integrity.
  */
 export const verifyChain = query({
   args: { userId: v.id("users") },
@@ -300,23 +310,43 @@ export const verifyChain = query({
       errors.push(`Entry ${entries[0].sequence}: Expected 'genesis' as previousHash`);
     }
 
-    // Verify chain
-    for (let i = 1; i < entries.length; i++) {
+    // Verify each entry's hash and chain linkage
+    for (let i = 0; i < entries.length; i++) {
       const current = entries[i];
-      const previous = entries[i - 1];
 
-      // Check sequence is monotonic
-      if (current.sequence !== previous.sequence + 1) {
+      // Recompute hash to detect tampering
+      const recomputedHash = await computeEventHash({
+        userId: current.userId,
+        sequence: current.sequence,
+        eventType: current.eventType,
+        eventData: current.eventData,
+        previousHash: current.previousHash,
+        timestamp: current.timestamp,
+      });
+
+      if (recomputedHash !== current.eventHash) {
         errors.push(
-          `Entry ${current.sequence}: Sequence gap detected (expected ${previous.sequence + 1})`
+          `Entry ${current.sequence}: Hash mismatch (stored hash doesn't match recomputed hash — possible tampering)`
         );
       }
 
-      // Check hash chain
-      if (current.previousHash !== previous.eventHash) {
-        errors.push(
-          `Entry ${current.sequence}: Hash chain broken (previousHash doesn't match)`
-        );
+      // Check chain linkage for non-first entries
+      if (i > 0) {
+        const previous = entries[i - 1];
+
+        // Check sequence is monotonic
+        if (current.sequence !== previous.sequence + 1) {
+          errors.push(
+            `Entry ${current.sequence}: Sequence gap detected (expected ${previous.sequence + 1})`
+          );
+        }
+
+        // Check hash chain
+        if (current.previousHash !== previous.eventHash) {
+          errors.push(
+            `Entry ${current.sequence}: Hash chain broken (previousHash doesn't match)`
+          );
+        }
       }
     }
 
@@ -333,15 +363,38 @@ export const verifyChain = query({
 // ============================================================================
 
 /**
- * Simple hash function (for non-production use)
- * In production, use proper SHA-256 via crypto.subtle
+ * Canonicalize an object for deterministic serialization.
+ * Sorts keys recursively so JSON.stringify produces identical output
+ * regardless of property insertion order.
  */
-function simpleHash(input: string): string {
-  let hash = 0;
-  for (let i = 0; i < input.length; i++) {
-    const char = input.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash = hash & hash; // Convert to 32bit integer
+function canonicalize(obj: unknown): unknown {
+  if (obj === null || obj === undefined) return obj;
+  if (typeof obj !== "object") return obj;
+  if (Array.isArray(obj)) return obj.map(canonicalize);
+
+  const sorted: Record<string, unknown> = {};
+  for (const key of Object.keys(obj as Record<string, unknown>).sort()) {
+    sorted[key] = canonicalize((obj as Record<string, unknown>)[key]);
   }
-  return `hash-${Math.abs(hash).toString(16).padStart(8, '0')}-${Date.now().toString(36)}`;
+  return sorted;
+}
+
+/**
+ * Compute a deterministic SHA-256 hash for an audit event.
+ * Uses canonicalized JSON serialization with sorted keys for reproducibility.
+ * Returns a hex-encoded SHA-256 digest.
+ */
+async function computeEventHash(input: {
+  userId: string;
+  sequence: number;
+  eventType: string;
+  eventData: Record<string, unknown>;
+  previousHash: string;
+  timestamp: number;
+}): Promise<string> {
+  const canonical = JSON.stringify(canonicalize(input));
+  const encoded = new TextEncoder().encode(canonical);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", encoded);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
 }

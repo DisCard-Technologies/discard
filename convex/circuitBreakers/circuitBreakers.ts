@@ -275,21 +275,15 @@ export const tripBreaker = mutation({
       updatedAt: now,
     });
 
-    // Log to audit
-    await ctx.db.insert("auditLog", {
+    // Log to audit via proper hash-chained pipeline
+    await ctx.scheduler.runAfter(0, internal.audit.auditLog.logEvent, {
       userId: args.userId,
-      eventId: `audit-${now}-${Math.random().toString(36).substr(2, 9)}`,
-      sequence: 0, // Will be set properly by internal function
       eventType: "breaker_tripped",
       eventData: {
         action: args.breakerId,
         reason: args.reason,
         metadata: { trippedBy: args.trippedBy ?? "user" },
       },
-      previousHash: "pending", // Will be recalculated
-      eventHash: `hash-${now}`,
-      anchoredToChain: false,
-      timestamp: now,
     });
 
     return { success: true, message: `Breaker ${breaker.breakerName} tripped` };
@@ -330,20 +324,14 @@ export const resetBreaker = mutation({
       updatedAt: now,
     });
 
-    // Log to audit
-    await ctx.db.insert("auditLog", {
+    // Log to audit via proper hash-chained pipeline
+    await ctx.scheduler.runAfter(0, internal.audit.auditLog.logEvent, {
       userId: args.userId,
-      eventId: `audit-${now}-${Math.random().toString(36).substr(2, 9)}`,
-      sequence: 0,
       eventType: "breaker_reset",
       eventData: {
         action: args.breakerId,
         metadata: {},
       },
-      previousHash: "pending",
-      eventHash: `hash-${now}`,
-      anchoredToChain: false,
-      timestamp: now,
     });
 
     return { success: true, message: `Breaker ${breaker.breakerName} reset` };
