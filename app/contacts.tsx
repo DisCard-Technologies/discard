@@ -327,6 +327,9 @@ export default function ContactsScreen() {
           }
           return next;
         });
+      } else {
+        // Navigate to contact detail screen
+        router.push(`/contacts/${contact.id}` as any);
       }
     },
     [selectionMode]
