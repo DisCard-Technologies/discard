@@ -3,9 +3,9 @@ import {
   View,
   Text,
   StyleSheet,
-  TouchableOpacity,
   ScrollView,
 } from 'react-native';
+import { PressableScale } from 'pressto';
 import { Ionicons } from '@expo/vector-icons';
 
 interface Props {
@@ -75,14 +75,13 @@ export class ErrorBoundary extends Component<Props, State> {
               An unexpected error occurred. Please try again.
             </Text>
 
-            <TouchableOpacity
+            <PressableScale
               style={styles.retryButton}
               onPress={this.handleRetry}
-              activeOpacity={0.8}
             >
               <Ionicons name="refresh" size={20} color="#FFFFFF" />
               <Text style={styles.retryButtonText}>Try Again</Text>
-            </TouchableOpacity>
+            </PressableScale>
 
             {__DEV__ && this.state.error && (
               <ScrollView style={styles.errorDetails}>

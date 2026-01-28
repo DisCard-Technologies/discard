@@ -1,5 +1,6 @@
 import { useState, useCallback, useMemo, useRef } from 'react';
-import { StyleSheet, View, Pressable, Image, Dimensions, Linking, Modal } from 'react-native';
+import { StyleSheet, View, Image, Dimensions, Linking, Modal } from 'react-native';
+import { PressableScale, PressableOpacity } from 'pressto';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path, Defs, LinearGradient as SvgLinearGradient, Stop, Circle } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
@@ -330,19 +331,18 @@ export function TokenDetailScreen({
 
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
-        <Pressable
+        <PressableScale
           onPress={() => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
             onBack();
           }}
-          style={({ pressed }) => [
+          style={[
             styles.headerButton,
             { backgroundColor: cardBg },
-            pressed && styles.pressed,
           ]}
         >
           <Ionicons name="chevron-back" size={22} color={textColor} />
-        </Pressable>
+        </PressableScale>
 
         <View style={styles.headerCenter}>
           <ThemedText style={styles.headerTitle}>{token.symbol}</ThemedText>
@@ -351,15 +351,14 @@ export function TokenDetailScreen({
           </ThemedText>
         </View>
 
-        <Pressable
+        <PressableScale
           onPress={() => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
             setIsWatchlisted(!isWatchlisted);
           }}
-          style={({ pressed }) => [
+          style={[
             styles.headerButton,
             { backgroundColor: cardBg },
-            pressed && styles.pressed,
           ]}
         >
           <Ionicons
@@ -367,7 +366,7 @@ export function TokenDetailScreen({
             size={20}
             color={isWatchlisted ? '#f59e0b' : mutedColor}
           />
-        </Pressable>
+        </PressableScale>
       </View>
 
       {/* Hero Section */}
@@ -416,13 +415,13 @@ export function TokenDetailScreen({
       {owned ? (
         <View style={styles.actionsRow}>
           {actions.map((action) => (
-            <Pressable
+            <PressableScale
               key={action.id}
               onPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                 action.onPress?.();
               }}
-              style={({ pressed }) => [styles.actionButton, pressed && styles.pressed]}
+              style={styles.actionButton}
             >
               <View style={[styles.actionIconCircle, { backgroundColor: cardBg, borderColor }]}>
                 <Ionicons name={action.icon} size={20} color={textColor} />
@@ -430,37 +429,35 @@ export function TokenDetailScreen({
               <ThemedText style={[styles.actionLabel, { color: mutedColor }]}>
                 {action.label}
               </ThemedText>
-            </Pressable>
+            </PressableScale>
           ))}
         </View>
       ) : (
         <View style={styles.nonOwnedActions}>
-          <Pressable
+          <PressableScale
             onPress={() => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
               onBuy?.();
             }}
-            style={({ pressed }) => [
+            style={[
               styles.buyButton,
               { backgroundColor: primaryColor },
-              pressed && styles.pressed,
             ]}
           >
             <Ionicons name="add" size={20} color="#fff" />
             <ThemedText style={styles.buyButtonText}>Buy {token.symbol}</ThemedText>
-          </Pressable>
-          <Pressable
+          </PressableScale>
+          <PressableScale
             onPress={() => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
               setIsWatchlisted(!isWatchlisted);
             }}
-            style={({ pressed }) => [
+            style={[
               styles.watchlistButton,
               {
                 backgroundColor: isWatchlisted ? 'rgba(245,158,11,0.15)' : cardBg,
                 borderColor: isWatchlisted ? 'rgba(245,158,11,0.3)' : borderColor,
               },
-              pressed && styles.pressed,
             ]}
           >
             <Ionicons
@@ -471,13 +468,13 @@ export function TokenDetailScreen({
             <ThemedText style={[styles.watchlistButtonText, isWatchlisted && { color: '#f59e0b' }]}>
               {isWatchlisted ? 'Watching' : 'Watchlist'}
             </ThemedText>
-          </Pressable>
+          </PressableScale>
         </View>
       )}
 
       {/* Transaction Stack - Only for owned tokens */}
       {owned && mostRecentTx && (
-        <Pressable onPress={handleTxExpand} style={styles.txStackContainer}>
+        <PressableScale onPress={handleTxExpand} style={styles.txStackContainer}>
           {/* Background stacked cards */}
           <View style={[styles.txStackCard3, { backgroundColor: cardBg, borderColor }]} />
           <View style={[styles.txStackCard2, { backgroundColor: cardBg, borderColor }]} />
@@ -522,7 +519,7 @@ export function TokenDetailScreen({
               </Animated.View>
             )}
           </Animated.View>
-        </Pressable>
+        </PressableScale>
       )}
 
       {/* Draggable Drawer */}
@@ -541,9 +538,9 @@ export function TokenDetailScreen({
         {/* Drawer Handle - Only this part is draggable */}
         <GestureDetector gesture={handlePanGesture}>
           <Animated.View>
-            <Pressable style={styles.drawerHandle} onPress={handleDrawerToggle}>
+            <PressableScale style={styles.drawerHandle} onPress={handleDrawerToggle}>
               <View style={[styles.drawerHandleBar, { backgroundColor: mutedColor }]} />
-            </Pressable>
+            </PressableScale>
           </Animated.View>
         </GestureDetector>
 
@@ -608,9 +605,9 @@ export function TokenDetailScreen({
                     {tokenDetailData?.description || token.about || `${token.name} (${token.symbol}) is a cryptocurrency available on the ${token.network || 'Solana'} network. Trade, send, and receive ${token.symbol} with ease.`}
                   </ThemedText>
                   {(tokenDetailData?.description || token.about) && (
-                    <Pressable style={styles.showMoreButton}>
+                    <PressableScale style={styles.showMoreButton}>
                       <ThemedText style={[styles.showMoreText, { color: primaryColor }]}>Show more</ThemedText>
-                    </Pressable>
+                    </PressableScale>
                   )}
                 </View>
 
@@ -691,7 +688,7 @@ export function TokenDetailScreen({
                     <ThemedText style={styles.sectionTitle}>Resources</ThemedText>
                     <View style={styles.resourcesRow}>
                       {socials.website && (
-                        <Pressable
+                        <PressableOpacity
                           style={[styles.resourceButton, { backgroundColor: cardBg, borderColor }]}
                           onPress={() => {
                             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -699,10 +696,10 @@ export function TokenDetailScreen({
                           }}
                         >
                           <Ionicons name="globe-outline" size={20} color={textColor} />
-                        </Pressable>
+                        </PressableOpacity>
                       )}
                       {socials.twitter && (
-                        <Pressable
+                        <PressableOpacity
                           style={[styles.resourceButton, { backgroundColor: cardBg, borderColor }]}
                           onPress={() => {
                             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -714,10 +711,10 @@ export function TokenDetailScreen({
                           }}
                         >
                           <Ionicons name="logo-twitter" size={20} color={textColor} />
-                        </Pressable>
+                        </PressableOpacity>
                       )}
                       {socials.telegram && (
-                        <Pressable
+                        <PressableOpacity
                           style={[styles.resourceButton, { backgroundColor: cardBg, borderColor }]}
                           onPress={() => {
                             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -729,10 +726,10 @@ export function TokenDetailScreen({
                           }}
                         >
                           <Ionicons name="paper-plane-outline" size={20} color={textColor} />
-                        </Pressable>
+                        </PressableOpacity>
                       )}
                       {socials.discord && (
-                        <Pressable
+                        <PressableOpacity
                           style={[styles.resourceButton, { backgroundColor: cardBg, borderColor }]}
                           onPress={() => {
                             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -740,14 +737,14 @@ export function TokenDetailScreen({
                           }}
                         >
                           <Ionicons name="logo-discord" size={20} color={textColor} />
-                        </Pressable>
+                        </PressableOpacity>
                       )}
                     </View>
                   </View>
                 )}
 
                 {/* Edit Widgets Button */}
-                <Pressable
+                <PressableScale
                   style={[styles.editWidgetsButton, { borderColor }]}
                   onPress={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)}
                 >
@@ -755,7 +752,7 @@ export function TokenDetailScreen({
                   <ThemedText style={[styles.editWidgetsText, { color: mutedColor }]}>
                     Edit Widgets
                   </ThemedText>
-                </Pressable>
+                </PressableScale>
               </Animated.View>
             )}
           </ScrollView>
@@ -765,7 +762,7 @@ export function TokenDetailScreen({
 
       {/* Price Bar - Always visible at bottom */}
       <View style={[styles.expandablePriceContainer, { bottom: insets.bottom }]}>
-        <Pressable
+        <PressableScale
           onPress={toggleChart}
           style={[styles.expandablePriceRow, { backgroundColor: cardBg, borderTopColor: borderColor }]}
         >
@@ -780,7 +777,7 @@ export function TokenDetailScreen({
               </ThemedText>
             </View>
           </View>
-          <Pressable
+          <PressableScale
             onPress={toggleChart}
             style={[styles.expandableExpandButton, { backgroundColor: drawerBg }]}
           >
@@ -789,8 +786,8 @@ export function TokenDetailScreen({
               size={20}
               color={mutedColor}
             />
-          </Pressable>
-        </Pressable>
+          </PressableScale>
+        </PressableScale>
       </View>
 
       {/* Full-Screen Chart Modal */}
@@ -804,16 +801,15 @@ export function TokenDetailScreen({
           {/* Modal Header */}
           <View style={styles.fullscreenChartHeader}>
             <ThemedText style={styles.fullscreenChartTitle}>{token.symbol} Price</ThemedText>
-            <Pressable
+            <PressableScale
               onPress={toggleChart}
-              style={({ pressed }) => [
+              style={[
                 styles.fullscreenCloseButton,
                 { backgroundColor: cardBg },
-                pressed && styles.pressed,
               ]}
             >
               <Ionicons name="close" size={22} color={textColor} />
-            </Pressable>
+            </PressableScale>
           </View>
 
           {/* Price Display */}
@@ -854,7 +850,7 @@ export function TokenDetailScreen({
           <View style={[styles.fullscreenTimePeriodContainer, { paddingBottom: insets.bottom + 16 }]}>
             <View style={[styles.timePeriodSelector, { backgroundColor: cardBg }]}>
               {timePeriods.map((period) => (
-                <Pressable
+                <PressableScale
                   key={period}
                   onPress={() => {
                     setSelectedPeriod(period);
@@ -873,7 +869,7 @@ export function TokenDetailScreen({
                   >
                     {period}
                   </ThemedText>
-                </Pressable>
+                </PressableScale>
               ))}
             </View>
           </View>
@@ -894,11 +890,6 @@ const styles = StyleSheet.create({
     right: 0,
     height: '50%',
   },
-  pressed: {
-    opacity: 0.7,
-    transform: [{ scale: 0.96 }],
-  },
-
   // Header
   header: {
     flexDirection: 'row',

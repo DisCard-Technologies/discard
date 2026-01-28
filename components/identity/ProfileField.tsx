@@ -12,10 +12,10 @@ import { useState, useCallback } from "react";
 import {
   StyleSheet,
   View,
-  Pressable,
   TextInput,
   ActivityIndicator,
 } from "react-native";
+import { PressableScale } from "pressto";
 import { Ionicons } from "@expo/vector-icons";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 
@@ -130,13 +130,12 @@ export function ProfileField({
   const showLoading = isLoading || isSaving;
 
   return (
-    <Pressable
+    <PressableScale
       onPress={handlePress}
-      disabled={disabled || isEditing}
-      style={({ pressed }) => [
+      enabled={!disabled && !isEditing}
+      style={[
         styles.container,
         { backgroundColor: cardBg, borderColor },
-        pressed && !isEditing && styles.pressed,
         disabled && styles.disabled,
       ]}
     >
@@ -189,15 +188,15 @@ export function ProfileField({
           <ActivityIndicator size="small" color={primaryColor} />
         ) : isEditing ? (
           <View style={styles.editActions}>
-            <Pressable
+            <PressableScale
               onPress={handleCancel}
               style={[styles.editButton, { borderColor: mutedColor }]}
             >
               <Ionicons name="close" size={16} color={mutedColor} />
-            </Pressable>
-            <Pressable
+            </PressableScale>
+            <PressableScale
               onPress={handleSave}
-              disabled={!editValue.trim()}
+              enabled={!!editValue.trim()}
               style={[
                 styles.editButton,
                 styles.saveButton,
@@ -206,7 +205,7 @@ export function ProfileField({
               ]}
             >
               <Ionicons name="checkmark" size={16} color="#fff" />
-            </Pressable>
+            </PressableScale>
           </View>
         ) : (
           <>
@@ -224,7 +223,7 @@ export function ProfileField({
           </>
         )}
       </View>
-    </Pressable>
+    </PressableScale>
   );
 }
 
@@ -303,10 +302,6 @@ const styles = StyleSheet.create({
   },
   saveButton: {
     borderWidth: 0,
-  },
-  pressed: {
-    opacity: 0.7,
-    transform: [{ scale: 0.98 }],
   },
   disabled: {
     opacity: 0.5,

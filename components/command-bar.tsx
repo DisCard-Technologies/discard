@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
-import { StyleSheet, View, Pressable, TextInput, Keyboard, Alert, ScrollView, Dimensions } from 'react-native';
+import { StyleSheet, View, TextInput, Keyboard, Alert, ScrollView, Dimensions } from 'react-native';
+import { PressableScale } from 'pressto';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 
@@ -305,9 +306,9 @@ export function CommandBar({
         {/* Chat Messages Area - only when expanded */}
         {isExpanded && (
           <View style={styles.chatArea}>
-            <Pressable style={styles.closeButton} onPress={handleClose}>
+            <PressableScale style={styles.closeButton} onPress={handleClose}>
               <Ionicons name="close" size={18} color={mutedColor} />
-            </Pressable>
+            </PressableScale>
 
             <ScrollView
               ref={scrollViewRef}
@@ -345,25 +346,24 @@ export function CommandBar({
               {/* Approve/Cancel buttons for ready status */}
               {activeIntent?.status === 'ready' && (
                 <View style={styles.approvalButtons}>
-                  <Pressable
+                  <PressableScale
                     onPress={() => cancelIntent(activeIntent._id)}
-                    style={({ pressed }) => [styles.cancelButton, pressed && styles.pressed]}
+                    style={styles.cancelButton}
                   >
                     <ThemedText style={styles.cancelButtonText}>Cancel</ThemedText>
-                  </Pressable>
-                  <Pressable
+                  </PressableScale>
+                  <PressableScale
                     onPress={() => approveIntent(activeIntent._id)}
-                    disabled={isProcessing}
-                    style={({ pressed }) => [
+                    enabled={!isProcessing}
+                    style={[
                       styles.approveButton,
                       { backgroundColor: primaryColor },
                       isProcessing && styles.buttonDisabled,
-                      pressed && styles.pressed,
                     ]}
                   >
                     <Ionicons name="checkmark" size={18} color="#fff" />
                     <ThemedText style={styles.approveButtonText}>Approve</ThemedText>
-                  </Pressable>
+                  </PressableScale>
                 </View>
               )}
             </ScrollView>
@@ -372,12 +372,12 @@ export function CommandBar({
 
         {/* Input Row - ALWAYS visible */}
         <View style={[styles.inputRow, isExpanded && styles.inputRowExpanded]}>
-          <Pressable
+          <PressableScale
             onPress={onCamera}
-            style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
+            style={styles.iconButton}
           >
             <Ionicons name="camera-outline" size={22} color={mutedColor} />
-          </Pressable>
+          </PressableScale>
 
           <TextInput
             ref={inputRef}
@@ -394,37 +394,35 @@ export function CommandBar({
           />
 
           {input.length > 0 && (
-            <Pressable
+            <PressableScale
               onPress={() => setInput('')}
-              style={({ pressed }) => [styles.clearButton, pressed && styles.pressed]}
+              style={styles.clearButton}
             >
               <Ionicons name="close" size={16} color={mutedColor} />
-            </Pressable>
+            </PressableScale>
           )}
 
-          <Pressable
+          <PressableScale
             onPress={handleMicPress}
-            style={({ pressed }) => [
+            style={[
               styles.iconButton,
               isListening && { backgroundColor: primaryColor },
-              pressed && styles.pressed,
             ]}
           >
             <Ionicons name="mic" size={22} color={isListening ? '#fff' : mutedColor} />
-          </Pressable>
+          </PressableScale>
 
-          <Pressable
+          <PressableScale
             onPress={handleSubmit}
-            disabled={!input.trim() || isProcessing}
-            style={({ pressed }) => [
+            enabled={!!input.trim() && !isProcessing}
+            style={[
               styles.sendButton,
               { backgroundColor: primaryColor },
               (!input.trim() || isProcessing) && styles.sendDisabled,
-              pressed && styles.pressed,
             ]}
           >
             <Ionicons name="send" size={18} color="#fff" style={{ marginLeft: 2 }} />
-          </Pressable>
+          </PressableScale>
         </View>
       </View>
     </View>
@@ -529,10 +527,6 @@ const styles = StyleSheet.create({
   },
   sendDisabled: {
     opacity: 0.5,
-  },
-  pressed: {
-    opacity: 0.7,
-    transform: [{ scale: 0.96 }],
   },
   approvalButtons: {
     flexDirection: 'row',

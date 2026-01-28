@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { StyleSheet, View, Pressable, Image } from 'react-native';
+import { StyleSheet, View, Image } from 'react-native';
+import { PressableScale } from 'pressto';
 import Animated, {
   useAnimatedStyle,
   withSpring,
@@ -32,8 +33,6 @@ interface TransactionStackProps {
   maxVisible?: number;
   testID?: string;
 }
-
-const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 export function TransactionStack({
   transactions,
@@ -116,7 +115,7 @@ export function TransactionStack({
         const translateY = -stackIndex * 6;
 
         return (
-          <AnimatedPressable
+          <Animated.View
             key={tx.id}
             style={[
               styles.cardWrapper,
@@ -129,8 +128,8 @@ export function TransactionStack({
                 opacity,
               },
             ]}
-            onPress={() => handleCardPress(stackIndex)}
           >
+            <PressableScale onPress={() => handleCardPress(stackIndex)} style={{ flex: 1 }}>
             <ThemedView
               style={[
                 styles.card,
@@ -196,7 +195,8 @@ export function TransactionStack({
                 </View>
               )}
             </ThemedView>
-          </AnimatedPressable>
+            </PressableScale>
+          </Animated.View>
         );
       })}
     </View>

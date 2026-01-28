@@ -1,5 +1,6 @@
 import { useState, useCallback, useMemo } from 'react';
-import { StyleSheet, View, Pressable, Share, Dimensions } from 'react-native';
+import { StyleSheet, View, Share, Dimensions } from 'react-native';
+import { PressableScale } from 'pressto';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
@@ -76,8 +77,7 @@ export default function ReceiveScreen() {
     try {
       await Share.share({
         message: walletAddress,
-        title: 'My Solana Address',
-      });
+        title: 'My Solana Address' });
     } catch (error) {
       console.log('Share error:', error);
     }
@@ -100,12 +100,12 @@ export default function ReceiveScreen() {
 
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
-        <Pressable
+        <PressableScale
           onPress={handleClose}
-          style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}
+          style={[styles.closeButton]}
         >
           <Ionicons name="close" size={28} color={textColor} />
-        </Pressable>
+        </PressableScale>
         <ThemedText style={styles.headerTitle}>Receive</ThemedText>
         <View style={styles.headerSpacer} />
       </View>
@@ -156,8 +156,7 @@ export default function ReceiveScreen() {
             <ThemedText style={[styles.balanceAmount, { color: textColor }]}>
               {primaryToken.balanceFormatted.toLocaleString(undefined, {
                 minimumFractionDigits: 2,
-                maximumFractionDigits: 4,
-              })} {primaryToken.symbol}
+                maximumFractionDigits: 4 })} {primaryToken.symbol}
             </ThemedText>
             <ThemedText style={[styles.balanceUsd, { color: mutedColor }]}>
               ${primaryToken.valueUsd.toFixed(2)}
@@ -173,13 +172,11 @@ export default function ReceiveScreen() {
 
       {/* Bottom Action Buttons */}
       <View style={[styles.bottomActions, { paddingBottom: insets.bottom + 16 }]}>
-        <Pressable
+        <PressableScale
           onPress={handleCopy}
-          style={({ pressed }) => [
+          style={[
             styles.actionButton,
-            { backgroundColor: cardColor },
-            pressed && styles.pressed,
-          ]}
+            { backgroundColor: cardColor }]}
         >
           <View style={[styles.actionIconContainer, { backgroundColor: `${primaryColor}20` }]}>
             <Ionicons
@@ -191,15 +188,13 @@ export default function ReceiveScreen() {
           <ThemedText style={[styles.actionButtonText, { color: textColor }]}>
             {copied ? 'Copied!' : 'Copy'}
           </ThemedText>
-        </Pressable>
+        </PressableScale>
 
-        <Pressable
+        <PressableScale
           onPress={handleSetAmount}
-          style={({ pressed }) => [
+          style={[
             styles.actionButton,
-            { backgroundColor: cardColor },
-            pressed && styles.pressed,
-          ]}
+            { backgroundColor: cardColor }]}
         >
           <View style={[styles.actionIconContainer, { backgroundColor: `${primaryColor}20` }]}>
             <Ionicons name="calculator-outline" size={20} color={primaryColor} />
@@ -207,15 +202,13 @@ export default function ReceiveScreen() {
           <ThemedText style={[styles.actionButtonText, { color: textColor }]}>
             Set Amount
           </ThemedText>
-        </Pressable>
+        </PressableScale>
 
-        <Pressable
+        <PressableScale
           onPress={handleShare}
-          style={({ pressed }) => [
+          style={[
             styles.actionButton,
-            { backgroundColor: cardColor },
-            pressed && styles.pressed,
-          ]}
+            { backgroundColor: cardColor }]}
         >
           <View style={[styles.actionIconContainer, { backgroundColor: `${primaryColor}20` }]}>
             <Ionicons name="share-outline" size={20} color={primaryColor} />
@@ -223,7 +216,7 @@ export default function ReceiveScreen() {
           <ThemedText style={[styles.actionButtonText, { color: textColor }]}>
             Share
           </ThemedText>
-        </Pressable>
+        </PressableScale>
       </View>
     </ThemedView>
   );
@@ -231,59 +224,48 @@ export default function ReceiveScreen() {
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
-  },
+    flex: 1 },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingBottom: 16,
-  },
+    paddingBottom: 16 },
   closeButton: {
     width: 44,
     height: 44,
     borderRadius: 22,
     alignItems: 'center',
-    justifyContent: 'center',
-  },
+    justifyContent: 'center' },
   headerTitle: {
     flex: 1,
     fontSize: 18,
     fontWeight: '600',
-    textAlign: 'center',
-  },
+    textAlign: 'center' },
   headerSpacer: {
-    width: 44,
-  },
+    width: 44 },
   pressed: {
-    opacity: 0.7,
-  },
+    opacity: 0.7 },
   networkContainer: {
     alignItems: 'center',
-    marginBottom: 24,
-  },
+    marginBottom: 24 },
   networkBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 16,
-    gap: 6,
-  },
+    gap: 6 },
   networkDot: {
     width: 8,
     height: 8,
-    borderRadius: 4,
-  },
+    borderRadius: 4 },
   networkText: {
     fontSize: 13,
-    fontWeight: '500',
-  },
+    fontWeight: '500' },
   qrSection: {
     flex: 1,
     alignItems: 'center',
-    paddingHorizontal: 24,
-  },
+    paddingHorizontal: 24 },
   qrContainer: {
     alignItems: 'center',
     borderRadius: 24,
@@ -293,81 +275,66 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
     shadowRadius: 12,
-    elevation: 8,
-  },
+    elevation: 8 },
   tokenIconContainer: {
     width: 48,
     height: 48,
     borderRadius: 24,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 16,
-  },
+    marginBottom: 16 },
   tokenIconText: {
     fontSize: 24,
     color: '#fff',
-    fontWeight: '700',
-  },
+    fontWeight: '700' },
   qrCodeWrapper: {
     backgroundColor: '#fff',
     padding: 16,
     borderRadius: 16,
-    marginBottom: 16,
-  },
+    marginBottom: 16 },
   qrPlaceholder: {
     width: 200,
     height: 200,
     borderRadius: 16,
     alignItems: 'center',
-    justifyContent: 'center',
-  },
+    justifyContent: 'center' },
   addressText: {
     fontSize: 14,
     textAlign: 'center',
     lineHeight: 22,
-    fontFamily: Fonts.mono,
-  },
+    fontFamily: Fonts.mono },
   balanceContainer: {
     alignItems: 'center',
     marginTop: 24,
-    gap: 4,
-  },
+    gap: 4 },
   balanceAmount: {
     fontSize: 28,
-    fontWeight: '700',
-  },
+    fontWeight: '700' },
   balanceUsd: {
-    fontSize: 16,
-  },
+    fontSize: 16 },
   requestMessage: {
     fontSize: 13,
     textAlign: 'center',
     marginTop: 16,
-    lineHeight: 20,
-  },
+    lineHeight: 20 },
   bottomActions: {
     flexDirection: 'row',
     justifyContent: 'center',
     gap: 24,
     paddingHorizontal: 24,
-    paddingTop: 24,
-  },
+    paddingTop: 24 },
   actionButton: {
     alignItems: 'center',
     gap: 8,
     paddingVertical: 12,
     paddingHorizontal: 16,
-    borderRadius: 16,
-  },
+    borderRadius: 16 },
   actionIconContainer: {
     width: 48,
     height: 48,
     borderRadius: 24,
     alignItems: 'center',
-    justifyContent: 'center',
-  },
+    justifyContent: 'center' },
   actionButtonText: {
     fontSize: 12,
-    fontWeight: '500',
-  },
-});
+    fontWeight: '500' } });

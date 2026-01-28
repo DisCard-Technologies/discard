@@ -1,5 +1,6 @@
 import React from 'react';
-import { StyleSheet, Pressable, PressableProps, ViewStyle, TextStyle } from 'react-native';
+import { StyleSheet, ViewStyle, TextStyle } from 'react-native';
+import { PressableScale } from 'pressto';
 import * as Haptics from 'expo-haptics';
 
 import { ThemedText } from '@/components/themed-text';
@@ -9,7 +10,7 @@ import { primaryColor } from '@/constants/theme';
 export type ButtonVariant = 'primary' | 'secondary' | 'outline' | 'ghost';
 export type ButtonSize = 'sm' | 'md' | 'lg';
 
-export interface ButtonProps extends Omit<PressableProps, 'style'> {
+export interface ButtonProps {
   title: string;
   variant?: ButtonVariant;
   size?: ButtonSize;
@@ -17,6 +18,8 @@ export interface ButtonProps extends Omit<PressableProps, 'style'> {
   iconPosition?: 'left' | 'right';
   fullWidth?: boolean;
   haptic?: boolean;
+  disabled?: boolean;
+  onPress?: () => void;
   style?: ViewStyle;
   textStyle?: TextStyle;
 }
@@ -33,7 +36,6 @@ export const Button = React.memo(function Button({
   onPress,
   style,
   textStyle,
-  ...props
 }: ButtonProps) {
   const cardBg = useThemeColor({ light: '#f4f4f5', dark: '#1a1f25' }, 'background');
   const textColor = useThemeColor({}, 'text');
@@ -90,27 +92,25 @@ export const Button = React.memo(function Button({
   const variantStyles = getVariantStyles();
   const sizeStyles = getSizeStyles();
 
-  const handlePress = (e: any) => {
+  const handlePress = () => {
     if (haptic) {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
-    onPress?.(e);
+    onPress?.();
   };
 
   return (
-    <Pressable
+    <PressableScale
       onPress={handlePress}
-      disabled={disabled}
-      style={({ pressed }) => [
+      enabled={!disabled}
+      style={[
         styles.container,
         variantStyles.container,
         sizeStyles.container,
         fullWidth && styles.fullWidth,
         disabled && styles.disabled,
-        pressed && styles.pressed,
         style,
       ]}
-      {...props}
     >
       {icon && iconPosition === 'left' && icon}
       <ThemedText
@@ -126,7 +126,7 @@ export const Button = React.memo(function Button({
         {title}
       </ThemedText>
       {icon && iconPosition === 'right' && icon}
-    </Pressable>
+    </PressableScale>
   );
 });
 
@@ -141,10 +141,6 @@ const styles = StyleSheet.create({
   },
   disabled: {
     opacity: 0.5,
-  },
-  pressed: {
-    opacity: 0.7,
-    transform: [{ scale: 0.96 }],
   },
   text: {
     fontWeight: '600',

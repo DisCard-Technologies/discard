@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { View, StyleSheet, Pressable, Modal } from 'react-native';
+import { PressableScale } from 'pressto';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -92,12 +93,11 @@ export function GoalOverflowPopover({
             <ThemedText style={styles.headerText}>More Goals</ThemedText>
           </View>
           {goals.map((goal) => (
-            <Pressable
+            <PressableScale
               key={goal.id}
               onPress={() => handleGoalPress(goal)}
-              style={({ pressed }) => [
+              style={[
                 styles.goalItem,
-                pressed && { backgroundColor: itemHoverBg },
               ]}
             >
               <ThemedText style={styles.goalIcon}>{goal.icon}</ThemedText>
@@ -113,7 +113,7 @@ export function GoalOverflowPopover({
                   {goal.type === 'percentage' ? `${goal.value}%` : `$${goal.value}`}
                 </ThemedText>
               </View>
-            </Pressable>
+            </PressableScale>
           ))}
         </Animated.View>
       </Pressable>

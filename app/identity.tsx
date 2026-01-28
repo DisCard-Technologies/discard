@@ -1,5 +1,6 @@
 import { useState, useMemo, useCallback, useEffect } from 'react';
-import { StyleSheet, View, Pressable, ScrollView, ActivityIndicator } from 'react-native';
+import { StyleSheet, View, ScrollView, ActivityIndicator } from 'react-native';
+import { PressableScale } from 'pressto';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -51,8 +52,7 @@ export default function IdentityScreen() {
     canProve,
     formatProofType,
     getCredentialStatusColor,
-    isAvailable: isPrivateIdentityAvailable,
-  } = usePrivateIdentity(mockPrivateKey);
+    isAvailable: isPrivateIdentityAvailable } = usePrivateIdentity(mockPrivateKey);
   const mutedColor = useThemeColor({ light: '#687076', dark: '#9BA1A6' }, 'icon');
   const cardBg = useThemeColor({ light: 'rgba(0,0,0,0.03)', dark: 'rgba(255,255,255,0.06)' }, 'background');
   const borderColor = useThemeColor({ light: 'rgba(0,0,0,0.06)', dark: 'rgba(255,255,255,0.08)' }, 'background');
@@ -103,14 +103,12 @@ export default function IdentityScreen() {
     try {
       const proof = await quickProof(proofType, {}, {
         purpose: 'Identity verification',
-        verifier: 'DisCard App',
-      });
+        verifier: 'DisCard App' });
 
       if (proof) {
         console.log('[Identity] ZK proof generated:', {
           id: proof.id,
-          claim: proof.publicInputs.claim,
-        });
+          claim: proof.publicInputs.claim });
       }
     } catch (error) {
       console.error('[Identity] Proof generation failed:', error);
@@ -134,12 +132,12 @@ export default function IdentityScreen() {
 
       {/* Header */}
       <View style={styles.header}>
-        <Pressable
+        <PressableScale
           onPress={handleBack}
-          style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
+          style={[styles.backButton]}
         >
           <Ionicons name="chevron-back" size={24} color={mutedColor} />
-        </Pressable>
+        </PressableScale>
         <ThemedText style={styles.headerTitle}>Identity</ThemedText>
         <View style={styles.headerSpacer} />
       </View>
@@ -171,16 +169,14 @@ export default function IdentityScreen() {
                   Self-Sovereign Identity
                 </ThemedText>
               </View>
-              <Pressable
+              <PressableScale
                 onPress={() => setShowQR(!showQR)}
-                style={({ pressed }) => [
+                style={[
                   styles.qrButton,
-                  { backgroundColor: cardBg, borderColor },
-                  pressed && styles.pressed,
-                ]}
+                  { backgroundColor: cardBg, borderColor }]}
               >
                 <Ionicons name="qr-code" size={20} color={mutedColor} />
-              </Pressable>
+              </PressableScale>
             </View>
 
             {showQR ? (
@@ -215,16 +211,16 @@ export default function IdentityScreen() {
                   <ThemedText style={[styles.addressText, { color: mutedColor }]}>
                     {walletAddress}
                   </ThemedText>
-                  <Pressable onPress={handleCopyAddress} style={styles.addressAction}>
+                  <PressableScale onPress={handleCopyAddress} style={styles.addressAction}>
                     <Ionicons
                       name={copied ? 'checkmark' : 'copy-outline'}
                       size={16}
                       color={copied ? primaryColor : mutedColor}
                     />
-                  </Pressable>
-                  <Pressable style={styles.addressAction}>
+                  </PressableScale>
+                  <PressableScale style={styles.addressAction}>
                     <Ionicons name="open-outline" size={16} color={mutedColor} />
-                  </Pressable>
+                  </PressableScale>
                 </View>
               </>
             )}
@@ -300,18 +296,16 @@ export default function IdentityScreen() {
                 const isLoading = isGeneratingProof && selectedProofType === proofType;
 
                 return (
-                  <Pressable
+                  <PressableScale
                     key={proofType}
                     onPress={() => isAvailable && handleGenerateProof(proofType)}
-                    disabled={!isAvailable || isGeneratingProof}
-                    style={({ pressed }) => [
+                    enabled={isAvailable && !isGeneratingProof}
+                    style={[
                       styles.proofButton,
                       {
                         backgroundColor: isAvailable ? 'rgba(34,197,94,0.1)' : cardBg,
                         borderColor: isAvailable ? 'rgba(34,197,94,0.3)' : borderColor,
-                        opacity: !isAvailable ? 0.5 : pressed ? 0.7 : 1,
-                      },
-                    ]}
+                        opacity: !isAvailable ? 0.5 : 1 }]}
                   >
                     {isLoading ? (
                       <ActivityIndicator size="small" color="#22c55e" />
@@ -328,7 +322,7 @@ export default function IdentityScreen() {
                     ]}>
                       {formatProofType(proofType)}
                     </ThemedText>
-                  </Pressable>
+                  </PressableScale>
                 );
               })}
             </View>
@@ -358,13 +352,11 @@ export default function IdentityScreen() {
             VERIFIABLE CREDENTIALS
           </ThemedText>
           {credentials.map((cred, i) => (
-            <Pressable
+            <PressableScale
               key={i}
-              style={({ pressed }) => [
+              style={[
                 styles.credentialItem,
-                { backgroundColor: cardBg, borderColor },
-                pressed && styles.pressed,
-              ]}
+                { backgroundColor: cardBg, borderColor }]}
             >
               <View style={styles.credentialLeft}>
                 <View style={[styles.credentialIcon, { backgroundColor: `${primaryColor}10` }]}>
@@ -385,7 +377,7 @@ export default function IdentityScreen() {
                 )}
                 <Ionicons name="chevron-forward" size={16} color={mutedColor} />
               </View>
-            </Pressable>
+            </PressableScale>
           ))}
         </View>
 
@@ -395,9 +387,9 @@ export default function IdentityScreen() {
             <ThemedText style={[styles.sectionTitle, { color: mutedColor }]}>
               CONNECTED APPS
             </ThemedText>
-            <Pressable>
+            <PressableScale>
               <ThemedText style={[styles.manageLink, { color: primaryColor }]}>Manage</ThemedText>
-            </Pressable>
+            </PressableScale>
           </View>
           {connectedApps.map((app, i) => (
             <ThemedView
@@ -436,8 +428,7 @@ export default function IdentityScreen() {
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
-  },
+    flex: 1 },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -445,270 +436,216 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(128,128,128,0.1)',
-  },
+    borderBottomColor: 'rgba(128,128,128,0.1)' },
   backButton: {
     width: 40,
     height: 40,
     borderRadius: 20,
     alignItems: 'center',
-    justifyContent: 'center',
-  },
+    justifyContent: 'center' },
   headerTitle: {
     fontSize: 17,
-    fontWeight: '600',
-  },
+    fontWeight: '600' },
   headerSpacer: {
-    width: 40,
-  },
+    width: 40 },
   scrollView: {
-    flex: 1,
-  },
+    flex: 1 },
   content: {
     paddingHorizontal: 20,
     paddingTop: 20,
-    gap: 16,
-  },
+    gap: 16 },
   identityCard: {
     borderRadius: 24,
     padding: 20,
     borderWidth: 1,
-    overflow: 'hidden',
-  },
+    overflow: 'hidden' },
   cardGlow: {
     position: 'absolute',
     top: 0,
     right: 0,
     width: 120,
     height: 120,
-    borderRadius: 60,
-  },
+    borderRadius: 60 },
   cardContent: {
     position: 'relative',
-    zIndex: 1,
-  },
+    zIndex: 1 },
   cardHeader: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    marginBottom: 16,
-  },
+    marginBottom: 16 },
   cardAvatar: {
-    marginRight: 12,
-  },
+    marginRight: 12 },
   avatarGradient: {
     width: 56,
     height: 56,
     borderRadius: 16,
     alignItems: 'center',
-    justifyContent: 'center',
-  },
+    justifyContent: 'center' },
   cardInfo: {
     flex: 1,
     justifyContent: 'center',
-    paddingTop: 4,
-  },
+    paddingTop: 4 },
   identityName: {
     fontSize: 18,
     fontWeight: '500',
-    marginBottom: 2,
-  },
+    marginBottom: 2 },
   identitySubtitle: {
-    fontSize: 12,
-  },
+    fontSize: 12 },
   qrButton: {
     width: 36,
     height: 36,
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-  },
+    borderWidth: 1 },
   qrContainer: {
     alignItems: 'center',
-    paddingVertical: 16,
-  },
+    paddingVertical: 16 },
   qrPlaceholder: {
     width: 160,
     height: 160,
     backgroundColor: '#fff',
     borderRadius: 16,
     padding: 12,
-    marginBottom: 12,
-  },
+    marginBottom: 12 },
   qrInner: {
     flex: 1,
     backgroundColor: '#f4f4f5',
     borderRadius: 8,
     alignItems: 'center',
-    justifyContent: 'center',
-  },
+    justifyContent: 'center' },
   qrText: {
-    fontSize: 12,
-  },
+    fontSize: 12 },
   qrHint: {
-    fontSize: 12,
-  },
+    fontSize: 12 },
   badgeRow: {
     flexDirection: 'row',
     gap: 8,
-    marginBottom: 16,
-  },
+    marginBottom: 16 },
   badge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
     paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: 20,
-  },
+    borderRadius: 20 },
   badgeText: {
     fontSize: 12,
-    fontWeight: '500',
-  },
+    fontWeight: '500' },
   addressRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-  },
+    gap: 8 },
   addressText: {
     fontSize: 14,
-    fontFamily: 'monospace',
-  },
+    fontFamily: 'monospace' },
   addressAction: {
-    padding: 4,
-  },
+    padding: 4 },
   privacyCard: {
     flexDirection: 'row',
     alignItems: 'center',
     borderRadius: 16,
     padding: 16,
     borderWidth: 1,
-    gap: 12,
-  },
+    gap: 12 },
   privacyIcon: {
     width: 40,
     height: 40,
     borderRadius: 20,
     alignItems: 'center',
-    justifyContent: 'center',
-  },
+    justifyContent: 'center' },
   privacyText: {
-    flex: 1,
-  },
+    flex: 1 },
   privacyTitle: {
     fontSize: 14,
     fontWeight: '500',
-    marginBottom: 2,
-  },
+    marginBottom: 2 },
   privacySubtitle: {
-    fontSize: 12,
-  },
+    fontSize: 12 },
   pulseDot: {
     width: 8,
     height: 8,
-    borderRadius: 4,
-  },
+    borderRadius: 4 },
   section: {
-    gap: 10,
-  },
+    gap: 10 },
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-  },
+    justifyContent: 'space-between' },
   sectionTitle: {
     fontSize: 10,
     letterSpacing: 2,
-    fontWeight: '500',
-  },
+    fontWeight: '500' },
   manageLink: {
     fontSize: 12,
-    fontWeight: '500',
-  },
+    fontWeight: '500' },
   credentialItem: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     borderRadius: 14,
     padding: 12,
-    borderWidth: 1,
-  },
+    borderWidth: 1 },
   credentialLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-  },
+    gap: 12 },
   credentialIcon: {
     width: 36,
     height: 36,
     borderRadius: 18,
     alignItems: 'center',
-    justifyContent: 'center',
-  },
+    justifyContent: 'center' },
   credentialName: {
     fontSize: 14,
     fontWeight: '500',
-    marginBottom: 2,
-  },
+    marginBottom: 2 },
   credentialIssuer: {
-    fontSize: 10,
-  },
+    fontSize: 10 },
   credentialRight: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-  },
+    gap: 8 },
   verifiedBadge: {
     width: 20,
     height: 20,
     borderRadius: 10,
     alignItems: 'center',
-    justifyContent: 'center',
-  },
+    justifyContent: 'center' },
   appItem: {
     borderRadius: 14,
     padding: 12,
-    borderWidth: 1,
-  },
+    borderWidth: 1 },
   appHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 8,
-  },
+    marginBottom: 8 },
   appName: {
     fontSize: 14,
-    fontWeight: '500',
-  },
+    fontWeight: '500' },
   appTime: {
-    fontSize: 10,
-  },
+    fontSize: 10 },
   permissionRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 6,
-  },
+    gap: 6 },
   permissionBadge: {
     paddingHorizontal: 8,
     paddingVertical: 4,
-    borderRadius: 6,
-  },
+    borderRadius: 6 },
   permissionText: {
-    fontSize: 10,
-  },
+    fontSize: 10 },
   pressed: {
     opacity: 0.7,
-    transform: [{ scale: 0.98 }],
-  },
+    transform: [{ scale: 0.98 }] },
   sectionDesc: {
     fontSize: 12,
-    marginBottom: 12,
-  },
+    marginBottom: 12 },
   proofGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
-  },
+    gap: 8 },
   proofButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -716,32 +653,25 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 12,
     borderRadius: 12,
-    borderWidth: 1,
-  },
+    borderWidth: 1 },
   proofButtonText: {
     fontSize: 13,
-    fontWeight: '500',
-  },
+    fontWeight: '500' },
   recentProofsCard: {
     marginTop: 16,
     padding: 14,
     borderRadius: 12,
     borderWidth: 1,
-    gap: 10,
-  },
+    gap: 10 },
   recentProofsTitle: {
     fontSize: 11,
     fontWeight: '500',
     letterSpacing: 1,
-    marginBottom: 4,
-  },
+    marginBottom: 4 },
   recentProofItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-  },
+    gap: 8 },
   recentProofText: {
-    fontSize: 13,
-  },
-});
+    fontSize: 13 } });
 

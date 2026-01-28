@@ -2,11 +2,11 @@ import { useState, useMemo } from 'react';
 import {
   StyleSheet,
   View,
-  Pressable,
   ScrollView,
   TextInput,
   ActivityIndicator,
 } from 'react-native';
+import { PressableScale } from 'pressto';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, {
@@ -183,16 +183,15 @@ export function FiatRampScreen({ mode, token: initialToken, onBack }: FiatRampSc
             </View>
           </ThemedView>
 
-          <Pressable
+          <PressableScale
             onPress={onBack}
-            style={({ pressed }) => [
+            style={[
               styles.doneButton,
               { backgroundColor: primaryColor },
-              pressed && { opacity: 0.9 },
             ]}
           >
             <ThemedText style={styles.doneButtonText}>Done</ThemedText>
-          </Pressable>
+          </PressableScale>
         </View>
       </ThemedView>
     );
@@ -204,9 +203,9 @@ export function FiatRampScreen({ mode, token: initialToken, onBack }: FiatRampSc
 
       {/* Header */}
       <View style={[styles.header, { borderBottomColor: borderColor }]}>
-        <Pressable onPress={onBack} style={styles.backButton}>
+        <PressableScale onPress={onBack} style={styles.backButton}>
           <Ionicons name="chevron-back" size={24} color={textColor} />
-        </Pressable>
+        </PressableScale>
         <ThemedText style={styles.headerTitle}>
           {mode === 'buy' ? 'Buy Crypto' : 'Cash Out'}
         </ThemedText>
@@ -225,7 +224,7 @@ export function FiatRampScreen({ mode, token: initialToken, onBack }: FiatRampSc
             {mode === 'buy' ? "YOU'RE BUYING" : "YOU'RE SELLING"}
           </ThemedText>
 
-          <Pressable
+          <PressableScale
             onPress={toggleTokenSelect}
             style={[styles.selectorButton, { backgroundColor: cardBg }]}
           >
@@ -248,12 +247,12 @@ export function FiatRampScreen({ mode, token: initialToken, onBack }: FiatRampSc
                 <Ionicons name="chevron-down" size={16} color={mutedColor} />
               </Animated.View>
             </View>
-          </Pressable>
+          </PressableScale>
 
           {showTokenSelect && (
             <ThemedView style={styles.dropdown} lightColor="#f4f4f5" darkColor="#1c1c1e">
               {defaultTokens.map((t) => (
-                <Pressable
+                <PressableScale
                   key={t.symbol}
                   onPress={() => {
                     setSelectedToken(t);
@@ -273,7 +272,7 @@ export function FiatRampScreen({ mode, token: initialToken, onBack }: FiatRampSc
                   <ThemedText style={[styles.dropdownItemPrice, { color: mutedColor }]}>
                     ${t.price.toLocaleString()}
                   </ThemedText>
-                </Pressable>
+                </PressableScale>
               ))}
             </ThemedView>
           )}
@@ -300,7 +299,7 @@ export function FiatRampScreen({ mode, token: initialToken, onBack }: FiatRampSc
             {presetAmounts.map((preset) => {
               const isSelected = amount === preset.toString();
               return (
-                <Pressable
+                <PressableScale
                   key={preset}
                   onPress={() => setAmount(preset.toString())}
                   style={[
@@ -320,7 +319,7 @@ export function FiatRampScreen({ mode, token: initialToken, onBack }: FiatRampSc
                   >
                     ${preset}
                   </ThemedText>
-                </Pressable>
+                </PressableScale>
               );
             })}
           </View>
@@ -338,7 +337,7 @@ export function FiatRampScreen({ mode, token: initialToken, onBack }: FiatRampSc
             {mode === 'buy' ? 'PAY WITH' : 'RECEIVE TO'}
           </ThemedText>
 
-          <Pressable
+          <PressableScale
             onPress={toggleMethodSelect}
             style={[styles.selectorButton, { backgroundColor: cardBg }]}
           >
@@ -356,7 +355,7 @@ export function FiatRampScreen({ mode, token: initialToken, onBack }: FiatRampSc
             <Animated.View style={methodChevronStyle}>
               <Ionicons name="chevron-down" size={16} color={mutedColor} />
             </Animated.View>
-          </Pressable>
+          </PressableScale>
 
           {showMethodSelect && (
             <ThemedView style={styles.dropdown} lightColor="#f4f4f5" darkColor="#1c1c1e">
@@ -435,14 +434,13 @@ export function FiatRampScreen({ mode, token: initialToken, onBack }: FiatRampSc
 
       {/* Submit Button */}
       <View style={[styles.submitContainer, { paddingBottom: insets.bottom + 16 }]}>
-        <Pressable
+        <PressableScale
           onPress={handleSubmit}
-          disabled={numAmount < 10 || processing}
-          style={({ pressed }) => [
+          enabled={numAmount >= 10 && !processing}
+          style={[
             styles.submitButton,
             { backgroundColor: primaryColor },
             (numAmount < 10 || processing) && styles.submitButtonDisabled,
-            pressed && { opacity: 0.9 },
           ]}
         >
           {processing ? (
@@ -458,7 +456,7 @@ export function FiatRampScreen({ mode, token: initialToken, onBack }: FiatRampSc
               <Ionicons name="arrow-forward" size={20} color="#fff" />
             </>
           )}
-        </Pressable>
+        </PressableScale>
 
         {numAmount > 0 && numAmount < 10 && (
           <ThemedText style={styles.minAmountWarning}>Minimum amount is $10</ThemedText>

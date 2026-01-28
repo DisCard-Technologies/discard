@@ -1,5 +1,6 @@
 import React from 'react';
-import { StyleSheet, View, TextInput, TextInputProps, Pressable, ViewStyle, TextStyle } from 'react-native';
+import { StyleSheet, View, TextInput, TextInputProps, ViewStyle, TextStyle } from 'react-native';
+import { PressableOpacity } from 'pressto';
 import { Ionicons } from '@expo/vector-icons';
 
 import { useThemeColor } from '@/hooks/use-theme-color';
@@ -49,9 +50,9 @@ export const SearchInput = React.memo(function SearchInput({
         {...props}
       />
       {value.length > 0 && (
-        <Pressable onPress={handleClear} style={styles.clearButton}>
+        <PressableOpacity onPress={handleClear} style={styles.clearButton}>
           <Ionicons name="close-circle" size={18} color={mutedColor} />
-        </Pressable>
+        </PressableOpacity>
       )}
     </View>
   );

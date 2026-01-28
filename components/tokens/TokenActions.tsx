@@ -1,5 +1,6 @@
 import React from 'react';
-import { StyleSheet, View, Pressable, ViewStyle } from 'react-native';
+import { StyleSheet, View, ViewStyle } from 'react-native';
+import { PressableScale } from 'pressto';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 
@@ -42,10 +43,10 @@ export const TokenActions = React.memo(function TokenActions({
     return (
       <View style={[styles.circularContainer, style]}>
         {actions.map((action) => (
-          <Pressable
+          <PressableScale
             key={action.id}
             onPress={() => handlePress(action)}
-            style={({ pressed }) => [styles.circularButton, pressed && styles.pressed]}
+            style={styles.circularButton}
           >
             <View style={[styles.circularIconContainer, { backgroundColor: cardBg, borderColor }]}>
               <Ionicons name={action.icon} size={20} color={textColor} />
@@ -53,7 +54,7 @@ export const TokenActions = React.memo(function TokenActions({
             <ThemedText style={[styles.circularLabel, { color: mutedColor }]}>
               {action.label}
             </ThemedText>
-          </Pressable>
+          </PressableScale>
         ))}
       </View>
     );
@@ -62,14 +63,13 @@ export const TokenActions = React.memo(function TokenActions({
   return (
     <View style={[styles.horizontalContainer, style]}>
       {actions.map((action, index) => (
-        <Pressable
+        <PressableScale
           key={action.id}
           onPress={() => handlePress(action)}
-          style={({ pressed }) => [
+          style={[
             styles.horizontalButton,
             index === 0 && { backgroundColor: primaryColor },
             index !== 0 && { backgroundColor: cardBg, borderWidth: 1, borderColor },
-            pressed && styles.pressed,
           ]}
         >
           <Ionicons
@@ -85,7 +85,7 @@ export const TokenActions = React.memo(function TokenActions({
           >
             {action.label}
           </ThemedText>
-        </Pressable>
+        </PressableScale>
       ))}
     </View>
   );
@@ -142,10 +142,5 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#fff',
-  },
-
-  pressed: {
-    opacity: 0.7,
-    transform: [{ scale: 0.96 }],
   },
 });

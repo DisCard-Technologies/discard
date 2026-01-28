@@ -15,12 +15,12 @@ import {
   StyleSheet,
   View,
   Modal,
-  Pressable,
   TextInput,
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
 } from "react-native";
+import { PressableScale } from "pressto";
 import { Ionicons } from "@expo/vector-icons";
 import Animated, { FadeIn, FadeOut, SlideInDown } from "react-native-reanimated";
 import { useMutation, useAction } from "convex/react";
@@ -139,7 +139,7 @@ export function InviteModal({
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={styles.overlay}
       >
-        <Pressable style={styles.backdrop} onPress={handleClose} />
+        <PressableScale style={styles.backdrop} onPress={handleClose} />
 
         <Animated.View
           entering={SlideInDown.duration(300)}
@@ -151,12 +151,12 @@ export function InviteModal({
               <Ionicons name="person-add" size={24} color={primaryColor} />
               <ThemedText style={styles.title}>Invite to DisCard</ThemedText>
             </View>
-            <Pressable
+            <PressableScale
               onPress={handleClose}
-              style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}
+              style={styles.closeButton}
             >
               <Ionicons name="close" size={24} color={mutedColor} />
-            </Pressable>
+            </PressableScale>
           </View>
 
           {/* Phone Number Display */}
@@ -235,27 +235,25 @@ export function InviteModal({
           {/* Action Buttons */}
           {status !== "success" && (
             <View style={styles.actions}>
-              <Pressable
+              <PressableScale
                 onPress={handleClose}
-                style={({ pressed }) => [
+                style={[
                   styles.cancelButton,
                   { borderColor: isDark ? "rgba(255,255,255,0.2)" : "rgba(0,0,0,0.1)" },
-                  pressed && styles.pressed,
                 ]}
-                disabled={status === "sending"}
+                enabled={status !== "sending"}
               >
                 <ThemedText style={styles.cancelButtonText}>Cancel</ThemedText>
-              </Pressable>
+              </PressableScale>
 
-              <Pressable
+              <PressableScale
                 onPress={handleSend}
-                style={({ pressed }) => [
+                style={[
                   styles.sendButton,
                   { backgroundColor: primaryColor },
-                  pressed && styles.pressed,
                   status === "sending" && styles.sendingButton,
                 ]}
-                disabled={status === "sending"}
+                enabled={status !== "sending"}
               >
                 {status === "sending" ? (
                   <ActivityIndicator size="small" color="#fff" />
@@ -265,7 +263,7 @@ export function InviteModal({
                     <ThemedText style={styles.sendButtonText}>Send Invite</ThemedText>
                   </>
                 )}
-              </Pressable>
+              </PressableScale>
             </View>
           )}
         </Animated.View>
@@ -310,9 +308,6 @@ const styles = StyleSheet.create({
   },
   closeButton: {
     padding: 4,
-  },
-  pressed: {
-    opacity: 0.6,
   },
   phoneCard: {
     flexDirection: "row",

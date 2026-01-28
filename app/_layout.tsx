@@ -9,6 +9,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
 import 'react-native-reanimated';
+import { PressablesConfig } from 'pressto';
 
 import { ConvexProvider, ConvexReactClient } from 'convex/react';
 import { AuthProvider, useAuth } from '@/stores/authConvex';
@@ -87,6 +88,11 @@ function RootLayoutNav() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <KeyboardProvider>
+          <PressablesConfig
+            animationType="spring"
+            animationConfig={{ damping: 15, stiffness: 400 }}
+            config={{ minScale: 0.96, activeOpacity: 0.7 }}
+          >
           <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
             <AuthProvider>
               <CardsProvider>
@@ -124,6 +130,7 @@ function RootLayoutNav() {
               </CardsProvider>
             </AuthProvider>
           </ThemeProvider>
+          </PressablesConfig>
         </KeyboardProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { StyleSheet, View, Pressable, TextInput, ActivityIndicator, Alert } from 'react-native';
+import { StyleSheet, View, TextInput, ActivityIndicator, Alert } from 'react-native';
+import { PressableScale } from 'pressto';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -107,15 +108,13 @@ export default function AuthScreen() {
                 editable={!isProcessing}
               />
 
-              <Pressable
+              <PressableScale
                 onPress={handleRegister}
-                disabled={isProcessing || !displayName.trim()}
-                style={({ pressed }) => [
+                enabled={!isProcessing && displayName.trim().length > 0}
+                style={[
                   styles.primaryButton,
                   { backgroundColor: primaryColor },
-                  (isProcessing || !displayName.trim()) && styles.buttonDisabled,
-                  pressed && styles.buttonPressed,
-                ]}
+                  (isProcessing || !displayName.trim()) && styles.buttonDisabled]}
               >
                 {isProcessing ? (
                   <ActivityIndicator color="#fff" />
@@ -125,16 +124,16 @@ export default function AuthScreen() {
                     <ThemedText style={styles.primaryButtonText}>Create with Passkey</ThemedText>
                   </>
                 )}
-              </Pressable>
+              </PressableScale>
 
-              <Pressable
+              <PressableScale
                 onPress={() => setIsRegistering(false)}
-                style={({ pressed }) => [styles.secondaryButton, pressed && styles.buttonPressed]}
+                style={[styles.secondaryButton]}
               >
                 <ThemedText style={[styles.secondaryButtonText, { color: primaryColor }]}>
                   Already have an account? Sign in
                 </ThemedText>
-              </Pressable>
+              </PressableScale>
             </>
           ) : (
             <>
@@ -143,15 +142,13 @@ export default function AuthScreen() {
                 Sign in with your passkey to continue
               </ThemedText>
 
-              <Pressable
+              <PressableScale
                 onPress={handleLogin}
-                disabled={isProcessing}
-                style={({ pressed }) => [
+                enabled={!isProcessing}
+                style={[
                   styles.primaryButton,
                   { backgroundColor: primaryColor },
-                  isProcessing && styles.buttonDisabled,
-                  pressed && styles.buttonPressed,
-                ]}
+                  isProcessing && styles.buttonDisabled]}
               >
                 {isProcessing ? (
                   <ActivityIndicator color="#fff" />
@@ -161,16 +158,16 @@ export default function AuthScreen() {
                     <ThemedText style={styles.primaryButtonText}>Sign in with Passkey</ThemedText>
                   </>
                 )}
-              </Pressable>
+              </PressableScale>
 
-              <Pressable
+              <PressableScale
                 onPress={() => setIsRegistering(true)}
-                style={({ pressed }) => [styles.secondaryButton, pressed && styles.buttonPressed]}
+                style={[styles.secondaryButton]}
               >
                 <ThemedText style={[styles.secondaryButtonText, { color: primaryColor }]}>
                   New here? Create an account
                 </ThemedText>
-              </Pressable>
+              </PressableScale>
             </>
           )}
 
@@ -197,106 +194,84 @@ export default function AuthScreen() {
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
-  },
+    flex: 1 },
   content: {
     flex: 1,
     paddingHorizontal: 24,
-    justifyContent: 'center',
-  },
+    justifyContent: 'center' },
   logoSection: {
     alignItems: 'center',
-    marginBottom: 48,
-  },
+    marginBottom: 48 },
   logoCircle: {
     width: 88,
     height: 88,
     borderRadius: 44,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 16,
-  },
+    marginBottom: 16 },
   logoInner: {
     width: 64,
     height: 64,
     borderRadius: 32,
     alignItems: 'center',
-    justifyContent: 'center',
-  },
+    justifyContent: 'center' },
   brandName: {
     fontSize: 32,
     fontWeight: '600',
     letterSpacing: -1,
-    marginBottom: 8,
-  },
+    marginBottom: 8 },
   tagline: {
-    fontSize: 14,
-  },
+    fontSize: 14 },
   formSection: {
-    gap: 16,
-  },
+    gap: 16 },
   formTitle: {
     fontSize: 24,
     fontWeight: '600',
-    textAlign: 'center',
-  },
+    textAlign: 'center' },
   formSubtitle: {
     fontSize: 14,
     textAlign: 'center',
-    marginBottom: 8,
-  },
+    marginBottom: 8 },
   input: {
     height: 52,
     borderRadius: 12,
     paddingHorizontal: 16,
-    fontSize: 16,
-  },
+    fontSize: 16 },
   primaryButton: {
     height: 52,
     borderRadius: 12,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
-  },
+    gap: 8 },
   primaryButtonText: {
     color: '#fff',
     fontSize: 16,
-    fontWeight: '600',
-  },
+    fontWeight: '600' },
   buttonDisabled: {
-    opacity: 0.5,
-  },
+    opacity: 0.5 },
   buttonPressed: {
-    opacity: 0.8,
-  },
+    opacity: 0.8 },
   secondaryButton: {
     height: 44,
     alignItems: 'center',
-    justifyContent: 'center',
-  },
+    justifyContent: 'center' },
   secondaryButtonText: {
-    fontSize: 14,
-  },
+    fontSize: 14 },
   errorContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    marginTop: 8,
-  },
+    marginTop: 8 },
   errorText: {
     color: '#ef4444',
-    fontSize: 14,
-  },
+    fontSize: 14 },
   footer: {
     position: 'absolute',
     bottom: 32,
     left: 0,
     right: 0,
-    alignItems: 'center',
-  },
+    alignItems: 'center' },
   footerText: {
-    fontSize: 12,
-  },
-});
+    fontSize: 12 } });

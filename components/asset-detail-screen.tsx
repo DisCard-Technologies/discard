@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { StyleSheet, View, Pressable, ScrollView, Image } from 'react-native';
+import { StyleSheet, View, ScrollView, Image } from 'react-native';
+import { PressableScale } from 'pressto';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
@@ -115,22 +116,22 @@ export function AssetDetailScreen({
     <ThemedView style={styles.container}>
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
-        <Pressable onPress={onBack} style={styles.backButton}>
+        <PressableScale onPress={onBack} style={styles.backButton}>
           <Ionicons name="arrow-back" size={20} color={textColor} />
-        </Pressable>
+        </PressableScale>
         <View style={[styles.typeBadge, { backgroundColor: `${typeColor}20`, borderColor: `${typeColor}30` }]}>
           <Ionicons name={getTypeIcon()} size={14} color={typeColor} />
           <ThemedText style={[styles.typeBadgeText, { color: typeColor }]}>
             {asset.type.toUpperCase()}
           </ThemedText>
         </View>
-        <Pressable onPress={() => setIsWatchlisted(!isWatchlisted)} style={styles.watchlistButton}>
+        <PressableScale onPress={() => setIsWatchlisted(!isWatchlisted)} style={styles.watchlistButton}>
           <Ionicons
             name={isWatchlisted ? 'star' : 'star-outline'}
             size={20}
             color={isWatchlisted ? '#f59e0b' : mutedColor}
           />
-        </Pressable>
+        </PressableScale>
       </View>
 
       <ScrollView
@@ -296,33 +297,33 @@ export function AssetDetailScreen({
           {owned ? (
             <>
               <View style={styles.actionGrid}>
-                <Pressable onPress={onSend} style={[styles.actionButton, { backgroundColor: cardBg }]}>
+                <PressableScale onPress={onSend} style={[styles.actionButton, { backgroundColor: cardBg }]}>
                   <Ionicons name="send" size={20} color={textColor} />
                   <ThemedText style={styles.actionButtonText}>Send</ThemedText>
-                </Pressable>
-                <Pressable
+                </PressableScale>
+                <PressableScale
                   onPress={onList}
                   style={[styles.actionButton, { backgroundColor: `${primaryColor}15`, borderColor: `${primaryColor}30`, borderWidth: 1 }]}
                 >
                   <Ionicons name="pricetag" size={20} color={primaryColor} />
                   <ThemedText style={[styles.actionButtonText, { color: primaryColor }]}>List</ThemedText>
-                </Pressable>
-                <Pressable
+                </PressableScale>
+                <PressableScale
                   onPress={onSell}
                   style={[styles.actionButton, { backgroundColor: 'rgba(239,68,68,0.15)', borderColor: 'rgba(239,68,68,0.3)', borderWidth: 1 }]}
                 >
                   <Ionicons name="cash" size={20} color="#ef4444" />
                   <ThemedText style={[styles.actionButtonText, { color: '#ef4444' }]}>Sell</ThemedText>
-                </Pressable>
+                </PressableScale>
               </View>
             </>
           ) : (
             <View style={styles.buyRow}>
-              <Pressable onPress={onBuy} style={[styles.buyButton, { backgroundColor: primaryColor }]}>
+              <PressableScale onPress={onBuy} style={[styles.buyButton, { backgroundColor: primaryColor }]}>
                 <Ionicons name="add" size={20} color="#fff" />
                 <ThemedText style={styles.buyButtonText}>Buy Now</ThemedText>
-              </Pressable>
-              <Pressable
+              </PressableScale>
+              <PressableScale
                 onPress={() => setIsWatchlisted(!isWatchlisted)}
                 style={[
                   styles.watchlistActionButton,
@@ -339,7 +340,7 @@ export function AssetDetailScreen({
                 <ThemedText style={[styles.watchlistActionText, isWatchlisted && { color: '#f59e0b' }]}>
                   {isWatchlisted ? 'Watching' : 'Watchlist'}
                 </ThemedText>
-              </Pressable>
+              </PressableScale>
             </View>
           )}
         </View>
@@ -353,16 +354,16 @@ export function AssetDetailScreen({
                 {formatAddress(asset.mint)}
               </ThemedText>
               <View style={styles.contractActions}>
-                <Pressable onPress={handleCopyAddress} style={styles.contractButton}>
+                <PressableScale onPress={handleCopyAddress} style={styles.contractButton}>
                   <Ionicons
                     name={copied ? 'checkmark' : 'copy-outline'}
                     size={16}
                     color={copied ? '#22c55e' : mutedColor}
                   />
-                </Pressable>
-                <Pressable onPress={handleOpenExplorer} style={styles.contractButton}>
+                </PressableScale>
+                <PressableScale onPress={handleOpenExplorer} style={styles.contractButton}>
                   <Ionicons name="open-outline" size={16} color={mutedColor} />
-                </Pressable>
+                </PressableScale>
               </View>
             </View>
           </ThemedView>

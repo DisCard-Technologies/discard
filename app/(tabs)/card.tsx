@@ -2,12 +2,12 @@ import { useState, useMemo, useCallback } from 'react';
 import {
   StyleSheet,
   View,
-  Pressable,
   Alert,
   ActivityIndicator,
   Dimensions,
   FlatList,
 } from 'react-native';
+import { PressableScale, PressableOpacity } from 'pressto';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
@@ -443,18 +443,17 @@ export function CardScreenContent({ topInset = 0 }: CardScreenContentProps) {
             <ThemedText style={[styles.emptyStateDescription, { color: mutedColor }]}>
               Create your first virtual card to start spending securely with disposable card numbers.
             </ThemedText>
-            <Pressable
+            <PressableScale
               onPress={handleOpenCreateModal}
               testID="create-card-button"
-              style={({ pressed }) => [
+              style={[
                 styles.createCardButton,
                 { backgroundColor: primaryColor },
-                pressed && { opacity: 0.8 },
               ]}
             >
               <Ionicons name="add" size={20} color="#fff" />
               <ThemedText style={styles.createCardButtonText}>Create Card</ThemedText>
-            </Pressable>
+            </PressableScale>
           </View>
         </View>
       ) : !isLoadingCards && (
@@ -502,7 +501,7 @@ export function CardScreenContent({ topInset = 0 }: CardScreenContentProps) {
                 const isTop = stackIndex === 0;
                 
                 return (
-                  <Pressable
+                  <PressableScale
                     key={`${tx.merchant}-${index}`}
                     onPress={isTop ? toggleExpand : nextTransaction}
                     style={[
@@ -551,7 +550,7 @@ export function CardScreenContent({ topInset = 0 }: CardScreenContentProps) {
                         </ThemedText>
                       </View>
                     )}
-                  </Pressable>
+                  </PressableScale>
                 );
               })}
             </View>
@@ -579,16 +578,16 @@ export function CardScreenContent({ topInset = 0 }: CardScreenContentProps) {
 
           {/* Circular Action Buttons */}
           <View style={[styles.actionButtonsRow, isExpanded && { marginTop: 48 }]}>
-            <Pressable onPress={toggleDetails} disabled={loadingSecrets} style={styles.actionButton} testID="card-toggle-details">
+            <PressableScale onPress={toggleDetails} enabled={!loadingSecrets} style={styles.actionButton} testID="card-toggle-details">
               <View style={[styles.actionButtonCircle, { backgroundColor: cardBg, borderColor }]}>
                 <Ionicons name={showDetails ? "eye-outline" : "eye-off-outline"} size={22} color={textColor} />
               </View>
               <ThemedText style={[styles.actionButtonLabel, { color: mutedColor }]}>
                 {showDetails ? 'Hide' : 'Show'}
               </ThemedText>
-            </Pressable>
+            </PressableScale>
 
-            <Pressable onPress={handleToggleFreeze} style={styles.actionButton} testID="card-toggle-freeze">
+            <PressableScale onPress={handleToggleFreeze} style={styles.actionButton} testID="card-toggle-freeze">
               <View style={[
                 styles.actionButtonCircle,
                 { backgroundColor: cardFrozen ? `${primaryColor}20` : cardBg, borderColor: cardFrozen ? primaryColor : borderColor }
@@ -598,14 +597,14 @@ export function CardScreenContent({ topInset = 0 }: CardScreenContentProps) {
               <ThemedText style={[styles.actionButtonLabel, { color: mutedColor }]}>
                 {cardFrozen ? 'Unfreeze' : 'Freeze'}
               </ThemedText>
-            </Pressable>
+            </PressableScale>
 
-            <Pressable onPress={() => console.log('[Card] Edit card settings')} style={styles.actionButton} testID="card-edit-settings">
+            <PressableScale onPress={() => console.log('[Card] Edit card settings')} style={styles.actionButton} testID="card-edit-settings">
               <View style={[styles.actionButtonCircle, { backgroundColor: cardBg, borderColor }]}>
                 <Ionicons name="settings-outline" size={22} color={textColor} />
               </View>
               <ThemedText style={[styles.actionButtonLabel, { color: mutedColor }]}>Edit</ThemedText>
-            </Pressable>
+            </PressableScale>
           </View>
         </View>
       )}
@@ -635,17 +634,17 @@ export function CardScreenContent({ topInset = 0 }: CardScreenContentProps) {
             ]}
           >
             {/* Drawer Handle */}
-            <Pressable onPress={toggleDrawer} style={styles.drawerHandle}>
+            <PressableOpacity onPress={toggleDrawer} style={styles.drawerHandle}>
               <View style={[styles.drawerHandleBar, { backgroundColor: mutedColor }]} />
-            </Pressable>
+            </PressableOpacity>
 
             {/* Drawer Content */}
             <View style={styles.drawerContent}>
               <ThemedText style={styles.drawerTitle}>Manage Card</ThemedText>
 
               {/* Payment Method */}
-              <Pressable
-                style={({ pressed }) => [styles.drawerItem, pressed && styles.drawerItemPressed]}
+              <PressableScale
+                style={styles.drawerItem}
                 onPress={() => console.log('[Card] Payment method settings')}
                 testID="card-payment-method"
               >
@@ -664,11 +663,11 @@ export function CardScreenContent({ topInset = 0 }: CardScreenContentProps) {
                   </View>
                 </View>
                 <Ionicons name="chevron-forward" size={20} color={mutedColor} />
-              </Pressable>
+              </PressableScale>
 
               {/* Spending Limits */}
-              <Pressable
-                style={({ pressed }) => [styles.drawerItem, pressed && styles.drawerItemPressed]}
+              <PressableScale
+                style={styles.drawerItem}
                 onPress={() => console.log('[Card] Spending limits')}
                 testID="card-spending-limits"
               >
@@ -682,11 +681,11 @@ export function CardScreenContent({ topInset = 0 }: CardScreenContentProps) {
                   </ThemedText>
                 </View>
                 <Ionicons name="chevron-forward" size={20} color={mutedColor} />
-              </Pressable>
+              </PressableScale>
 
               {/* Delete Card */}
-              <Pressable
-                style={({ pressed }) => [styles.drawerItem, pressed && styles.drawerItemPressed]}
+              <PressableScale
+                style={styles.drawerItem}
                 onPress={() => Alert.alert('Delete Card', 'Are you sure you want to delete this card? This action cannot be undone.', [
                   { text: 'Cancel', style: 'cancel' },
                   { text: 'Delete', style: 'destructive', onPress: () => console.log('[Card] Delete card') }
@@ -702,7 +701,7 @@ export function CardScreenContent({ topInset = 0 }: CardScreenContentProps) {
                     Permanently remove this card
                   </ThemedText>
                 </View>
-              </Pressable>
+              </PressableScale>
             </View>
           </Animated.View>
         </GestureDetector>
@@ -1075,9 +1074,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 12,
     gap: 12,
-  },
-  drawerItemPressed: {
-    opacity: 0.7,
   },
   drawerItemDisabled: {
     opacity: 0.6,

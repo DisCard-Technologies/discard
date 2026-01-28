@@ -8,7 +8,8 @@
  */
 
 import { useState, useEffect, useCallback } from "react";
-import { StyleSheet, View, Pressable, Dimensions, Alert } from "react-native";
+import { StyleSheet, View, Dimensions, Alert } from "react-native";
+import { PressableScale } from "pressto";
 import { Ionicons } from "@expo/vector-icons";
 import Animated, {
   useAnimatedStyle,
@@ -319,9 +320,9 @@ export function QRScanner({
           QR scanning requires a development build.{"\n"}
           You can still enter addresses manually.
         </ThemedText>
-        <Pressable onPress={onClose} style={[styles.permissionButton, { backgroundColor: primaryColor }]}>
+        <PressableScale onPress={onClose} style={[styles.permissionButton, { backgroundColor: primaryColor }]}>
           <ThemedText style={{ color: "#000", fontWeight: "600" }}>Go Back</ThemedText>
-        </Pressable>
+        </PressableScale>
       </View>
     );
   }
@@ -344,15 +345,15 @@ export function QRScanner({
         <ThemedText style={styles.permissionText}>
           Camera permission is required to scan QR codes
         </ThemedText>
-        <Pressable
+        <PressableScale
           onPress={requestPermission}
           style={[styles.permissionButton, { backgroundColor: bgColor }]}
         >
           <ThemedText>Grant Permission</ThemedText>
-        </Pressable>
-        <Pressable onPress={onClose} style={styles.closeTextButton}>
+        </PressableScale>
+        <PressableScale onPress={onClose} style={styles.closeTextButton}>
           <ThemedText style={{ color: mutedColor }}>Cancel</ThemedText>
-        </Pressable>
+        </PressableScale>
       </View>
     );
   }
@@ -388,21 +389,20 @@ export function QRScanner({
 
       {/* Header */}
       <Animated.View entering={FadeIn.duration(200)} style={styles.header}>
-        <Pressable
+        <PressableScale
           onPress={onClose}
-          style={({ pressed }) => [styles.headerButton, pressed && styles.pressed]}
+          style={styles.headerButton}
         >
           <Ionicons name="close" size={28} color="#fff" />
-        </Pressable>
+        </PressableScale>
 
         <ThemedText style={styles.headerTitle}>Scan QR Code</ThemedText>
 
-        <Pressable
+        <PressableScale
           onPress={toggleFlash}
-          style={({ pressed }) => [
+          style={[
             styles.headerButton,
             torch && styles.flashActive,
-            pressed && styles.pressed,
           ]}
         >
           <Ionicons
@@ -410,7 +410,7 @@ export function QRScanner({
             size={24}
             color="#fff"
           />
-        </Pressable>
+        </PressableScale>
       </Animated.View>
 
       {/* Instructions */}
@@ -523,10 +523,6 @@ const styles = StyleSheet.create({
   },
   flashActive: {
     backgroundColor: "rgba(255, 200, 0, 0.4)",
-  },
-  pressed: {
-    opacity: 0.7,
-    transform: [{ scale: 0.95 }],
   },
   instructions: {
     position: "absolute",

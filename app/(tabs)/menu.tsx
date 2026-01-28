@@ -1,4 +1,5 @@
-import { StyleSheet, View, Pressable, ScrollView, Alert, Linking, Platform } from 'react-native';
+import { StyleSheet, View, ScrollView, Alert, Linking, Platform } from 'react-native';
+import { PressableScale, PressableOpacity } from 'pressto';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
@@ -43,12 +44,10 @@ const showSupportOptions = () => {
     [
       {
         text: 'Email Support',
-        onPress: () => Linking.openURL('mailto:support@discard.tech?subject=DisCard%20Support%20Request'),
-      },
+        onPress: () => Linking.openURL('mailto:support@discard.tech?subject=DisCard%20Support%20Request') },
       {
         text: 'Visit FAQ',
-        onPress: () => Linking.openURL('https://discard.tech/faq'),
-      },
+        onPress: () => Linking.openURL('https://discard.tech/faq') },
       { text: 'Cancel', style: 'cancel' },
     ]
   );
@@ -61,12 +60,10 @@ const showAboutInfo = () => {
     [
       {
         text: 'Terms of Service',
-        onPress: () => Linking.openURL('https://discard.tech/terms'),
-      },
+        onPress: () => Linking.openURL('https://discard.tech/terms') },
       {
         text: 'Privacy Policy',
-        onPress: () => Linking.openURL('https://discard.tech/privacy'),
-      },
+        onPress: () => Linking.openURL('https://discard.tech/privacy') },
       { text: 'OK', style: 'cancel' },
     ]
   );
@@ -85,8 +82,7 @@ const showNotificationSettings = () => {
           } else {
             Linking.openSettings();
           }
-        },
-      },
+        } },
       { text: 'Cancel', style: 'cancel' },
     ]
   );
@@ -145,15 +141,13 @@ export default function MenuScreen() {
       >
         <View style={styles.grid}>
           {menuItems.map((item) => (
-            <Pressable
+            <PressableScale
               key={item.id}
               onPress={() => handleMenuItemPress(item)}
-              style={({ pressed }) => [
+              style={[
                 styles.menuItem,
                 { backgroundColor: cardBg, borderColor },
-                pressed && !item.disabled && styles.menuItemPressed,
-                item.disabled && styles.menuItemDisabled,
-              ]}
+                item.disabled && styles.menuItemDisabled]}
             >
               <View style={[
                 styles.iconContainer,
@@ -170,7 +164,7 @@ export default function MenuScreen() {
                   {item.description}
                 </ThemedText>
               )}
-            </Pressable>
+            </PressableScale>
           ))}
         </View>
 
@@ -187,64 +181,46 @@ export default function MenuScreen() {
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
-  },
+    flex: 1 },
   header: {
     paddingHorizontal: 16,
-    paddingVertical: 16,
-  },
+    paddingVertical: 16 },
   headerTitle: {
     fontSize: 28,
-    fontWeight: '700',
-  },
+    fontWeight: '700' },
   scrollView: {
-    flex: 1,
-  },
+    flex: 1 },
   scrollContent: {
-    paddingHorizontal: 16,
-  },
+    paddingHorizontal: 16 },
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 12,
-  },
+    gap: 12 },
   menuItem: {
     width: '47%',
     padding: 16,
     borderRadius: 16,
     borderWidth: 1,
     alignItems: 'center',
-    gap: 8,
-  },
-  menuItemPressed: {
-    opacity: 0.7,
-    transform: [{ scale: 0.98 }],
-  },
+    gap: 8 },
   menuItemDisabled: {
-    opacity: 0.6,
-  },
+    opacity: 0.6 },
   iconContainer: {
     width: 48,
     height: 48,
     borderRadius: 24,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 4,
-  },
+    marginBottom: 4 },
   menuLabel: {
     fontSize: 15,
     fontWeight: '600',
-    textAlign: 'center',
-  },
+    textAlign: 'center' },
   menuDescription: {
     fontSize: 12,
-    textAlign: 'center',
-  },
+    textAlign: 'center' },
   versionContainer: {
     alignItems: 'center',
-    marginTop: 32,
-  },
+    marginTop: 32 },
   versionText: {
-    fontSize: 12,
-  },
-});
+    fontSize: 12 } });

@@ -1,11 +1,5 @@
-import { Pressable, StyleSheet, View } from 'react-native';
-import Animated, {
-  useAnimatedStyle,
-  useSharedValue,
-  withSpring,
-  withSequence,
-  withTiming,
-} from 'react-native-reanimated';
+import { StyleSheet, View } from 'react-native';
+import { PressableScale } from 'pressto';
 import * as Haptics from 'expo-haptics';
 
 import { ThemedText } from '@/components/themed-text';
@@ -38,8 +32,6 @@ export interface GoalChipProps {
   onPress?: () => void;
 }
 
-const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
-
 export function GoalChip({
   icon,
   value,
@@ -49,7 +41,6 @@ export function GoalChip({
 }: GoalChipProps) {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
-  const scale = useSharedValue(1);
 
   const colors = ATTENTION_COLORS[attention];
   const bgColor = isDark ? colors.dark : colors.light;
@@ -60,14 +51,6 @@ export function GoalChip({
     ? `${Math.round(value)}%`
     : `$${value.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
 
-  const handlePressIn = () => {
-    scale.value = withSpring(0.95, { damping: 15, stiffness: 400 });
-  };
-
-  const handlePressOut = () => {
-    scale.value = withSpring(1, { damping: 15, stiffness: 400 });
-  };
-
   const handlePress = () => {
     if (process.env.EXPO_OS === 'ios') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -75,20 +58,13 @@ export function GoalChip({
     onPress?.();
   };
 
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-  }));
-
   return (
-    <AnimatedPressable
+    <PressableScale
       onPress={handlePress}
-      onPressIn={handlePressIn}
-      onPressOut={handlePressOut}
-      style={[
+            style={[
         styles.chip,
         { backgroundColor: bgColor, borderColor },
         attention !== 'normal' && styles.chipAttention,
-        animatedStyle,
       ]}
     >
       <ThemedText style={styles.icon}>{icon}</ThemedText>
@@ -99,7 +75,7 @@ export function GoalChip({
       ]}>
         {formattedValue}
       </ThemedText>
-    </AnimatedPressable>
+    </PressableScale>
   );
 }
 
@@ -112,17 +88,8 @@ export interface OverflowChipProps {
 export function OverflowChip({ count, onPress }: OverflowChipProps) {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
-  const scale = useSharedValue(1);
 
   const bgColor = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)';
-
-  const handlePressIn = () => {
-    scale.value = withSpring(0.95, { damping: 15, stiffness: 400 });
-  };
-
-  const handlePressOut = () => {
-    scale.value = withSpring(1, { damping: 15, stiffness: 400 });
-  };
 
   const handlePress = () => {
     if (process.env.EXPO_OS === 'ios') {
@@ -131,19 +98,13 @@ export function OverflowChip({ count, onPress }: OverflowChipProps) {
     onPress?.();
   };
 
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-  }));
-
   return (
-    <AnimatedPressable
+    <PressableScale
       onPress={handlePress}
-      onPressIn={handlePressIn}
-      onPressOut={handlePressOut}
-      style={[styles.chip, { backgroundColor: bgColor }, animatedStyle]}
+            style={[styles.chip, { backgroundColor: bgColor }]}
     >
       <ThemedText style={styles.overflowText}>+{count}</ThemedText>
-    </AnimatedPressable>
+    </PressableScale>
   );
 }
 

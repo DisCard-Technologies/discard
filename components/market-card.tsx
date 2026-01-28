@@ -1,4 +1,5 @@
-import { Pressable, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
+import { PressableScale } from 'pressto';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 
@@ -46,12 +47,11 @@ export function MarketCard({ market, onPress }: MarketCardProps) {
   };
 
   return (
-    <Pressable
+    <PressableScale
       onPress={handlePress}
-      style={({ pressed }) => [
+      style={[
         styles.container,
         { backgroundColor: cardBg, borderColor },
-        pressed && styles.pressed,
       ]}
     >
       {/* Header: Title + Live badge */}
@@ -134,7 +134,7 @@ export function MarketCard({ market, onPress }: MarketCardProps) {
           {getCategoryLabel(market.category)}
         </ThemedText>
       </View>
-    </Pressable>
+    </PressableScale>
   );
 }
 
@@ -144,9 +144,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     padding: 16,
     marginBottom: 12,
-  },
-  pressed: {
-    opacity: 0.8,
   },
   header: {
     flexDirection: 'row',

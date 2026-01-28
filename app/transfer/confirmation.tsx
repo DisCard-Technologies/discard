@@ -11,11 +11,11 @@ import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import {
   StyleSheet,
   View,
-  Pressable,
   ActivityIndicator,
   Text,
   Image,
 } from "react-native";
+import { PressableScale } from "pressto";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -703,12 +703,12 @@ export default function TransferConfirmationScreen() {
           <ThemedText style={[styles.errorText, { color: mutedColor }]}>
             Could not load transfer details.
           </ThemedText>
-          <Pressable
+          <PressableScale
             onPress={handleClose}
             style={[styles.closeButton, { borderColor: mutedColor }]}
           >
             <ThemedText>Close</ThemedText>
-          </Pressable>
+          </PressableScale>
         </View>
       </ThemedView>
     );
@@ -725,21 +725,21 @@ export default function TransferConfirmationScreen() {
     <ThemedView style={[styles.container, { backgroundColor: bgColor }]}>
       {/* Header */}
       <Animated.View entering={FadeIn.duration(200)} style={[styles.header, { paddingTop: insets.top + 8 }]}>
-          <Pressable
+          <PressableScale
             onPress={handleEdit}
-            style={({ pressed }) => [styles.headerButton, pressed && styles.pressed]}
+            style={[styles.headerButton]}
           >
             <Ionicons name="arrow-back" size={24} color={mutedColor} />
-          </Pressable>
+          </PressableScale>
 
           <ThemedText style={styles.headerTitle}>Confirm</ThemedText>
 
-          <Pressable
+          <PressableScale
             onPress={handleClose}
-            style={({ pressed }) => [styles.headerButton, pressed && styles.pressed]}
+            style={[styles.headerButton]}
           >
             <Ionicons name="close" size={24} color={mutedColor} />
-          </Pressable>
+          </PressableScale>
         </Animated.View>
 
       {/* Content - Simplified */}
@@ -794,22 +794,21 @@ export default function TransferConfirmationScreen() {
             <ThemedText style={[styles.errorBannerText, { color: errorColor }]}>
               {error}
             </ThemedText>
-            <Pressable onPress={() => setError(null)}>
+            <PressableScale onPress={() => setError(null)}>
               <Ionicons name="close-circle" size={20} color={errorColor} />
-            </Pressable>
+            </PressableScale>
           </Animated.View>
         )}
       </View>
 
       {/* Send Button */}
       <Animated.View entering={FadeInUp.delay(300).duration(300)} style={[styles.bottomActions, { paddingBottom: insets.bottom + 16 }]}>
-        <Pressable
+        <PressableScale
           onPress={handleConfirm}
-          disabled={isConfirming}
-          style={({ pressed }) => [
+          enabled={!isConfirming}
+          style={[
             styles.sendButton,
             { backgroundColor: primaryColor },
-            pressed && styles.pressed,
             isConfirming && styles.buttonDisabled,
           ]}
         >
@@ -830,7 +829,7 @@ export default function TransferConfirmationScreen() {
               {error ? "Try Again" : "Send"}
             </Text>
           )}
-        </Pressable>
+        </PressableScale>
       </Animated.View>
     </ThemedView>
   );
@@ -989,10 +988,6 @@ const styles = StyleSheet.create({
   },
   buttonDisabled: {
     opacity: 0.6,
-  },
-  pressed: {
-    opacity: 0.8,
-    transform: [{ scale: 0.98 }],
   },
   // Error container (for invalid params)
   errorContainer: {

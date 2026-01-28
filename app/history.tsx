@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
-import { StyleSheet, View, Pressable, ScrollView, Linking, ActivityIndicator, Alert } from 'react-native';
+import { StyleSheet, View, ScrollView, Linking, ActivityIndicator, Alert } from 'react-native';
+import { PressableScale, PressableOpacity } from 'pressto';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -68,8 +69,7 @@ const transferToTransaction = (transfer: Doc<'transfers'>): Transaction => {
     time: formatRelativeTime(transfer.createdAt),
     status: isFailed ? 'failed' : isPending ? 'pending' : 'completed',
     signature: transfer.solanaSignature,
-    isRealTransfer: true,
-  };
+    isRealTransfer: true };
 };
 
 // Chat history now comes from useChatHistory hook
@@ -133,8 +133,7 @@ export default function HistoryScreen() {
   const handleChatSelect = (sessionId: string) => {
     router.push({
       pathname: '/(tabs)',
-      params: { chatSessionId: sessionId },
-    });
+      params: { chatSessionId: sessionId } });
   };
 
   // Handle deleting a chat
@@ -147,8 +146,7 @@ export default function HistoryScreen() {
         {
           text: 'Delete',
           style: 'destructive',
-          onPress: () => deleteChat(sessionId),
-        },
+          onPress: () => deleteChat(sessionId) },
       ]
     );
   };
@@ -229,21 +227,21 @@ export default function HistoryScreen() {
 
       {/* Header */}
       <View style={styles.header}>
-        <Pressable
+        <PressableScale
           onPress={handleBack}
-          style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
+          style={styles.backButton}
         >
           <Ionicons name="chevron-back" size={24} color={mutedColor} />
-        </Pressable>
+        </PressableScale>
         <ThemedText style={styles.headerTitle}>History</ThemedText>
-        <Pressable style={({ pressed }) => [styles.filterButton, pressed && styles.pressed]}>
+        <PressableScale style={styles.filterButton}>
           <Ionicons name="filter" size={20} color={mutedColor} />
-        </Pressable>
+        </PressableScale>
       </View>
 
       {/* Tab Switcher */}
       <View style={styles.tabContainer}>
-        <Pressable
+        <PressableScale
           onPress={() => setActiveTab('transactions')}
           style={[
             styles.tab,
@@ -265,8 +263,8 @@ export default function HistoryScreen() {
           >
             Transactions
           </ThemedText>
-        </Pressable>
-        <Pressable
+        </PressableScale>
+        <PressableScale
           onPress={() => setActiveTab('conversations')}
           style={[
             styles.tab,
@@ -293,7 +291,7 @@ export default function HistoryScreen() {
               <ThemedText style={styles.badgeText}>{sessions.length}</ThemedText>
             </View>
           )}
-        </Pressable>
+        </PressableScale>
       </View>
 
       {/* Conversations Tab */}
@@ -327,15 +325,13 @@ export default function HistoryScreen() {
             sessions.map((session) => {
               const preview = getChatPreview(session);
               return (
-                <Pressable
+                <PressableScale
                   key={session.id}
                   onPress={() => handleChatSelect(session.id)}
                   onLongPress={() => handleChatDelete(session.id)}
-                  style={({ pressed }) => [
+                  style={[
                     styles.chatSessionItem,
-                    { backgroundColor: cardBg, borderColor },
-                    pressed && styles.pressed,
-                  ]}
+                    { backgroundColor: cardBg, borderColor }]}
                 >
                   <View style={[styles.chatSessionIcon, { backgroundColor: `${primaryColor}20` }]}>
                     <Ionicons name="chatbubble" size={18} color={primaryColor} />
@@ -354,7 +350,7 @@ export default function HistoryScreen() {
                     </ThemedText>
                     <Ionicons name="chevron-forward" size={16} color={mutedColor} />
                   </View>
-                </Pressable>
+                </PressableScale>
               );
             })
           )}
@@ -376,7 +372,7 @@ export default function HistoryScreen() {
                 : f === 'transfer' ? 'Transfers'
                 : f.charAt(0).toUpperCase() + f.slice(1);
               return (
-                <Pressable
+                <PressableScale
                   key={f}
                   onPress={() => setFilter(f)}
                   style={[
@@ -394,7 +390,7 @@ export default function HistoryScreen() {
                   >
                     {label}
                   </ThemedText>
-                </Pressable>
+                </PressableScale>
               );
             })}
           </ScrollView>
@@ -417,15 +413,13 @@ export default function HistoryScreen() {
               const iconColors = getIconColor(tx.type, tx.status);
               const hasSolscanLink = !!tx.signature;
               return (
-                <Pressable
+                <PressableOpacity
                   key={tx.id}
                   onPress={() => handleTransactionPress(tx)}
-                  disabled={!hasSolscanLink}
-                  style={({ pressed }) => [
+                  enabled={hasSolscanLink}
+                  style={[
                     styles.transactionItem,
-                    { backgroundColor: cardBg, borderColor },
-                    pressed && hasSolscanLink && styles.pressed,
-                  ]}
+                    { backgroundColor: cardBg, borderColor }]}
                 >
                   <View style={[styles.txIcon, { backgroundColor: iconColors.bg }]}>
                     <Ionicons
@@ -476,7 +470,7 @@ export default function HistoryScreen() {
                     </ThemedText>
                     <ThemedText style={[styles.txValue, { color: mutedColor }]}>{tx.value}</ThemedText>
                   </View>
-                </Pressable>
+                </PressableOpacity>
               );
             })}
             {!isLoadingTransfers && filteredTransactions.length === 0 && (
@@ -501,8 +495,7 @@ export default function HistoryScreen() {
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
-  },
+    flex: 1 },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -510,34 +503,29 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(128,128,128,0.1)',
-  },
+    borderBottomColor: 'rgba(128,128,128,0.1)' },
   backButton: {
     width: 40,
     height: 40,
     borderRadius: 20,
     alignItems: 'center',
-    justifyContent: 'center',
-  },
+    justifyContent: 'center' },
   headerTitle: {
     fontSize: 17,
-    fontWeight: '600',
-  },
+    fontWeight: '600' },
   filterButton: {
     width: 40,
     height: 40,
     borderRadius: 20,
     alignItems: 'center',
-    justifyContent: 'center',
-  },
+    justifyContent: 'center' },
   tabContainer: {
     flexDirection: 'row',
     gap: 8,
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(128,128,128,0.08)',
-  },
+    borderBottomColor: 'rgba(128,128,128,0.08)' },
   tab: {
     flex: 1,
     flexDirection: 'row',
@@ -545,187 +533,145 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
     paddingVertical: 10,
-    borderRadius: 14,
-  },
+    borderRadius: 14 },
   tabText: {
     fontSize: 14,
-    fontWeight: '500',
-  },
+    fontWeight: '500' },
   badge: {
     minWidth: 20,
     height: 20,
     borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 6,
-  },
+    paddingHorizontal: 6 },
   badgeText: {
     fontSize: 10,
     fontWeight: '600',
-    color: '#fff',
-  },
+    color: '#fff' },
   scrollView: {
-    flex: 1,
-  },
+    flex: 1 },
   filterScroll: {
     flexGrow: 0,
-    flexShrink: 0,
-  },
+    flexShrink: 0 },
   filterContainer: {
     flexDirection: 'row',
     gap: 8,
     paddingHorizontal: 16,
     paddingVertical: 12,
-    alignItems: 'center',
-  },
+    alignItems: 'center' },
   filterPill: {
     paddingHorizontal: 16,
     paddingVertical: 10,
-    borderRadius: 20,
-  },
+    borderRadius: 20 },
   filterText: {
     fontSize: 14,
     fontWeight: '500',
-    textAlign: 'center',
-  },
+    textAlign: 'center' },
   transactionsList: {
     paddingHorizontal: 16,
-    gap: 8,
-  },
+    gap: 8 },
   transactionItem: {
     flexDirection: 'row',
     alignItems: 'center',
     padding: 12,
     borderRadius: 16,
     borderWidth: 1,
-    gap: 12,
-  },
+    gap: 12 },
   txIcon: {
     width: 40,
     height: 40,
     borderRadius: 20,
     alignItems: 'center',
-    justifyContent: 'center',
-  },
+    justifyContent: 'center' },
   txInfo: {
     flex: 1,
-    minWidth: 0,
-  },
+    minWidth: 0 },
   txLabelRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-  },
+    gap: 8 },
   txLabel: {
     fontSize: 14,
     fontWeight: '500',
-    flexShrink: 1,
-  },
+    flexShrink: 1 },
   statusBadge: {
     paddingHorizontal: 6,
     paddingVertical: 2,
-    borderRadius: 4,
-  },
+    borderRadius: 4 },
   statusBadgeText: {
     fontSize: 9,
-    fontWeight: '600',
-  },
+    fontWeight: '600' },
   txTimeRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 2,
-  },
+    marginTop: 2 },
   txTime: {
-    fontSize: 12,
-  },
+    fontSize: 12 },
   loadingContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 16,
-    gap: 8,
-  },
+    gap: 8 },
   loadingText: {
-    fontSize: 13,
-  },
+    fontSize: 13 },
   txAmounts: {
-    alignItems: 'flex-end',
-  },
+    alignItems: 'flex-end' },
   txAmount: {
     fontSize: 14,
-    fontWeight: '500',
-  },
+    fontWeight: '500' },
   txValue: {
     fontSize: 12,
-    marginTop: 2,
-  },
+    marginTop: 2 },
   conversationsContent: {
     paddingHorizontal: 16,
     paddingTop: 16,
-    gap: 12,
-  },
+    gap: 12 },
   emptyState: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingTop: 80,
-  },
+    paddingTop: 80 },
   emptyIcon: {
     width: 64,
     height: 64,
     borderRadius: 32,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 16,
-  },
+    marginBottom: 16 },
   emptyTitle: {
-    fontSize: 14,
-  },
+    fontSize: 14 },
   emptySubtitle: {
     fontSize: 12,
-    marginTop: 4,
-  },
+    marginTop: 4 },
   messageRow: {
     flexDirection: 'row',
-    gap: 12,
-  },
+    gap: 12 },
   messageRowUser: {
-    justifyContent: 'flex-end',
-  },
+    justifyContent: 'flex-end' },
   messageRowAssistant: {
-    justifyContent: 'flex-start',
-  },
+    justifyContent: 'flex-start' },
   avatar: {
     width: 32,
     height: 32,
     borderRadius: 16,
     alignItems: 'center',
-    justifyContent: 'center',
-  },
+    justifyContent: 'center' },
   messageContainer: {
-    maxWidth: '75%',
-  },
+    maxWidth: '75%' },
   messageContainerUser: {
-    alignItems: 'flex-end',
-  },
+    alignItems: 'flex-end' },
   messageBubble: {
     paddingHorizontal: 16,
     paddingVertical: 10,
-    borderRadius: 18,
-  },
+    borderRadius: 18 },
   messageText: {
     fontSize: 14,
-    lineHeight: 20,
-  },
+    lineHeight: 20 },
   messageTime: {
     fontSize: 10,
     marginTop: 4,
-    paddingHorizontal: 4,
-  },
-  pressed: {
-    opacity: 0.7,
-    transform: [{ scale: 0.98 }],
-  },
+    paddingHorizontal: 4 },
   // Chat session list styles
   chatSessionItem: {
     flexDirection: 'row',
@@ -734,33 +680,25 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     borderWidth: 1,
     gap: 12,
-    marginBottom: 8,
-  },
+    marginBottom: 8 },
   chatSessionIcon: {
     width: 40,
     height: 40,
     borderRadius: 20,
     alignItems: 'center',
-    justifyContent: 'center',
-  },
+    justifyContent: 'center' },
   chatSessionInfo: {
     flex: 1,
-    minWidth: 0,
-  },
+    minWidth: 0 },
   chatSessionTitle: {
     fontSize: 14,
-    fontWeight: '500',
-  },
+    fontWeight: '500' },
   chatSessionPreview: {
     fontSize: 12,
-    marginTop: 2,
-  },
+    marginTop: 2 },
   chatSessionMeta: {
     alignItems: 'flex-end',
-    gap: 4,
-  },
+    gap: 4 },
   chatSessionTime: {
-    fontSize: 11,
-  },
-});
+    fontSize: 11 } });
 

@@ -1,5 +1,6 @@
 import React from 'react';
-import { StyleSheet, View, Pressable, ViewStyle } from 'react-native';
+import { StyleSheet, View, ViewStyle } from 'react-native';
+import { PressableScale } from 'pressto';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
@@ -78,16 +79,15 @@ export const PillNavBar = React.memo(function PillNavBar({
     };
 
     return (
-      <Pressable
+      <PressableScale
         key={route.key}
         accessibilityRole="button"
         accessibilityState={isFocused ? { selected: true } : {}}
         accessibilityLabel={options.tabBarAccessibilityLabel}
         onPress={onPress}
-        style={({ pressed }) => [
+        style={[
           styles.navItem,
           isFocused && styles.navItemActive,
-          pressed && styles.pressed,
         ]}
       >
         <Ionicons
@@ -104,7 +104,7 @@ export const PillNavBar = React.memo(function PillNavBar({
         >
           {config.label}
         </ThemedText>
-      </Pressable>
+      </PressableScale>
     );
   };
 
@@ -142,9 +142,5 @@ const styles = StyleSheet.create({
   },
   navLabelActive: {
     color: '#FFFFFF',
-  },
-  pressed: {
-    opacity: 0.7,
-    transform: [{ scale: 0.96 }],
   },
 });

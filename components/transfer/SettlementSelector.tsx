@@ -9,11 +9,11 @@ import { useState, useCallback } from "react";
 import {
   StyleSheet,
   View,
-  Pressable,
   Modal,
   FlatList,
   ActivityIndicator,
 } from "react-native";
+import { PressableScale } from "pressto";
 import { Ionicons } from "@expo/vector-icons";
 import Animated, { FadeIn, FadeOut, SlideInDown } from "react-native-reanimated";
 
@@ -68,12 +68,11 @@ function TokenItem({ token, isSelected, isSameAsPayment, onPress }: TokenItemPro
   const successColor = useThemeColor({ light: "#4CAF50", dark: "#66BB6A" }, "text");
 
   return (
-    <Pressable
+    <PressableScale
       onPress={onPress}
-      style={({ pressed }) => [
+      style={[
         styles.tokenItem,
         isSelected && styles.tokenItemSelected,
-        pressed && styles.pressed,
       ]}
     >
       <View style={styles.tokenInfo}>
@@ -101,7 +100,7 @@ function TokenItem({ token, isSelected, isSameAsPayment, onPress }: TokenItemPro
           <Ionicons name="checkmark-circle" size={22} color={primaryColor} />
         )}
       </View>
-    </Pressable>
+    </PressableScale>
   );
 }
 
@@ -157,13 +156,12 @@ export function SettlementSelector({
       </ThemedText>
 
       {/* Selector Button */}
-      <Pressable
+      <PressableScale
         onPress={() => !disabled && setIsOpen(true)}
-        disabled={disabled}
-        style={({ pressed }) => [
+        enabled={!disabled}
+        style={[
           styles.selector,
           { backgroundColor: cardBg, borderColor },
-          pressed && styles.pressed,
           disabled && styles.disabled,
         ]}
       >
@@ -200,7 +198,7 @@ export function SettlementSelector({
         </View>
 
         <Ionicons name="chevron-down" size={20} color={mutedColor} />
-      </Pressable>
+      </PressableScale>
 
       {/* Token Selection Modal */}
       <Modal
@@ -209,12 +207,11 @@ export function SettlementSelector({
         animationType="fade"
         onRequestClose={() => setIsOpen(false)}
       >
-        <Pressable
+        <PressableScale
           style={styles.overlay}
           onPress={() => setIsOpen(false)}
         >
-          <Pressable onPress={(e) => e.stopPropagation()}>
-            <Animated.View
+          <Animated.View
               entering={SlideInDown.duration(300)}
               style={[styles.modal, { backgroundColor: bgColor }]}
             >
@@ -223,12 +220,12 @@ export function SettlementSelector({
                 <ThemedText style={styles.modalTitle}>
                   Select Settlement Currency
                 </ThemedText>
-                <Pressable
+                <PressableScale
                   onPress={() => setIsOpen(false)}
-                  style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}
+                  style={styles.closeButton}
                 >
                   <Ionicons name="close" size={24} color={mutedColor} />
-                </Pressable>
+                </PressableScale>
               </View>
 
               {/* Token List */}
@@ -255,8 +252,7 @@ export function SettlementSelector({
                 </ThemedText>
               </View>
             </Animated.View>
-          </Pressable>
-        </Pressable>
+        </PressableScale>
       </Modal>
     </View>
   );
@@ -319,9 +315,6 @@ const styles = StyleSheet.create({
   },
   quoteError: {
     fontSize: 12,
-  },
-  pressed: {
-    opacity: 0.6,
   },
   disabled: {
     opacity: 0.5,

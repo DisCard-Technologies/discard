@@ -5,7 +5,8 @@
  * Supports pre-selecting a token from token-detail or defaults to USDC.
  */
 import { useState, useCallback } from 'react';
-import { StyleSheet, View, Pressable, ActivityIndicator, Dimensions, Image } from 'react-native';
+import { StyleSheet, View, ActivityIndicator, Dimensions, Image } from 'react-native';
+import { PressableScale } from 'pressto';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -175,9 +176,9 @@ export default function BuyCryptoScreen() {
     <ThemedView style={styles.container}>
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
-        <Pressable onPress={() => router.back()} style={styles.backButton}>
+        <PressableScale onPress={() => router.back()} style={styles.backButton}>
           <Ionicons name="chevron-back" size={24} color={textColor} />
-        </Pressable>
+        </PressableScale>
         <ThemedText style={styles.headerTitle}>Deposit</ThemedText>
         <View style={styles.headerRight} />
       </View>
@@ -185,7 +186,7 @@ export default function BuyCryptoScreen() {
       <View style={styles.content}>
         {/* Dropdown Backdrop */}
         {showDropdown && (
-          <Pressable
+          <PressableScale
             style={styles.dropdownBackdrop}
             onPress={() => setShowDropdown(false)}
           />
@@ -200,7 +201,7 @@ export default function BuyCryptoScreen() {
               { backgroundColor: cardBg },
               showDropdown && styles.dropdownContainerOpen,
             ]}>
-              <Pressable
+              <PressableScale
                 onPress={() => setShowDropdown(!showDropdown)}
                 style={styles.dropdownHeader}
               >
@@ -223,7 +224,7 @@ export default function BuyCryptoScreen() {
                   size={20}
                   color={mutedColor}
                 />
-              </Pressable>
+              </PressableScale>
 
               {/* Dropdown Items */}
               {showDropdown && (
@@ -233,13 +234,11 @@ export default function BuyCryptoScreen() {
                   style={[styles.dropdownList, { backgroundColor: cardBg }]}
                 >
                   {CURRENCIES.filter(c => c.code !== selectedCurrency.code).map((currency) => (
-                    <Pressable
+                    <PressableScale
                       key={currency.code}
                       onPress={() => handleSelectCurrency(currency)}
-                      style={({ pressed }) => [
-                        styles.dropdownItem,
-                        pressed && styles.dropdownItemPressed,
-                      ]}
+                      style={[
+                        styles.dropdownItem]}
                     >
                       <View style={styles.dropdownLeft}>
                         <View style={styles.currencyIconSmall}>
@@ -250,7 +249,7 @@ export default function BuyCryptoScreen() {
                         </View>
                         <ThemedText style={styles.dropdownItemText}>{currency.symbol}</ThemedText>
                       </View>
-                    </Pressable>
+                    </PressableScale>
                   ))}
                 </Animated.View>
               )}
@@ -275,20 +274,18 @@ export default function BuyCryptoScreen() {
         {/* Quick Amount Pills */}
         <View style={styles.quickAmounts}>
           {QUICK_AMOUNTS.map((value) => (
-            <Pressable
+            <PressableScale
               key={value}
               onPress={() => handleQuickAmount(value)}
-              style={({ pressed }) => [
+              style={[
                 styles.quickAmountPill,
                 { backgroundColor: numericAmount === value ? `${primaryColor}15` : cardBg },
-                numericAmount === value && { borderColor: primaryColor, borderWidth: 1 },
-                pressed && styles.pressed,
-              ]}
+                numericAmount === value && { borderColor: primaryColor, borderWidth: 1 }]}
             >
               <ThemedText style={[styles.quickAmountText, numericAmount === value && { color: primaryColor }]}>
                 ${value}
               </ThemedText>
-            </Pressable>
+            </PressableScale>
           ))}
         </View>
 
@@ -305,35 +302,31 @@ export default function BuyCryptoScreen() {
       <View style={styles.numberPadContainer}>
         <View style={styles.numberPad}>
           {NUMBER_PAD_KEYS.map((key, index) => (
-            <Pressable
+            <PressableScale
               key={index}
               onPress={() => {
                 if (key === 'delete') handleDelete();
                 else handleNumberPress(key);
               }}
-              style={({ pressed }) => [
-                styles.numberKey,
-                pressed && styles.numberKeyPressed,
-              ]}
+              style={[
+                styles.numberKey]}
             >
               {key === 'delete' ? (
                 <Ionicons name="backspace-outline" size={24} color="#1C1C1E" />
               ) : (
                 <ThemedText style={styles.numberKeyText}>{key}</ThemedText>
               )}
-            </Pressable>
+            </PressableScale>
           ))}
         </View>
 
         {/* Continue Button */}
-        <Pressable
+        <PressableScale
           onPress={handleBuy}
-          disabled={!isValidAmount || isLoading || !isReady}
-          style={({ pressed }) => [
+          enabled={isValidAmount && !isLoading && isReady}
+          style={[
             styles.continueButton,
-            { backgroundColor: isValidAmount && isReady ? primaryColor : '#4A4A4D' },
-            pressed && isValidAmount && styles.pressed,
-          ]}
+            { backgroundColor: isValidAmount && isReady ? primaryColor : '#4A4A4D' }]}
         >
           {isLoading ? (
             <ActivityIndicator color="#fff" />
@@ -342,7 +335,7 @@ export default function BuyCryptoScreen() {
               {isValidAmount ? 'Continue' : 'Enter amount'}
             </ThemedText>
           )}
-        </Pressable>
+        </PressableScale>
       </View>
     </ThemedView>
   );

@@ -13,12 +13,12 @@ import { useState, useCallback, useMemo } from "react";
 import {
   StyleSheet,
   View,
-  Pressable,
   ScrollView,
   TextInput,
   Alert,
   ActivityIndicator,
 } from "react-native";
+import { PressableScale, PressableOpacity } from "pressto";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
@@ -67,15 +67,14 @@ function ContactItem({
       exiting={FadeOut.duration(150)}
       layout={LinearTransition.springify()}
     >
-      <Pressable
+      <PressableScale
         onPress={onPress}
         onLongPress={onLongPress}
-        style={({ pressed }) => [
+        style={[
           styles.contactItem,
           { backgroundColor: cardBg },
           isSelected && styles.contactSelected,
           isSelected && { borderColor: primaryColor },
-          pressed && styles.pressed,
         ]}
       >
         {selectionMode && (
@@ -124,9 +123,9 @@ function ContactItem({
 
         {!selectionMode && (
           <View style={styles.actions}>
-            <Pressable
+            <PressableScale
               onPress={onToggleFavorite}
-              style={({ pressed }) => [styles.actionButton, pressed && styles.pressed]}
+              style={styles.actionButton}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
               <Ionicons
@@ -134,17 +133,17 @@ function ContactItem({
                 size={20}
                 color={contact.isFavorite ? "#FFD700" : mutedColor}
               />
-            </Pressable>
-            <Pressable
+            </PressableScale>
+            <PressableScale
               onPress={onDelete}
-              style={({ pressed }) => [styles.actionButton, pressed && styles.pressed]}
+              style={styles.actionButton}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
               <Ionicons name="trash-outline" size={18} color={dangerColor} />
-            </Pressable>
+            </PressableScale>
           </View>
         )}
-      </Pressable>
+      </PressableScale>
     </Animated.View>
   );
 }
@@ -449,12 +448,12 @@ export default function ContactsScreen() {
 
         {/* Header */}
         <View style={styles.header}>
-          <Pressable
+          <PressableScale
             onPress={handleBack}
-            style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
+            style={styles.backButton}
           >
             <Ionicons name="chevron-back" size={24} color={mutedColor} />
-          </Pressable>
+          </PressableScale>
           <ThemedText style={styles.headerTitle}>Contacts</ThemedText>
           <View style={styles.headerSpacer} />
         </View>
@@ -468,13 +467,12 @@ export default function ContactsScreen() {
           <ThemedText style={[styles.emptyDescription, { color: mutedColor }]}>
             Contacts you send money to will appear here. You can also import contacts from your phone.
           </ThemedText>
-          <Pressable
+          <PressableScale
             onPress={handleImportContacts}
-            disabled={isImporting}
-            style={({ pressed }) => [
+            enabled={!isImporting}
+            style={[
               styles.importButton,
               { backgroundColor: primaryColor },
-              pressed && styles.pressed,
             ]}
           >
             {isImporting ? (
@@ -485,7 +483,7 @@ export default function ContactsScreen() {
                 <ThemedText style={[styles.importButtonText, { color: buttonTextColor }]}>Import from Phone</ThemedText>
               </>
             )}
-          </Pressable>
+          </PressableScale>
         </View>
       </ThemedView>
     );
@@ -497,40 +495,40 @@ export default function ContactsScreen() {
 
       {/* Header */}
       <View style={styles.header}>
-        <Pressable
+        <PressableScale
           onPress={handleBack}
-          style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
+          style={styles.backButton}
         >
           <Ionicons
             name={selectionMode ? "close" : "chevron-back"}
             size={24}
             color={mutedColor}
           />
-        </Pressable>
+        </PressableScale>
         <ThemedText style={styles.headerTitle}>
           {selectionMode ? `${selectedIds.size} Selected` : "Contacts"}
         </ThemedText>
         {selectionMode ? (
-          <Pressable
+          <PressableScale
             onPress={handleSelectAll}
-            style={({ pressed }) => [styles.headerButton, pressed && styles.pressed]}
+            style={styles.headerButton}
           >
             <ThemedText style={[styles.headerButtonText, { color: primaryColor }]}>
               {selectedIds.size === filteredContacts.length ? "Deselect All" : "Select All"}
             </ThemedText>
-          </Pressable>
+          </PressableScale>
         ) : (
-          <Pressable
+          <PressableScale
             onPress={handleImportContacts}
-            disabled={isImporting}
-            style={({ pressed }) => [styles.headerButton, pressed && styles.pressed]}
+            enabled={!isImporting}
+            style={styles.headerButton}
           >
             {isImporting ? (
               <ActivityIndicator size="small" color={primaryColor} />
             ) : (
               <Ionicons name="cloud-download-outline" size={22} color={primaryColor} />
             )}
-          </Pressable>
+          </PressableScale>
         )}
       </View>
 
@@ -548,9 +546,9 @@ export default function ContactsScreen() {
             autoCorrect={false}
           />
           {searchQuery.length > 0 && (
-            <Pressable onPress={() => setSearchQuery("")}>
+            <PressableOpacity onPress={() => setSearchQuery("")}>
               <Ionicons name="close-circle" size={18} color={mutedColor} />
-            </Pressable>
+            </PressableOpacity>
           )}
         </View>
       </View>
@@ -606,19 +604,18 @@ export default function ContactsScreen() {
             { backgroundColor: inputBg, borderColor, paddingBottom: insets.bottom + 16 },
           ]}
         >
-          <Pressable
+          <PressableScale
             onPress={handleDeleteSelected}
-            style={({ pressed }) => [
+            style={[
               styles.deleteSelectedButton,
               { backgroundColor: dangerColor },
-              pressed && styles.pressed,
             ]}
           >
             <Ionicons name="trash-outline" size={18} color="#fff" />
             <ThemedText style={styles.deleteSelectedText}>
               Delete {selectedIds.size} Contact{selectedIds.size !== 1 ? "s" : ""}
             </ThemedText>
-          </Pressable>
+          </PressableScale>
         </Animated.View>
       )}
     </ThemedView>
@@ -828,8 +825,5 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 15,
     fontWeight: "600",
-  },
-  pressed: {
-    opacity: 0.7,
   },
 });

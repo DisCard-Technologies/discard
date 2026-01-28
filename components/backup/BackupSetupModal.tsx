@@ -15,11 +15,11 @@ import {
   StyleSheet,
   View,
   Modal,
-  Pressable,
   ActivityIndicator,
   ScrollView,
   Platform,
 } from 'react-native';
+import { PressableScale } from 'pressto';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeIn, FadeInUp, SlideInRight } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
@@ -158,7 +158,7 @@ export function BackupSetupModal({
         onRequestClose={onClose}
       >
         <View style={styles.overlay}>
-          <Pressable style={styles.backdrop} onPress={onClose} />
+          <PressableScale style={styles.backdrop} onPress={onClose} />
 
           <Animated.View
             entering={FadeIn.duration(200)}
@@ -196,12 +196,12 @@ export function BackupSetupModal({
                   </View>
                 </View>
                 {step !== 'progress' && (
-                  <Pressable
+                  <PressableScale
                     onPress={onClose}
-                    style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}
+                    style={styles.closeButton}
                   >
                     <Ionicons name="close" size={24} color={mutedColor} />
-                  </Pressable>
+                  </PressableScale>
                 )}
               </View>
 
@@ -246,32 +246,30 @@ export function BackupSetupModal({
                     </View>
                   </View>
 
-                  <Pressable
+                  <PressableScale
                     onPress={handleStartBackup}
-                    style={({ pressed }) => [
+                    style={[
                       styles.primaryButton,
                       { backgroundColor: primaryColor },
-                      pressed && styles.pressed,
                     ]}
                   >
                     <Ionicons name="key" size={18} color="#fff" />
                     <ThemedText style={styles.primaryButtonText}>
                       Create Backup Password
                     </ThemedText>
-                  </Pressable>
+                  </PressableScale>
 
-                  <Pressable
+                  <PressableScale
                     onPress={onClose}
-                    style={({ pressed }) => [
+                    style={[
                       styles.secondaryButton,
                       { borderColor: isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.1)' },
-                      pressed && styles.pressed,
                     ]}
                   >
                     <ThemedText style={[styles.secondaryButtonText, { color: mutedColor }]}>
                       Maybe Later
                     </ThemedText>
-                  </Pressable>
+                  </PressableScale>
                 </Animated.View>
               )}
 
@@ -280,11 +278,11 @@ export function BackupSetupModal({
                 <Animated.View entering={SlideInRight.duration(300)}>
                   <View style={styles.providerList}>
                     {providers.map((p) => (
-                      <Pressable
+                      <PressableScale
                         key={p.provider}
                         onPress={() => handleProviderSelect(p.provider)}
-                        disabled={!p.isAvailable}
-                        style={({ pressed }) => [
+                        enabled={p.isAvailable}
+                        style={[
                           styles.providerCard,
                           {
                             backgroundColor: cardBg,
@@ -293,7 +291,6 @@ export function BackupSetupModal({
                               : isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)',
                             opacity: p.isAvailable ? 1 : 0.5,
                           },
-                          pressed && styles.pressed,
                         ]}
                       >
                         <View style={[styles.providerIcon, { backgroundColor: `${primaryColor}15` }]}>
@@ -328,23 +325,22 @@ export function BackupSetupModal({
                           )}
                         </View>
                         <Ionicons name="chevron-forward" size={20} color={mutedColor} />
-                      </Pressable>
+                      </PressableScale>
                     ))}
                   </View>
 
-                  <Pressable
+                  <PressableScale
                     onPress={() => setStep('intro')}
-                    style={({ pressed }) => [
+                    style={[
                       styles.secondaryButton,
                       { borderColor: isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.1)' },
-                      pressed && styles.pressed,
                     ]}
                   >
                     <Ionicons name="arrow-back" size={18} color={mutedColor} />
                     <ThemedText style={[styles.secondaryButtonText, { color: mutedColor }]}>
                       Back
                     </ThemedText>
-                  </Pressable>
+                  </PressableScale>
                 </Animated.View>
               )}
 
@@ -376,19 +372,18 @@ export function BackupSetupModal({
                     </ThemedText>
                   </View>
 
-                  <Pressable
+                  <PressableScale
                     onPress={handleDone}
-                    style={({ pressed }) => [
+                    style={[
                       styles.primaryButton,
                       { backgroundColor: successColor },
-                      pressed && styles.pressed,
                     ]}
                   >
                     <Ionicons name="checkmark-circle" size={18} color="#fff" />
                     <ThemedText style={styles.primaryButtonText}>
                       Done
                     </ThemedText>
-                  </Pressable>
+                  </PressableScale>
                 </Animated.View>
               )}
 
@@ -405,32 +400,30 @@ export function BackupSetupModal({
                     </ThemedText>
                   </View>
 
-                  <Pressable
+                  <PressableScale
                     onPress={handleRetry}
-                    style={({ pressed }) => [
+                    style={[
                       styles.primaryButton,
                       { backgroundColor: primaryColor },
-                      pressed && styles.pressed,
                     ]}
                   >
                     <Ionicons name="refresh" size={18} color="#fff" />
                     <ThemedText style={styles.primaryButtonText}>
                       Try Again
                     </ThemedText>
-                  </Pressable>
+                  </PressableScale>
 
-                  <Pressable
+                  <PressableScale
                     onPress={onClose}
-                    style={({ pressed }) => [
+                    style={[
                       styles.secondaryButton,
                       { borderColor: isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.1)' },
-                      pressed && styles.pressed,
                     ]}
                   >
                     <ThemedText style={[styles.secondaryButtonText, { color: mutedColor }]}>
                       Cancel
                     </ThemedText>
-                  </Pressable>
+                  </PressableScale>
                 </Animated.View>
               )}
             </ScrollView>
@@ -503,9 +496,6 @@ const styles = StyleSheet.create({
   },
   closeButton: {
     padding: 4,
-  },
-  pressed: {
-    opacity: 0.6,
   },
   featureList: {
     borderRadius: 16,

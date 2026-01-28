@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { StyleSheet, View, Text, Pressable } from 'react-native';
+import { StyleSheet, View, Text } from 'react-native';
+import { PressableScale } from 'pressto';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, {
   useSharedValue,
@@ -200,12 +201,12 @@ function SplashScreen({
       </View>
 
       {/* CTA Button */}
-      <Pressable style={styles.ctaButton} onPress={onContinue}>
+      <PressableScale style={styles.ctaButton} onPress={onContinue}>
         <Text style={styles.ctaText}>
           Continue with {deviceType === 'face' ? 'Face ID' : 'Fingerprint'}
         </Text>
         <Ionicons name="chevron-forward" size={20} color="#fff" />
-      </Pressable>
+      </PressableScale>
 
       {error && (
         <View style={styles.errorContainer}>
@@ -382,9 +383,9 @@ function CompleteScreen({
         </View>
       </View>
 
-      <Pressable style={styles.ctaButton} onPress={onContinue}>
+      <PressableScale style={styles.ctaButton} onPress={onContinue}>
         <Text style={styles.ctaText}>Enter DisCard</Text>
-      </Pressable>
+      </PressableScale>
     </Animated.View>
   );
 }

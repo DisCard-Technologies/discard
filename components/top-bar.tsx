@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { StyleSheet, View, Pressable } from 'react-native';
+import { StyleSheet, View } from 'react-native';
+import { PressableScale } from 'pressto';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Clipboard from 'expo-clipboard';
@@ -56,16 +57,15 @@ export function TopBar({ walletAddress, onPortfolioTap, onCardTap, cardCount = 0
   return (
     <View style={styles.container} testID="top-bar">
       {/* Left: Portfolio Icon */}
-      <Pressable
+      <PressableScale
         onPress={handlePortfolioTap}
         testID="topbar-portfolio"
-        style={({ pressed }) => [
+        style={[
           styles.iconButton,
           {
             backgroundColor: isPortfolioActive ? `${primaryColor}15` : cardBg,
             borderColor: isPortfolioActive ? primaryColor : borderColor,
           },
-          pressed && styles.pressed,
         ]}
       >
         <Ionicons
@@ -73,16 +73,15 @@ export function TopBar({ walletAddress, onPortfolioTap, onCardTap, cardCount = 0
           size={20}
           color={isPortfolioActive ? primaryColor : mutedColor}
         />
-      </Pressable>
+      </PressableScale>
 
       {/* Center: Wallet Address Pill */}
-      <Pressable
+      <PressableScale
         onPress={handleCopyAddress}
         testID="topbar-wallet-address"
-        style={({ pressed }) => [
+        style={[
           styles.addressPill,
           { backgroundColor: cardBg, borderColor },
-          pressed && styles.pressed,
         ]}
       >
         <LinearGradient
@@ -100,19 +99,18 @@ export function TopBar({ walletAddress, onPortfolioTap, onCardTap, cardCount = 0
           color={copied ? primaryColor : mutedColor}
           style={styles.copyIcon}
         />
-      </Pressable>
+      </PressableScale>
 
       {/* Right: Card Icon with Badge */}
-      <Pressable
+      <PressableScale
         onPress={handleCardTap}
         testID="topbar-cards"
-        style={({ pressed }) => [
+        style={[
           styles.iconButton,
           {
             backgroundColor: isCardActive ? `${primaryColor}15` : cardBg,
             borderColor: isCardActive ? primaryColor : borderColor,
           },
-          pressed && styles.pressed,
         ]}
       >
         <Ionicons
@@ -125,7 +123,7 @@ export function TopBar({ walletAddress, onPortfolioTap, onCardTap, cardCount = 0
             <ThemedText style={styles.cardBadgeText}>{cardCount > 9 ? '9+' : cardCount}</ThemedText>
           </View>
         )}
-      </Pressable>
+      </PressableScale>
     </View>
   );
 }
@@ -168,10 +166,6 @@ const styles = StyleSheet.create({
   },
   copyIcon: {
     marginRight: 4,
-  },
-  pressed: {
-    opacity: 0.7,
-    transform: [{ scale: 0.95 }],
   },
   cardBadge: {
     position: 'absolute',

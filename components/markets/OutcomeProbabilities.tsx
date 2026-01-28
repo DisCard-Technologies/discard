@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
-import { StyleSheet, View, Pressable, ViewStyle } from 'react-native';
+import { StyleSheet, View, ViewStyle } from 'react-native';
+import { PressableScale } from 'pressto';
 
 import { ThemedText } from '@/components/themed-text';
 import { useThemeColor } from '@/hooks/use-theme-color';
@@ -73,7 +74,7 @@ export const OutcomeProbabilities = React.memo(function OutcomeProbabilities({
         const color = getOutcomeColor(outcome);
 
         return (
-          <Pressable
+          <PressableScale
             key={outcome.id}
             onPress={() => onOutcomePress?.(outcome.id)}
             style={[
@@ -90,7 +91,7 @@ export const OutcomeProbabilities = React.memo(function OutcomeProbabilities({
             >
               {outcome.label} {(outcome.probability * 100).toFixed(0)}%
             </ThemedText>
-          </Pressable>
+          </PressableScale>
         );
       })}
     </View>

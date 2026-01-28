@@ -10,13 +10,13 @@ import {
   StyleSheet,
   View,
   Modal,
-  Pressable,
   TextInput,
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
 } from 'react-native';
+import { PressableScale } from 'pressto';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
@@ -216,14 +216,13 @@ export function CreateCardModal({ visible, onClose, onSuccess }: CreateCardModal
 
       <View style={styles.providersContainer}>
         {Object.values(PROVIDERS).map((provider) => (
-          <Pressable
+          <PressableScale
             key={provider.id}
             onPress={() => handleSelectProvider(provider.id)}
             testID={`provider-${provider.id}`}
-            style={({ pressed }) => [
+            style={[
               styles.providerCard,
               { backgroundColor: cardBg, borderColor },
-              pressed && styles.providerCardPressed,
             ]}
           >
             <LinearGradient
@@ -266,7 +265,7 @@ export function CreateCardModal({ visible, onClose, onSuccess }: CreateCardModal
             </View>
 
             <Ionicons name="chevron-forward" size={20} color={mutedColor} />
-          </Pressable>
+          </PressableScale>
         ))}
       </View>
     </View>
@@ -283,10 +282,10 @@ export function CreateCardModal({ visible, onClose, onSuccess }: CreateCardModal
     return (
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         {/* Header */}
-        <Pressable onPress={handleBack} style={styles.backButton}>
+        <PressableScale onPress={handleBack} style={styles.backButton}>
           <Ionicons name="arrow-back" size={20} color={textColor} />
           <ThemedText style={styles.backText}>Back</ThemedText>
-        </Pressable>
+        </PressableScale>
 
         <View style={styles.selectedProviderHeader}>
           <LinearGradient
@@ -325,7 +324,7 @@ export function CreateCardModal({ visible, onClose, onSuccess }: CreateCardModal
 
               <View style={styles.presetAmountsGrid}>
                 {PRESET_AMOUNTS.map((preset) => (
-                  <Pressable
+                  <PressableScale
                     key={preset.value}
                     onPress={() => handleSelectAmount(preset.value)}
                     testID={`amount-${preset.value}`}
@@ -346,7 +345,7 @@ export function CreateCardModal({ visible, onClose, onSuccess }: CreateCardModal
                     >
                       {preset.label}
                     </ThemedText>
-                  </Pressable>
+                  </PressableScale>
                 ))}
               </View>
 
@@ -414,14 +413,13 @@ export function CreateCardModal({ visible, onClose, onSuccess }: CreateCardModal
         )}
 
         {/* Create Button */}
-        <Pressable
+        <PressableScale
           onPress={handleCreateCard}
-          disabled={isCreating || (selectedProvider === 'starpay' && !initialAmount)}
+          enabled={!isCreating && !(selectedProvider === 'starpay' && !initialAmount)}
           testID="create-card-confirm"
-          style={({ pressed }) => [
+          style={[
             styles.createButton,
             { backgroundColor: primaryColor },
-            pressed && styles.createButtonPressed,
             (isCreating || (selectedProvider === 'starpay' && !initialAmount)) && styles.createButtonDisabled,
           ]}
         >
@@ -433,7 +431,7 @@ export function CreateCardModal({ visible, onClose, onSuccess }: CreateCardModal
               <ThemedText style={styles.createButtonText}>Create Card</ThemedText>
             </>
           )}
-        </Pressable>
+        </PressableScale>
 
         <View style={{ height: 40 }} />
       </ScrollView>
@@ -455,9 +453,9 @@ export function CreateCardModal({ visible, onClose, onSuccess }: CreateCardModal
           {/* Header */}
           <View style={[styles.header, { borderBottomColor: borderColor }]}>
             <View style={styles.headerHandle} />
-            <Pressable onPress={handleClose} style={styles.closeButton} disabled={isCreating}>
+            <PressableScale onPress={handleClose} style={styles.closeButton} enabled={!isCreating}>
               <Ionicons name="close" size={24} color={textColor} />
-            </Pressable>
+            </PressableScale>
           </View>
 
           {step === 'provider' ? renderProviderSelection() : renderDetailsStep()}
@@ -516,9 +514,6 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     borderWidth: 1,
     gap: 16,
-  },
-  providerCardPressed: {
-    opacity: 0.8,
   },
   providerIconContainer: {
     width: 48,
@@ -716,9 +711,6 @@ const styles = StyleSheet.create({
     height: 52,
     borderRadius: 14,
     gap: 8,
-  },
-  createButtonPressed: {
-    opacity: 0.8,
   },
   createButtonDisabled: {
     opacity: 0.5,

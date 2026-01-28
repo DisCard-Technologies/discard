@@ -1,5 +1,6 @@
 import React from 'react';
-import { StyleSheet, Pressable, PressableProps, ViewStyle } from 'react-native';
+import { StyleSheet, ViewStyle } from 'react-native';
+import { PressableScale } from 'pressto';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 
@@ -8,12 +9,14 @@ import { useThemeColor } from '@/hooks/use-theme-color';
 export type IconButtonSize = 'sm' | 'md' | 'lg';
 export type IconButtonVariant = 'default' | 'filled' | 'outline';
 
-export interface IconButtonProps extends Omit<PressableProps, 'style'> {
+export interface IconButtonProps {
   icon: keyof typeof Ionicons.glyphMap;
   size?: IconButtonSize;
   variant?: IconButtonVariant;
   iconColor?: string;
   haptic?: boolean;
+  disabled?: boolean;
+  onPress?: () => void;
   style?: ViewStyle;
 }
 
@@ -32,7 +35,6 @@ export const IconButton = React.memo(function IconButton({
   disabled,
   onPress,
   style,
-  ...props
 }: IconButtonProps) {
   const textColor = useThemeColor({}, 'text');
   const cardBg = useThemeColor({ light: '#f4f4f5', dark: '#1a1f25' }, 'background');
@@ -56,18 +58,18 @@ export const IconButton = React.memo(function IconButton({
     }
   };
 
-  const handlePress = (e: any) => {
+  const handlePress = () => {
     if (haptic) {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
-    onPress?.(e);
+    onPress?.();
   };
 
   return (
-    <Pressable
+    <PressableScale
       onPress={handlePress}
-      disabled={disabled}
-      style={({ pressed }) => [
+      enabled={!disabled}
+      style={[
         styles.container,
         {
           width: sizeConfig.button,
@@ -76,13 +78,11 @@ export const IconButton = React.memo(function IconButton({
         },
         getVariantStyles(),
         disabled && styles.disabled,
-        pressed && styles.pressed,
         style,
       ]}
-      {...props}
     >
       <Ionicons name={icon} size={sizeConfig.icon} color={resolvedIconColor} />
-    </Pressable>
+    </PressableScale>
   );
 });
 
@@ -93,9 +93,5 @@ const styles = StyleSheet.create({
   },
   disabled: {
     opacity: 0.5,
-  },
-  pressed: {
-    opacity: 0.7,
-    transform: [{ scale: 0.96 }],
   },
 });

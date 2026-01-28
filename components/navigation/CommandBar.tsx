@@ -1,7 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
-  Pressable,
   StyleSheet,
   TextInput,
   ScrollView,
@@ -9,6 +8,7 @@ import {
   ActivityIndicator,
   ViewStyle,
 } from 'react-native';
+import { PressableScale } from 'pressto';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import Animated, {
@@ -185,9 +185,9 @@ export function CommandBar({
               <Ionicons name="sparkles" size={16} color={SPARKLE_COLOR} />
               <ThemedText style={styles.headerTitle}>Assistant</ThemedText>
             </View>
-            <Pressable onPress={handleClose} style={styles.closeButton}>
+            <PressableScale onPress={handleClose} style={styles.closeButton}>
               <Ionicons name="close" size={20} color={INACTIVE_ICON_COLOR} />
-            </Pressable>
+            </PressableScale>
           </View>
 
           {/* Chat Area */}
@@ -203,13 +203,13 @@ export function CommandBar({
                 <ThemedText style={styles.suggestionsLabel}>Try saying</ThemedText>
                 <View style={styles.suggestionsWrap}>
                   {suggestions.map((suggestion, index) => (
-                    <Pressable
+                    <PressableScale
                       key={index}
                       onPress={() => handleSuggestionPress(suggestion)}
-                      style={({ pressed }) => [styles.suggestionChip, pressed && styles.pressed]}
+                      style={styles.suggestionChip}
                     >
                       <ThemedText style={styles.suggestionText}>{suggestion}</ThemedText>
-                    </Pressable>
+                    </PressableScale>
                   ))}
                 </View>
               </View>
@@ -248,31 +248,29 @@ export function CommandBar({
               onSubmitEditing={handleSubmit}
               editable={!isProcessing}
             />
-            <Pressable
+            <PressableScale
               onPress={handleMicPress}
-              style={({ pressed }) => [
+              style={[
                 styles.inputButton,
                 isListening && styles.inputButtonActive,
-                pressed && styles.pressed,
               ]}
             >
               <Ionicons name="mic" size={20} color={isListening ? '#FFFFFF' : INACTIVE_ICON_COLOR} />
-            </Pressable>
-            <Pressable
+            </PressableScale>
+            <PressableScale
               onPress={handleSubmit}
-              disabled={!commandText.trim() || isProcessing}
-              style={({ pressed }) => [
+              enabled={!!commandText.trim() && !isProcessing}
+              style={[
                 styles.sendButton,
                 (!commandText.trim() || isProcessing) && styles.sendButtonDisabled,
-                pressed && styles.pressed,
               ]}
             >
               <Ionicons name="send" size={18} color="#FFFFFF" />
-            </Pressable>
+            </PressableScale>
           </View>
         </View>
       ) : (
-        <Pressable onPress={handlePress} style={styles.collapsedBar}>
+        <PressableScale onPress={handlePress} style={styles.collapsedBar}>
           <Ionicons name="sparkles" size={18} color={SPARKLE_COLOR} />
           {leftContent ? (
             <View style={styles.collapsedContent}>
@@ -284,10 +282,10 @@ export function CommandBar({
               {collapsedHintText}
             </ThemedText>
           )}
-          <Pressable onPress={handleMicPress} hitSlop={8}>
+          <PressableScale onPress={handleMicPress} hitSlop={8}>
             <Ionicons name="mic-outline" size={20} color={iconColor} />
-          </Pressable>
-        </Pressable>
+          </PressableScale>
+        </PressableScale>
       )}
     </Animated.View>
   );
@@ -444,9 +442,5 @@ const styles = StyleSheet.create({
   },
   sendButtonDisabled: {
     opacity: 0.5,
-  },
-  pressed: {
-    opacity: 0.7,
-    transform: [{ scale: 0.96 }],
   },
 });

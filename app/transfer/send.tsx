@@ -12,13 +12,13 @@ import { useState, useCallback } from "react";
 import {
   StyleSheet,
   View,
-  Pressable,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
   Image,
   Text,
 } from "react-native";
+import { PressableScale } from "pressto";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -152,22 +152,22 @@ export default function SendScreen() {
       >
         {/* Header */}
         <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
-          <Pressable
+          <PressableScale
             onPress={handleBack}
-            style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
+            style={[styles.backButton]}
           >
             <Ionicons name="arrow-back" size={24} color={textColor} />
-          </Pressable>
+          </PressableScale>
 
           <ThemedText style={styles.headerTitle}>Send</ThemedText>
 
           {/* Right: QR Button */}
-          <Pressable
+          <PressableScale
             onPress={handleScanQR}
-            style={({ pressed }) => [styles.qrButton, pressed && styles.pressed]}
+            style={[styles.qrButton]}
           >
             <Ionicons name="qr-code-outline" size={22} color={primaryColor} />
-          </Pressable>
+          </PressableScale>
         </View>
 
         {/* Amount + Token Badge */}
@@ -210,24 +210,23 @@ export default function SendScreen() {
               <Text style={[styles.selectedRecipientText, { color: textColor }]} numberOfLines={1}>
                 {pendingRecipient.contact?.name || pendingRecipient.resolved.displayName || pendingRecipient.resolved.input}
               </Text>
-              <Pressable
+              <PressableScale
                 onPress={() => setPendingRecipient(null)}
                 style={styles.clearRecipient}
               >
                 <Ionicons name="close-circle" size={20} color={mutedColor} />
-              </Pressable>
+              </PressableScale>
             </View>
-            <Pressable
+            <PressableScale
               onPress={handleContinue}
-              style={({ pressed }) => [
+              style={[
                 styles.continueButton,
                 { backgroundColor: primaryColor },
-                pressed && styles.pressed,
               ]}
             >
               <Text style={styles.continueButtonText}>Review</Text>
               <Ionicons name="arrow-forward" size={20} color="#fff" />
-            </Pressable>
+            </PressableScale>
           </View>
         )}
       </KeyboardAvoidingView>
@@ -312,9 +311,6 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 14,
     fontWeight: "600",
-  },
-  pressed: {
-    opacity: 0.6,
   },
   content: {
     flex: 1,

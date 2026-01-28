@@ -1,4 +1,5 @@
-import { View, Pressable, StyleSheet } from 'react-native';
+import { View, StyleSheet } from 'react-native';
+import { PressableScale } from 'pressto';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
@@ -61,16 +62,15 @@ export function FloatingNavBar({ state, descriptors, navigation }: FloatingNavBa
     };
 
     return (
-      <Pressable
+      <PressableScale
         key={route.key}
         accessibilityRole="button"
         accessibilityState={isFocused ? { selected: true } : {}}
         accessibilityLabel={options.tabBarAccessibilityLabel}
         onPress={onPress}
-        style={({ pressed }) => [
+        style={[
           styles.navItem,
           isFocused && styles.navItemActive,
-          pressed && styles.pressed,
         ]}
       >
         <Ionicons
@@ -81,7 +81,7 @@ export function FloatingNavBar({ state, descriptors, navigation }: FloatingNavBa
 
         {/* Active indicator dot */}
         {isFocused && <View style={styles.activeIndicator} />}
-      </Pressable>
+      </PressableScale>
     );
   };
 
@@ -153,8 +153,4 @@ const styles = StyleSheet.create({
     backgroundColor: ACTIVE_COLOR,
   },
 
-  pressed: {
-    opacity: 0.7,
-    transform: [{ scale: 0.95 }],
-  },
 });

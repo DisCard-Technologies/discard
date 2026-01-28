@@ -1,5 +1,6 @@
 import { useState, useMemo, useCallback } from 'react';
-import { StyleSheet, View, Pressable, ScrollView, Dimensions, ActivityIndicator, Image } from 'react-native';
+import { StyleSheet, View, ScrollView, Dimensions, ActivityIndicator, Image } from 'react-native';
+import { PressableScale } from 'pressto';
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -10,8 +11,7 @@ import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withSpring,
-  runOnJS,
-} from 'react-native-reanimated';
+  runOnJS } from 'react-native-reanimated';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { LinearGradient } from 'expo-linear-gradient';
 
@@ -146,8 +146,7 @@ export function PortfolioScreenContent({ topInset = 0 }: PortfolioScreenContentP
       cashTotal: cash.reduce((sum, h) => sum + h.valueUsd, 0),
       investmentsTotal: investments.reduce((sum, h) => sum + h.valueUsd, 0),
       cashHoldings: cash,
-      investmentHoldings: investments,
-    };
+      investmentHoldings: investments };
   }, [tokenHoldings]);
 
   // Calculate real daily change from token holdings
@@ -177,8 +176,7 @@ export function PortfolioScreenContent({ topInset = 0 }: PortfolioScreenContentP
           id: token.mint,
           symbol: token.symbol,
           name: token.name || token.symbol,
-          icon: token.logoUri || null,
-        });
+          icon: token.logoUri || null });
       });
     }
     return filters;
@@ -204,12 +202,10 @@ export function PortfolioScreenContent({ topInset = 0 }: PortfolioScreenContentP
     return now.toLocaleDateString('en-US', {
       day: 'numeric',
       month: 'short',
-      year: 'numeric',
-    }) + ', at ' + now.toLocaleTimeString('en-US', {
+      year: 'numeric' }) + ', at ' + now.toLocaleTimeString('en-US', {
       hour: '2-digit',
       minute: '2-digit',
-      hour12: false,
-    });
+      hour12: false });
   }, []);
 
   // Chart paths
@@ -249,8 +245,7 @@ export function PortfolioScreenContent({ topInset = 0 }: PortfolioScreenContentP
     });
 
   const drawerAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: drawerTranslateY.value }],
-  }));
+    transform: [{ translateY: drawerTranslateY.value }] }));
 
   const handleDrawerToggle = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -319,7 +314,7 @@ export function PortfolioScreenContent({ topInset = 0 }: PortfolioScreenContentP
         </View>
 
         {/* Summary Card - Cash | Investments (Expandable) */}
-        <Pressable
+        <PressableScale
           style={styles.summaryPressable}
           onPress={() => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -381,7 +376,7 @@ export function PortfolioScreenContent({ topInset = 0 }: PortfolioScreenContentP
               </View>
             )}
           </ThemedView>
-        </Pressable>
+        </PressableScale>
 
       </View>
 
@@ -394,15 +389,14 @@ export function PortfolioScreenContent({ topInset = 0 }: PortfolioScreenContentP
               backgroundColor: drawerBg,
               borderTopColor: borderColor,
               height: drawerOpenHeight,
-              top: SCREEN_HEIGHT - DRAWER_CLOSED_HEIGHT - insets.bottom,
-            },
+              top: SCREEN_HEIGHT - DRAWER_CLOSED_HEIGHT - insets.bottom },
             drawerAnimatedStyle,
           ]}
         >
           {/* Drawer Handle */}
-          <Pressable style={styles.drawerHandle} onPress={handleDrawerToggle}>
+          <PressableScale style={styles.drawerHandle} onPress={handleDrawerToggle}>
             <View style={[styles.drawerHandleBar, { backgroundColor: mutedColor }]} />
-          </Pressable>
+          </PressableScale>
 
           <ScrollView
               style={styles.drawerContent}
@@ -418,7 +412,7 @@ export function PortfolioScreenContent({ topInset = 0 }: PortfolioScreenContentP
                 {tokenFilters.map((filter) => {
                   const isSelected = selectedFilter === filter.id;
                   return (
-                    <Pressable
+                    <PressableScale
                       key={filter.id}
                       onPress={() => { setSelectedFilter(filter.id); Haptics.selectionAsync(); }}
                       style={[
@@ -443,12 +437,12 @@ export function PortfolioScreenContent({ topInset = 0 }: PortfolioScreenContentP
                       {isSelected && (
                         <ThemedText style={styles.filterPillLabel}>{filter.name}</ThemedText>
                       )}
-                    </Pressable>
+                    </PressableScale>
                   );
                 })}
-                <Pressable style={[styles.filterPillMore, { backgroundColor: cardBg, borderColor }]}>
+                <PressableScale style={[styles.filterPillMore, { backgroundColor: cardBg, borderColor }]}>
                   <Ionicons name="chevron-forward" size={14} color={mutedColor} />
-                </Pressable>
+                </PressableScale>
               </ScrollView>
 
               {/* Filtered Balance & Date */}
@@ -480,7 +474,7 @@ export function PortfolioScreenContent({ topInset = 0 }: PortfolioScreenContentP
               {/* Time Period Selector */}
               <View style={[styles.timePeriodSelector, { backgroundColor: cardBg }]}>
                 {timePeriods.map((period) => (
-                  <Pressable
+                  <PressableScale
                     key={period}
                     onPress={() => { setSelectedPeriod(period); Haptics.selectionAsync(); }}
                     style={[
@@ -496,7 +490,7 @@ export function PortfolioScreenContent({ topInset = 0 }: PortfolioScreenContentP
                     >
                       {period}
                     </ThemedText>
-                  </Pressable>
+                  </PressableScale>
                 ))}
               </View>
 
@@ -514,7 +508,7 @@ export function PortfolioScreenContent({ topInset = 0 }: PortfolioScreenContentP
                       <ThemedText style={[styles.holdingsTitle, { color: textColor }]}>Holdings</ThemedText>
                     </View>
                     {displayedHoldings.map((token) => (
-                      <Pressable
+                      <PressableScale
                         key={token.mint}
                         style={styles.tokenRow}
                         onPress={() => {
@@ -529,9 +523,7 @@ export function PortfolioScreenContent({ topInset = 0 }: PortfolioScreenContentP
                               change24h: (token.change24h || 0).toString(),
                               logoUri: token.logoUri || '',
                               balance: token.balanceFormatted.toString(),
-                              value: token.valueUsd.toString(),
-                            },
-                          });
+                              value: token.valueUsd.toString() } });
                         }}
                       >
                         <View style={[styles.tokenIcon, { backgroundColor: cardBg }]}>
@@ -565,7 +557,7 @@ export function PortfolioScreenContent({ topInset = 0 }: PortfolioScreenContentP
                             $ {token.valueUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </ThemedText>
                         </View>
-                      </Pressable>
+                      </PressableScale>
                     ))}
                   </>
                 ) : (cashHoldings.length > 0 || investmentHoldings.length > 0) ? (
@@ -584,7 +576,7 @@ export function PortfolioScreenContent({ topInset = 0 }: PortfolioScreenContentP
                           </ThemedText>
                         </View>
                         {cashHoldings.map((token) => (
-                          <Pressable
+                          <PressableScale
                             key={token.mint}
                             style={styles.tokenRow}
                             onPress={() => {
@@ -599,9 +591,7 @@ export function PortfolioScreenContent({ topInset = 0 }: PortfolioScreenContentP
                                   change24h: (token.change24h || 0).toString(),
                                   logoUri: token.logoUri || '',
                                   balance: token.balanceFormatted.toString(),
-                                  value: token.valueUsd.toString(),
-                                },
-                              });
+                                  value: token.valueUsd.toString() } });
                             }}
                           >
                             <View style={[styles.tokenIcon, { backgroundColor: cardBg }]}>
@@ -625,7 +615,7 @@ export function PortfolioScreenContent({ topInset = 0 }: PortfolioScreenContentP
                                 $ {token.valueUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                               </ThemedText>
                             </View>
-                          </Pressable>
+                          </PressableScale>
                         ))}
                       </>
                     )}
@@ -643,7 +633,7 @@ export function PortfolioScreenContent({ topInset = 0 }: PortfolioScreenContentP
                           </ThemedText>
                         </View>
                         {investmentHoldings.map((token) => (
-                          <Pressable
+                          <PressableScale
                             key={token.mint}
                             style={styles.tokenRow}
                             onPress={() => {
@@ -658,9 +648,7 @@ export function PortfolioScreenContent({ topInset = 0 }: PortfolioScreenContentP
                                   change24h: (token.change24h || 0).toString(),
                                   logoUri: token.logoUri || '',
                                   balance: token.balanceFormatted.toString(),
-                                  value: token.valueUsd.toString(),
-                                },
-                              });
+                                  value: token.valueUsd.toString() } });
                             }}
                           >
                             <View style={[styles.tokenIcon, { backgroundColor: cardBg }]}>
@@ -694,7 +682,7 @@ export function PortfolioScreenContent({ topInset = 0 }: PortfolioScreenContentP
                                 $ {token.valueUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                               </ThemedText>
                             </View>
-                          </Pressable>
+                          </PressableScale>
                         ))}
                       </>
                     )}
@@ -724,64 +712,52 @@ export default function PortfolioScreen() {
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
-  },
+    flex: 1 },
   ambientGradient: {
     position: 'absolute',
     left: 0,
     right: 0,
     bottom: 0,
     height: '60%',
-    pointerEvents: 'none',
-  },
+    pointerEvents: 'none' },
 
   // Hero Section
   heroSection: {
     alignItems: 'center',
     paddingVertical: 24,
-    paddingHorizontal: 20,
-  },
+    paddingHorizontal: 20 },
   portfolioLabel: {
     fontSize: 14,
-    marginBottom: 4,
-  },
+    marginBottom: 4 },
   portfolioValue: {
     fontSize: 40,
     fontWeight: '600',
-    letterSpacing: -1,
-  },
+    letterSpacing: -1 },
   changeContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    marginTop: 8,
-  },
+    marginTop: 8 },
   changeBadge: {
     paddingHorizontal: 10,
     paddingVertical: 4,
-    borderRadius: 12,
-  },
+    borderRadius: 12 },
   changePercent: {
     fontSize: 13,
-    fontWeight: '600',
-  },
+    fontWeight: '600' },
   changeAmount: {
-    fontSize: 13,
-  },
+    fontSize: 13 },
 
   // Summary Pill
   summaryPressable: {
     alignSelf: 'stretch',
-    marginTop: 20,
-  },
+    marginTop: 20 },
   summaryPill: {
     borderWidth: 1,
-    overflow: 'hidden',
-  },
+    overflow: 'hidden' },
   summaryContent: {
     flexDirection: 'row',
-    alignItems: 'center',
-  },
+    alignItems: 'center' },
   summaryHalf: {
     flex: 1,
     flexDirection: 'row',
@@ -789,44 +765,34 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
     paddingVertical: 12,
-    paddingHorizontal: 12,
-  },
+    paddingHorizontal: 12 },
   summaryDivider: {
     width: 1,
-    height: 32,
-  },
+    height: 32 },
   summaryTextGroup: {
-    alignItems: 'center',
-  },
+    alignItems: 'center' },
   summaryLabel: {
-    fontSize: 12,
-  },
+    fontSize: 12 },
   summaryValue: {
     fontSize: 14,
-    fontWeight: '600',
-  },
+    fontWeight: '600' },
   summaryExpandedContent: {
     paddingHorizontal: 16,
     paddingVertical: 12,
-    borderTopWidth: 1,
-  },
+    borderTopWidth: 1 },
   balanceBarTrack: {
     height: 6,
     borderRadius: 3,
-    overflow: 'hidden',
-  },
+    overflow: 'hidden' },
   balanceBarFill: {
     height: '100%',
-    borderRadius: 3,
-  },
+    borderRadius: 3 },
   balanceBarLabels: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: 8,
-  },
+    marginTop: 8 },
   balanceBarLabel: {
-    fontSize: 11,
-  },
+    fontSize: 11 },
 
   // Drawer
   drawer: {
@@ -841,30 +807,25 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 8,
     elevation: 10,
-    zIndex: 50,
-  },
+    zIndex: 50 },
   drawerHandle: {
     alignItems: 'center',
-    paddingVertical: 12,
-  },
+    paddingVertical: 12 },
   drawerHandleBar: {
     width: 40,
     height: 4,
     borderRadius: 2,
-    opacity: 0.3,
-  },
+    opacity: 0.3 },
   drawerContent: {
     flex: 1,
-    paddingHorizontal: 16,
-  },
+    paddingHorizontal: 16 },
 
   // Filter Pills
   filterPillsContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    paddingVertical: 8,
-  },
+    paddingVertical: 8 },
   filterPill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -872,124 +833,101 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     paddingHorizontal: 8,
     borderRadius: 999,
-    borderWidth: 1,
-  },
+    borderWidth: 1 },
   filterPillIconAll: {
     width: 24,
     height: 24,
     borderRadius: 12,
     alignItems: 'center',
-    justifyContent: 'center',
-  },
+    justifyContent: 'center' },
   filterPillIconAllText: {
     color: '#fff',
     fontSize: 10,
-    fontWeight: '700',
-  },
+    fontWeight: '700' },
   filterPillIcon: {
     width: 24,
     height: 24,
-    borderRadius: 12,
-  },
+    borderRadius: 12 },
   filterPillIconPlaceholder: {
     width: 24,
     height: 24,
     borderRadius: 12,
     alignItems: 'center',
-    justifyContent: 'center',
-  },
+    justifyContent: 'center' },
   filterPillIconText: {
     fontSize: 10,
-    fontWeight: '600',
-  },
+    fontWeight: '600' },
   filterPillLabel: {
     fontSize: 12,
-    fontWeight: '500',
-  },
+    fontWeight: '500' },
   filterPillMore: {
     width: 32,
     height: 32,
     borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-  },
+    borderWidth: 1 },
 
   // Balance Section
   balanceSection: {
-    marginTop: 8,
-  },
+    marginTop: 8 },
   filteredBalance: {
     fontSize: 24,
-    fontWeight: '600',
-  },
+    fontWeight: '600' },
   balanceDate: {
     fontSize: 12,
-    marginTop: 2,
-  },
+    marginTop: 2 },
 
   // Chart
   chartContainer: {
-    marginVertical: 16,
-  },
+    marginVertical: 16 },
 
   // Time Period Selector
   timePeriodSelector: {
     flexDirection: 'row',
     borderRadius: 999,
     padding: 4,
-    marginBottom: 16,
-  },
+    marginBottom: 16 },
   timePeriodButton: {
     flex: 1,
     paddingVertical: 8,
     alignItems: 'center',
-    borderRadius: 999,
-  },
+    borderRadius: 999 },
   timePeriodButtonActive: {
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
     shadowRadius: 2,
-    elevation: 1,
-  },
+    elevation: 1 },
   timePeriodText: {
     fontSize: 12,
-    fontWeight: '500',
-  },
+    fontWeight: '500' },
 
   // Holdings
   holdingsSection: {
-    marginBottom: 40,
-  },
+    marginBottom: 40 },
   holdingsHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 12,
-  },
+    marginBottom: 12 },
   holdingsTitle: {
     fontSize: 14,
-    fontWeight: '600',
-  },
+    fontWeight: '600' },
   holdingsHeaderLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-  },
+    gap: 6 },
   holdingsSubtotal: {
     fontSize: 13,
-    fontWeight: '500',
-  },
+    fontWeight: '500' },
   primaryAssetLabel: {
     fontSize: 11,
-    marginTop: 2,
-  },
+    marginTop: 2 },
   tokenRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 12,
-  },
+    paddingVertical: 12 },
   tokenIcon: {
     width: 40,
     height: 40,
@@ -997,75 +935,57 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
-    overflow: 'hidden',
-  },
+    overflow: 'hidden' },
   tokenIconImage: {
     width: 40,
-    height: 40,
-  },
+    height: 40 },
   tokenIconText: {
     fontSize: 14,
-    fontWeight: '600',
-  },
+    fontWeight: '600' },
   tokenInfo: {
-    flex: 1,
-  },
+    flex: 1 },
   tokenName: {
     fontSize: 14,
-    fontWeight: '500',
-  },
+    fontWeight: '500' },
   tokenPriceRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    marginTop: 2,
-  },
+    marginTop: 2 },
   tokenPrice: {
-    fontSize: 12,
-  },
+    fontSize: 12 },
   tokenChange: {
-    fontSize: 12,
-  },
+    fontSize: 12 },
   tokenValue: {
-    alignItems: 'flex-end',
-  },
+    alignItems: 'flex-end' },
   tokenHoldings: {
     fontSize: 14,
-    fontWeight: '500',
-  },
+    fontWeight: '500' },
   tokenFiatValue: {
     fontSize: 12,
-    marginTop: 2,
-  },
+    marginTop: 2 },
 
   // Loading & Empty States
   loadingContainer: {
     alignItems: 'center',
     paddingVertical: 32,
-    gap: 12,
-  },
+    gap: 12 },
   loadingText: {
-    fontSize: 14,
-  },
+    fontSize: 14 },
   emptyState: {
     alignItems: 'center',
     paddingVertical: 32,
-    gap: 8,
-  },
+    gap: 8 },
   emptyStateIcon: {
     width: 64,
     height: 64,
     borderRadius: 32,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 8,
-  },
+    marginBottom: 8 },
   emptyStateTitle: {
     fontSize: 16,
-    fontWeight: '600',
-  },
+    fontWeight: '600' },
   emptyStateText: {
     fontSize: 14,
-    textAlign: 'center',
-  },
-});
+    textAlign: 'center' } });

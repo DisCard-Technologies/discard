@@ -1,13 +1,13 @@
 import { useState, useRef, useEffect } from 'react';
 import {
   View,
-  Pressable,
   StyleSheet,
   TextInput,
   ScrollView,
   Keyboard,
   ActivityIndicator,
 } from 'react-native';
+import { PressableScale } from 'pressto';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
@@ -118,8 +118,6 @@ interface PillTabBarProps extends BottomTabBarProps {
   onCommandSubmit?: (text: string) => void;
   onMicPress?: () => void;
 }
-
-const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 const springConfig = {
   damping: 20,
@@ -312,17 +310,17 @@ export function PillTabBar({ state, descriptors, navigation }: PillTabBarProps) 
     };
 
     return (
-      <Pressable
+      <PressableScale
         key={route.key}
         accessibilityRole="button"
         accessibilityState={isFocused ? { selected: true } : {}}
         accessibilityLabel={options.tabBarAccessibilityLabel}
         onPress={onPress}
-        style={({ pressed }) => [styles.navItem, isFocused && styles.navItemActive, pressed && styles.pressed]}
+        style={[styles.navItem, isFocused && styles.navItemActive]}
       >
         <Ionicons name={config.icon} size={20} color={isFocused ? '#FFFFFF' : iconColor} />
         <ThemedText style={[styles.navLabel, isFocused && styles.navLabelActive, !isFocused && { color: iconColor }]}>{config.label}</ThemedText>
-      </Pressable>
+      </PressableScale>
     );
   };
 
@@ -339,9 +337,9 @@ export function PillTabBar({ state, descriptors, navigation }: PillTabBarProps) 
                 <Ionicons name="sparkles" size={16} color={SPARKLE_COLOR} />
                 <ThemedText style={styles.headerTitle}>DisCard Assistant</ThemedText>
               </View>
-              <Pressable onPress={handleCommandClose} style={styles.closeButton}>
+              <PressableScale onPress={handleCommandClose} style={styles.closeButton}>
                 <Ionicons name="close" size={20} color={INACTIVE_ICON_COLOR} />
-              </Pressable>
+              </PressableScale>
             </View>
 
             {/* Chat Messages or Suggestions */}
@@ -358,13 +356,13 @@ export function PillTabBar({ state, descriptors, navigation }: PillTabBarProps) 
                   <ThemedText style={styles.suggestionsLabel}>Try saying</ThemedText>
                   <View style={styles.suggestionsWrap}>
                     {SUGGESTIONS.map((suggestion, index) => (
-                      <Pressable
+                      <PressableScale
                         key={index}
                         onPress={() => handleSuggestionPress(suggestion)}
-                        style={({ pressed }) => [styles.suggestionChip, pressed && styles.pressed]}
+                        style={styles.suggestionChip}
                       >
                         <ThemedText style={styles.suggestionText}>{suggestion}</ThemedText>
-                      </Pressable>
+                      </PressableScale>
                     ))}
                   </View>
                 </View>
@@ -404,32 +402,30 @@ export function PillTabBar({ state, descriptors, navigation }: PillTabBarProps) 
                 onSubmitEditing={handleCommandSubmit}
                 editable={!isProcessing}
               />
-              <Pressable
+              <PressableScale
                 onPress={handleMicPress}
-                style={({ pressed }) => [
+                style={[
                   styles.inputButton,
                   isListening && styles.inputButtonActive,
-                  pressed && styles.pressed,
                 ]}
               >
                 <Ionicons name="mic" size={20} color={isListening ? '#FFFFFF' : INACTIVE_ICON_COLOR} />
-              </Pressable>
-              <Pressable
+              </PressableScale>
+              <PressableScale
                 onPress={handleCommandSubmit}
-                disabled={!commandText.trim() || isProcessing}
-                style={({ pressed }) => [
+                enabled={!!commandText.trim() && !isProcessing}
+                style={[
                   styles.sendButton,
                   (!commandText.trim() || isProcessing) && styles.sendButtonDisabled,
-                  pressed && styles.pressed,
                 ]}
               >
                 <Ionicons name="send" size={18} color="#FFFFFF" />
-              </Pressable>
+              </PressableScale>
             </View>
           </View>
         ) : (
           // Collapsed State with Goal Chips
-          <Pressable onPress={handleCommandBarPress} style={styles.collapsedBar}>
+          <PressableScale onPress={handleCommandBarPress} style={styles.collapsedBar}>
             <Ionicons name="sparkles" size={18} color={SPARKLE_COLOR} />
             {goals.length > 0 ? (
               // Show goal chips when goals exist
@@ -448,10 +444,10 @@ export function PillTabBar({ state, descriptors, navigation }: PillTabBarProps) 
                 Ask anything... "Set a savings goal"
               </ThemedText>
             )}
-            <Pressable onPress={handleMicPress} hitSlop={8}>
+            <PressableScale onPress={handleMicPress} hitSlop={8}>
               <Ionicons name="mic-outline" size={20} color={iconColor} />
-            </Pressable>
-          </Pressable>
+            </PressableScale>
+          </PressableScale>
         )}
       </Animated.View>
 
@@ -673,8 +669,4 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
 
-  pressed: {
-    opacity: 0.7,
-    transform: [{ scale: 0.96 }],
-  },
 });

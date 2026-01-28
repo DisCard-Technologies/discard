@@ -9,11 +9,11 @@ import { useState, useCallback, useEffect, useMemo } from "react";
 import {
   StyleSheet,
   View,
-  Pressable,
   ActivityIndicator,
   Image,
   ScrollView,
 } from "react-native";
+import { PressableScale } from "pressto";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -330,12 +330,12 @@ export default function MerchantPaymentScreen() {
       <SafeAreaView style={styles.safeArea}>
         {/* Header */}
         <Animated.View entering={FadeIn.duration(200)} style={styles.header}>
-          <Pressable
+          <PressableScale
             onPress={handleClose}
-            style={({ pressed }) => [styles.headerButton, pressed && styles.pressed]}
+            style={styles.headerButton}
           >
             <Ionicons name="close" size={24} color={mutedColor} />
-          </Pressable>
+          </PressableScale>
 
           <ThemedText style={styles.headerTitle}>Pay Merchant</ThemedText>
 
@@ -459,13 +459,12 @@ export default function MerchantPaymentScreen() {
         {/* Bottom Actions */}
         <Animated.View entering={FadeInUp.delay(400).duration(300)} style={styles.bottomActions}>
           {/* Pay Button */}
-          <Pressable
+          <PressableScale
             onPress={handleSubmit}
-            disabled={!canSubmit}
-            style={({ pressed }) => [
+            enabled={!!canSubmit}
+            style={[
               styles.payButton,
               { backgroundColor: canSubmit ? primaryColor : mutedColor },
-              pressed && styles.pressed,
               !canSubmit && styles.buttonDisabled,
             ]}
           >
@@ -479,7 +478,7 @@ export default function MerchantPaymentScreen() {
                 </ThemedText>
               </>
             )}
-          </Pressable>
+          </PressableScale>
 
           {/* Security Note */}
           <View style={styles.securityNote}>
@@ -659,10 +658,6 @@ const styles = StyleSheet.create({
   },
   buttonDisabled: {
     opacity: 0.6,
-  },
-  pressed: {
-    opacity: 0.8,
-    transform: [{ scale: 0.98 }],
   },
   securityNote: {
     flexDirection: "row",

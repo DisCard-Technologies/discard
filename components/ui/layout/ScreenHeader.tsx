@@ -1,5 +1,6 @@
 import React from 'react';
-import { StyleSheet, View, Pressable, ViewStyle } from 'react-native';
+import { StyleSheet, View, ViewStyle } from 'react-native';
+import { PressableScale } from 'pressto';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
@@ -47,16 +48,15 @@ export function ScreenHeader({
   return (
     <View style={[styles.header, { paddingTop: insets.top + 8 }, style]}>
       {onBack ? (
-        <Pressable
+        <PressableScale
           onPress={handleBack}
-          style={({ pressed }) => [
+          style={[
             styles.headerButton,
             { backgroundColor: cardBg },
-            pressed && styles.pressed,
           ]}
         >
           <Ionicons name="chevron-back" size={22} color={textColor} />
-        </Pressable>
+        </PressableScale>
       ) : (
         <View style={styles.headerButton} />
       )}
@@ -75,12 +75,11 @@ export function ScreenHeader({
       )}
 
       {rightAction ? (
-        <Pressable
+        <PressableScale
           onPress={handleRightAction}
-          style={({ pressed }) => [
+          style={[
             styles.headerButton,
             { backgroundColor: cardBg },
-            pressed && styles.pressed,
           ]}
         >
           <Ionicons
@@ -88,7 +87,7 @@ export function ScreenHeader({
             size={20}
             color={rightAction.isActive ? rightAction.activeColor : mutedColor}
           />
-        </Pressable>
+        </PressableScale>
       ) : (
         <View style={styles.headerButton} />
       )}
@@ -122,9 +121,5 @@ const styles = StyleSheet.create({
   headerSubtitle: {
     fontSize: 12,
     marginTop: 2,
-  },
-  pressed: {
-    opacity: 0.7,
-    transform: [{ scale: 0.96 }],
   },
 });

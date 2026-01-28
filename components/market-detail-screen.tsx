@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
-import { StyleSheet, View, Pressable, ScrollView, Dimensions } from 'react-native';
+import { StyleSheet, View, ScrollView, Dimensions } from 'react-native';
+import { PressableScale } from 'pressto';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import Svg, { Path, Defs, LinearGradient, Stop, Circle, Line } from 'react-native-svg';
@@ -190,9 +191,9 @@ export function MarketDetailScreen({
     <ThemedView style={styles.container}>
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
-        <Pressable onPress={onBack} style={styles.backButton}>
+        <PressableScale onPress={onBack} style={styles.backButton}>
           <Ionicons name="arrow-back" size={20} color={textColor} />
-        </Pressable>
+        </PressableScale>
 
         {/* Live Badge */}
         {market.isLive && (
@@ -369,7 +370,7 @@ export function MarketDetailScreen({
         {/* Time Period Selector */}
         <View style={[styles.periodSelector, { backgroundColor: cardBg }]}>
           {(['GAME', '1D', '1W', '1M', 'ALL'] as TimePeriod[]).map((period) => (
-            <Pressable
+            <PressableScale
               key={period}
               onPress={() => setSelectedPeriod(period)}
               style={[
@@ -385,7 +386,7 @@ export function MarketDetailScreen({
               >
                 {period}
               </ThemedText>
-            </Pressable>
+            </PressableScale>
           ))}
         </View>
 
@@ -400,7 +401,7 @@ export function MarketDetailScreen({
               const color = getOutcomeColor(outcome, isLeading);
 
               return (
-                <Pressable
+                <PressableScale
                   key={outcome.id}
                   onPress={() => handleOutcomePress(outcome.id)}
                   style={[
@@ -417,14 +418,14 @@ export function MarketDetailScreen({
                   >
                     {outcome.label} {(outcome.probability * 100).toFixed(0)}%
                   </ThemedText>
-                </Pressable>
+                </PressableScale>
               );
             })}
           </View>
 
           {/* Place bet button (shown when outcome selected) */}
           {selectedOutcomeId && (
-            <Pressable
+            <PressableScale
               onPress={() => handlePlaceBet(10)}
               style={[
                 styles.placeBetButton,
@@ -439,7 +440,7 @@ export function MarketDetailScreen({
               <ThemedText style={styles.placeBetText}>
                 Bet $10 on {outcomes.find((o) => o.id === selectedOutcomeId)?.label}
               </ThemedText>
-            </Pressable>
+            </PressableScale>
           )}
         </View>
 
@@ -511,14 +512,14 @@ export function MarketDetailScreen({
               </View>
             </View>
 
-            <Pressable
+            <PressableScale
               onPress={onSell}
               style={[styles.sellButton, { borderColor: `${negativeColor}30` }]}
             >
               <ThemedText style={[styles.sellButtonText, { color: negativeColor }]}>
                 Sell Position
               </ThemedText>
-            </Pressable>
+            </PressableScale>
           </View>
         )}
 
@@ -550,10 +551,10 @@ export function MarketDetailScreen({
 
         {/* Timeline Section */}
         <View style={[styles.timelineSection, { borderTopColor: borderColor }]}>
-          <Pressable style={styles.timelineHeader}>
+          <PressableScale style={styles.timelineHeader}>
             <ThemedText style={styles.sectionTitle}>Timeline and Activity</ThemedText>
             <Ionicons name="chevron-down" size={20} color={mutedColor} />
-          </Pressable>
+          </PressableScale>
         </View>
       </ScrollView>
     </ThemedView>

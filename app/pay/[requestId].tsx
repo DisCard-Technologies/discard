@@ -12,9 +12,9 @@ import { useEffect, useState } from "react";
 import {
   StyleSheet,
   View,
-  Pressable,
   ActivityIndicator,
 } from "react-native";
+import { PressableScale } from "pressto";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -146,12 +146,12 @@ export default function PaymentRequestScreen() {
       <ThemedView style={styles.container}>
         <StatusBar style={isDark ? "light" : "dark"} />
         <View style={[styles.content, { paddingTop: insets.top }]}>
-          <Pressable
+          <PressableScale
             onPress={() => router.back()}
             style={[styles.backButton, { top: insets.top + 16 }]}
           >
             <Ionicons name="close" size={24} color={mutedColor} />
-          </Pressable>
+          </PressableScale>
 
           <View style={[styles.iconCircle, { backgroundColor: status === "paid" ? `${successColor}20` : `${errorColor}20` }]}>
             <Ionicons
@@ -166,16 +166,15 @@ export default function PaymentRequestScreen() {
           <ThemedText style={[styles.subtitle, { color: mutedColor }]}>
             {errorMessage}
           </ThemedText>
-          <Pressable
+          <PressableScale
             onPress={() => router.replace("/(tabs)")}
-            style={({ pressed }) => [
+            style={[
               styles.button,
               { backgroundColor: primaryColor },
-              pressed && styles.pressed,
             ]}
           >
             <ThemedText style={styles.buttonText}>Go to Home</ThemedText>
-          </Pressable>
+          </PressableScale>
         </View>
       </ThemedView>
     );
@@ -190,12 +189,12 @@ export default function PaymentRequestScreen() {
         style={[styles.gradient, { paddingTop: insets.top }]}
       >
         {/* Back Button */}
-        <Pressable
+        <PressableScale
           onPress={() => router.back()}
           style={[styles.backButton, { top: insets.top + 16 }]}
         >
           <Ionicons name="close" size={24} color="#fff" />
-        </Pressable>
+        </PressableScale>
 
         {/* Header */}
         <View style={styles.header}>
@@ -257,29 +256,27 @@ export default function PaymentRequestScreen() {
         {/* CTA Button */}
         <View style={[styles.footer, { paddingBottom: insets.bottom + 24 }]}>
           {isAuthenticated ? (
-            <Pressable
+            <PressableScale
               onPress={handlePay}
-              style={({ pressed }) => [
+              style={[
                 styles.ctaButton,
                 { backgroundColor: primaryColor },
-                pressed && styles.pressed,
               ]}
             >
               <Ionicons name="send" size={20} color="#fff" />
               <ThemedText style={styles.ctaButtonText}>Pay Now</ThemedText>
-            </Pressable>
+            </PressableScale>
           ) : (
-            <Pressable
+            <PressableScale
               onPress={handleGetStarted}
-              style={({ pressed }) => [
+              style={[
                 styles.ctaButton,
                 { backgroundColor: primaryColor },
-                pressed && styles.pressed,
               ]}
             >
               <Ionicons name="rocket" size={20} color="#fff" />
               <ThemedText style={styles.ctaButtonText}>Get Started</ThemedText>
-            </Pressable>
+            </PressableScale>
           )}
         </View>
       </LinearGradient>
@@ -362,9 +359,6 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 16,
     fontWeight: "600",
-  },
-  pressed: {
-    opacity: 0.8,
   },
   requestCard: {
     flex: 1,

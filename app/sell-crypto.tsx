@@ -5,7 +5,8 @@
  * Supports pre-selecting a token from token-detail or defaults to USDC.
  */
 import { useState, useCallback, useMemo, useEffect } from 'react';
-import { StyleSheet, View, Pressable, TextInput, ActivityIndicator, Keyboard, TouchableWithoutFeedback, ScrollView } from 'react-native';
+import { StyleSheet, View, TextInput, ActivityIndicator, Keyboard, TouchableWithoutFeedback, ScrollView } from 'react-native';
+import { PressableScale } from 'pressto';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -71,8 +72,7 @@ export default function SellCryptoScreen() {
     shieldedBalance,
     fetchShieldedBalance,
     quickCashout,
-    isAvailable: isPrivateCashoutAvailable,
-  } = usePrivateCashout(userId || undefined, subOrgId);
+    isAvailable: isPrivateCashoutAvailable } = usePrivateCashout(userId || undefined, subOrgId);
 
   // Track if using private mode
   const [usePrivateMode, setUsePrivateMode] = useState(true);
@@ -95,8 +95,7 @@ export default function SellCryptoScreen() {
       return {
         ...currency,
         balance: holding ? parseFloat(holding.balance) : 0,
-        value: holding?.valueUsd || 0,
-      };
+        value: holding?.valueUsd || 0 };
     }).filter((c) => c.balance > 0);
   }, [holdings]);
 
@@ -123,8 +122,7 @@ export default function SellCryptoScreen() {
   const { openSell, isReady, isLoading, error } = useMoonPay({
     solanaAddress,
     ethereumAddress,
-    defaultCurrency: selectedCurrency?.code || 'usdc',
-  });
+    defaultCurrency: selectedCurrency?.code || 'usdc' });
 
   // Handle sell action
   const handleSell = useCallback(async () => {
@@ -147,8 +145,7 @@ export default function SellCryptoScreen() {
           // Fall back to regular MoonPay
           await openSell({
             currencyCode: selectedCurrency.code,
-            quoteCurrencyAmount: numericAmount,
-          });
+            quoteCurrencyAmount: numericAmount });
           return;
         }
 
@@ -163,23 +160,20 @@ export default function SellCryptoScreen() {
           // MoonPay will be opened by the hook or we navigate to it
           console.log('[SellCrypto] Private cashout initiated:', {
             sessionId: result.sessionId,
-            privacyInfo: result.privacyInfo,
-          });
+            privacyInfo: result.privacyInfo });
           // The MoonPay widget should open automatically via the hook
         } else {
           console.error('[SellCrypto] Private cashout failed:', result?.error);
           // Fall back to regular MoonPay
           await openSell({
             currencyCode: selectedCurrency.code,
-            quoteCurrencyAmount: numericAmount,
-          });
+            quoteCurrencyAmount: numericAmount });
         }
       } else {
         // Regular MoonPay flow (less private)
         await openSell({
           currencyCode: selectedCurrency.code,
-          quoteCurrencyAmount: numericAmount,
-        });
+          quoteCurrencyAmount: numericAmount });
       }
     } catch (err) {
       console.error('Sell failed:', err);
@@ -199,9 +193,9 @@ export default function SellCryptoScreen() {
     <ThemedView style={styles.container}>
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
-        <Pressable onPress={() => router.back()} style={styles.backButton}>
+        <PressableScale onPress={() => router.back()} style={styles.backButton}>
           <Ionicons name="arrow-back" size={20} color={textColor} />
-        </Pressable>
+        </PressableScale>
         <ThemedText style={styles.headerTitle}>Sell Crypto</ThemedText>
         <View style={styles.headerRight} />
       </View>
@@ -233,13 +227,13 @@ export default function SellCryptoScreen() {
             <ThemedText style={[styles.emptyStateText, { color: mutedColor }]}>
               You don't have any supported tokens in your wallet. Deposit some crypto first to sell.
             </ThemedText>
-            <Pressable
+            <PressableScale
               onPress={() => router.replace('/buy-crypto?currency=usdc&mode=deposit')}
               style={[styles.emptyStateButton, { backgroundColor: '#22c55e' }]}
             >
               <Ionicons name="add" size={20} color="#fff" />
               <ThemedText style={[styles.emptyStateButtonText, { color: '#fff' }]}>Deposit USDC</ThemedText>
-            </Pressable>
+            </PressableScale>
           </View>
         )}
 
@@ -253,7 +247,7 @@ export default function SellCryptoScreen() {
                 {availableCurrencies.map((currency) => {
                   const isSelected = selectedCurrency.code === currency.code;
                   return (
-                    <Pressable
+                    <PressableScale
                       key={currency.code}
                       onPress={() => setSelectedCurrency(currency)}
                       style={[
@@ -268,7 +262,7 @@ export default function SellCryptoScreen() {
                       <ThemedText style={[styles.currencySymbol, isSelected && { color: '#ef4444' }]}>
                         {currency.symbol}
                       </ThemedText>
-                    </Pressable>
+                    </PressableScale>
                   );
                 })}
               </View>
@@ -312,7 +306,7 @@ export default function SellCryptoScreen() {
               {QUICK_PERCENTAGES.map((percentage) => {
                 const isMax = percentage === 100;
                 return (
-                  <Pressable
+                  <PressableScale
                     key={percentage}
                     onPress={() => handleQuickPercentage(percentage)}
                     style={[
@@ -324,21 +318,20 @@ export default function SellCryptoScreen() {
                     <ThemedText style={[styles.quickAmountText, isMax && { color: '#ef4444' }]}>
                       {isMax ? 'MAX' : `${percentage}%`}
                     </ThemedText>
-                  </Pressable>
+                  </PressableScale>
                 );
               })}
             </View>
 
             {/* Privacy Mode Indicator */}
             {isPrivateCashoutAvailable && (
-              <Pressable
+              <PressableScale
                 onPress={() => setUsePrivateMode(!usePrivateMode)}
                 style={[
                   styles.privacyToggle,
                   {
                     backgroundColor: usePrivateMode ? 'rgba(34,197,94,0.1)' : cardBg,
-                    borderColor: usePrivateMode ? 'rgba(34,197,94,0.3)' : borderColor,
-                  },
+                    borderColor: usePrivateMode ? 'rgba(34,197,94,0.3)' : borderColor },
                 ]}
               >
                 <View style={[
@@ -368,7 +361,7 @@ export default function SellCryptoScreen() {
                   styles.privacyStatus,
                   { backgroundColor: usePrivateMode ? '#22c55e' : mutedColor }
                 ]} />
-              </Pressable>
+              </PressableScale>
             )}
 
             {/* Shielded Balance (if available) */}
@@ -418,9 +411,9 @@ export default function SellCryptoScreen() {
       {/* Sell Button - only show if has holdings */}
       {!holdingsLoading && hasHoldings && selectedCurrency && (
         <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
-          <Pressable
+          <PressableScale
             onPress={handleSell}
-            disabled={!isValidAmount || isLoading || !isReady}
+            enabled={isValidAmount && !isLoading && isReady}
             style={[
               styles.sellButton,
               { backgroundColor: isValidAmount && isReady ? '#ef4444' : `${mutedColor}50` },
@@ -436,7 +429,7 @@ export default function SellCryptoScreen() {
                 </ThemedText>
               </>
             )}
-          </Pressable>
+          </PressableScale>
           <ThemedText style={[styles.footerNote, { color: mutedColor }]}>
             Powered by MoonPay. Funds sent to your linked bank account.
           </ThemedText>
@@ -448,242 +441,194 @@ export default function SellCryptoScreen() {
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
-  },
+    flex: 1 },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingBottom: 12,
-  },
+    paddingBottom: 12 },
   emptyState: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 32,
-  },
+    paddingHorizontal: 32 },
   emptyStateIcon: {
     width: 96,
     height: 96,
     borderRadius: 48,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 24,
-  },
+    marginBottom: 24 },
   emptyStateTitle: {
     fontSize: 20,
     fontWeight: '600',
     marginBottom: 8,
-    textAlign: 'center',
-  },
+    textAlign: 'center' },
   emptyStateText: {
     fontSize: 14,
     textAlign: 'center',
     lineHeight: 20,
-    marginBottom: 24,
-  },
+    marginBottom: 24 },
   emptyStateButton: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     paddingVertical: 14,
     paddingHorizontal: 24,
-    borderRadius: 12,
-  },
+    borderRadius: 12 },
   emptyStateButtonText: {
     fontSize: 16,
-    fontWeight: '600',
-  },
+    fontWeight: '600' },
   backButton: {
     width: 40,
     height: 40,
     borderRadius: 20,
     alignItems: 'center',
-    justifyContent: 'center',
-  },
+    justifyContent: 'center' },
   headerTitle: {
     fontSize: 16,
-    fontWeight: '600',
-  },
+    fontWeight: '600' },
   headerRight: {
-    width: 40,
-  },
+    width: 40 },
   content: {
-    flex: 1,
-  },
+    flex: 1 },
   contentContainer: {
     paddingHorizontal: 16,
-    flexGrow: 1,
-  },
+    flexGrow: 1 },
   touchableContent: {
-    flex: 1,
-  },
+    flex: 1 },
   section: {
-    marginBottom: 24,
-  },
+    marginBottom: 24 },
   sectionLabel: {
     fontSize: 10,
     fontWeight: '500',
     letterSpacing: 1,
-    marginBottom: 12,
-  },
+    marginBottom: 12 },
   currencyGrid: {
     flexDirection: 'row',
-    gap: 8,
-  },
+    gap: 8 },
   currencyButton: {
     flex: 1,
     alignItems: 'center',
     gap: 8,
     paddingVertical: 16,
-    borderRadius: 14,
-  },
+    borderRadius: 14 },
   currencyIcon: {
     width: 40,
     height: 40,
     borderRadius: 20,
     alignItems: 'center',
-    justifyContent: 'center',
-  },
+    justifyContent: 'center' },
   currencyIconText: {
-    fontSize: 18,
-  },
+    fontSize: 18 },
   currencySymbol: {
     fontSize: 12,
-    fontWeight: '500',
-  },
+    fontWeight: '500' },
   balanceCard: {
     borderRadius: 14,
     padding: 16,
-    marginBottom: 24,
-  },
+    marginBottom: 24 },
   balanceRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-  },
+    alignItems: 'center' },
   balanceLabel: {
-    fontSize: 12,
-  },
+    fontSize: 12 },
   balanceValue: {
     fontSize: 16,
-    fontWeight: '600',
-  },
+    fontWeight: '600' },
   amountInputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     borderRadius: 14,
     paddingHorizontal: 16,
-    paddingVertical: 16,
-  },
+    paddingVertical: 16 },
   amountInput: {
     flex: 1,
     fontSize: 32,
-    fontWeight: '300',
-  },
+    fontWeight: '300' },
   currencyLabel: {
     fontSize: 18,
     fontWeight: '500',
-    marginLeft: 8,
-  },
+    marginLeft: 8 },
   errorText: {
     fontSize: 12,
-    marginTop: 8,
-  },
+    marginTop: 8 },
   quickAmounts: {
     flexDirection: 'row',
     gap: 8,
-    marginBottom: 24,
-  },
+    marginBottom: 24 },
   quickAmountButton: {
     flex: 1,
     alignItems: 'center',
     paddingVertical: 12,
-    borderRadius: 12,
-  },
+    borderRadius: 12 },
   quickAmountText: {
     fontSize: 14,
-    fontWeight: '500',
-  },
+    fontWeight: '500' },
   payoutInfo: {
     borderRadius: 14,
-    padding: 16,
-  },
+    padding: 16 },
   payoutInfoTitle: {
     fontSize: 10,
     fontWeight: '500',
     letterSpacing: 1,
-    marginBottom: 12,
-  },
+    marginBottom: 12 },
   payoutMethods: {
-    gap: 12,
-  },
+    gap: 12 },
   payoutMethod: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-  },
+    gap: 12 },
   payoutMethodText: {
-    flex: 1,
-  },
+    flex: 1 },
   payoutMethodTitle: {
     fontSize: 14,
-    fontWeight: '500',
-  },
+    fontWeight: '500' },
   payoutMethodDesc: {
     fontSize: 12,
-    marginTop: 2,
-  },
+    marginTop: 2 },
   estimateRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginTop: 16,
     paddingTop: 16,
-    borderTopWidth: 1,
-  },
+    borderTopWidth: 1 },
   estimateLabel: {
-    fontSize: 12,
-  },
+    fontSize: 12 },
   estimateValue: {
     fontSize: 16,
-    fontWeight: '600',
-  },
+    fontWeight: '600' },
   errorBanner: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     padding: 12,
     borderRadius: 12,
-    marginTop: 16,
-  },
+    marginTop: 16 },
   errorBannerText: {
     fontSize: 12,
-    flex: 1,
-  },
+    flex: 1 },
   footer: {
     paddingHorizontal: 16,
-    paddingTop: 16,
-  },
+    paddingTop: 16 },
   sellButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
     paddingVertical: 16,
-    borderRadius: 14,
-  },
+    borderRadius: 14 },
   sellButtonText: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#fff',
-  },
+    color: '#fff' },
   footerNote: {
     fontSize: 12,
     textAlign: 'center',
-    marginTop: 12,
-  },
+    marginTop: 12 },
   privacyToggle: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -691,31 +636,25 @@ const styles = StyleSheet.create({
     padding: 14,
     marginBottom: 16,
     borderWidth: 1,
-    gap: 12,
-  },
+    gap: 12 },
   privacyIcon: {
     width: 40,
     height: 40,
     borderRadius: 20,
     alignItems: 'center',
-    justifyContent: 'center',
-  },
+    justifyContent: 'center' },
   privacyText: {
-    flex: 1,
-  },
+    flex: 1 },
   privacyTitle: {
     fontSize: 14,
     fontWeight: '600',
-    marginBottom: 2,
-  },
+    marginBottom: 2 },
   privacyDesc: {
-    fontSize: 12,
-  },
+    fontSize: 12 },
   privacyStatus: {
     width: 8,
     height: 8,
-    borderRadius: 4,
-  },
+    borderRadius: 4 },
   shieldedBalanceCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -723,10 +662,7 @@ const styles = StyleSheet.create({
     padding: 12,
     borderRadius: 10,
     marginBottom: 16,
-    borderWidth: 1,
-  },
+    borderWidth: 1 },
   shieldedBalanceLabel: {
     fontSize: 13,
-    fontWeight: '500',
-  },
-});
+    fontWeight: '500' } });

@@ -1,5 +1,6 @@
 import React, { useCallback } from 'react';
-import { StyleSheet, View, Pressable, Dimensions } from 'react-native';
+import { StyleSheet, View, Dimensions } from 'react-native';
+import { PressableScale } from 'pressto';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -103,9 +104,9 @@ export function TokenDrawer({
     >
       <GestureDetector gesture={handlePanGesture}>
         <Animated.View>
-          <Pressable style={styles.handle} onPress={handleToggle}>
+          <PressableScale style={styles.handle} onPress={handleToggle}>
             <View style={[styles.handleBar, { backgroundColor: mutedColor }]} />
-          </Pressable>
+          </PressableScale>
         </Animated.View>
       </GestureDetector>
 

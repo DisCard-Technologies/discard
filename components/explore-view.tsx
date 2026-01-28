@@ -1,5 +1,6 @@
 import { useState, useMemo, useCallback } from 'react';
-import { StyleSheet, View, Pressable, TextInput, ScrollView, ActivityIndicator } from 'react-native';
+import { StyleSheet, View, TextInput, ScrollView, ActivityIndicator } from 'react-native';
+import { PressableScale } from 'pressto';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
@@ -178,7 +179,7 @@ export function ExploreView() {
         {categories.map((cat) => {
           const isActive = category === cat.id;
           return (
-            <Pressable
+            <PressableScale
               key={cat.id}
               onPress={() => setCategory(cat.id)}
               style={[
@@ -194,7 +195,7 @@ export function ExploreView() {
               <ThemedText style={[styles.categoryCount, { color: isActive ? primaryColor : mutedColor }]}>
                 {cat.count}
               </ThemedText>
-            </Pressable>
+            </PressableScale>
           );
         })}
       </View>
@@ -229,7 +230,7 @@ export function ExploreView() {
               </View>
             ) : (
               filteredTokens.map((token) => (
-                <Pressable
+                <PressableScale
                   key={token.mint}
                   onPress={() => router.push({
                     pathname: '/token-detail',
@@ -244,7 +245,7 @@ export function ExploreView() {
                       logoUri: token.logoUri || '',
                     },
                   })}
-                  style={({ pressed }) => [styles.tokenRow, pressed && styles.rowPressed]}
+                  style={styles.tokenRow}
                 >
                   <View style={styles.tokenInfo}>
                     <View style={[styles.tokenIcon, { backgroundColor: inputBg }]}>
@@ -276,7 +277,7 @@ export function ExploreView() {
                   <ThemedText style={[styles.mcapText, { color: mutedColor }]}>
                     {formatMarketCap(token.marketCap)}
                   </ThemedText>
-                </Pressable>
+                </PressableScale>
               ))
             )}
 
@@ -302,7 +303,7 @@ export function ExploreView() {
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
               <View style={styles.filterRow}>
                 {categoryFilters.map((cat) => (
-                  <Pressable
+                  <PressableScale
                     key={cat}
                     onPress={() => setMarketCategoryFilter(cat)}
                     style={[styles.filterPill, cat === marketCategoryFilter && { backgroundColor: `${primaryColor}20` }]}
@@ -310,7 +311,7 @@ export function ExploreView() {
                     <ThemedText style={[styles.filterText, { color: cat === marketCategoryFilter ? primaryColor : mutedColor }]}>
                       {cat}
                     </ThemedText>
-                  </Pressable>
+                  </PressableScale>
                 ))}
               </View>
             </ScrollView>
@@ -332,7 +333,7 @@ export function ExploreView() {
               </View>
             ) : (
               filteredMarkets.map((market) => (
-                <Pressable
+                <PressableScale
                   key={market.marketId}
                   onPress={() => router.push({
                     pathname: '/market-detail',
@@ -350,7 +351,7 @@ export function ExploreView() {
                       outcomes: market.outcomes ? JSON.stringify(market.outcomes) : '',
                     },
                   })}
-                  style={({ pressed }) => [styles.marketCard, { backgroundColor: cardBg }, pressed && styles.rowPressed]}
+                  style={[styles.marketCard, { backgroundColor: cardBg }]}
                 >
                   <View style={styles.marketHeader}>
                     <View style={styles.marketQuestion}>
@@ -378,7 +379,7 @@ export function ExploreView() {
                     </View>
                     <ThemedText style={[styles.volumeText, { color: mutedColor }]}>Vol: {formatVolume(market.volume24h)}</ThemedText>
                   </View>
-                </Pressable>
+                </PressableScale>
               ))
             )}
           </>
@@ -391,7 +392,7 @@ export function ExploreView() {
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
               <View style={styles.filterRow}>
                 {rwaTypeFilters.map((type) => (
-                  <Pressable
+                  <PressableScale
                     key={type}
                     onPress={() => setRwaCategoryFilter(type)}
                     style={[styles.filterPill, type === rwaCategoryFilter && { backgroundColor: `${primaryColor}20` }]}
@@ -399,7 +400,7 @@ export function ExploreView() {
                     <ThemedText style={[styles.filterText, { color: type === rwaCategoryFilter ? primaryColor : mutedColor }]}>
                       {type}
                     </ThemedText>
-                  </Pressable>
+                  </PressableScale>
                 ))}
               </View>
             </ScrollView>
@@ -428,7 +429,7 @@ export function ExploreView() {
               </View>
             ) : (
               filteredRWA.map((asset) => (
-                <Pressable
+                <PressableScale
                   key={asset.mint}
                   onPress={() => router.push({
                     pathname: '/asset-detail',
@@ -442,7 +443,7 @@ export function ExploreView() {
                       description: asset.description || '',
                     },
                   })}
-                  style={({ pressed }) => [styles.rwaRow, pressed && styles.rowPressed]}
+                  style={styles.rwaRow}
                 >
                   <View style={styles.rwaInfo}>
                     <ThemedText style={styles.rwaName}>{asset.symbol}</ThemedText>
@@ -459,7 +460,7 @@ export function ExploreView() {
                   <ThemedText style={[styles.rwaMin, { color: mutedColor }]}>
                     {asset.minInvestment ? `$${(asset.minInvestment / 1000).toFixed(0)}K` : '-'}
                   </ThemedText>
-                </Pressable>
+                </PressableScale>
               ))
             )}
           </>
@@ -557,9 +558,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 12,
     borderRadius: 12,
-  },
-  rowPressed: {
-    opacity: 0.7,
   },
   tokenInfo: {
     flex: 1,

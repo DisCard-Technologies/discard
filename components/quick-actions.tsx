@@ -1,4 +1,5 @@
-import { StyleSheet, View, Pressable } from 'react-native';
+import { StyleSheet, View } from 'react-native';
+import { PressableScale } from 'pressto';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { ThemedText } from '@/components/themed-text';
@@ -72,12 +73,11 @@ export function QuickActions({
   return (
     <View style={styles.container} testID="home-quick-actions">
       {actions.map((action) => (
-        <Pressable
+        <PressableScale
           key={action.id}
           testID={`quick-action-${action.id}`}
-          style={({ pressed }) => [
+          style={[
             styles.actionButton,
-            pressed && styles.actionButtonPressed,
           ]}
           onPress={() => handlePress(action)}
         >
@@ -95,7 +95,7 @@ export function QuickActions({
           <ThemedText style={[styles.label, { color: mutedColor }]}>
             {action.label}
           </ThemedText>
-        </Pressable>
+        </PressableScale>
       ))}
     </View>
   );
@@ -113,10 +113,6 @@ const styles = StyleSheet.create({
   actionButton: {
     alignItems: 'center',
     gap: 8,
-  },
-  actionButtonPressed: {
-    opacity: 0.7,
-    transform: [{ scale: 0.95 }],
   },
   iconContainer: {
     width: 48,

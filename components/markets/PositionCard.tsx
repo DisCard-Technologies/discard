@@ -1,5 +1,6 @@
 import React from 'react';
-import { StyleSheet, View, Pressable, ViewStyle } from 'react-native';
+import { StyleSheet, View, ViewStyle } from 'react-native';
+import { PressableScale } from 'pressto';
 
 import { ThemedText } from '@/components/themed-text';
 import { useThemeColor } from '@/hooks/use-theme-color';
@@ -83,14 +84,14 @@ export const PositionCard = React.memo(function PositionCard({
       </View>
 
       {onSell && (
-        <Pressable
+        <PressableScale
           onPress={onSell}
           style={[styles.sellButton, { borderColor: `${negativeColor}30` }]}
         >
           <ThemedText style={[styles.sellButtonText, { color: negativeColor }]}>
             Sell Position
           </ThemedText>
-        </Pressable>
+        </PressableScale>
       )}
     </View>
   );

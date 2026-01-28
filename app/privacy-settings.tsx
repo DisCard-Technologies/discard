@@ -7,7 +7,8 @@
  * - Maximum: Full ZK proofs, Tor routing, maximum isolation
  */
 import { useState, useEffect } from 'react';
-import { StyleSheet, View, Pressable, ScrollView, Switch, Alert } from 'react-native';
+import { StyleSheet, View, ScrollView, Switch, Alert } from 'react-native';
+import { PressableScale } from 'pressto';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -144,8 +145,7 @@ export default function PrivacySettingsScreen() {
               } finally {
                 setIsUpdating(false);
               }
-            },
-          },
+            } },
         ]
       );
     }
@@ -164,19 +164,17 @@ export default function PrivacySettingsScreen() {
     const isSelected = selectedLevel === tier.id;
 
     return (
-      <Pressable
+      <PressableScale
         key={tier.id}
         onPress={() => handleSelectTier(tier.id)}
-        disabled={isUpdating}
-        style={({ pressed }) => [
+        enabled={!isUpdating}
+        style={[
           styles.tierCard,
           {
             backgroundColor: cardBg,
             borderColor: isSelected ? tier.color : borderColor,
             borderWidth: isSelected ? 2 : 1,
-            opacity: isUpdating ? 0.6 : pressed ? 0.8 : 1,
-          },
-        ]}
+            opacity: isUpdating ? 0.6 : 1 }]}
       >
         {/* Header */}
         <View style={styles.tierHeader}>
@@ -231,7 +229,7 @@ export default function PrivacySettingsScreen() {
             ))}
           </View>
         )}
-      </Pressable>
+      </PressableScale>
     );
   };
 
@@ -241,12 +239,12 @@ export default function PrivacySettingsScreen() {
 
       {/* Header */}
       <View style={styles.header}>
-        <Pressable
+        <PressableScale
           onPress={handleBack}
-          style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
+          style={[styles.backButton]}
         >
           <Ionicons name="chevron-back" size={24} color={mutedColor} />
-        </Pressable>
+        </PressableScale>
         <ThemedText style={styles.headerTitle}>Privacy Level</ThemedText>
         <View style={styles.headerSpacer} />
       </View>
@@ -270,7 +268,7 @@ export default function PrivacySettingsScreen() {
         </View>
 
         {/* Advanced Settings Toggle */}
-        <Pressable
+        <PressableScale
           onPress={() => setShowAdvanced(!showAdvanced)}
           style={[styles.advancedToggle, { borderColor }]}
         >
@@ -283,7 +281,7 @@ export default function PrivacySettingsScreen() {
             size={20}
             color={mutedColor}
           />
-        </Pressable>
+        </PressableScale>
 
         {/* Advanced Settings Panel */}
         {showAdvanced && privacyData && (
@@ -395,8 +393,7 @@ export default function PrivacySettingsScreen() {
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
-  },
+    flex: 1 },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -404,124 +401,97 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(128,128,128,0.1)',
-  },
+    borderBottomColor: 'rgba(128,128,128,0.1)' },
   backButton: {
     width: 40,
     height: 40,
     borderRadius: 20,
     alignItems: 'center',
-    justifyContent: 'center',
-  },
+    justifyContent: 'center' },
   headerTitle: {
     fontSize: 17,
-    fontWeight: '600',
-  },
+    fontWeight: '600' },
   headerSpacer: {
-    width: 40,
-  },
+    width: 40 },
   pressed: {
-    opacity: 0.7,
-  },
+    opacity: 0.7 },
   scrollView: {
-    flex: 1,
-  },
+    flex: 1 },
   content: {
     paddingHorizontal: 16,
     paddingTop: 16,
-    gap: 16,
-  },
+    gap: 16 },
   introSection: {
-    marginBottom: 8,
-  },
+    marginBottom: 8 },
   introText: {
     fontSize: 14,
-    lineHeight: 20,
-  },
+    lineHeight: 20 },
   tiersSection: {
-    gap: 12,
-  },
+    gap: 12 },
   tierCard: {
     borderRadius: 16,
     padding: 16,
-    gap: 12,
-  },
+    gap: 12 },
   tierHeader: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: 12,
-  },
+    gap: 12 },
   tierIconContainer: {
     width: 48,
     height: 48,
     borderRadius: 24,
     alignItems: 'center',
-    justifyContent: 'center',
-  },
+    justifyContent: 'center' },
   tierTitleContainer: {
-    flex: 1,
-  },
+    flex: 1 },
   tierTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-  },
+    gap: 8 },
   tierName: {
     fontSize: 18,
-    fontWeight: '600',
-  },
+    fontWeight: '600' },
   recommendedBadge: {
     paddingHorizontal: 8,
     paddingVertical: 2,
-    borderRadius: 10,
-  },
+    borderRadius: 10 },
   recommendedText: {
     fontSize: 10,
-    fontWeight: '600',
-  },
+    fontWeight: '600' },
   tierTagline: {
     fontSize: 13,
-    marginTop: 2,
-  },
+    marginTop: 2 },
   selectedCheck: {
     width: 24,
     height: 24,
     borderRadius: 12,
     alignItems: 'center',
-    justifyContent: 'center',
-  },
+    justifyContent: 'center' },
   tierFeatures: {
     gap: 6,
-    paddingLeft: 4,
-  },
+    paddingLeft: 4 },
   featureRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-  },
+    gap: 8 },
   featureText: {
-    fontSize: 13,
-  },
+    fontSize: 13 },
   tradeoffsContainer: {
     borderTopWidth: 1,
     paddingTop: 12,
     marginTop: 4,
-    gap: 4,
-  },
+    gap: 4 },
   tradeoffsLabel: {
     fontSize: 11,
     fontWeight: '600',
-    marginBottom: 2,
-  },
+    marginBottom: 2 },
   tradeoffRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    paddingLeft: 4,
-  },
+    paddingLeft: 4 },
   tradeoffText: {
-    fontSize: 12,
-  },
+    fontSize: 12 },
   advancedToggle: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -529,59 +499,48 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 16,
     borderRadius: 12,
-    borderWidth: 1,
-  },
+    borderWidth: 1 },
   advancedToggleLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-  },
+    gap: 10 },
   advancedToggleText: {
     fontSize: 14,
-    fontWeight: '500',
-  },
+    fontWeight: '500' },
   advancedPanel: {
     borderRadius: 16,
     borderWidth: 1,
     padding: 16,
-    gap: 8,
-  },
+    gap: 8 },
   advancedNote: {
     fontSize: 12,
     lineHeight: 16,
-    marginBottom: 8,
-  },
+    marginBottom: 8 },
   settingRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(128,128,128,0.1)',
-  },
+    borderBottomColor: 'rgba(128,128,128,0.1)' },
   settingInfo: {
     flex: 1,
-    marginRight: 12,
-  },
+    marginRight: 12 },
   settingLabel: {
     fontSize: 14,
-    fontWeight: '500',
-  },
+    fontWeight: '500' },
   settingDescription: {
     fontSize: 12,
-    marginTop: 2,
-  },
+    marginTop: 2 },
   retentionInfo: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     paddingTop: 12,
     borderTopWidth: 1,
-    marginTop: 4,
-  },
+    marginTop: 4 },
   retentionText: {
-    fontSize: 13,
-  },
+    fontSize: 13 },
   infoCard: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -589,14 +548,10 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: 16,
     borderWidth: 1,
-    marginTop: 8,
-  },
+    marginTop: 8 },
   infoText: {
     flex: 1,
     fontSize: 13,
-    lineHeight: 18,
-  },
+    lineHeight: 18 },
   infoLink: {
-    fontWeight: '500',
-  },
-});
+    fontWeight: '500' } });

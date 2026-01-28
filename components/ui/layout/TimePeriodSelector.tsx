@@ -1,5 +1,6 @@
 import React from 'react';
-import { StyleSheet, View, Pressable, ViewStyle } from 'react-native';
+import { StyleSheet, View, ViewStyle } from 'react-native';
+import { PressableScale } from 'pressto';
 import * as Haptics from 'expo-haptics';
 
 import { ThemedText } from '@/components/themed-text';
@@ -33,7 +34,7 @@ export const TimePeriodSelector = React.memo(function TimePeriodSelector({
   return (
     <View style={[styles.container, { backgroundColor: cardBg }, style]}>
       {periods.map((period) => (
-        <Pressable
+        <PressableScale
           key={period}
           onPress={() => handlePeriodPress(period)}
           style={[
@@ -49,7 +50,7 @@ export const TimePeriodSelector = React.memo(function TimePeriodSelector({
           >
             {period}
           </ThemedText>
-        </Pressable>
+        </PressableScale>
       ))}
     </View>
   );

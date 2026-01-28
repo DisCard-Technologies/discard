@@ -1,5 +1,6 @@
 import { useState, useCallback, useMemo, useEffect } from 'react';
-import { StyleSheet, View, Pressable, ScrollView, ActivityIndicator, Dimensions, Alert, Image } from 'react-native';
+import { StyleSheet, View, ScrollView, ActivityIndicator, Dimensions, Alert, Image } from 'react-native';
+import { PressableScale } from 'pressto';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
@@ -84,8 +85,7 @@ export default function SwapScreen() {
     isReady: signerReady,
     isSigning,
     signTransaction,
-    error: signerError,
-  } = useTurnkeySigner(userId || undefined);
+    error: signerError } = useTurnkeySigner(userId || undefined);
 
   // Token holdings
   const { holdings, isLoading: tokensLoading } = useTokenHoldings(walletAddress);
@@ -120,8 +120,7 @@ export default function SwapScreen() {
     quickSwap: executePrivacySwap,
     getQuote,
     getPrivacyLevel,
-    formatCrossChainInfo,
-  } = usePrivacySwap();
+    formatCrossChainInfo } = usePrivacySwap();
 
   // Chain selector state
   const [showFromChainSelector, setShowFromChainSelector] = useState(false);
@@ -138,12 +137,10 @@ export default function SwapScreen() {
       balance: parseFloat(h.balance) / Math.pow(10, h.decimals),
       balanceFormatted: h.balanceFormatted.toLocaleString(undefined, {
         minimumFractionDigits: 2,
-        maximumFractionDigits: 6,
-      }),
+        maximumFractionDigits: 6 }),
       valueUsd: h.valueUsd,
       priceUsd: h.priceUsd,
-      logoUri: h.logoUri,
-    }));
+      logoUri: h.logoUri }));
 
     // Get mints of held tokens
     const heldMints = new Set(heldTokens.map(t => t.mint));
@@ -160,8 +157,7 @@ export default function SwapScreen() {
         balanceFormatted: '0',
         valueUsd: 0,
         priceUsd: 0,
-        logoUri: t.logoUri,
-      }));
+        logoUri: t.logoUri }));
 
     return [...heldTokens, ...additionalTokens];
   }, [holdings]);
@@ -195,12 +191,10 @@ export default function SwapScreen() {
     needsSwap,
     isLoadingQuote,
     estimatedReceivedFormatted,
-    swapQuote,
-  } = useCrossCurrencyTransfer({
+    swapQuote } = useCrossCurrencyTransfer({
     paymentMint: fromToken?.mint,
     paymentAmount: fromAmountBaseUnits,
-    debounceMs: 500,
-  });
+    debounceMs: 500 });
 
   // Calculate USD value of input
   const fromAmountUsd = useMemo(() => {
@@ -216,8 +210,7 @@ export default function SwapScreen() {
     const outputNum = parseInt(swapQuote.outputAmount) / Math.pow(10, toToken.decimals);
     return outputNum.toLocaleString(undefined, {
       minimumFractionDigits: 2,
-      maximumFractionDigits: 6,
-    });
+      maximumFractionDigits: 6 });
   }, [swapQuote, toToken]);
 
   // Calculate rate
@@ -229,8 +222,7 @@ export default function SwapScreen() {
     return {
       rate: rate.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 }),
       fromSymbol: fromToken.symbol,
-      toSymbol: toToken.symbol,
-    };
+      toSymbol: toToken.symbol };
   }, [swapQuote, fromToken, toToken]);
 
   // Calculate estimated output USD
@@ -303,8 +295,7 @@ export default function SwapScreen() {
           amount: fromAmount,
           privateMode: true,
           provider: activeProvider,
-          isCrossChain,
-        });
+          isCrossChain });
 
         // Convert to base units
         const amountBaseUnits = BigInt(Math.floor(parseFloat(fromAmount) * Math.pow(10, fromToken.decimals)));
@@ -329,8 +320,7 @@ export default function SwapScreen() {
         // The anoncoin service will prepare the transaction, and we sign it
         const encryptedTx = 'encryptedTransaction' in quote ? quote.encryptedTransaction : '';
         const signResult = await signTransaction({
-          unsignedTransaction: encryptedTx || '',
-        });
+          unsignedTransaction: encryptedTx || '' });
 
         if (!signResult.success) {
           console.error('[Swap] Transaction signing failed:', signResult.error);
@@ -362,8 +352,7 @@ export default function SwapScreen() {
             signature: result.signature,
             privacyLevel,
             provider: providerName,
-            metrics: result.privacyMetrics,
-          });
+            metrics: result.privacyMetrics });
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
           Alert.alert(
             'Swap Successful',
@@ -382,8 +371,7 @@ export default function SwapScreen() {
           from: fromToken.symbol,
           to: toToken.symbol,
           amount: fromAmount,
-          quote: swapQuote,
-        });
+          quote: swapQuote });
 
         try {
           // Get fresh quote and swap instructions
@@ -429,8 +417,7 @@ export default function SwapScreen() {
 
           // Sign with Turnkey
           const signResult = await signTransaction({
-            unsignedTransaction: serializedTx,
-          });
+            unsignedTransaction: serializedTx });
 
           if (!signResult.success || !signResult.signature) {
             throw new Error(signResult.error || 'Failed to sign transaction');
@@ -448,8 +435,7 @@ export default function SwapScreen() {
           // Submit to network
           const txSignature = await connection.sendRawTransaction(transaction.serialize(), {
             skipPreflight: false,
-            preflightCommitment: 'confirmed',
-          });
+            preflightCommitment: 'confirmed' });
 
           console.log('[Swap] Transaction submitted:', txSignature);
 
@@ -457,8 +443,7 @@ export default function SwapScreen() {
           await connection.confirmTransaction({
             signature: txSignature,
             blockhash,
-            lastValidBlockHeight,
-          }, 'confirmed');
+            lastValidBlockHeight }, 'confirmed');
 
           console.log('[Swap] Swap completed:', txSignature);
 
@@ -508,8 +493,7 @@ export default function SwapScreen() {
         const fees = await estimateTransferFees({
           amountUsd: fromAmountUsd,
           includeAtaRent: false, // Swap usually doesn't need new ATA
-          solPriceUsd: solPrice,
-        });
+          solPriceUsd: solPrice });
 
         if (!cancelled) {
           setFeeEstimate(fees);
@@ -540,16 +524,14 @@ export default function SwapScreen() {
       return {
         amount: '...',
         symbol: 'SOL',
-        usd: 0,
-      };
+        usd: 0 };
     }
 
     const totalFee = feeEstimate.networkFee + feeEstimate.priorityFee;
     return {
       amount: totalFee.toFixed(6),
       symbol: 'SOL',
-      usd: feeEstimate.networkFeeUsd + feeEstimate.priorityFeeUsd,
-    };
+      usd: feeEstimate.networkFeeUsd + feeEstimate.priorityFeeUsd };
   }, [feeEstimate]);
 
   // Token selector modal
@@ -566,7 +548,7 @@ export default function SwapScreen() {
       : availableTokens;
 
     return (
-      <Pressable style={styles.modalOverlay} onPress={onClose}>
+      <PressableScale style={styles.modalOverlay} onPress={onClose}>
         <Animated.View
           entering={FadeIn.duration(200)}
           style={[styles.tokenModal, { backgroundColor: cardColor }]}
@@ -574,13 +556,11 @@ export default function SwapScreen() {
           <ThemedText style={styles.tokenModalTitle}>Select Token</ThemedText>
           <ScrollView style={styles.tokenList}>
             {tokens.map((token) => (
-              <Pressable
+              <PressableScale
                 key={token.mint}
                 onPress={() => onSelect(token)}
-                style={({ pressed }) => [
-                  styles.tokenItem,
-                  pressed && styles.pressed,
-                ]}
+                style={[
+                  styles.tokenItem]}
               >
                 <View style={styles.tokenItemLeft}>
                   {token.logoUri ? (
@@ -607,11 +587,11 @@ export default function SwapScreen() {
                     ${token.valueUsd.toFixed(2)}
                   </ThemedText>
                 </View>
-              </Pressable>
+              </PressableScale>
             ))}
           </ScrollView>
         </Animated.View>
-      </Pressable>
+      </PressableScale>
     );
   };
 
@@ -646,19 +626,19 @@ export default function SwapScreen() {
 
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
-        <Pressable
+        <PressableScale
           onPress={handleClose}
-          style={({ pressed }) => [styles.headerButton, { backgroundColor: cardColor }, pressed && styles.pressed]}
+          style={[styles.headerButton, { backgroundColor: cardColor }]}
         >
           <Ionicons name="chevron-back" size={24} color={textColor} />
-        </Pressable>
+        </PressableScale>
         <ThemedText style={styles.headerTitle}>Swap</ThemedText>
-        <Pressable
+        <PressableScale
           onPress={() => setShowSettingsModal(true)}
-          style={({ pressed }) => [styles.headerButton, { backgroundColor: cardColor }, pressed && styles.pressed]}
+          style={[styles.headerButton, { backgroundColor: cardColor }]}
         >
           <Ionicons name="settings-outline" size={22} color={textColor} />
-        </Pressable>
+        </PressableScale>
       </View>
 
       {/* Main Content */}
@@ -667,7 +647,7 @@ export default function SwapScreen() {
         <ThemedText style={styles.sectionLabel}>From</ThemedText>
         <View style={[styles.tokenCard, { backgroundColor: cardColor }]}>
           <View style={styles.tokenCardRow}>
-            <Pressable
+            <PressableScale
               onPress={() => setShowFromSelector(true)}
               style={styles.tokenSelectorButton}
             >
@@ -688,7 +668,7 @@ export default function SwapScreen() {
                 {fromToken?.name || 'Select'}
               </ThemedText>
               <Ionicons name="chevron-down" size={16} color={mutedColor} />
-            </Pressable>
+            </PressableScale>
 
             <View style={styles.amountSection}>
               <ThemedText style={styles.amountDisplay}>
@@ -713,23 +693,21 @@ export default function SwapScreen() {
 
         {/* Swap Button */}
         <View style={styles.swapButtonWrapper}>
-          <Pressable
+          <PressableScale
             onPress={handleSwapTokens}
-            style={({ pressed }) => [
+            style={[
               styles.swapCircleButton,
-              { backgroundColor: cardColor },
-              pressed && styles.pressed,
-            ]}
+              { backgroundColor: cardColor }]}
           >
             <Ionicons name="sync" size={20} color={textColor} />
-          </Pressable>
+          </PressableScale>
         </View>
 
         {/* To Section */}
         <ThemedText style={styles.sectionLabel}>To</ThemedText>
         <View style={[styles.tokenCard, { backgroundColor: cardColor }]}>
           <View style={styles.tokenCardRow}>
-            <Pressable
+            <PressableScale
               onPress={() => setShowToSelector(true)}
               style={styles.tokenSelectorButton}
             >
@@ -750,7 +728,7 @@ export default function SwapScreen() {
                 {toToken?.name || 'Choose an asset'}
               </ThemedText>
               <Ionicons name="chevron-down" size={16} color={mutedColor} />
-            </Pressable>
+            </PressableScale>
 
             <View style={styles.amountSection}>
               {isLoadingQuote ? (
@@ -768,7 +746,7 @@ export default function SwapScreen() {
         </View>
 
         {/* Network Fee */}
-        <Pressable style={styles.networkFeeRow}>
+        <PressableScale style={styles.networkFeeRow}>
           <View style={styles.networkFeeLeft}>
             <ThemedText style={[styles.networkFeeLabel, { color: mutedColor }]}>Network Fee:</ThemedText>
             <ThemedText style={[styles.networkFeeSpeed, { color: textColor }]}> Fast</ThemedText>
@@ -789,45 +767,41 @@ export default function SwapScreen() {
             )}
             <Ionicons name="chevron-forward" size={14} color={mutedColor} style={{ marginLeft: 4 }} />
           </View>
-        </Pressable>
+        </PressableScale>
       </View>
 
       {/* Number Pad */}
       <View style={styles.numberPadContainer}>
         <View style={styles.numberPad}>
           {numberPadKeys.map((key, index) => (
-            <Pressable
+            <PressableScale
               key={index}
               onPress={() => {
                 if (key === 'delete') handleDelete();
                 else handleNumberPress(key);
               }}
-              style={({ pressed }) => [
-                styles.numberKey,
-                pressed && styles.numberKeyPressed,
-              ]}
+              style={[
+                styles.numberKey]}
             >
               {key === 'delete' ? (
                 <Ionicons name="backspace-outline" size={24} color="#1C1C1E" />
               ) : (
                 <ThemedText style={styles.numberKeyText}>{key}</ThemedText>
               )}
-            </Pressable>
+            </PressableScale>
           ))}
         </View>
 
         {/* Review Button */}
-        <Pressable
+        <PressableScale
           onPress={handleContinue}
-          disabled={!canContinue}
-          style={({ pressed }) => [
+          enabled={!!canContinue}
+          style={[
             styles.reviewButton,
-            { backgroundColor: canContinue ? primaryColor : '#4A4A4D' },
-            pressed && canContinue && styles.pressed,
-          ]}
+            { backgroundColor: canContinue ? primaryColor : '#4A4A4D' }]}
         >
           <ThemedText style={styles.reviewButtonText}>Review</ThemedText>
-        </Pressable>
+        </PressableScale>
       </View>
 
       {/* Token Selectors */}
@@ -846,7 +820,7 @@ export default function SwapScreen() {
 
       {/* Settings Modal */}
       {showSettingsModal && (
-        <Pressable
+        <PressableScale
           style={styles.modalOverlay}
           onPress={() => setShowSettingsModal(false)}
         >
@@ -856,12 +830,12 @@ export default function SwapScreen() {
           >
             <View style={styles.settingsHeader}>
               <ThemedText style={styles.settingsTitle}>Swap Settings</ThemedText>
-              <Pressable
+              <PressableScale
                 onPress={() => setShowSettingsModal(false)}
                 style={styles.settingsClose}
               >
                 <Ionicons name="close" size={24} color={mutedColor} />
-              </Pressable>
+              </PressableScale>
             </View>
 
             {/* Slippage Tolerance */}
@@ -872,7 +846,7 @@ export default function SwapScreen() {
               </View>
               <View style={styles.slippageOptions}>
                 {[0.5, 1.0, 3.0, 5.0].map((value) => (
-                  <Pressable
+                  <PressableScale
                     key={value}
                     onPress={() => {
                       setSlippage(value);
@@ -892,7 +866,7 @@ export default function SwapScreen() {
                     >
                       {value}%
                     </ThemedText>
-                  </Pressable>
+                  </PressableScale>
                 ))}
               </View>
               <ThemedText style={[styles.slippageHint, { color: mutedColor }]}>
@@ -910,7 +884,7 @@ export default function SwapScreen() {
                 <Ionicons name="shield-checkmark" size={16} color={usePrivateMode ? '#22c55e' : mutedColor} />
                 <ThemedText style={styles.settingsLabel}>Confidential Mode</ThemedText>
               </View>
-              <Pressable
+              <PressableScale
                 onPress={() => {
                   setUsePrivateMode(!usePrivateMode);
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -933,23 +907,23 @@ export default function SwapScreen() {
                       : { backgroundColor: mutedColor, marginRight: 'auto' },
                   ]}
                 />
-              </Pressable>
+              </PressableScale>
             </View>
 
             {/* Done Button */}
-            <Pressable
+            <PressableScale
               onPress={() => setShowSettingsModal(false)}
               style={[styles.settingsDoneButton, { backgroundColor: primaryColor }]}
             >
               <ThemedText style={styles.settingsDoneText}>Done</ThemedText>
-            </Pressable>
+            </PressableScale>
           </Animated.View>
-        </Pressable>
+        </PressableScale>
       )}
 
       {/* From Chain Selector Modal */}
       {showFromChainSelector && (
-        <Pressable
+        <PressableScale
           style={styles.modalOverlay}
           onPress={() => setShowFromChainSelector(false)}
         >
@@ -960,18 +934,16 @@ export default function SwapScreen() {
             <ThemedText style={styles.chainModalTitle}>Select Source Chain</ThemedText>
             <ScrollView style={styles.chainList}>
               {supportedChains.map((chain) => (
-                <Pressable
+                <PressableScale
                   key={chain.id}
                   onPress={() => {
                     setSourceChain(chain.id);
                     setShowFromChainSelector(false);
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                   }}
-                  style={({ pressed }) => [
+                  style={[
                     styles.chainItem,
-                    pressed && styles.pressed,
-                    sourceChain === chain.id && { backgroundColor: `${primaryColor}15` },
-                  ]}
+                    sourceChain === chain.id && { backgroundColor: `${primaryColor}15` }]}
                 >
                   <View style={styles.chainItemLeft}>
                     <View style={[styles.chainIcon, { backgroundColor: primaryColor }]}>
@@ -984,16 +956,16 @@ export default function SwapScreen() {
                   {sourceChain === chain.id && (
                     <Ionicons name="checkmark-circle" size={24} color={primaryColor} />
                   )}
-                </Pressable>
+                </PressableScale>
               ))}
             </ScrollView>
           </Animated.View>
-        </Pressable>
+        </PressableScale>
       )}
 
       {/* To Chain Selector Modal */}
       {showToChainSelector && (
-        <Pressable
+        <PressableScale
           style={styles.modalOverlay}
           onPress={() => setShowToChainSelector(false)}
         >
@@ -1004,18 +976,16 @@ export default function SwapScreen() {
             <ThemedText style={styles.chainModalTitle}>Select Destination Chain</ThemedText>
             <ScrollView style={styles.chainList}>
               {supportedChains.map((chain) => (
-                <Pressable
+                <PressableScale
                   key={chain.id}
                   onPress={() => {
                     setDestChain(chain.id);
                     setShowToChainSelector(false);
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                   }}
-                  style={({ pressed }) => [
+                  style={[
                     styles.chainItem,
-                    pressed && styles.pressed,
-                    destChain === chain.id && { backgroundColor: `${primaryColor}15` },
-                  ]}
+                    destChain === chain.id && { backgroundColor: `${primaryColor}15` }]}
                 >
                   <View style={styles.chainItemLeft}>
                     <View style={[styles.chainIcon, { backgroundColor: '#8B5CF6' }]}>
@@ -1028,11 +998,11 @@ export default function SwapScreen() {
                   {destChain === chain.id && (
                     <Ionicons name="checkmark-circle" size={24} color={primaryColor} />
                   )}
-                </Pressable>
+                </PressableScale>
               ))}
             </ScrollView>
           </Animated.View>
-        </Pressable>
+        </PressableScale>
       )}
     </ThemedView>
   );
@@ -1040,107 +1010,86 @@ export default function SwapScreen() {
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
-  },
+    flex: 1 },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingBottom: 16,
-  },
+    paddingBottom: 16 },
   headerButton: {
     width: 40,
     height: 40,
     borderRadius: 20,
     alignItems: 'center',
-    justifyContent: 'center',
-  },
+    justifyContent: 'center' },
   headerTitle: {
     fontSize: 16,
-    fontWeight: '600',
-  },
+    fontWeight: '600' },
   pressed: {
-    opacity: 0.7,
-  },
+    opacity: 0.7 },
   content: {
     flex: 1,
-    paddingHorizontal: 16,
-  },
+    paddingHorizontal: 16 },
   sectionLabel: {
     fontSize: 13,
     color: '#FFFFFF',
     marginBottom: 8,
-    marginLeft: 4,
-  },
+    marginLeft: 4 },
   tokenCard: {
     borderRadius: 16,
     padding: 16,
-    marginBottom: 8,
-  },
+    marginBottom: 8 },
   tokenCardRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
-  },
+    alignItems: 'flex-start' },
   tokenSelectorButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-  },
+    gap: 8 },
   tokenIconCircle: {
     width: 32,
     height: 32,
     borderRadius: 16,
     alignItems: 'center',
-    justifyContent: 'center',
-  },
+    justifyContent: 'center' },
   tokenIconCircleEmpty: {
     width: 32,
     height: 32,
     borderRadius: 16,
     borderWidth: 1,
-    borderStyle: 'dashed',
-  },
+    borderStyle: 'dashed' },
   tokenIconText: {
     color: '#fff',
     fontSize: 14,
-    fontWeight: '600',
-  },
+    fontWeight: '600' },
   tokenImage: {
     width: 32,
     height: 32,
-    borderRadius: 16,
-  },
+    borderRadius: 16 },
   tokenModalImage: {
     width: 40,
     height: 40,
-    borderRadius: 20,
-  },
+    borderRadius: 20 },
   tokenName: {
     fontSize: 15,
-    fontWeight: '500',
-  },
+    fontWeight: '500' },
   amountSection: {
-    alignItems: 'flex-end',
-  },
+    alignItems: 'flex-end' },
   amountDisplay: {
     fontSize: 24,
-    fontWeight: '400',
-  },
+    fontWeight: '400' },
   amountUsd: {
     fontSize: 13,
-    marginTop: 2,
-  },
+    marginTop: 2 },
   tokenCardBottom: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 12,
-  },
+    marginTop: 12 },
   balanceText: {
-    fontSize: 13,
-  },
+    fontSize: 13 },
   networkBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1149,122 +1098,99 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#22c55e',
-  },
+    borderColor: '#22c55e' },
   networkDot: {
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: '#22c55e',
-  },
+    backgroundColor: '#22c55e' },
   networkText: {
     fontSize: 11,
     color: '#22c55e',
-    fontWeight: '500',
-  },
+    fontWeight: '500' },
   swapButtonWrapper: {
     alignItems: 'center',
-    marginVertical: 4,
-  },
+    marginVertical: 4 },
   swapCircleButton: {
     width: 36,
     height: 36,
     borderRadius: 18,
     alignItems: 'center',
-    justifyContent: 'center',
-  },
+    justifyContent: 'center' },
   networkFeeRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingVertical: 16,
     paddingHorizontal: 4,
-    marginTop: 8,
-  },
+    marginTop: 8 },
   networkFeeLeft: {
     flexDirection: 'row',
-    alignItems: 'center',
-  },
+    alignItems: 'center' },
   networkFeeLabel: {
-    fontSize: 13,
-  },
+    fontSize: 13 },
   networkFeeSpeed: {
     fontSize: 13,
-    fontWeight: '500',
-  },
+    fontWeight: '500' },
   networkFeeRight: {
     flexDirection: 'row',
-    alignItems: 'center',
-  },
+    alignItems: 'center' },
   networkFeeAmount: {
-    fontSize: 13,
-  },
+    fontSize: 13 },
   networkFeeUsd: {
-    fontSize: 13,
-  },
+    fontSize: 13 },
   numberPadContainer: {
     backgroundColor: '#F2F2F7',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     paddingTop: 16,
     paddingHorizontal: 16,
-    paddingBottom: 24,
-  },
+    paddingBottom: 24 },
   numberPad: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    justifyContent: 'space-between',
-  },
+    justifyContent: 'space-between' },
   numberKey: {
     width: (SCREEN_WIDTH - 48) / 3,
     height: 56,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 8,
-  },
+    marginBottom: 8 },
   numberKeyPressed: {
     backgroundColor: 'rgba(0,0,0,0.05)',
-    borderRadius: 12,
-  },
+    borderRadius: 12 },
   numberKeyText: {
     fontSize: 28,
     fontWeight: '400',
-    color: '#1C1C1E',
-  },
+    color: '#1C1C1E' },
   reviewButton: {
     height: 50,
     borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 8,
-  },
+    marginTop: 8 },
   reviewButtonText: {
     color: '#fff',
     fontSize: 16,
-    fontWeight: '600',
-  },
+    fontWeight: '600' },
   modalOverlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.5)',
     alignItems: 'center',
-    justifyContent: 'flex-end',
-  },
+    justifyContent: 'flex-end' },
   tokenModal: {
     width: '100%',
     maxHeight: '70%',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    padding: 24,
-  },
+    padding: 24 },
   tokenModalTitle: {
     fontSize: 18,
     fontWeight: '600',
     marginBottom: 16,
-    textAlign: 'center',
-  },
+    textAlign: 'center' },
   tokenList: {
-    maxHeight: 400,
-  },
+    maxHeight: 400 },
   tokenItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1272,140 +1198,113 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 8,
     borderRadius: 12,
-    marginBottom: 4,
-  },
+    marginBottom: 4 },
   tokenItemLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-  },
+    gap: 12 },
   tokenIcon: {
     width: 40,
     height: 40,
     borderRadius: 20,
     alignItems: 'center',
-    justifyContent: 'center',
-  },
+    justifyContent: 'center' },
   tokenItemSymbol: {
     fontSize: 16,
-    fontWeight: '600',
-  },
+    fontWeight: '600' },
   tokenItemName: {
     fontSize: 13,
-    marginTop: 2,
-  },
+    marginTop: 2 },
   tokenItemRight: {
-    alignItems: 'flex-end',
-  },
+    alignItems: 'flex-end' },
   tokenItemBalance: {
     fontSize: 16,
-    fontWeight: '500',
-  },
+    fontWeight: '500' },
   tokenItemValue: {
     fontSize: 13,
-    marginTop: 2,
-  },
+    marginTop: 2 },
   // Settings Modal Styles
   settingsModal: {
     width: '100%',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: 24,
-    paddingBottom: 40,
-  },
+    paddingBottom: 40 },
   settingsHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 24,
-  },
+    marginBottom: 24 },
   settingsTitle: {
     fontSize: 18,
-    fontWeight: '600',
-  },
+    fontWeight: '600' },
   settingsClose: {
     width: 32,
     height: 32,
     alignItems: 'center',
-    justifyContent: 'center',
-  },
+    justifyContent: 'center' },
   settingsSection: {
-    marginBottom: 24,
-  },
+    marginBottom: 24 },
   settingsLabelRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    marginBottom: 12,
-  },
+    marginBottom: 12 },
   settingsLabel: {
     fontSize: 14,
-    fontWeight: '500',
-  },
+    fontWeight: '500' },
   slippageOptions: {
     flexDirection: 'row',
-    gap: 12,
-  },
+    gap: 12 },
   slippageOption: {
     flex: 1,
     paddingVertical: 12,
     borderRadius: 12,
     borderWidth: 1,
     alignItems: 'center',
-    justifyContent: 'center',
-  },
+    justifyContent: 'center' },
   slippageOptionText: {
-    fontSize: 14,
-  },
+    fontSize: 14 },
   slippageHint: {
     fontSize: 12,
-    marginTop: 8,
-  },
+    marginTop: 8 },
   privacyToggle: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     padding: 16,
     borderRadius: 12,
-    borderWidth: 1,
-  },
+    borderWidth: 1 },
   privacyToggleText: {
     fontSize: 14,
-    fontWeight: '500',
-  },
+    fontWeight: '500' },
   privacyToggleDot: {
     width: 8,
     height: 8,
-    borderRadius: 4,
-  },
+    borderRadius: 4 },
   settingsDoneButton: {
     paddingVertical: 16,
     borderRadius: 14,
     alignItems: 'center',
-    marginTop: 8,
-  },
+    marginTop: 8 },
   settingsDoneText: {
     color: '#fff',
     fontSize: 16,
-    fontWeight: '600',
-  },
+    fontWeight: '600' },
   // Chain Selector Modal Styles
   chainModal: {
     width: '100%',
     maxHeight: '50%',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    padding: 24,
-  },
+    padding: 24 },
   chainModalTitle: {
     fontSize: 18,
     fontWeight: '600',
     marginBottom: 16,
-    textAlign: 'center',
-  },
+    textAlign: 'center' },
   chainList: {
-    maxHeight: 300,
-  },
+    maxHeight: 300 },
   chainItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1413,27 +1312,21 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     paddingHorizontal: 12,
     borderRadius: 12,
-    marginBottom: 4,
-  },
+    marginBottom: 4 },
   chainItemLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-  },
+    gap: 12 },
   chainIcon: {
     width: 40,
     height: 40,
     borderRadius: 20,
     alignItems: 'center',
-    justifyContent: 'center',
-  },
+    justifyContent: 'center' },
   chainIconText: {
     color: '#fff',
     fontSize: 16,
-    fontWeight: '600',
-  },
+    fontWeight: '600' },
   chainItemName: {
     fontSize: 16,
-    fontWeight: '500',
-  },
-});
+    fontWeight: '500' } });

@@ -1,5 +1,6 @@
 import { ReactNode, useCallback, useState } from 'react';
-import { StyleSheet, View, Dimensions, Pressable } from 'react-native';
+import { StyleSheet, View, Dimensions } from 'react-native';
+import { PressableOpacity } from 'pressto';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -105,9 +106,9 @@ export function DraggableDrawer({
         ]}
       >
         {/* Drawer Handle */}
-        <Pressable style={styles.handleContainer} onPress={handleHandlePress}>
+        <PressableOpacity style={styles.handleContainer} onPress={handleHandlePress}>
           <View style={[styles.handle, { backgroundColor: handleColor }]} />
-        </Pressable>
+        </PressableOpacity>
 
         {/* Content */}
         <View style={styles.content}>

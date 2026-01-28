@@ -12,11 +12,11 @@ import { useState, useCallback, useEffect, useMemo } from "react";
 import {
   StyleSheet,
   View,
-  Pressable,
   TextInput,
   ScrollView,
   ActivityIndicator,
 } from "react-native";
+import { PressableScale } from "pressto";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -195,12 +195,12 @@ export default function OneTimeLinkScreen() {
         <SafeAreaView style={styles.safeArea}>
           {/* Header */}
           <View style={styles.header}>
-            <Pressable
+            <PressableScale
               onPress={handleClose}
-              style={({ pressed }) => [styles.headerButton, pressed && styles.pressed]}
+              style={[styles.headerButton]}
             >
               <Ionicons name="close" size={24} color={mutedColor} />
-            </Pressable>
+            </PressableScale>
             <ThemedText style={styles.headerTitle}>One-Time Link</ThemedText>
             <View style={styles.headerButton} />
           </View>
@@ -325,44 +325,42 @@ export default function OneTimeLinkScreen() {
               entering={FadeInUp.delay(400).duration(300)}
               style={styles.actionButtons}
             >
-              <Pressable
+              <PressableScale
                 onPress={handleCopy}
-                style={({ pressed }) => [
+                style={[
                   styles.actionButton,
                   { borderColor },
-                  pressed && styles.pressed,
                 ]}
               >
                 <Ionicons name={isCopied ? "checkmark" : "copy-outline"} size={20} color={primaryColor} />
                 <ThemedText style={[styles.actionButtonText, { color: primaryColor }]}>
                   {isCopied ? "Copied!" : "Copy"}
                 </ThemedText>
-              </Pressable>
+              </PressableScale>
 
-              <Pressable
+              <PressableScale
                 onPress={handleShare}
-                style={({ pressed }) => [
+                style={[
                   styles.actionButton,
                   styles.primaryActionButton,
                   { backgroundColor: primaryColor },
-                  pressed && styles.pressed,
                 ]}
               >
                 <Ionicons name="share-outline" size={20} color="#fff" />
                 <ThemedText style={styles.primaryActionButtonText}>Share</ThemedText>
-              </Pressable>
+              </PressableScale>
             </Animated.View>
           )}
 
           {/* New Link Button */}
-          <Pressable
+          <PressableScale
             onPress={handleNewRequest}
-            style={({ pressed }) => [styles.newRequestButton, pressed && styles.pressed]}
+            style={[styles.newRequestButton]}
           >
             <ThemedText style={[styles.newRequestText, { color: mutedColor }]}>
               {isExpired ? "Create new link" : "Create another link"}
             </ThemedText>
-          </Pressable>
+          </PressableScale>
         </SafeAreaView>
       </ThemedView>
     );
@@ -374,12 +372,12 @@ export default function OneTimeLinkScreen() {
       <SafeAreaView style={styles.safeArea}>
         {/* Header */}
         <View style={styles.header}>
-          <Pressable
+          <PressableScale
             onPress={handleClose}
-            style={({ pressed }) => [styles.headerButton, pressed && styles.pressed]}
+            style={[styles.headerButton]}
           >
             <Ionicons name="close" size={24} color={mutedColor} />
-          </Pressable>
+          </PressableScale>
           <ThemedText style={styles.headerTitle}>One-Time Link</ThemedText>
           <View style={styles.headerButton} />
         </View>
@@ -445,17 +443,16 @@ export default function OneTimeLinkScreen() {
             </ThemedText>
             <View style={styles.tokenGrid}>
               {TOKENS.map((token) => (
-                <Pressable
+                <PressableScale
                   key={token.symbol}
                   onPress={() => setSelectedToken(token)}
-                  style={({ pressed }) => [
+                  style={[
                     styles.tokenOption,
                     { borderColor },
                     selectedToken.symbol === token.symbol && {
                       borderColor: primaryColor,
                       backgroundColor: `${primaryColor}10`,
                     },
-                    pressed && styles.pressed,
                   ]}
                 >
                   <ThemedText
@@ -469,7 +466,7 @@ export default function OneTimeLinkScreen() {
                   <ThemedText style={[styles.tokenName, { color: mutedColor }]}>
                     {token.name}
                   </ThemedText>
-                </Pressable>
+                </PressableScale>
               ))}
             </View>
           </Animated.View>
@@ -510,14 +507,13 @@ export default function OneTimeLinkScreen() {
           entering={FadeInUp.delay(400).duration(300)}
           style={styles.generateButtonContainer}
         >
-          <Pressable
+          <PressableScale
             onPress={handleGenerate}
-            disabled={numericAmount <= 0 || isCreating}
-            style={({ pressed }) => [
+            enabled={numericAmount > 0 && !isCreating}
+            style={[
               styles.generateButton,
               { backgroundColor: privacyColor },
               (numericAmount <= 0 || isCreating) && styles.buttonDisabled,
-              pressed && styles.pressed,
             ]}
           >
             {isCreating ? (
@@ -528,7 +524,7 @@ export default function OneTimeLinkScreen() {
                 <ThemedText style={styles.generateButtonText}>Create Private Link</ThemedText>
               </>
             )}
-          </Pressable>
+          </PressableScale>
         </Animated.View>
       </SafeAreaView>
     </ThemedView>
@@ -691,10 +687,6 @@ const styles = StyleSheet.create({
   },
   buttonDisabled: {
     opacity: 0.5,
-  },
-  pressed: {
-    opacity: 0.8,
-    transform: [{ scale: 0.98 }],
   },
   // Generated Link View
   privacyBadge: {

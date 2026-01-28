@@ -12,9 +12,9 @@ import { useEffect, useState } from "react";
 import {
   StyleSheet,
   View,
-  Pressable,
   ActivityIndicator,
 } from "react-native";
+import { PressableScale } from "pressto";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -173,16 +173,15 @@ export default function ClaimScreen() {
           <ThemedText style={[styles.subtitle, { color: mutedColor }]}>
             {errorMessage}
           </ThemedText>
-          <Pressable
+          <PressableScale
             onPress={() => router.replace("/onboarding")}
-            style={({ pressed }) => [
+            style={[
               styles.button,
               { backgroundColor: primaryColor },
-              pressed && styles.pressed,
             ]}
           >
             <ThemedText style={styles.buttonText}>Get DisCard</ThemedText>
-          </Pressable>
+          </PressableScale>
         </View>
       </ThemedView>
     );
@@ -272,29 +271,27 @@ export default function ClaimScreen() {
         {/* CTA Button */}
         <View style={[styles.footer, { paddingBottom: insets.bottom + 24 }]}>
           {isAuthenticated ? (
-            <Pressable
+            <PressableScale
               onPress={handleClaim}
-              style={({ pressed }) => [
+              style={[
                 styles.ctaButton,
                 { backgroundColor: primaryColor },
-                pressed && styles.pressed,
               ]}
             >
               <Ionicons name="checkmark-circle" size={20} color="#fff" />
               <ThemedText style={styles.ctaButtonText}>Claim Transfer</ThemedText>
-            </Pressable>
+            </PressableScale>
           ) : (
-            <Pressable
+            <PressableScale
               onPress={handleGetStarted}
-              style={({ pressed }) => [
+              style={[
                 styles.ctaButton,
                 { backgroundColor: primaryColor },
-                pressed && styles.pressed,
               ]}
             >
               <Ionicons name="rocket" size={20} color="#fff" />
               <ThemedText style={styles.ctaButtonText}>Get Started</ThemedText>
-            </Pressable>
+            </PressableScale>
           )}
         </View>
       </LinearGradient>
@@ -366,9 +363,6 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 16,
     fontWeight: "600",
-  },
-  pressed: {
-    opacity: 0.8,
   },
   inviteCard: {
     flex: 1,

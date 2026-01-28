@@ -88,6 +88,7 @@
     "expo-web-browser": "~15.0.10",
     "lucide-react-native": "^0.562.0",
     "poseidon-lite": "^0.3.0",
+    "pressto": "^0.6.0",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "react-native": "0.81.5",

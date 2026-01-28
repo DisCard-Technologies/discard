@@ -1,4 +1,5 @@
-import { StyleSheet, View, Pressable } from 'react-native';
+import { StyleSheet, View } from 'react-native';
+import { PressableScale } from 'pressto';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { ThemedText } from '@/components/themed-text';
@@ -34,10 +35,9 @@ export function GoalItem({ goal, onPress }: GoalItemProps) {
   };
 
   return (
-    <Pressable
-      style={({ pressed }) => [
+    <PressableScale
+      style={[
         styles.container,
-        pressed && styles.containerPressed,
       ]}
       onPress={handlePress}
     >
@@ -56,7 +56,7 @@ export function GoalItem({ goal, onPress }: GoalItemProps) {
         <ThemedText style={styles.progressText}>{Math.round(progress)}%</ThemedText>
         <Ionicons name="chevron-forward" size={20} color={mutedColor} />
       </View>
-    </Pressable>
+    </PressableScale>
   );
 }
 
@@ -83,16 +83,15 @@ export function GoalsSection({ goals, onGoalPress, onAddGoal }: GoalsSectionProp
       {/* Header */}
       <View style={styles.header}>
         <ThemedText style={styles.sectionTitle}>Active Goals</ThemedText>
-        <Pressable
-          style={({ pressed }) => [
+        <PressableScale
+          style={[
             styles.addButton,
             { backgroundColor: cardColor },
-            pressed && styles.addButtonPressed,
           ]}
           onPress={handleAddGoal}
         >
           <ThemedText style={styles.addButtonText}>Add Goal</ThemedText>
-        </Pressable>
+        </PressableScale>
       </View>
 
       {/* Goals List */}
@@ -105,18 +104,17 @@ export function GoalsSection({ goals, onGoalPress, onAddGoal }: GoalsSectionProp
       </View>
 
       {/* Create New Goal Banner */}
-      <Pressable
-        style={({ pressed }) => [
+      <PressableScale
+        style={[
           styles.createBanner,
           { borderColor: `${primaryColor}40` },
-          pressed && styles.createBannerPressed,
         ]}
         onPress={handleAddGoal}
       >
         <Ionicons name="sparkles" size={16} color={primaryColor} />
         <ThemedText style={styles.createBannerText}>Create a Savings Goal</ThemedText>
         <Ionicons name="chevron-forward" size={20} color={primaryColor} />
-      </Pressable>
+      </PressableScale>
     </View>
   );
 }
@@ -140,9 +138,6 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 16,
   },
-  addButtonPressed: {
-    opacity: 0.7,
-  },
   addButtonText: {
     fontSize: 12,
     fontWeight: '600',
@@ -157,9 +152,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 12,
     gap: 12,
-  },
-  containerPressed: {
-    opacity: 0.7,
   },
   iconContainer: {
     width: 36,
@@ -197,9 +189,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     backgroundColor: 'rgba(16, 185, 129, 0.1)',
     marginTop: 8,
-  },
-  createBannerPressed: {
-    opacity: 0.8,
   },
   createBannerText: {
     flex: 1,

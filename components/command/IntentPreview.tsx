@@ -8,10 +8,10 @@ import React from "react";
 import {
   View,
   Text,
-  TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
 } from "react-native";
+import { PressableScale } from "pressto";
 import { Ionicons } from "@expo/vector-icons";
 
 interface ParsedIntent {
@@ -128,17 +128,17 @@ export function IntentPreview({
 
       {/* Action Buttons */}
       <View style={styles.buttonContainer}>
-        <TouchableOpacity style={styles.cancelButton} onPress={onCancel}>
+        <PressableScale style={styles.cancelButton} onPress={onCancel}>
           <Text style={styles.cancelButtonText}>Cancel</Text>
-        </TouchableOpacity>
+        </PressableScale>
 
-        <TouchableOpacity
+        <PressableScale
           style={[
             styles.approveButton,
             isProcessing && styles.approveButtonDisabled,
           ]}
           onPress={onApprove}
-          disabled={isProcessing}
+          enabled={!isProcessing}
         >
           {isProcessing ? (
             <ActivityIndicator size="small" color="#FFFFFF" />
@@ -148,7 +148,7 @@ export function IntentPreview({
               <Text style={styles.approveButtonText}>Approve</Text>
             </>
           )}
-        </TouchableOpacity>
+        </PressableScale>
       </View>
     </View>
   );

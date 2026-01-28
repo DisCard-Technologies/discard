@@ -1,7 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import {
   View,
-  Pressable,
   StyleSheet,
   TextInput,
   ScrollView,
@@ -9,6 +8,7 @@ import {
   ActivityIndicator,
   Dimensions,
 } from 'react-native';
+import { PressableScale } from 'pressto';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { BlurView } from 'expo-blur';
@@ -214,9 +214,9 @@ export function FloatingCommandBar({
                   <Ionicons name="sparkles" size={16} color={SPARKLE_COLOR} />
                   <ThemedText style={styles.headerTitle}>DisCard Assistant</ThemedText>
                 </View>
-                <Pressable onPress={handleClose} style={styles.closeButton}>
+                <PressableScale onPress={handleClose} style={styles.closeButton}>
                   <Ionicons name="close" size={20} color={INACTIVE_ICON_COLOR} />
-                </Pressable>
+                </PressableScale>
               </View>
 
               {/* Chat Messages or Suggestions */}
@@ -233,13 +233,13 @@ export function FloatingCommandBar({
                     <ThemedText style={styles.suggestionsLabel}>Try saying</ThemedText>
                     <View style={styles.suggestionsWrap}>
                       {SUGGESTIONS.map((suggestion, index) => (
-                        <Pressable
+                        <PressableScale
                           key={index}
                           onPress={() => handleSuggestionPress(suggestion)}
-                          style={({ pressed }) => [styles.suggestionChip, pressed && styles.pressed]}
+                          style={styles.suggestionChip}
                         >
                           <ThemedText style={styles.suggestionText}>{suggestion}</ThemedText>
-                        </Pressable>
+                        </PressableScale>
                       ))}
                     </View>
                   </View>
@@ -279,44 +279,39 @@ export function FloatingCommandBar({
                   onSubmitEditing={handleCommandSubmit}
                   editable={!isProcessing}
                 />
-                <Pressable
+                <PressableScale
                   onPress={handleMicPress}
-                  style={({ pressed }) => [
+                  style={[
                     styles.inputButton,
                     isListening && styles.inputButtonActive,
-                    pressed && styles.pressed,
                   ]}
                 >
                   <Ionicons name="mic" size={20} color={isListening ? '#FFFFFF' : INACTIVE_ICON_COLOR} />
-                </Pressable>
-                <Pressable
+                </PressableScale>
+                <PressableScale
                   onPress={handleCommandSubmit}
-                  disabled={!commandText.trim() || isProcessing}
-                  style={({ pressed }) => [
+                  enabled={!!commandText.trim() && !isProcessing}
+                  style={[
                     styles.sendButton,
                     (!commandText.trim() || isProcessing) && styles.sendButtonDisabled,
-                    pressed && styles.pressed,
                   ]}
                 >
                   <Ionicons name="send" size={18} color="#FFFFFF" />
-                </Pressable>
+                </PressableScale>
               </View>
             </View>
           ) : (
             // Collapsed State - Mini bar with sparkle + "Ask anything..." + mic
-            <Pressable onPress={handleBarPress} style={styles.collapsedBar}>
+            <PressableScale onPress={handleBarPress} style={styles.collapsedBar}>
               <Ionicons name="sparkles" size={18} color={SPARKLE_COLOR} />
               <ThemedText style={styles.collapsedText}>Ask anything...</ThemedText>
-              <Pressable
-                onPress={(e) => {
-                  e.stopPropagation();
-                  handleMicPress();
-                }}
+              <PressableScale
+                onPress={handleMicPress}
                 hitSlop={8}
               >
                 <Ionicons name="mic-outline" size={20} color={INACTIVE_ICON_COLOR} />
-              </Pressable>
-            </Pressable>
+              </PressableScale>
+            </PressableScale>
           )}
         </View>
       </BlurView>
@@ -495,8 +490,4 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
 
-  pressed: {
-    opacity: 0.7,
-    transform: [{ scale: 0.96 }],
-  },
 });

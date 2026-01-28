@@ -13,10 +13,10 @@ import {
   StyleSheet,
   View,
   Modal,
-  Pressable,
   ScrollView,
   Platform,
 } from 'react-native';
+import { PressableScale } from 'pressto';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeIn, FadeInUp, SlideInRight } from 'react-native-reanimated';
 import * as LocalAuthentication from 'expo-local-authentication';
@@ -229,7 +229,7 @@ export function SeedPhraseDisplayModal({
       onRequestClose={onClose}
     >
       <View style={styles.overlay}>
-        <Pressable style={styles.backdrop} onPress={onClose} />
+        <PressableScale style={styles.backdrop} onPress={onClose} />
 
         <Animated.View
           entering={FadeIn.duration(200)}
@@ -260,12 +260,12 @@ export function SeedPhraseDisplayModal({
                   </ThemedText>
                 </View>
               </View>
-              <Pressable
+              <PressableScale
                 onPress={onClose}
-                style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}
+                style={styles.closeButton}
               >
                 <Ionicons name="close" size={24} color={mutedColor} />
-              </Pressable>
+              </PressableScale>
             </View>
 
             {/* Step: Warning */}
@@ -313,19 +313,18 @@ export function SeedPhraseDisplayModal({
                   </View>
                 )}
 
-                <Pressable
+                <PressableScale
                   onPress={handleAuthenticate}
-                  style={({ pressed }) => [
+                  style={[
                     styles.primaryButton,
                     { backgroundColor: warningColor },
-                    pressed && styles.pressed,
                   ]}
                 >
                   <Ionicons name="finger-print" size={18} color="#fff" />
                   <ThemedText style={styles.primaryButtonText}>
                     I Understand, Show Phrase
                   </ThemedText>
-                </Pressable>
+                </PressableScale>
               </Animated.View>
             )}
 
@@ -333,7 +332,7 @@ export function SeedPhraseDisplayModal({
             {step === 'display' && (
               <Animated.View entering={SlideInRight.duration(300)}>
                 {/* Blur toggle */}
-                <Pressable
+                <PressableScale
                   onPress={() => setBlurred(!blurred)}
                   style={[
                     styles.blurToggle,
@@ -348,18 +347,17 @@ export function SeedPhraseDisplayModal({
                   <ThemedText style={[styles.blurToggleText, { color: primaryColor }]}>
                     {blurred ? 'Tap to reveal' : 'Tap to hide'}
                   </ThemedText>
-                </Pressable>
+                </PressableScale>
 
                 {renderWordGrid()}
 
                 {/* Actions */}
                 <View style={styles.actions}>
-                  <Pressable
+                  <PressableScale
                     onPress={handleCopy}
-                    style={({ pressed }) => [
+                    style={[
                       styles.actionButton,
                       { borderColor: isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.1)' },
-                      pressed && styles.pressed,
                     ]}
                   >
                     <Ionicons
@@ -370,21 +368,20 @@ export function SeedPhraseDisplayModal({
                     <ThemedText style={[styles.actionButtonText, { color: copied ? '#22c55e' : mutedColor }]}>
                       {copied ? 'Copied!' : 'Copy'}
                     </ThemedText>
-                  </Pressable>
+                  </PressableScale>
 
-                  <Pressable
+                  <PressableScale
                     onPress={handleStartVerify}
-                    style={({ pressed }) => [
+                    style={[
                       styles.actionButton,
                       { borderColor: isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.1)' },
-                      pressed && styles.pressed,
                     ]}
                   >
                     <Ionicons name="checkmark-circle" size={18} color={primaryColor} />
                     <ThemedText style={[styles.actionButtonText, { color: primaryColor }]}>
                       Verify
                     </ThemedText>
-                  </Pressable>
+                  </PressableScale>
                 </View>
 
                 {/* Warning reminder */}
@@ -407,23 +404,22 @@ export function SeedPhraseDisplayModal({
 
                   <View style={styles.verifyOptions}>
                     {verifyOptions.map((option, i) => (
-                      <Pressable
+                      <PressableScale
                         key={i}
                         onPress={() => handleVerifyAnswer(option)}
-                        disabled={verifyCorrect}
-                        style={({ pressed }) => [
+                        enabled={!verifyCorrect}
+                        style={[
                           styles.verifyOption,
                           {
                             borderColor: isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.1)',
                           },
                           verifyCorrect && option === words[verifyIndex] && styles.verifyCorrect,
-                          pressed && styles.pressed,
                         ]}
                       >
                         <ThemedText style={styles.verifyOptionText}>
                           {option}
                         </ThemedText>
-                      </Pressable>
+                      </PressableScale>
                     ))}
                   </View>
 
@@ -446,19 +442,18 @@ export function SeedPhraseDisplayModal({
                   )}
                 </View>
 
-                <Pressable
+                <PressableScale
                   onPress={() => setStep('display')}
-                  style={({ pressed }) => [
+                  style={[
                     styles.secondaryButton,
                     { borderColor: isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.1)' },
-                    pressed && styles.pressed,
                   ]}
                 >
                   <Ionicons name="arrow-back" size={18} color={mutedColor} />
                   <ThemedText style={[styles.secondaryButtonText, { color: mutedColor }]}>
                     Back to Phrase
                   </ThemedText>
-                </Pressable>
+                </PressableScale>
               </Animated.View>
             )}
           </ScrollView>
@@ -520,9 +515,6 @@ const styles = StyleSheet.create({
   },
   closeButton: {
     padding: 4,
-  },
-  pressed: {
-    opacity: 0.6,
   },
   warningCard: {
     alignItems: 'center',

@@ -1,5 +1,6 @@
 import { useState, useMemo, useCallback, useRef } from 'react';
-import { StyleSheet, View, Pressable, ScrollView, TextInput, Keyboard, Alert, Text, ActivityIndicator, Dimensions, Image } from 'react-native';
+import { StyleSheet, View, ScrollView, TextInput, Keyboard, Alert, Text, ActivityIndicator, Dimensions, Image } from 'react-native';
+import { PressableScale } from 'pressto';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
@@ -43,8 +44,7 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const TOKEN_LOGO_FALLBACKS: Record<string, string> = {
   USDC: 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v/logo.png',
   SOL: 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png',
-  USDT: 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB/logo.png',
-};
+  USDT: 'https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB/logo.png' };
 
 type TransferMode = 'pay' | 'request' | 'qr';
 type QRMode = 'scan' | 'mycode';
@@ -87,22 +87,20 @@ function Numpad({ onPress, disabled }: NumpadProps) {
       {keys.map((row, rowIndex) => (
         <View key={rowIndex} style={styles.numpadRow}>
           {row.map((key) => (
-            <Pressable
+            <PressableScale
               key={key}
               onPress={() => handlePress(key)}
-              disabled={disabled}
-              style={({ pressed }) => [
+              enabled={!disabled}
+              style={[
                 styles.numpadKey,
-                pressed && styles.numpadKeyPressed,
-                disabled && styles.numpadKeyDisabled,
-              ]}
+                disabled && styles.numpadKeyDisabled]}
             >
               {key === 'del' ? (
                 <Ionicons name="backspace-outline" size={28} color="#1C1C1E" />
               ) : (
                 <Text style={styles.numpadKeyText}>{key}</Text>
               )}
-            </Pressable>
+            </PressableScale>
           ))}
         </View>
       ))}
@@ -131,9 +129,9 @@ function ContactSelector({ contacts, favorites, onSelect, onAddNew }: ContactSel
       contentContainerStyle={styles.contactsScrollContent}
     >
       {/* Add new contact button */}
-      <Pressable
+      <PressableScale
         onPress={onAddNew}
-        style={({ pressed }) => [styles.contactCircle, pressed && styles.pressed]}
+        style={[styles.contactCircle]}
       >
         <View style={[styles.contactAvatar, styles.addContactAvatar]}>
           <Ionicons name="add" size={24} color="#6B7280" />
@@ -141,14 +139,14 @@ function ContactSelector({ contacts, favorites, onSelect, onAddNew }: ContactSel
         <Text style={styles.contactName} numberOfLines={1}>
           Get $15
         </Text>
-      </Pressable>
+      </PressableScale>
 
       {/* Favorites first, then recent */}
       {[...favorites, ...contacts.filter(c => !favorites.some(f => f.id === c.id))].slice(0, 10).map((contact) => (
-        <Pressable
+        <PressableScale
           key={contact.id}
           onPress={() => onSelect(contact)}
-          style={({ pressed }) => [styles.contactCircle, pressed && styles.pressed]}
+          style={[styles.contactCircle]}
         >
           <View style={[styles.contactAvatar, { backgroundColor: primaryColor }]}>
             <Text style={styles.contactAvatarText}>{contact.avatar}</Text>
@@ -156,7 +154,7 @@ function ContactSelector({ contacts, favorites, onSelect, onAddNew }: ContactSel
           <Text style={styles.contactName} numberOfLines={1}>
             {contact.name.split(' ')[0]}
           </Text>
-        </Pressable>
+        </PressableScale>
       ))}
     </ScrollView>
   );
@@ -189,8 +187,7 @@ export default function TransferScreen() {
   const {
     contacts: allContacts,
     favoriteContacts,
-    createContact,
-  } = useContacts();
+    createContact } = useContacts();
 
   // Transform contacts for UI
   const contactsList = useMemo(() => {
@@ -200,8 +197,7 @@ export default function TransferScreen() {
       handle: c.identifier,
       avatar: c.avatarInitials,
       recent: c.lastUsedAt !== undefined,
-      verified: c.verified,
-    }));
+      verified: c.verified }));
   }, [allContacts]);
 
   const favoritesList = useMemo(() => {
@@ -211,8 +207,7 @@ export default function TransferScreen() {
       handle: c.identifier,
       avatar: c.avatarInitials || c.name.slice(0, 2).toUpperCase(),
       recent: true,
-      verified: c.verified,
-    }));
+      verified: c.verified }));
   }, [favoriteContacts]);
 
   // Transform token holdings with fallback logos
@@ -224,8 +219,7 @@ export default function TransferScreen() {
       valueUsd: h.valueUsd,
       mint: h.mint,
       decimals: h.decimals,
-      logoUri: h.logoUri || TOKEN_LOGO_FALLBACKS[h.symbol] || null,
-    }));
+      logoUri: h.logoUri || TOKEN_LOGO_FALLBACKS[h.symbol] || null }));
   }, [tokenHoldings]);
 
   // State
@@ -274,19 +268,16 @@ export default function TransferScreen() {
     isLoadingQuote,
     estimatedReceivedFormatted,
     setSettlementToken,
-    availableTokens,
-  } = useCrossCurrencyTransfer({
+    availableTokens } = useCrossCurrencyTransfer({
     paymentMint: selectedPaymentToken?.mint,
     paymentAmount: paymentAmountBaseUnits,
-    debounceMs: 500,
-  });
+    debounceMs: 500 });
 
   // Dynamic fee estimation
   const { fees: dynamicFees } = useFeeEstimate({
     amountUsd: amount !== '0' ? parseFloat(amount) : 0,
     includeAtaRent: false,
-    enabled: true,
-  });
+    enabled: true });
 
   // Format wallet address for display
   const displayAddress = walletAddress
@@ -338,18 +329,14 @@ export default function TransferScreen() {
           amount: JSON.stringify({
             amount: tokenAmount || 0, // Token amount (converted from USD)
             amountUsd: parseFloat(amount), // Original USD amount entered
-            amountBaseUnits: paymentAmountBaseUnits || '0',
-          }),
+            amountBaseUnits: paymentAmountBaseUnits || '0' }),
           token: JSON.stringify({
             symbol: selectedToken,
             mint: selectedPaymentToken?.mint || 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
             decimals: selectedPaymentToken?.decimals || 6,
             logoUri: selectedPaymentToken?.logoUri || TOKEN_LOGO_FALLBACKS[selectedToken] || null,
             balance: 0,
-            balanceUsd: 0,
-          }),
-        },
-      });
+            balanceUsd: 0 }) } });
       return;
     }
 
@@ -362,21 +349,18 @@ export default function TransferScreen() {
           address: selectedContact.handle,
           displayName: selectedContact.name,
           type: 'contact',
-          contactId: selectedContact.id,
-        }),
+          contactId: selectedContact.id }),
         token: JSON.stringify({
           symbol: selectedToken,
           mint: selectedPaymentToken?.mint || 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
           decimals: selectedPaymentToken?.decimals || 6,
           logoUri: selectedPaymentToken?.logoUri || TOKEN_LOGO_FALLBACKS[selectedToken] || null,
           balance: 0,
-          balanceUsd: 0,
-        }),
+          balanceUsd: 0 }),
         amount: JSON.stringify({
           amount: tokenAmount || 0, // Token amount (converted from USD)
           amountUsd: parseFloat(amount), // Original USD amount entered
-          amountBaseUnits: paymentAmountBaseUnits || '0',
-        }),
+          amountBaseUnits: paymentAmountBaseUnits || '0' }),
         fees: JSON.stringify({
           networkFee: dynamicFees.networkFee,
           networkFeeUsd: dynamicFees.networkFeeUsd,
@@ -384,18 +368,14 @@ export default function TransferScreen() {
           priorityFee: dynamicFees.priorityFee,
           ataRent: dynamicFees.ataRent,
           totalFeesUsd: dynamicFees.totalFeesUsd,
-          totalCostUsd: dynamicFees.totalCostUsd,
-        }),
+          totalCostUsd: dynamicFees.totalCostUsd }),
         settlement: JSON.stringify({
           token: settlementToken.symbol,
           mint: settlementToken.mint,
           decimals: settlementToken.decimals,
           currencySymbol: settlementToken.currencySymbol,
           needsSwap,
-          estimatedOutput: estimatedReceivedFormatted,
-        }),
-      },
-    });
+          estimatedOutput: estimatedReceivedFormatted }) } });
   }, [amount, selectedContact, selectedToken, selectedPaymentToken, tokenAmount, paymentAmountBaseUnits, settlementToken, needsSwap, estimatedReceivedFormatted, dynamicFees]);
 
   // Request payment
@@ -411,9 +391,7 @@ export default function TransferScreen() {
         token: selectedToken,
         tokenMint: selectedPaymentToken?.mint || 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
         tokenDecimals: selectedPaymentToken?.decimals || 6,
-        tokenLogoUri: selectedPaymentToken?.logoUri || TOKEN_LOGO_FALLBACKS[selectedToken] || '',
-      },
-    });
+        tokenLogoUri: selectedPaymentToken?.logoUri || TOKEN_LOGO_FALLBACKS[selectedToken] || '' } });
   }, [amount, selectedToken, selectedPaymentToken]);
 
   // Copy address
@@ -465,30 +443,30 @@ export default function TransferScreen() {
       />
       {/* Header with QR button */}
       <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
-        <Pressable
+        <PressableScale
           onPress={() => setMode('qr')}
-          style={({ pressed }) => [styles.qrButton, pressed && styles.pressed]}
+          style={[styles.qrButton]}
         >
           <Ionicons name="qr-code-outline" size={24} color="#fff" />
-        </Pressable>
+        </PressableScale>
         <View style={styles.headerSpacer} />
-        <Pressable
+        <PressableScale
           onPress={() => router.push('/contacts' as any)}
-          style={({ pressed }) => [styles.searchButton, pressed && styles.pressed]}
+          style={[styles.searchButton]}
         >
           <Ionicons name="search" size={24} color="#fff" />
-        </Pressable>
+        </PressableScale>
         {user && (
-          <Pressable
+          <PressableScale
             onPress={() => router.push('/settings' as any)}
-            style={({ pressed }) => [styles.profileButton, pressed && styles.pressed]}
+            style={[styles.profileButton]}
           >
             <View style={styles.profileAvatar}>
               <ThemedText style={styles.profileAvatarText}>
                 {user.displayName?.[0]?.toUpperCase() || 'U'}
               </ThemedText>
             </View>
-          </Pressable>
+          </PressableScale>
         )}
       </View>
 
@@ -501,12 +479,10 @@ export default function TransferScreen() {
           </View>
           {/* Token Selector Badge with Dropdown */}
           <View style={styles.tokenBadgeContainer}>
-            <Pressable
+            <PressableScale
               onPress={() => setShowTokenSelector(!showTokenSelector)}
-              style={({ pressed }) => [
-                styles.inlineTokenBadge,
-                pressed && styles.inlineTokenBadgePressed,
-              ]}
+              style={[
+                styles.inlineTokenBadge]}
             >
               {(selectedPaymentToken?.logoUri || TOKEN_LOGO_FALLBACKS[selectedToken]) && (
                 <Image
@@ -520,7 +496,7 @@ export default function TransferScreen() {
                 size={16}
                 color="#fff"
               />
-            </Pressable>
+            </PressableScale>
 
             {/* Dropdown Menu */}
             {showTokenSelector && (
@@ -534,18 +510,16 @@ export default function TransferScreen() {
                   nestedScrollEnabled
                 >
                   {tokens.map((token) => (
-                    <Pressable
+                    <PressableScale
                       key={token.symbol}
                       onPress={() => {
                         setSelectedToken(token.symbol);
                         setShowTokenSelector(false);
                         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                       }}
-                      style={({ pressed }) => [
+                      style={[
                         styles.tokenDropdownItem,
-                        selectedToken === token.symbol && styles.tokenDropdownItemSelected,
-                        pressed && styles.pressed,
-                      ]}
+                        selectedToken === token.symbol && styles.tokenDropdownItemSelected]}
                     >
                       {token.logoUri ? (
                         <Image
@@ -568,7 +542,7 @@ export default function TransferScreen() {
                       {selectedToken === token.symbol && (
                         <Ionicons name="checkmark" size={20} color={primaryColor} />
                       )}
-                    </Pressable>
+                    </PressableScale>
                   ))}
                 </ScrollView>
               </Animated.View>
@@ -583,7 +557,7 @@ export default function TransferScreen() {
 
       {/* Dismiss dropdown when tapping outside */}
       {showTokenSelector && (
-        <Pressable
+        <PressableScale
           style={styles.dropdownBackdrop}
           onPress={() => setShowTokenSelector(false)}
         />
@@ -597,27 +571,23 @@ export default function TransferScreen() {
 
         {/* Action buttons */}
         <View style={styles.actionRow}>
-          <Pressable
+          <PressableScale
             onPress={handleRequest}
-            style={({ pressed }) => [
+            style={[
               styles.actionButton,
-              styles.requestButtonStyle,
-              pressed && { opacity: 0.8 },
-            ]}
+              styles.requestButtonStyle]}
           >
             <Text style={styles.requestButtonText}>Request</Text>
-          </Pressable>
-          <Pressable
+          </PressableScale>
+          <PressableScale
             onPress={handlePay}
-            style={({ pressed }) => [
+            style={[
               styles.actionButton,
               styles.payButtonStyle,
-              { backgroundColor: primaryColor },
-              pressed && { opacity: 0.8 },
-            ]}
+              { backgroundColor: primaryColor }]}
           >
             <Text style={styles.payButtonText}>Pay</Text>
-          </Pressable>
+          </PressableScale>
         </View>
 
         {/* Selected contact indicator */}
@@ -631,9 +601,9 @@ export default function TransferScreen() {
               </View>
               <Text style={styles.selectedContactName}>{selectedContact.name}</Text>
             </View>
-            <Pressable onPress={() => setSelectedContact(null)}>
+            <PressableScale onPress={() => setSelectedContact(null)}>
               <Ionicons name="close-circle" size={24} color="#9BA1A6" />
-            </Pressable>
+            </PressableScale>
           </Animated.View>
         )}
 
@@ -662,25 +632,25 @@ export default function TransferScreen() {
     <View style={[styles.qrContainer, { backgroundColor: bgColor }]}>
       {/* Header */}
       <View style={[styles.qrHeader, { paddingTop: insets.top + 8 }]}>
-        <Pressable
+        <PressableScale
           onPress={() => setMode('pay')}
-          style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}
+          style={[styles.closeButton]}
         >
           <Ionicons name="close" size={28} color={textColor} />
-        </Pressable>
+        </PressableScale>
         <View style={styles.headerSpacer} />
         {qrMode === 'scan' && (
-          <Pressable
-            style={({ pressed }) => [styles.flashButton, pressed && styles.pressed]}
+          <PressableScale
+            style={[styles.flashButton]}
           >
             <Ionicons name="flashlight-outline" size={24} color={textColor} />
-          </Pressable>
+          </PressableScale>
         )}
       </View>
 
       {/* QR Mode Tabs */}
       <View style={[styles.qrTabs, { backgroundColor: cardColor }]}>
-        <Pressable
+        <PressableScale
           onPress={() => setQrMode('scan')}
           style={[
             styles.qrTab,
@@ -690,8 +660,8 @@ export default function TransferScreen() {
           <ThemedText style={[styles.qrTabText, { color: qrMode === 'scan' ? '#fff' : mutedColor }]}>
             Scan
           </ThemedText>
-        </Pressable>
-        <Pressable
+        </PressableScale>
+        <PressableScale
           onPress={() => setQrMode('mycode')}
           style={[
             styles.qrTab,
@@ -701,7 +671,7 @@ export default function TransferScreen() {
           <ThemedText style={[styles.qrTabText, { color: qrMode === 'mycode' ? '#fff' : mutedColor }]}>
             My Code
           </ThemedText>
-        </Pressable>
+        </PressableScale>
       </View>
 
       {/* QR Content */}
@@ -726,8 +696,7 @@ export default function TransferScreen() {
                   style={styles.camera}
                   facing="back"
                   barcodeScannerSettings={{
-                    barcodeTypes: ['qr'],
-                  }}
+                    barcodeTypes: ['qr'] }}
                   onBarcodeScanned={(result: { data: string }) => handleQRScanned(result.data)}
                 />
                 <View style={styles.scannerOverlay}>
@@ -740,12 +709,12 @@ export default function TransferScreen() {
                 <ThemedText style={[styles.permissionText, { color: mutedColor }]}>
                   Camera access needed to scan QR codes
                 </ThemedText>
-                <Pressable
+                <PressableScale
                   onPress={requestPermission}
                   style={[styles.permissionButton, { backgroundColor: primaryColor }]}
                 >
                   <ThemedText style={styles.permissionButtonText}>Enable Camera</ThemedText>
-                </Pressable>
+                </PressableScale>
               </View>
             )}
             <ThemedText style={styles.scanHint}>Scan QR code to pay</ThemedText>
@@ -777,7 +746,7 @@ export default function TransferScreen() {
                 </View>
               )}
             </View>
-            <Pressable
+            <PressableScale
               onPress={handleCopy}
               style={[styles.copyButton, { backgroundColor: cardColor }]}
             >
@@ -789,10 +758,10 @@ export default function TransferScreen() {
               <ThemedText style={[styles.copyButtonText, copied && { color: primaryColor }]}>
                 {copied ? 'Copied!' : 'Copy Address'}
               </ThemedText>
-            </Pressable>
+            </PressableScale>
 
             {/* Private Link Button */}
-            <Pressable
+            <PressableScale
               onPress={() => router.push('/transfer/one-time-link' as any)}
               style={[styles.privateLinkButton, { backgroundColor: '#7C3AED' }]}
             >
@@ -800,7 +769,7 @@ export default function TransferScreen() {
               <ThemedText style={styles.privateLinkButtonText}>
                 Create Private Link
               </ThemedText>
-            </Pressable>
+            </PressableScale>
             <ThemedText style={[styles.privateLinkHint, { color: mutedColor }]}>
               One-time use, expires in 15 min
             </ThemedText>
@@ -828,95 +797,78 @@ export default function TransferScreen() {
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
-  },
+    flex: 1 },
   mainContainer: {
-    flex: 1,
-  },
+    flex: 1 },
   ambientGradient: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
     height: '50%',
-    pointerEvents: 'none',
-  },
+    pointerEvents: 'none' },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingBottom: 8,
-  },
+    paddingBottom: 8 },
   headerSpacer: {
-    flex: 1,
-  },
+    flex: 1 },
   qrButton: {
     width: 44,
     height: 44,
     borderRadius: 22,
     alignItems: 'center',
-    justifyContent: 'center',
-  },
+    justifyContent: 'center' },
   searchButton: {
     width: 44,
     height: 44,
     borderRadius: 22,
     alignItems: 'center',
-    justifyContent: 'center',
-  },
+    justifyContent: 'center' },
   profileButton: {
-    marginLeft: 8,
-  },
+    marginLeft: 8 },
   profileAvatar: {
     width: 36,
     height: 36,
     borderRadius: 18,
     backgroundColor: 'rgba(0,0,0,0.2)',
     alignItems: 'center',
-    justifyContent: 'center',
-  },
+    justifyContent: 'center' },
   profileAvatarText: {
     color: '#fff',
     fontSize: 16,
-    fontWeight: '600',
-  },
+    fontWeight: '600' },
   amountContainer: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 24,
-  },
+    paddingHorizontal: 24 },
   amountCentered: {
-    alignItems: 'center',
-  },
+    alignItems: 'center' },
   amountRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    justifyContent: 'center',
-  },
+    justifyContent: 'center' },
   tokenBadgeContainer: {
     marginTop: 16,
     zIndex: 100,
-    alignItems: 'center',
-  },
+    alignItems: 'center' },
   amountCurrency: {
     fontSize: 48,
     fontWeight: '700',
     color: '#10B981',
     marginRight: 4,
-    marginTop: 8,
-  },
+    marginTop: 8 },
   amountValue: {
     fontSize: 72,
     fontWeight: '700',
-    color: '#ECEDEE',
-  },
+    color: '#ECEDEE' },
   amountTokenLabel: {
     fontSize: 24,
     fontWeight: '500',
     color: 'rgba(16, 185, 129, 0.7)',
-    marginTop: 4,
-  },
+    marginTop: 4 },
   inlineTokenBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -925,22 +877,18 @@ const styles = StyleSheet.create({
     paddingRight: 12,
     paddingVertical: 6,
     borderRadius: 24,
-    backgroundColor: 'rgba(16, 185, 129, 0.9)',
-  },
+    backgroundColor: 'rgba(16, 185, 129, 0.9)' },
   inlineTokenBadgePressed: {
     backgroundColor: 'rgba(16, 185, 129, 0.7)',
-    transform: [{ scale: 0.96 }],
-  },
+    transform: [{ scale: 0.96 }] },
   tokenBadgeImage: {
     width: 24,
     height: 24,
-    borderRadius: 12,
-  },
+    borderRadius: 12 },
   inlineTokenText: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#fff',
-  },
+    color: '#fff' },
   tokenDropdown: {
     position: 'absolute',
     top: '100%',
@@ -954,55 +902,44 @@ const styles = StyleSheet.create({
     elevation: 8,
     overflow: 'hidden',
     alignSelf: 'center',
-    left: -60,
-  },
+    left: -60 },
   tokenDropdownScroll: {
-    maxHeight: 240,
-  },
+    maxHeight: 240 },
   tokenDropdownItem: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 12,
     paddingHorizontal: 14,
-    gap: 10,
-  },
+    gap: 10 },
   tokenDropdownItemSelected: {
-    backgroundColor: 'rgba(16, 185, 129, 0.1)',
-  },
+    backgroundColor: 'rgba(16, 185, 129, 0.1)' },
   tokenDropdownImage: {
     width: 32,
     height: 32,
-    borderRadius: 16,
-  },
+    borderRadius: 16 },
   tokenDropdownImagePlaceholder: {
     width: 32,
     height: 32,
     borderRadius: 16,
     alignItems: 'center',
-    justifyContent: 'center',
-  },
+    justifyContent: 'center' },
   tokenDropdownImagePlaceholderText: {
     color: '#fff',
     fontSize: 14,
-    fontWeight: '600',
-  },
+    fontWeight: '600' },
   tokenDropdownSymbol: {
     fontSize: 15,
-    fontWeight: '600',
-  },
+    fontWeight: '600' },
   tokenDropdownAvailable: {
     flex: 1,
     fontSize: 13,
-    textAlign: 'right',
-  },
+    textAlign: 'right' },
   dropdownBackdrop: {
     ...StyleSheet.absoluteFillObject,
-    zIndex: 50,
-  },
+    zIndex: 50 },
   balanceIndicator: {
     fontSize: 14,
-    marginTop: 12,
-  },
+    marginTop: 12 },
   balanceButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1013,81 +950,66 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     backgroundColor: 'rgba(16, 185, 129, 0.15)',
     borderWidth: 1,
-    borderColor: 'rgba(16, 185, 129, 0.3)',
-  },
+    borderColor: 'rgba(16, 185, 129, 0.3)' },
   balanceText: {
-    fontSize: 14,
-  },
+    fontSize: 14 },
   numpadSection: {
     backgroundColor: '#F2F2F7',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     paddingTop: 16,
-    paddingHorizontal: 16,
-  },
+    paddingHorizontal: 16 },
   numpadContainer: {
-    paddingHorizontal: 8,
-  },
+    paddingHorizontal: 8 },
   numpad: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    justifyContent: 'space-between',
-  },
+    justifyContent: 'space-between' },
   numpadRow: {
     flexDirection: 'row',
     justifyContent: 'center',
-    width: '100%',
-  },
+    width: '100%' },
   numpadKey: {
     width: (SCREEN_WIDTH - 48) / 3,
     height: 56,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 8,
-  },
+    marginBottom: 8 },
   numpadKeyPressed: {
     backgroundColor: 'rgba(0,0,0,0.05)',
-    borderRadius: 12,
-  },
+    borderRadius: 12 },
   numpadKeyDisabled: {
-    opacity: 0.5,
-  },
+    opacity: 0.5 },
   numpadKeyText: {
     fontSize: 28,
     fontWeight: '400',
-    color: '#1C1C1E',
-  },
+    color: '#1C1C1E' },
   actionRow: {
     flexDirection: 'row',
     gap: 12,
     marginTop: 8,
-    marginBottom: 16,
-  },
+    marginBottom: 16 },
   actionButton: {
     flex: 1,
     height: 50,
     borderRadius: 14,
     alignItems: 'center',
-    justifyContent: 'center',
-  },
+    justifyContent: 'center' },
   requestButtonStyle: {
     borderWidth: 1,
     borderColor: '#1C1C1E',
-    backgroundColor: 'transparent',
-  },
+    backgroundColor: 'transparent' },
   payButtonStyle: {
     // backgroundColor set dynamically
   },
   requestButtonText: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#1C1C1E',
-  },
+    color: '#1C1C1E' },
   payButtonText: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#fff',
-  },
+    color: '#fff' },
   selectedContactBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1095,123 +1017,101 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 12,
     backgroundColor: 'rgba(0,0,0,0.05)',
-    marginBottom: 16,
-  },
+    marginBottom: 16 },
   selectedContactInfo: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-  },
+    gap: 12 },
   selectedContactAvatar: {
     width: 36,
     height: 36,
     borderRadius: 18,
     alignItems: 'center',
-    justifyContent: 'center',
-  },
+    justifyContent: 'center' },
   selectedContactAvatarText: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#fff',
-  },
+    color: '#fff' },
   selectedContactName: {
     fontSize: 16,
     fontWeight: '500',
-    color: '#1C1C1E',
-  },
+    color: '#1C1C1E' },
   contactsScrollContent: {
     paddingHorizontal: 8,
     gap: 16,
-    paddingBottom: 8,
-  },
+    paddingBottom: 8 },
   contactCircle: {
     alignItems: 'center',
-    width: 64,
-  },
+    width: 64 },
   contactAvatar: {
     width: 48,
     height: 48,
     borderRadius: 24,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 4,
-  },
+    marginBottom: 4 },
   addContactAvatar: {
     backgroundColor: 'rgba(0, 0, 0, 0.05)',
     borderWidth: 2,
     borderColor: 'rgba(0, 0, 0, 0.2)',
-    borderStyle: 'dashed',
-  },
+    borderStyle: 'dashed' },
   contactAvatarText: {
     color: '#fff',
     fontSize: 16,
-    fontWeight: '600',
-  },
+    fontWeight: '600' },
   contactName: {
     fontSize: 12,
     textAlign: 'center',
-    color: '#6B7280',
-  },
+    color: '#6B7280' },
   pressed: {
-    opacity: 0.7,
-  },
+    opacity: 0.7 },
 
   // QR Mode Styles
   qrContainer: {
-    flex: 1,
-  },
+    flex: 1 },
   qrHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingBottom: 16,
-  },
+    paddingBottom: 16 },
   closeButton: {
     width: 44,
     height: 44,
     borderRadius: 22,
     alignItems: 'center',
-    justifyContent: 'center',
-  },
+    justifyContent: 'center' },
   flashButton: {
     width: 44,
     height: 44,
     borderRadius: 22,
     alignItems: 'center',
-    justifyContent: 'center',
-  },
+    justifyContent: 'center' },
   qrTabs: {
     flexDirection: 'row',
     marginHorizontal: 24,
     borderRadius: 12,
-    padding: 4,
-  },
+    padding: 4 },
   qrTab: {
     flex: 1,
     paddingVertical: 10,
     borderRadius: 8,
     alignItems: 'center',
-    justifyContent: 'center',
-  },
+    justifyContent: 'center' },
   qrTabText: {
     fontSize: 15,
-    fontWeight: '600',
-  },
+    fontWeight: '600' },
   qrContent: {
     flex: 1,
     paddingHorizontal: 24,
-    paddingTop: 24,
-  },
+    paddingTop: 24 },
   scannerContainer: {
     flex: 1,
-    alignItems: 'center',
-  },
+    alignItems: 'center' },
   camera: {
     width: SCREEN_WIDTH - 48,
     height: SCREEN_WIDTH - 48,
     borderRadius: 24,
-    overflow: 'hidden',
-  },
+    overflow: 'hidden' },
   scannerOverlay: {
     ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
@@ -1219,60 +1119,49 @@ const styles = StyleSheet.create({
     top: 0,
     left: 24,
     right: 24,
-    bottom: 0,
-  },
+    bottom: 0 },
   scannerFrame: {
     width: 200,
     height: 200,
     borderWidth: 3,
     borderColor: '#fff',
-    borderRadius: 24,
-  },
+    borderRadius: 24 },
   scanHint: {
     marginTop: 24,
     fontSize: 16,
-    textAlign: 'center',
-  },
+    textAlign: 'center' },
   permissionContainer: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 16,
-    padding: 32,
-  },
+    padding: 32 },
   permissionText: {
     fontSize: 16,
-    textAlign: 'center',
-  },
+    textAlign: 'center' },
   permissionSubtext: {
     fontSize: 14,
     textAlign: 'center',
-    marginTop: 8,
-  },
+    marginTop: 8 },
   permissionButton: {
     paddingHorizontal: 24,
     paddingVertical: 12,
-    borderRadius: 24,
-  },
+    borderRadius: 24 },
   permissionButtonText: {
     color: '#fff',
     fontSize: 16,
-    fontWeight: '600',
-  },
+    fontWeight: '600' },
   myCodeContainer: {
     flex: 1,
     alignItems: 'center',
-    paddingTop: 24,
-  },
+    paddingTop: 24 },
   myCodeName: {
     fontSize: 28,
     fontWeight: '700',
-    marginBottom: 4,
-  },
+    marginBottom: 4 },
   myCodeHandle: {
     fontSize: 16,
-    marginBottom: 32,
-  },
+    marginBottom: 32 },
   qrCodeWrapper: {
     backgroundColor: '#fff',
     padding: 24,
@@ -1281,15 +1170,13 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
     shadowRadius: 12,
-    elevation: 8,
-  },
+    elevation: 8 },
   qrPlaceholder: {
     width: 200,
     height: 200,
     borderRadius: 16,
     alignItems: 'center',
-    justifyContent: 'center',
-  },
+    justifyContent: 'center' },
   copyButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1297,12 +1184,10 @@ const styles = StyleSheet.create({
     marginTop: 32,
     paddingHorizontal: 20,
     paddingVertical: 12,
-    borderRadius: 24,
-  },
+    borderRadius: 24 },
   copyButtonText: {
     fontSize: 15,
-    fontWeight: '500',
-  },
+    fontWeight: '500' },
   privateLinkButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1310,15 +1195,11 @@ const styles = StyleSheet.create({
     marginTop: 16,
     paddingHorizontal: 24,
     paddingVertical: 14,
-    borderRadius: 24,
-  },
+    borderRadius: 24 },
   privateLinkButtonText: {
     color: '#fff',
     fontSize: 15,
-    fontWeight: '600',
-  },
+    fontWeight: '600' },
   privateLinkHint: {
     fontSize: 12,
-    marginTop: 8,
-  },
-});
+    marginTop: 8 } });

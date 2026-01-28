@@ -9,11 +9,11 @@ import { useState, useCallback } from "react";
 import {
   StyleSheet,
   View,
-  Pressable,
   Modal,
   FlatList,
   Image,
 } from "react-native";
+import { PressableScale } from "pressto";
 import { Ionicons } from "@expo/vector-icons";
 import Animated, { FadeIn, FadeOut, SlideInDown } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
@@ -113,13 +113,12 @@ export function SourceTokenSelector({
   return (
     <>
       {/* Selector Button */}
-      <Pressable
+      <PressableScale
         onPress={handleOpen}
-        disabled={disabled || loading}
-        style={({ pressed }) => [
+        enabled={!disabled && !loading}
+        style={[
           styles.selectorButton,
           { backgroundColor: cardBg, borderColor },
-          pressed && styles.pressed,
           disabled && styles.disabled,
         ]}
       >
@@ -166,7 +165,7 @@ export function SourceTokenSelector({
             <Ionicons name="chevron-down" size={20} color={mutedColor} />
           </>
         )}
-      </Pressable>
+      </PressableScale>
 
       {/* Token Selection Modal */}
       <Modal
@@ -175,7 +174,7 @@ export function SourceTokenSelector({
         animationType="fade"
         onRequestClose={handleClose}
       >
-        <Pressable style={styles.modalOverlay} onPress={handleClose}>
+        <PressableScale style={styles.modalOverlay} onPress={handleClose}>
           <Animated.View
             entering={SlideInDown.springify().damping(20)}
             style={[styles.modalContent, { backgroundColor: bgColor }]}
@@ -183,12 +182,12 @@ export function SourceTokenSelector({
             {/* Header */}
             <View style={styles.modalHeader}>
               <ThemedText style={styles.modalTitle}>Pay with</ThemedText>
-              <Pressable
+              <PressableScale
                 onPress={handleClose}
-                style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}
+                style={styles.closeButton}
               >
                 <Ionicons name="close" size={24} color={mutedColor} />
-              </Pressable>
+              </PressableScale>
             </View>
 
             {/* Token List */}
@@ -203,13 +202,12 @@ export function SourceTokenSelector({
                 const isSettlement = item.symbol === settlementSymbol;
 
                 return (
-                  <Pressable
+                  <PressableScale
                     onPress={() => handleSelect(item)}
-                    style={({ pressed }) => [
+                    style={[
                       styles.tokenItem,
                       { borderColor },
                       isSelected && { borderColor: primaryColor, backgroundColor: `${primaryColor}10` },
-                      pressed && styles.pressed,
                     ]}
                   >
                     <View style={styles.tokenItemLeft}>
@@ -268,7 +266,7 @@ export function SourceTokenSelector({
                         style={styles.checkIcon}
                       />
                     )}
-                  </Pressable>
+                  </PressableScale>
                 );
               }}
               ListEmptyComponent={
@@ -281,7 +279,7 @@ export function SourceTokenSelector({
               }
             />
           </Animated.View>
-        </Pressable>
+        </PressableScale>
       </Modal>
     </>
   );
@@ -299,10 +297,6 @@ const styles = StyleSheet.create({
     padding: 14,
     borderRadius: 14,
     borderWidth: 1,
-  },
-  pressed: {
-    opacity: 0.7,
-    transform: [{ scale: 0.98 }],
   },
   disabled: {
     opacity: 0.5,

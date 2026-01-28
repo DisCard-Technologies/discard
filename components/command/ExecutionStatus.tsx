@@ -8,11 +8,11 @@ import React from "react";
 import {
   View,
   Text,
-  TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
   Linking,
 } from "react-native";
+import { PressableScale, PressableOpacity } from "pressto";
 import { Ionicons } from "@expo/vector-icons";
 
 interface Intent {
@@ -94,14 +94,14 @@ export function ExecutionStatus({ intent, onClose }: ExecutionStatusProps) {
 
       {/* Transaction Signature */}
       {intent.solanaTransactionSignature && (
-        <TouchableOpacity style={styles.signatureContainer} onPress={openExplorer}>
+        <PressableOpacity style={styles.signatureContainer} onPress={openExplorer}>
           <Ionicons name="link" size={16} color="#8B5CF6" />
           <Text style={styles.signatureLabel}>View on Solana Explorer</Text>
           <Text style={styles.signatureValue}>
             {truncateSignature(intent.solanaTransactionSignature)}
           </Text>
           <Ionicons name="open-outline" size={16} color="#6B7280" />
-        </TouchableOpacity>
+        </PressableOpacity>
       )}
 
       {/* Progress Steps (during execution) */}
@@ -128,9 +128,9 @@ export function ExecutionStatus({ intent, onClose }: ExecutionStatusProps) {
 
       {/* Close Button */}
       {(isCompleted || isFailed) && (
-        <TouchableOpacity style={styles.closeButton} onPress={onClose}>
+        <PressableScale style={styles.closeButton} onPress={onClose}>
           <Text style={styles.closeButtonText}>Done</Text>
-        </TouchableOpacity>
+        </PressableScale>
       )}
     </View>
   );

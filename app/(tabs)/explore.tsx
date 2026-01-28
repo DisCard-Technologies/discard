@@ -1,5 +1,6 @@
 import { useState, useMemo, useCallback } from 'react';
-import { StyleSheet, View, Pressable, ScrollView, ActivityIndicator, TextInput, Modal } from 'react-native';
+import { StyleSheet, View, ScrollView, ActivityIndicator, TextInput, Modal } from 'react-native';
+import { PressableScale } from 'pressto';
 import { Image, ImageErrorEventData } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -201,9 +202,7 @@ export default function ExploreScreen() {
         price: token.priceUsd.toString(),
         change24h: token.change24h.toString(),
         marketCap: token.marketCap?.toString() || '',
-        logoUri: token.logoUri || '',
-      },
-    });
+        logoUri: token.logoUri || '' } });
   };
 
   const handleTabSelect = (tab: TabFilter) => {
@@ -238,9 +237,7 @@ export default function ExploreScreen() {
         resolutionSource: market.resolutionSource || '',
         isLive: market.isLive ? 'true' : 'false',
         // Pass outcomes if available
-        outcomes: market.outcomes ? JSON.stringify(market.outcomes) : '',
-      },
-    });
+        outcomes: market.outcomes ? JSON.stringify(market.outcomes) : '' } });
   };
 
   return (
@@ -262,12 +259,12 @@ export default function ExploreScreen() {
             autoCorrect={false}
           />
           {searchQuery.length > 0 && (
-            <Pressable onPress={() => setSearchQuery('')}>
+            <PressableScale onPress={() => setSearchQuery('')}>
               <Ionicons name="close-circle" size={18} color={mutedColor} />
-            </Pressable>
+            </PressableScale>
           )}
         </View>
-        <Pressable
+        <PressableScale
           onPress={() => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
             setShowSortMenu(true);
@@ -275,13 +272,13 @@ export default function ExploreScreen() {
           style={[styles.sortButton, { backgroundColor: inputBg, borderColor }]}
         >
           <Ionicons name="swap-vertical" size={18} color={tokenSort !== 'default' || marketSort !== 'default' ? primaryColor : mutedColor} />
-        </Pressable>
+        </PressableScale>
       </View>
 
       {/* Tab Filter Pills - Rounded Pill Container */}
       <View style={[styles.tabContainer, { backgroundColor: isDark ? '#1c1c1e' : '#f4f4f5' }]}>
         {tabFilters.map((tab) => (
-          <Pressable
+          <PressableScale
             key={tab.id}
             onPress={() => handleTabSelect(tab.id)}
             style={[
@@ -302,7 +299,7 @@ export default function ExploreScreen() {
             >
               {tab.label}
             </ThemedText>
-          </Pressable>
+          </PressableScale>
         ))}
       </View>
 
@@ -315,7 +312,7 @@ export default function ExploreScreen() {
         >
         {activeTab === 'tokens' ? (
           tokenCategoryOptions.map((cat) => (
-            <Pressable
+            <PressableScale
               key={cat.id}
               onPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -334,11 +331,11 @@ export default function ExploreScreen() {
               >
                 {cat.label}
               </ThemedText>
-            </Pressable>
+            </PressableScale>
           ))
         ) : (
           marketCategoryOptions.map((cat) => (
-            <Pressable
+            <PressableScale
               key={cat}
               onPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -357,7 +354,7 @@ export default function ExploreScreen() {
               >
                 {cat}
               </ThemedText>
-            </Pressable>
+            </PressableScale>
           ))
         )}
         </ScrollView>
@@ -370,18 +367,18 @@ export default function ExploreScreen() {
         animationType="fade"
         onRequestClose={() => setShowSortMenu(false)}
       >
-        <Pressable style={styles.modalOverlay} onPress={() => setShowSortMenu(false)}>
+        <PressableScale style={styles.modalOverlay} onPress={() => setShowSortMenu(false)}>
           <View style={[styles.sortMenu, { backgroundColor: isDark ? '#2c2c2e' : '#fff' }]}>
             <View style={styles.sortMenuHeader}>
               <ThemedText style={styles.sortMenuTitle}>Sort By</ThemedText>
-              <Pressable onPress={() => setShowSortMenu(false)}>
+              <PressableScale onPress={() => setShowSortMenu(false)}>
                 <Ionicons name="close" size={24} color={mutedColor} />
-              </Pressable>
+              </PressableScale>
             </View>
             {(activeTab === 'tokens' ? tokenSortOptions : marketSortOptions).map((option) => {
               const isSelected = activeTab === 'tokens' ? tokenSort === option.id : marketSort === option.id;
               return (
-                <Pressable
+                <PressableScale
                   key={option.id}
                   onPress={() => handleSortSelect(option.id)}
                   style={[styles.sortMenuItem, isSelected && { backgroundColor: `${primaryColor}15` }]}
@@ -390,11 +387,11 @@ export default function ExploreScreen() {
                     {option.label}
                   </ThemedText>
                   {isSelected && <Ionicons name="checkmark" size={20} color={primaryColor} />}
-                </Pressable>
+                </PressableScale>
               );
             })}
           </View>
-        </Pressable>
+        </PressableScale>
       </Modal>
 
       {/* Content List */}
@@ -436,14 +433,12 @@ export default function ExploreScreen() {
                 <ThemedText style={[styles.tableHeaderText, styles.headerMcap, { color: mutedColor }]}>MCAP</ThemedText>
               </View>
               {filteredTokens.map((token, index) => (
-                <Pressable
+                <PressableScale
                   key={token.symbol + index}
                   onPress={() => handleTokenPress(token)}
-                  style={({ pressed }) => [
+                  style={[
                     styles.tokenRow,
-                    { borderBottomColor: borderColor },
-                    pressed && styles.tokenRowPressed,
-                  ]}
+                    { borderBottomColor: borderColor }]}
                 >
                   {/* Token Icon */}
                   <View style={[styles.tokenIcon, { backgroundColor: cardBg }]}>
@@ -489,7 +484,7 @@ export default function ExploreScreen() {
                   <ThemedText style={[styles.tokenMcap, { color: mutedColor }]}>
                     {formatMarketCap(token.marketCap)}
                   </ThemedText>
-                </Pressable>
+                </PressableScale>
               ))}
             </>
           )
@@ -528,16 +523,14 @@ export default function ExploreScreen() {
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
-  },
+    flex: 1 },
   // Search row with search bar and sort button
   searchRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     marginHorizontal: 16,
-    marginBottom: 12,
-  },
+    marginBottom: 12 },
   searchBar: {
     flex: 1,
     flexDirection: 'row',
@@ -546,21 +539,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderRadius: 24,
-    borderWidth: 1,
-  },
+    borderWidth: 1 },
   searchInput: {
     flex: 1,
     fontSize: 14,
-    paddingVertical: 0,
-  },
+    paddingVertical: 0 },
   sortButton: {
     width: 48,
     height: 48,
     borderRadius: 24,
     borderWidth: 1,
     alignItems: 'center',
-    justifyContent: 'center',
-  },
+    justifyContent: 'center' },
   // Rounded pill container for tab selector
   tabContainer: {
     flexDirection: 'row',
@@ -568,8 +558,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     padding: 4,
     borderRadius: 24,
-    gap: 4,
-  },
+    gap: 4 },
   tabPill: {
     flex: 1,
     flexDirection: 'row',
@@ -577,42 +566,34 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: 10,
     borderRadius: 20,
-    gap: 6,
-  },
+    gap: 6 },
   tabPillText: {
     fontSize: 14,
-    fontWeight: '600',
-  },
+    fontWeight: '600' },
   // Filter container and scroll for categories
   filterContainer: {
-    marginBottom: 8,
-  },
+    marginBottom: 8 },
   filterScrollContent: {
     paddingHorizontal: 16,
     gap: 6,
     flexDirection: 'row',
-    alignItems: 'center',
-  },
+    alignItems: 'center' },
   filterPill: {
     paddingHorizontal: 14,
     paddingVertical: 8,
-    borderRadius: 16,
-  },
+    borderRadius: 16 },
   filterPillText: {
     fontSize: 12,
-    fontWeight: '500',
-  },
+    fontWeight: '500' },
   // Sort menu modal
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'flex-end',
-  },
+    justifyContent: 'flex-end' },
   sortMenu: {
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    paddingBottom: 34,
-  },
+    paddingBottom: 34 },
   sortMenuHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -620,157 +601,125 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 16,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(128,128,128,0.2)',
-  },
+    borderBottomColor: 'rgba(128,128,128,0.2)' },
   sortMenuTitle: {
     fontSize: 18,
-    fontWeight: '600',
-  },
+    fontWeight: '600' },
   sortMenuItem: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingVertical: 14,
-  },
+    paddingVertical: 14 },
   sortMenuItemText: {
-    fontSize: 16,
-  },
+    fontSize: 16 },
   tokenList: {
-    flex: 1,
-  },
+    flex: 1 },
   tokenListContent: {
-    paddingHorizontal: 16,
-  },
+    paddingHorizontal: 16 },
   tableHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 10,
     paddingHorizontal: 4,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    marginBottom: 4,
-  },
+    marginBottom: 4 },
   tableHeaderText: {
     fontSize: 10,
     fontWeight: '600',
     letterSpacing: 0.5,
-    flex: 1,
-  },
+    flex: 1 },
   headerPrice: {
     width: 85,
     textAlign: 'right',
-    flex: 0,
-  },
+    flex: 0 },
   headerChange: {
     width: 70,
     textAlign: 'right',
-    flex: 0,
-  },
+    flex: 0 },
   headerMcap: {
     width: 55,
     textAlign: 'right',
-    flex: 0,
-  },
+    flex: 0 },
   tokenRow: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    gap: 10,
-  },
+    gap: 10 },
   tokenRowPressed: {
-    opacity: 0.7,
-  },
+    opacity: 0.7 },
   tokenIcon: {
     width: 36,
     height: 36,
     borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    overflow: 'hidden',
-  },
+    overflow: 'hidden' },
   tokenIconImage: {
     width: '100%',
-    height: '100%',
-  },
+    height: '100%' },
   tokenIconFallback: {
     fontSize: 12,
-    fontWeight: '600',
-  },
+    fontWeight: '600' },
   tokenInfo: {
     flex: 1,
-    minWidth: 0,
-  },
+    minWidth: 0 },
   tokenNameRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-  },
+    gap: 4 },
   tokenSymbolMain: {
     fontSize: 14,
-    fontWeight: '600',
-  },
+    fontWeight: '600' },
   tokenName: {
     fontSize: 11,
-    marginTop: 2,
-  },
+    marginTop: 2 },
   tokenPrice: {
     width: 85,
     textAlign: 'right',
     fontSize: 13,
-    fontWeight: '500',
-  },
+    fontWeight: '500' },
   tokenChangePercent: {
     width: 70,
     textAlign: 'right',
     fontSize: 12,
-    fontWeight: '500',
-  },
+    fontWeight: '500' },
   tokenMcap: {
     width: 55,
     textAlign: 'right',
-    fontSize: 11,
-  },
+    fontSize: 11 },
   loadingContainer: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     paddingTop: 100,
-    gap: 16,
-  },
+    gap: 16 },
   loadingText: {
-    fontSize: 14,
-  },
+    fontSize: 14 },
   errorContainer: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     paddingTop: 100,
-    gap: 12,
-  },
+    gap: 12 },
   errorText: {
-    fontSize: 14,
-  },
+    fontSize: 14 },
   emptyContainer: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     paddingTop: 100,
-    gap: 12,
-  },
+    gap: 12 },
   emptyText: {
-    fontSize: 14,
-  },
+    fontSize: 14 },
   // Markets section header
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingVertical: 12,
-    marginBottom: 8,
-  },
+    marginBottom: 8 },
   sectionTitle: {
     fontSize: 18,
-    fontWeight: '700',
-  },
-});
+    fontWeight: '700' } });

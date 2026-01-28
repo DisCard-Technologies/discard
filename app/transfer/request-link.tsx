@@ -12,7 +12,6 @@ import { useState, useCallback } from "react";
 import {
   StyleSheet,
   View,
-  Pressable,
   TextInput,
   ScrollView,
   ActivityIndicator,
@@ -20,6 +19,7 @@ import {
   Image,
   Dimensions,
 } from "react-native";
+import { PressableScale } from "pressto";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -171,12 +171,12 @@ export default function RequestLinkScreen() {
       <ThemedView style={[styles.container, { backgroundColor: bgColor }]}>
         {/* Header */}
         <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
-          <Pressable
+          <PressableScale
             onPress={handleBack}
-            style={({ pressed }) => [styles.headerButton, pressed && styles.pressed]}
+            style={[styles.headerButton]}
           >
             <Ionicons name="close" size={24} color={textColor} />
-          </Pressable>
+          </PressableScale>
           <Text style={[styles.headerTitle, { color: textColor }]}>Request</Text>
           <View style={styles.headerButton} />
         </View>
@@ -263,13 +263,12 @@ export default function RequestLinkScreen() {
           style={[styles.bottomActions, { paddingBottom: insets.bottom + 16 }]}
         >
           <View style={styles.actionRow}>
-            <Pressable
+            <PressableScale
               onPress={handleCopy}
-              disabled={isCopying}
-              style={({ pressed }) => [
+              enabled={!isCopying}
+              style={[
                 styles.actionButton,
                 styles.secondaryAction,
-                pressed && styles.pressed,
               ]}
             >
               <Ionicons
@@ -280,32 +279,31 @@ export default function RequestLinkScreen() {
               <Text style={[styles.secondaryActionText, { color: isCopying ? successColor : primaryColor }]}>
                 {isCopying ? "Copied!" : "Copy Link"}
               </Text>
-            </Pressable>
+            </PressableScale>
 
-            <Pressable
+            <PressableScale
               onPress={handleShare}
-              disabled={isSharing}
-              style={({ pressed }) => [
+              enabled={!isSharing}
+              style={[
                 styles.actionButton,
                 styles.primaryAction,
                 { backgroundColor: primaryColor },
-                pressed && styles.pressed,
               ]}
             >
               <Ionicons name="share-outline" size={20} color="#fff" />
               <Text style={styles.primaryActionText}>Share</Text>
-            </Pressable>
+            </PressableScale>
           </View>
 
           {/* New Request */}
-          <Pressable
+          <PressableScale
             onPress={handleNewRequest}
-            style={({ pressed }) => [styles.newRequestLink, pressed && styles.pressed]}
+            style={[styles.newRequestLink]}
           >
             <Text style={[styles.newRequestText, { color: mutedColor }]}>
               Create another request
             </Text>
-          </Pressable>
+          </PressableScale>
         </Animated.View>
       </ThemedView>
     );
@@ -319,12 +317,12 @@ export default function RequestLinkScreen() {
     <ThemedView style={[styles.container, { backgroundColor: bgColor }]}>
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
-        <Pressable
+        <PressableScale
           onPress={handleBack}
-          style={({ pressed }) => [styles.headerButton, pressed && styles.pressed]}
+          style={[styles.headerButton]}
         >
           <Ionicons name="arrow-back" size={24} color={textColor} />
-        </Pressable>
+        </PressableScale>
         <Text style={[styles.headerTitle, { color: textColor }]}>Request</Text>
         <View style={styles.headerButton} />
       </View>
@@ -358,23 +356,22 @@ export default function RequestLinkScreen() {
                 maxLength={100}
               />
               {memo.length > 0 && (
-                <Pressable onPress={() => setMemo("")} style={styles.memoClear}>
+                <PressableScale onPress={() => setMemo("")} style={styles.memoClear}>
                   <Ionicons name="close-circle" size={18} color={mutedColor} />
-                </Pressable>
+                </PressableScale>
               )}
             </View>
           ) : (
-            <Pressable
+            <PressableScale
               onPress={() => setShowMemoInput(true)}
-              style={({ pressed }) => [
+              style={[
                 styles.addMemoButton,
                 { backgroundColor: cardBg },
-                pressed && styles.pressed,
               ]}
             >
               <Ionicons name="add" size={20} color={primaryColor} />
               <Text style={[styles.addMemoText, { color: primaryColor }]}>Add a note</Text>
-            </Pressable>
+            </PressableScale>
           )}
         </Animated.View>
 
@@ -392,14 +389,13 @@ export default function RequestLinkScreen() {
         entering={FadeInDown.delay(300).duration(300)}
         style={[styles.bottomActions, { paddingBottom: insets.bottom + 16 }]}
       >
-        <Pressable
+        <PressableScale
           onPress={handleGenerate}
-          disabled={amountUsd <= 0 || isCreating}
-          style={({ pressed }) => [
+          enabled={amountUsd > 0 && !isCreating}
+          style={[
             styles.generateButton,
             { backgroundColor: primaryColor },
             (amountUsd <= 0 || isCreating) && styles.buttonDisabled,
-            pressed && styles.pressed,
           ]}
         >
           {isCreating ? (
@@ -410,7 +406,7 @@ export default function RequestLinkScreen() {
               <Text style={styles.generateButtonText}>Generate Link</Text>
             </>
           )}
-        </Pressable>
+        </PressableScale>
       </Animated.View>
     </ThemedView>
   );
@@ -563,11 +559,6 @@ const styles = StyleSheet.create({
   buttonDisabled: {
     opacity: 0.5,
   },
-  pressed: {
-    opacity: 0.8,
-    transform: [{ scale: 0.98 }],
-  },
-
   // Success State
   successBadge: {
     flexDirection: "row",

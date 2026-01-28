@@ -9,7 +9,8 @@
  */
 
 import { useEffect, useCallback } from "react";
-import { StyleSheet, View, Pressable, Linking, Dimensions, Text } from "react-native";
+import { StyleSheet, View, Linking, Dimensions, Text } from "react-native";
+import { PressableScale, PressableOpacity } from "pressto";
 import { Ionicons } from "@expo/vector-icons";
 import Animated, {
   useAnimatedStyle,
@@ -360,30 +361,26 @@ export function SuccessScreen({
         style={styles.bottomActions}
       >
         {/* View Details Link */}
-        <Pressable
+        <PressableOpacity
           onPress={handleViewOnSolscan}
-          style={({ pressed }) => [
-            styles.detailsLink,
-            pressed && styles.pressed,
-          ]}
+          style={styles.detailsLink}
         >
           <Ionicons name="open-outline" size={16} color={mutedColor} />
           <Text style={[styles.detailsLinkText, { color: mutedColor }]}>
             View on Explorer
           </Text>
-        </Pressable>
+        </PressableOpacity>
 
         {/* Done Button */}
-        <Pressable
+        <PressableScale
           onPress={handleDone}
-          style={({ pressed }) => [
+          style={[
             styles.doneButton,
             { backgroundColor: primaryColor },
-            pressed && styles.pressed,
           ]}
         >
           <Text style={styles.doneButtonText}>Done</Text>
-        </Pressable>
+        </PressableScale>
       </Animated.View>
     </View>
   );
@@ -507,10 +504,6 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 17,
     fontWeight: "600",
-  },
-  pressed: {
-    opacity: 0.8,
-    transform: [{ scale: 0.98 }],
   },
 });
 

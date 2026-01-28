@@ -14,11 +14,11 @@ import {
   StyleSheet,
   View,
   TextInput,
-  Pressable,
   ActivityIndicator,
   FlatList,
   Keyboard,
 } from "react-native";
+import { PressableScale } from "pressto";
 import { Ionicons } from "@expo/vector-icons";
 import Animated, {
   useAnimatedStyle,
@@ -70,12 +70,9 @@ function ContactItem({ contact, onPress, onToggleFavorite, showFavoriteStar = fa
   const primaryColor = useThemeColor({}, "tint");
 
   return (
-    <Pressable
+    <PressableScale
       onPress={onPress}
-      style={({ pressed }) => [
-        styles.contactItem,
-        pressed && styles.contactPressed,
-      ]}
+      style={styles.contactItem}
     >
       <View
         style={[styles.contactAvatar, { backgroundColor: contact.avatarColor }]}
@@ -101,12 +98,9 @@ function ContactItem({ contact, onPress, onToggleFavorite, showFavoriteStar = fa
         <Ionicons name="checkmark-circle" size={16} color="#4CAF50" style={styles.verifiedIcon} />
       )}
       {showFavoriteStar && onToggleFavorite && (
-        <Pressable
-          onPress={(e) => {
-            e.stopPropagation?.();
-            onToggleFavorite();
-          }}
-          style={({ pressed }) => [styles.favoriteButton, pressed && styles.pressed]}
+        <PressableScale
+          onPress={onToggleFavorite}
+          style={styles.favoriteButton}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         >
           <Ionicons
@@ -114,9 +108,9 @@ function ContactItem({ contact, onPress, onToggleFavorite, showFavoriteStar = fa
             size={18}
             color={contact.isFavorite ? "#FFD700" : mutedColor}
           />
-        </Pressable>
+        </PressableScale>
       )}
-    </Pressable>
+    </PressableScale>
   );
 }
 
@@ -334,28 +328,22 @@ export function RecipientInput({
 
         {/* Clear button */}
         {input.length > 0 && !isResolving && (
-          <Pressable
+          <PressableScale
             onPress={handleClear}
-            style={({ pressed }) => [
-              styles.clearButton,
-              pressed && styles.pressed,
-            ]}
+            style={styles.clearButton}
           >
             <Ionicons name="close-circle" size={20} color={mutedColor} />
-          </Pressable>
+          </PressableScale>
         )}
 
         {/* QR Scan button */}
         {onScanQR && (
-          <Pressable
+          <PressableScale
             onPress={onScanQR}
-            style={({ pressed }) => [
-              styles.scanButton,
-              pressed && styles.pressed,
-            ]}
+            style={styles.scanButton}
           >
             <Ionicons name="qr-code-outline" size={22} color={primaryColor} />
-          </Pressable>
+          </PressableScale>
         )}
       </Animated.View>
 
@@ -394,17 +382,16 @@ export function RecipientInput({
               </ThemedText>
             </View>
           </View>
-          <Pressable
+          <PressableScale
             onPress={() => onInvite(input)}
-            style={({ pressed }) => [
+            style={[
               styles.inviteButton,
               { backgroundColor: primaryColor },
-              pressed && styles.pressed,
             ]}
           >
             <Ionicons name="send" size={14} color="#fff" />
             <ThemedText style={styles.inviteButtonText}>Invite</ThemedText>
-          </Pressable>
+          </PressableScale>
         </Animated.View>
       )}
 
@@ -437,19 +424,18 @@ export function RecipientInput({
                 {formatAddress(resolved.address, 8)}
               </ThemedText>
             </View>
-            <Pressable
+            <PressableScale
               onPress={() => {
                 Keyboard.dismiss();
                 onSelect(resolved, undefined);
               }}
-              style={({ pressed }) => [
+              style={[
                 styles.useAddressButton,
                 { backgroundColor: primaryColor },
-                pressed && styles.pressed,
               ]}
             >
               <ThemedText style={styles.useAddressButtonText}>Use</ThemedText>
-            </Pressable>
+            </PressableScale>
           </View>
         </Animated.View>
       )}
@@ -470,19 +456,18 @@ export function RecipientInput({
                 {formatAddress(resolved.address, 8)}
               </ThemedText>
             </View>
-            <Pressable
+            <PressableScale
               onPress={() => {
                 Keyboard.dismiss();
                 onSelect(resolved, undefined);
               }}
-              style={({ pressed }) => [
+              style={[
                 styles.useAddressButton,
                 { backgroundColor: primaryColor },
-                pressed && styles.pressed,
               ]}
             >
               <ThemedText style={styles.useAddressButtonText}>Use</ThemedText>
-            </Pressable>
+            </PressableScale>
           </View>
         </Animated.View>
       )}
@@ -510,19 +495,18 @@ export function RecipientInput({
                 {formatAddress(resolved.address, 6)}
               </ThemedText>
             </View>
-            <Pressable
+            <PressableScale
               onPress={() => {
                 Keyboard.dismiss();
                 onSelect(resolved, undefined);
               }}
-              style={({ pressed }) => [
+              style={[
                 styles.useAddressButton,
                 { backgroundColor: primaryColor },
-                pressed && styles.pressed,
               ]}
             >
               <ThemedText style={styles.useAddressButtonText}>Use</ThemedText>
-            </Pressable>
+            </PressableScale>
           </View>
         </Animated.View>
       )}
@@ -633,9 +617,6 @@ const styles = StyleSheet.create({
   scanButton: {
     padding: 8,
     borderRadius: 8,
-  },
-  pressed: {
-    opacity: 0.6,
   },
   badgeContainer: {
     marginTop: 8,
@@ -766,10 +747,6 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 8,
     borderRadius: 12,
-  },
-  contactPressed: {
-    opacity: 0.6,
-    backgroundColor: "rgba(0,0,0,0.05)",
   },
   contactAvatar: {
     width: 40,

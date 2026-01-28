@@ -12,12 +12,12 @@ import {
   StyleSheet,
   View,
   Modal,
-  Pressable,
   TextInput,
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import { PressableScale } from 'pressto';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeIn, FadeInUp } from 'react-native-reanimated';
 
@@ -154,7 +154,7 @@ export function BackupPasswordModal({
         style={styles.overlay}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 10 : 0}
       >
-        <Pressable style={styles.backdrop} onPress={onClose} />
+        <PressableScale style={styles.backdrop} onPress={onClose} />
 
         <Animated.View
           entering={FadeIn.duration(200)}
@@ -181,12 +181,12 @@ export function BackupPasswordModal({
                 </ThemedText>
               </View>
             </View>
-            <Pressable
+            <PressableScale
               onPress={onClose}
-              style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}
+              style={styles.closeButton}
             >
               <Ionicons name="close" size={24} color={mutedColor} />
-            </Pressable>
+            </PressableScale>
           </View>
 
           {/* Password Input */}
@@ -216,7 +216,7 @@ export function BackupPasswordModal({
                   autoFocus
                   editable={!isLoading}
                 />
-                <Pressable
+                <PressableScale
                   onPress={() => setShowPassword(!showPassword)}
                   style={styles.eyeButton}
                 >
@@ -225,7 +225,7 @@ export function BackupPasswordModal({
                     size={20}
                     color={mutedColor}
                   />
-                </Pressable>
+                </PressableScale>
               </View>
 
               {/* Password Strength (create mode only) */}
@@ -300,7 +300,7 @@ export function BackupPasswordModal({
                     style={[styles.input, { color: textColor }]}
                     editable={!isLoading}
                   />
-                  <Pressable
+                  <PressableScale
                     onPress={() => setShowConfirmPassword(!showConfirmPassword)}
                     style={styles.eyeButton}
                   >
@@ -309,7 +309,7 @@ export function BackupPasswordModal({
                       size={20}
                       color={mutedColor}
                     />
-                  </Pressable>
+                  </PressableScale>
                 </View>
                 {confirmPassword && password !== confirmPassword && (
                   <ThemedText style={[styles.errorHint, { color: errorColor }]}>
@@ -330,13 +330,12 @@ export function BackupPasswordModal({
             )}
 
             {/* Submit Button */}
-            <Pressable
+            <PressableScale
               onPress={handleSubmit}
-              disabled={isLoading || !canSubmit}
-              style={({ pressed }) => [
+              enabled={!isLoading && canSubmit}
+              style={[
                 styles.submitButton,
                 { backgroundColor: primaryColor },
-                pressed && styles.pressed,
                 (isLoading || !canSubmit) && styles.buttonDisabled,
               ]}
             >
@@ -354,7 +353,7 @@ export function BackupPasswordModal({
                   </ThemedText>
                 </>
               )}
-            </Pressable>
+            </PressableScale>
           </Animated.View>
 
           {/* Info */}
@@ -423,9 +422,6 @@ const styles = StyleSheet.create({
   },
   closeButton: {
     padding: 4,
-  },
-  pressed: {
-    opacity: 0.6,
   },
   inputSection: {
     marginBottom: 16,

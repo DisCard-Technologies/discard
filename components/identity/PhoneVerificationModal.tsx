@@ -11,13 +11,13 @@ import {
   StyleSheet,
   View,
   Modal,
-  Pressable,
   TextInput,
   ActivityIndicator,
   KeyboardAvoidingView,
   ScrollView,
   Platform,
 } from "react-native";
+import { PressableScale } from "pressto";
 import { Ionicons } from "@expo/vector-icons";
 import Animated, { FadeIn, SlideInDown, FadeInUp } from "react-native-reanimated";
 
@@ -162,7 +162,7 @@ export function PhoneVerificationModal({
         style={styles.overlay}
         keyboardVerticalOffset={Platform.OS === "ios" ? 10 : 0}
       >
-        <Pressable style={styles.backdrop} onPress={handleClose} />
+        <PressableScale style={styles.backdrop} onPress={handleClose} />
 
         <Animated.View
           entering={FadeIn.duration(200)}
@@ -192,12 +192,12 @@ export function PhoneVerificationModal({
                 </ThemedText>
               </View>
             </View>
-            <Pressable
+            <PressableScale
               onPress={handleClose}
-              style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}
+              style={styles.closeButton}
             >
               <Ionicons name="close" size={24} color={mutedColor} />
-            </Pressable>
+            </PressableScale>
           </View>
 
           {/* Step 1: Phone Input */}
@@ -244,13 +244,12 @@ export function PhoneVerificationModal({
               )}
 
               {/* Send Code Button */}
-              <Pressable
+              <PressableScale
                 onPress={requestVerification}
-                disabled={isLoading || phoneNumber.length < 11}
-                style={({ pressed }) => [
+                enabled={!isLoading && phoneNumber.length >= 11}
+                style={[
                   styles.primaryButton,
                   { backgroundColor: primaryColor },
-                  pressed && styles.pressed,
                   (isLoading || phoneNumber.length < 11) && styles.buttonDisabled,
                 ]}
               >
@@ -262,7 +261,7 @@ export function PhoneVerificationModal({
                     <ThemedText style={styles.primaryButtonText}>Send Code</ThemedText>
                   </>
                 )}
-              </Pressable>
+              </PressableScale>
             </Animated.View>
           )}
 
@@ -300,15 +299,14 @@ export function PhoneVerificationModal({
                 {/* Countdown / Resend */}
                 <View style={styles.resendContainer}>
                   {canResend ? (
-                    <Pressable
+                    <PressableScale
                       onPress={resendCode}
-                      disabled={isLoading}
-                      style={({ pressed }) => [pressed && styles.pressed]}
+                      enabled={!isLoading}
                     >
                       <ThemedText style={[styles.resendText, { color: primaryColor }]}>
                         Resend Code
                       </ThemedText>
-                    </Pressable>
+                    </PressableScale>
                   ) : (
                     <ThemedText style={[styles.countdownText, { color: mutedColor }]}>
                       Resend in {formatCountdown(countdown)}
@@ -338,23 +336,22 @@ export function PhoneVerificationModal({
               )}
 
               {/* Back Button */}
-              <Pressable
+              <PressableScale
                 onPress={() => {
                   reset();
                   setOtpDigits(["", "", "", "", "", ""]);
                 }}
-                disabled={isLoading}
-                style={({ pressed }) => [
+                enabled={!isLoading}
+                style={[
                   styles.secondaryButton,
                   { borderColor: isDark ? "rgba(255,255,255,0.2)" : "rgba(0,0,0,0.1)" },
-                  pressed && styles.pressed,
                 ]}
               >
                 <Ionicons name="arrow-back" size={18} color={mutedColor} />
                 <ThemedText style={[styles.secondaryButtonText, { color: mutedColor }]}>
                   Change Number
                 </ThemedText>
-              </Pressable>
+              </PressableScale>
             </Animated.View>
           )}
 
@@ -431,9 +428,6 @@ const styles = StyleSheet.create({
   },
   closeButton: {
     padding: 4,
-  },
-  pressed: {
-    opacity: 0.6,
   },
   inputSection: {
     marginBottom: 16,

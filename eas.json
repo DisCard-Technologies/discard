@@ -4,7 +4,7 @@
   },
   "build": {
     "development": {
-      "developmentClient": true,
+      "developmentClient": true, // Ensure this is false for a standalone build
       "distribution": "internal"
     },
     "preview": {
@@ -19,10 +19,10 @@
       }
     },
     "development-simulator": {
-      "developmentClient": true,
+      "developmentClient": true, 
       "distribution": "internal",
       "ios": {
-        "simulator": true
+        "simulator": true // Set to false if you want to install on a physical device
       },
       "environment": "development"
     }
