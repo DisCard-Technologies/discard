@@ -9,7 +9,7 @@
  * - Validation states
  */
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import {
   StyleSheet,
   View,
@@ -18,6 +18,7 @@ import {
   FlatList,
   Keyboard,
 } from "react-native";
+import * as Haptics from "expo-haptics";
 import { PressableScale } from "pressto";
 import { Ionicons } from "@expo/vector-icons";
 import Animated, {
@@ -32,6 +33,7 @@ import { useThemeColor } from "@/hooks/use-theme-color";
 import { useAddressResolver, type ResolvedAddress } from "@/hooks/useAddressResolver";
 import { useContacts, type Contact } from "@/hooks/useContacts";
 import { formatAddress } from "@/lib/transfer/address-resolver";
+import { ContactsStorage } from "@/lib/contacts-storage";
 
 // ============================================================================
 // Types
@@ -168,8 +170,14 @@ export function RecipientInput({
   disabled = false,
 }: RecipientInputProps) {
   const inputRef = useRef<TextInput>(null);
+  const saveNameInputRef = useRef<TextInput>(null);
   const [isFocused, setIsFocused] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
+
+  // Save contact state
+  const [showSaveInput, setShowSaveInput] = useState(false);
+  const [saveName, setSaveName] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
 
   // Theme colors
   const primaryColor = useThemeColor({}, "tint");
@@ -222,6 +230,14 @@ export function RecipientInput({
   const matchedContacts = input.trim()
     ? searchContacts(input).slice(0, 5)
     : [];
+
+  // Check if resolved address is already a saved contact
+  const existingContact = useMemo(() => {
+    if (!resolved?.isValid || !resolved.address) return null;
+    return getContactByAddress(resolved.address);
+  }, [resolved, getContactByAddress]);
+
+  const isAlreadySaved = !!existingContact;
 
   // Show suggestions when focused and no valid resolution yet
   useEffect(() => {
@@ -285,6 +301,49 @@ export function RecipientInput({
     },
     [toggleFavorite]
   );
+
+  // Reset save state when input changes
+  useEffect(() => {
+    setShowSaveInput(false);
+    setSaveName("");
+  }, [input]);
+
+  // Handle save contact
+  const handleSaveContact = useCallback(async () => {
+    if (!resolved?.isValid || !resolved.address || !saveName.trim()) return;
+
+    setIsSaving(true);
+    try {
+      await ContactsStorage.create({
+        name: saveName.trim(),
+        identifier: resolved.input || resolved.address,
+        identifierType: resolved.type === "unknown" ? "address" : resolved.type,
+        resolvedAddress: resolved.address,
+        verified: false,
+      });
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setShowSaveInput(false);
+      setSaveName("");
+    } catch (err) {
+      console.error("[RecipientInput] Save contact failed:", err);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    } finally {
+      setIsSaving(false);
+    }
+  }, [resolved, saveName]);
+
+  // Toggle save input visibility
+  const handleToggleSaveInput = useCallback(() => {
+    if (showSaveInput) {
+      setShowSaveInput(false);
+      setSaveName("");
+    } else {
+      setShowSaveInput(true);
+      // Pre-fill with display name if available
+      setSaveName(resolved?.displayName || "");
+      setTimeout(() => saveNameInputRef.current?.focus(), 100);
+    }
+  }, [showSaveInput, resolved]);
 
   // Determine what to show in suggestions
   const showFavoriteContacts =
@@ -418,25 +477,69 @@ export function RecipientInput({
             <View style={styles.addressCardLeft}>
               <View style={styles.resolvedHeader}>
                 <Ionicons name="checkmark-circle" size={16} color="#4CAF50" />
-                <ThemedText style={styles.resolvedLabel}>Valid address</ThemedText>
+                <ThemedText style={styles.resolvedLabel}>
+                  {isAlreadySaved ? `Saved as ${existingContact?.name}` : "Valid address"}
+                </ThemedText>
               </View>
               <ThemedText style={[styles.resolvedAddress, { color: mutedColor }]}>
                 {formatAddress(resolved.address, 8)}
               </ThemedText>
             </View>
-            <PressableScale
-              onPress={() => {
-                Keyboard.dismiss();
-                onSelect(resolved, undefined);
-              }}
-              style={[
-                styles.useAddressButton,
-                { backgroundColor: primaryColor },
-              ]}
-            >
-              <ThemedText style={styles.useAddressButtonText}>Use</ThemedText>
-            </PressableScale>
+            <View style={styles.cardActions}>
+              {!isAlreadySaved && (
+                <PressableScale
+                  onPress={handleToggleSaveInput}
+                  style={[styles.saveIconButton, { backgroundColor: `${primaryColor}15` }]}
+                >
+                  <Ionicons
+                    name={showSaveInput ? "close" : "person-add-outline"}
+                    size={18}
+                    color={primaryColor}
+                  />
+                </PressableScale>
+              )}
+              <PressableScale
+                onPress={() => {
+                  Keyboard.dismiss();
+                  onSelect(resolved, existingContact || undefined);
+                }}
+                style={[styles.useAddressButton, { backgroundColor: primaryColor }]}
+              >
+                <ThemedText style={styles.useAddressButtonText}>Use</ThemedText>
+              </PressableScale>
+            </View>
           </View>
+          {/* Save Contact Input */}
+          {showSaveInput && !isAlreadySaved && (
+            <Animated.View entering={FadeIn.duration(150)} style={styles.saveInputRow}>
+              <TextInput
+                ref={saveNameInputRef}
+                value={saveName}
+                onChangeText={setSaveName}
+                placeholder="Contact name"
+                placeholderTextColor={mutedColor}
+                style={[styles.saveNameInput, { backgroundColor: inputBg, color: textColor, borderColor }]}
+                autoCapitalize="words"
+                returnKeyType="done"
+                onSubmitEditing={handleSaveContact}
+              />
+              <PressableScale
+                onPress={handleSaveContact}
+                enabled={!isSaving && saveName.trim().length > 0}
+                style={[
+                  styles.saveConfirmButton,
+                  { backgroundColor: primaryColor },
+                  (!saveName.trim() || isSaving) && styles.saveConfirmButtonDisabled,
+                ]}
+              >
+                {isSaving ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <ThemedText style={styles.saveConfirmButtonText}>Save</ThemedText>
+                )}
+              </PressableScale>
+            </Animated.View>
+          )}
         </Animated.View>
       )}
 
@@ -450,25 +553,69 @@ export function RecipientInput({
             <View style={styles.addressCardLeft}>
               <View style={styles.resolvedHeader}>
                 <Ionicons name="checkmark-circle" size={16} color="#4CAF50" />
-                <ThemedText style={styles.resolvedLabel}>Resolved to</ThemedText>
+                <ThemedText style={styles.resolvedLabel}>
+                  {isAlreadySaved ? `Saved as ${existingContact?.name}` : "Resolved to"}
+                </ThemedText>
               </View>
               <ThemedText style={[styles.resolvedAddress, { color: mutedColor }]}>
                 {formatAddress(resolved.address, 8)}
               </ThemedText>
             </View>
-            <PressableScale
-              onPress={() => {
-                Keyboard.dismiss();
-                onSelect(resolved, undefined);
-              }}
-              style={[
-                styles.useAddressButton,
-                { backgroundColor: primaryColor },
-              ]}
-            >
-              <ThemedText style={styles.useAddressButtonText}>Use</ThemedText>
-            </PressableScale>
+            <View style={styles.cardActions}>
+              {!isAlreadySaved && (
+                <PressableScale
+                  onPress={handleToggleSaveInput}
+                  style={[styles.saveIconButton, { backgroundColor: `${primaryColor}15` }]}
+                >
+                  <Ionicons
+                    name={showSaveInput ? "close" : "person-add-outline"}
+                    size={18}
+                    color={primaryColor}
+                  />
+                </PressableScale>
+              )}
+              <PressableScale
+                onPress={() => {
+                  Keyboard.dismiss();
+                  onSelect(resolved, existingContact || undefined);
+                }}
+                style={[styles.useAddressButton, { backgroundColor: primaryColor }]}
+              >
+                <ThemedText style={styles.useAddressButtonText}>Use</ThemedText>
+              </PressableScale>
+            </View>
           </View>
+          {/* Save Contact Input */}
+          {showSaveInput && !isAlreadySaved && (
+            <Animated.View entering={FadeIn.duration(150)} style={styles.saveInputRow}>
+              <TextInput
+                ref={saveNameInputRef}
+                value={saveName}
+                onChangeText={setSaveName}
+                placeholder="Contact name"
+                placeholderTextColor={mutedColor}
+                style={[styles.saveNameInput, { backgroundColor: inputBg, color: textColor, borderColor }]}
+                autoCapitalize="words"
+                returnKeyType="done"
+                onSubmitEditing={handleSaveContact}
+              />
+              <PressableScale
+                onPress={handleSaveContact}
+                enabled={!isSaving && saveName.trim().length > 0}
+                style={[
+                  styles.saveConfirmButton,
+                  { backgroundColor: primaryColor },
+                  (!saveName.trim() || isSaving) && styles.saveConfirmButtonDisabled,
+                ]}
+              >
+                {isSaving ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <ThemedText style={styles.saveConfirmButtonText}>Save</ThemedText>
+                )}
+              </PressableScale>
+            </Animated.View>
+          )}
         </Animated.View>
       )}
 
@@ -483,10 +630,10 @@ export function RecipientInput({
               <View style={styles.resolvedHeader}>
                 <Ionicons name="checkmark-circle" size={16} color="#4CAF50" />
                 <ThemedText style={styles.resolvedLabel}>
-                  DisCard user found
+                  {isAlreadySaved ? `Saved as ${existingContact?.name}` : "DisCard user found"}
                 </ThemedText>
               </View>
-              {resolved.displayName && (
+              {resolved.displayName && !isAlreadySaved && (
                 <ThemedText style={styles.resolvedUserName}>
                   {resolved.displayName}
                 </ThemedText>
@@ -495,19 +642,61 @@ export function RecipientInput({
                 {formatAddress(resolved.address, 6)}
               </ThemedText>
             </View>
-            <PressableScale
-              onPress={() => {
-                Keyboard.dismiss();
-                onSelect(resolved, undefined);
-              }}
-              style={[
-                styles.useAddressButton,
-                { backgroundColor: primaryColor },
-              ]}
-            >
-              <ThemedText style={styles.useAddressButtonText}>Use</ThemedText>
-            </PressableScale>
+            <View style={styles.cardActions}>
+              {!isAlreadySaved && (
+                <PressableScale
+                  onPress={handleToggleSaveInput}
+                  style={[styles.saveIconButton, { backgroundColor: `${primaryColor}15` }]}
+                >
+                  <Ionicons
+                    name={showSaveInput ? "close" : "person-add-outline"}
+                    size={18}
+                    color={primaryColor}
+                  />
+                </PressableScale>
+              )}
+              <PressableScale
+                onPress={() => {
+                  Keyboard.dismiss();
+                  onSelect(resolved, existingContact || undefined);
+                }}
+                style={[styles.useAddressButton, { backgroundColor: primaryColor }]}
+              >
+                <ThemedText style={styles.useAddressButtonText}>Use</ThemedText>
+              </PressableScale>
+            </View>
           </View>
+          {/* Save Contact Input */}
+          {showSaveInput && !isAlreadySaved && (
+            <Animated.View entering={FadeIn.duration(150)} style={styles.saveInputRow}>
+              <TextInput
+                ref={saveNameInputRef}
+                value={saveName}
+                onChangeText={setSaveName}
+                placeholder="Contact name"
+                placeholderTextColor={mutedColor}
+                style={[styles.saveNameInput, { backgroundColor: inputBg, color: textColor, borderColor }]}
+                autoCapitalize="words"
+                returnKeyType="done"
+                onSubmitEditing={handleSaveContact}
+              />
+              <PressableScale
+                onPress={handleSaveContact}
+                enabled={!isSaving && saveName.trim().length > 0}
+                style={[
+                  styles.saveConfirmButton,
+                  { backgroundColor: primaryColor },
+                  (!saveName.trim() || isSaving) && styles.saveConfirmButtonDisabled,
+                ]}
+              >
+                {isSaving ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <ThemedText style={styles.saveConfirmButtonText}>Save</ThemedText>
+                )}
+              </PressableScale>
+            </Animated.View>
+          )}
         </Animated.View>
       )}
 
@@ -678,12 +867,56 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontFamily: "monospace",
   },
+  cardActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  saveIconButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   useAddressButton: {
     paddingHorizontal: 20,
     paddingVertical: 10,
     borderRadius: 10,
   },
   useAddressButtonText: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  saveInputRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(128,128,128,0.15)",
+  },
+  saveNameInput: {
+    flex: 1,
+    fontSize: 15,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  saveConfirmButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 10,
+    minWidth: 60,
+    alignItems: "center",
+  },
+  saveConfirmButtonDisabled: {
+    opacity: 0.5,
+  },
+  saveConfirmButtonText: {
     color: "#fff",
     fontSize: 14,
     fontWeight: "600",
