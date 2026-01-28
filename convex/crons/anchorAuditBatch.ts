@@ -61,9 +61,9 @@ async function buildMerkleRoot(hashes: string[]): Promise<string> {
  */
 export const run = internalAction({
   args: {},
-  handler: async (ctx) => {
+  handler: async (ctx): Promise<{ anchored: number; merkleRoot?: string; txSignature?: string }> => {
     // Query unanchored entries (up to 100 per batch)
-    const unanchored = await ctx.runQuery(
+    const unanchored: Array<{ _id: string; timestamp: number; eventHash: string }> = await ctx.runQuery(
       internal.audit.auditLog.getUnanchored,
       { limit: 100 }
     );
@@ -77,7 +77,7 @@ export const run = internalAction({
     const now = Date.now();
     const thirtyMinutesAgo = now - 30 * 60 * 1000;
     const hasStaleEntries = unanchored.some(
-      (entry: any) => entry.timestamp < thirtyMinutesAgo
+      (entry) => entry.timestamp < thirtyMinutesAgo
     );
 
     if (hasStaleEntries) {
@@ -87,8 +87,8 @@ export const run = internalAction({
     }
 
     // Extract event hashes for Merkle tree
-    const eventHashes = unanchored.map((entry: any) => entry.eventHash);
-    const entryIds = unanchored.map((entry: any) => entry._id);
+    const eventHashes = unanchored.map((entry) => entry.eventHash);
+    const entryIds = unanchored.map((entry) => entry._id);
 
     // Build Merkle root
     const merkleRoot = await buildMerkleRoot(eventHashes);
@@ -98,7 +98,7 @@ export const run = internalAction({
     );
 
     // Submit to Solana and mark entries anchored
-    const result = await ctx.runAction(
+    const result: { txSignature: string } = await ctx.runAction(
       internal.audit.anchorSolana.submitAnchorTransaction,
       {
         merkleRoot,

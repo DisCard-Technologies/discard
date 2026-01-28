@@ -72,6 +72,16 @@ export const getApprovalConfig = internalQuery({
 });
 
 /**
+ * Get a multi-sig approval by ID (internal)
+ */
+export const getMultiSigApproval = internalQuery({
+  args: { id: v.id("multiSigApprovals") },
+  handler: async (ctx, args) => {
+    return await ctx.db.get(args.id);
+  },
+});
+
+/**
  * Get pending multi-sig approvals for a member across orgs
  */
 export const getPendingForMember = query({
@@ -190,7 +200,7 @@ export const submitVote = mutation({
     }
 
     // Determine outcome
-    let newStatus = msApproval.status;
+    let newStatus: "pending" | "quorum_reached" | "approved" | "rejected" | "escalated" | "expired" = msApproval.status;
 
     if (approveCount >= msApproval.requiredApprovals && rolesSatisfied) {
       newStatus = "approved";

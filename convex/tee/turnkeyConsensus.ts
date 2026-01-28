@@ -23,7 +23,7 @@ export const forwardConsensusToTurnkey = internalAction({
   handler: async (ctx, args) => {
     // Get the multi-sig approval with votes
     const msApproval: any = await ctx.runQuery(
-      internal.approvals.multiSig.getMultiSigApproval as any,
+      internal.approvals.multiSig.getMultiSigApproval,
       { id: args.multiSigApprovalId }
     ).catch(() => null);
 
@@ -33,8 +33,8 @@ export const forwardConsensusToTurnkey = internalAction({
 
     // Get the Turnkey organization details
     const turnkeyOrg: any = await ctx.runQuery(
-      internal.tee.turnkey.getBySubOrgId as any,
-      { organizationId: args.organizationId }
+      internal.tee.turnkey.getByIdInternal,
+      { id: args.organizationId }
     ).catch(() => null);
 
     if (!turnkeyOrg) {

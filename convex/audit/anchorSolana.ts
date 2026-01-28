@@ -6,7 +6,7 @@
  */
 
 import { v } from "convex/values";
-import { action } from "../_generated/server";
+import { internalAction } from "../_generated/server";
 import { internal } from "../_generated/api";
 
 // DisCard State program ID
@@ -16,7 +16,7 @@ const DISCARD_STATE_PROGRAM_ID = "DCrd1111111111111111111111111111111111111111";
  * Build and submit the Solana anchor transaction.
  * Called by the batch anchoring cron after computing the Merkle root.
  */
-export const submitAnchorTransaction = action({
+export const submitAnchorTransaction = internalAction({
   args: {
     merkleRoot: v.string(),       // Hex-encoded 32-byte Merkle root
     batchSize: v.number(),        // Number of entries in batch
