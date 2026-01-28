@@ -9,10 +9,13 @@
  */
 
 import type * as approvals_approvals from "../approvals/approvals.js";
+import type * as approvals_multiSig from "../approvals/multiSig.js";
 import type * as approvals_plans from "../approvals/plans.js";
 import type * as approvals_policies from "../approvals/policies.js";
+import type * as approvals_roles from "../approvals/roles.js";
 import type * as approvals_safetyFlow from "../approvals/safetyFlow.js";
 import type * as attestations_sas from "../attestations/sas.js";
+import type * as audit_anchorSolana from "../audit/anchorSolana.js";
 import type * as audit_auditLog from "../audit/auditLog.js";
 import type * as auth_passkeys from "../auth/passkeys.js";
 import type * as auth_phoneVerification from "../auth/phoneVerification.js";
@@ -26,9 +29,11 @@ import type * as cards_cards from "../cards/cards.js";
 import type * as cards_marqeta from "../cards/marqeta.js";
 import type * as cards_starpay from "../cards/starpay.js";
 import type * as circuitBreakers_circuitBreakers from "../circuitBreakers/circuitBreakers.js";
+import type * as compliance_proofArchive from "../compliance/proofArchive.js";
 import type * as compression_light from "../compression/light.js";
 import type * as compression_proofs from "../compression/proofs.js";
 import type * as crons from "../crons.js";
+import type * as crons_anchorAuditBatch from "../crons/anchorAuditBatch.js";
 import type * as crons_cleanupMetrics from "../crons/cleanupMetrics.js";
 import type * as crons_cleanupSessions from "../crons/cleanupSessions.js";
 import type * as crons_expireHolds from "../crons/expireHolds.js";
@@ -78,6 +83,7 @@ import type * as scripts_reprovisionCards from "../scripts/reprovisionCards.js";
 import type * as shadowwire_relay from "../shadowwire/relay.js";
 import type * as tee_magicblock from "../tee/magicblock.js";
 import type * as tee_turnkey from "../tee/turnkey.js";
+import type * as tee_turnkeyConsensus from "../tee/turnkeyConsensus.js";
 import type * as transfers_contacts from "../transfers/contacts.js";
 import type * as transfers_crossCurrency from "../transfers/crossCurrency.js";
 import type * as transfers_invitations from "../transfers/invitations.js";
@@ -100,10 +106,13 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   "approvals/approvals": typeof approvals_approvals;
+  "approvals/multiSig": typeof approvals_multiSig;
   "approvals/plans": typeof approvals_plans;
   "approvals/policies": typeof approvals_policies;
+  "approvals/roles": typeof approvals_roles;
   "approvals/safetyFlow": typeof approvals_safetyFlow;
   "attestations/sas": typeof attestations_sas;
+  "audit/anchorSolana": typeof audit_anchorSolana;
   "audit/auditLog": typeof audit_auditLog;
   "auth/passkeys": typeof auth_passkeys;
   "auth/phoneVerification": typeof auth_phoneVerification;
@@ -117,9 +126,11 @@ declare const fullApi: ApiFromModules<{
   "cards/marqeta": typeof cards_marqeta;
   "cards/starpay": typeof cards_starpay;
   "circuitBreakers/circuitBreakers": typeof circuitBreakers_circuitBreakers;
+  "compliance/proofArchive": typeof compliance_proofArchive;
   "compression/light": typeof compression_light;
   "compression/proofs": typeof compression_proofs;
   crons: typeof crons;
+  "crons/anchorAuditBatch": typeof crons_anchorAuditBatch;
   "crons/cleanupMetrics": typeof crons_cleanupMetrics;
   "crons/cleanupSessions": typeof crons_cleanupSessions;
   "crons/expireHolds": typeof crons_expireHolds;
@@ -169,6 +180,7 @@ declare const fullApi: ApiFromModules<{
   "shadowwire/relay": typeof shadowwire_relay;
   "tee/magicblock": typeof tee_magicblock;
   "tee/turnkey": typeof tee_turnkey;
+  "tee/turnkeyConsensus": typeof tee_turnkeyConsensus;
   "transfers/contacts": typeof transfers_contacts;
   "transfers/crossCurrency": typeof transfers_crossCurrency;
   "transfers/invitations": typeof transfers_invitations;
