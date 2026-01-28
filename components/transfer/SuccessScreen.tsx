@@ -8,8 +8,8 @@
  * - Subtle explorer link
  */
 
-import { useEffect, useCallback } from "react";
-import { StyleSheet, View, Linking, Dimensions, Text } from "react-native";
+import { useEffect, useCallback, useState } from "react";
+import { StyleSheet, View, Linking, Dimensions, Text, TextInput } from "react-native";
 import { PressableScale, PressableOpacity } from "pressto";
 import { Ionicons } from "@expo/vector-icons";
 import Animated, {
@@ -29,6 +29,7 @@ import * as Haptics from "expo-haptics";
 
 import { useThemeColor } from "@/hooks/use-theme-color";
 import { formatAddress } from "@/lib/transfer/address-resolver";
+import { ContactsStorage } from "@/lib/contacts-storage";
 import type { TransferResult, TransferRecipient } from "@/hooks/useTransfer";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
@@ -65,6 +66,8 @@ export interface SuccessScreenProps {
   onDone: () => void;
   /** Auto dismiss after delay (ms), 0 to disable */
   autoDismissMs?: number;
+  /** Whether the recipient is a new (not saved) contact */
+  isNewRecipient?: boolean;
 }
 
 // ============================================================================
@@ -266,11 +269,23 @@ export function SuccessScreen({
   feesPaid,
   onDone,
   autoDismissMs = 0,
+  isNewRecipient = false,
 }: SuccessScreenProps) {
   const primaryColor = useThemeColor({}, "tint");
   const mutedColor = useThemeColor({ light: "#687076", dark: "#9BA1A6" }, "icon");
   const textColor = useThemeColor({}, "text");
   const successColor = useThemeColor({ light: "#4CAF50", dark: "#66BB6A" }, "text");
+  const cardBg = useThemeColor(
+    { light: "rgba(0,0,0,0.03)", dark: "rgba(255,255,255,0.06)" },
+    "background"
+  );
+  const inputBg = useThemeColor({ light: "#ffffff", dark: "#1c1c1e" }, "background");
+
+  // Save contact state
+  const [showSaveExpanded, setShowSaveExpanded] = useState(false);
+  const [contactName, setContactName] = useState(recipient.displayName || "");
+  const [isSaving, setIsSaving] = useState(false);
+  const [contactSaved, setContactSaved] = useState(false);
 
   // Auto dismiss
   useEffect(() => {
@@ -291,6 +306,33 @@ export function SuccessScreen({
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     onDone();
   }, [onDone]);
+
+  // Save contact handler
+  const handleSaveContact = useCallback(async () => {
+    if (!contactName.trim() || !recipient.address) return;
+
+    setIsSaving(true);
+    try {
+      await ContactsStorage.create({
+        name: contactName.trim(),
+        identifier: recipient.input || recipient.address,
+        identifierType: recipient.type === "sol_name" ? "sol_name" : "address",
+        resolvedAddress: recipient.address,
+        verified: false,
+      });
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setContactSaved(true);
+      // Collapse after brief delay to show checkmark
+      setTimeout(() => {
+        setShowSaveExpanded(false);
+      }, 1500);
+    } catch (err) {
+      console.error("[SuccessScreen] Failed to save contact:", err);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    } finally {
+      setIsSaving(false);
+    }
+  }, [contactName, recipient]);
 
   // Format recipient display
   const recipientDisplay =
@@ -350,6 +392,93 @@ export function SuccessScreen({
             <Ionicons name="flash" size={14} color={successColor} />
             <Text style={[styles.fastBadgeText, { color: successColor }]}>
               Instant
+            </Text>
+          </Animated.View>
+        )}
+
+        {/* Save Contact Prompt */}
+        {isNewRecipient && !contactSaved && (
+          <Animated.View
+            entering={FadeInUp.delay(600).duration(300)}
+            style={[styles.saveContactCard, { backgroundColor: cardBg }]}
+          >
+            {!showSaveExpanded ? (
+              // Collapsed state
+              <PressableScale
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setShowSaveExpanded(true);
+                }}
+                style={styles.saveContactCollapsed}
+              >
+                <Ionicons name="person-add-outline" size={20} color={primaryColor} />
+                <Text style={[styles.saveContactText, { color: textColor }]}>
+                  Save as contact?
+                </Text>
+                <View style={[styles.addBadge, { backgroundColor: primaryColor }]}>
+                  <Text style={styles.addBadgeText}>Add</Text>
+                </View>
+              </PressableScale>
+            ) : (
+              // Expanded state
+              <View style={styles.saveContactExpanded}>
+                <Text style={[styles.saveContactLabel, { color: mutedColor }]}>
+                  Contact name
+                </Text>
+                <TextInput
+                  value={contactName}
+                  onChangeText={setContactName}
+                  placeholder="Enter name"
+                  placeholderTextColor={mutedColor}
+                  style={[
+                    styles.nameInput,
+                    { backgroundColor: inputBg, color: textColor },
+                  ]}
+                  autoFocus
+                  autoCapitalize="words"
+                  returnKeyType="done"
+                  onSubmitEditing={handleSaveContact}
+                />
+                <View style={styles.saveContactActions}>
+                  <PressableScale
+                    onPress={() => {
+                      setShowSaveExpanded(false);
+                      setContactName(recipient.displayName || "");
+                    }}
+                    style={styles.cancelButton}
+                  >
+                    <Text style={[styles.cancelButtonText, { color: mutedColor }]}>
+                      Cancel
+                    </Text>
+                  </PressableScale>
+                  <PressableScale
+                    onPress={handleSaveContact}
+                    enabled={!isSaving && contactName.trim().length > 0}
+                    style={[
+                      styles.saveButton,
+                      { backgroundColor: primaryColor },
+                      (!contactName.trim() || isSaving) && styles.saveButtonDisabled,
+                    ]}
+                  >
+                    <Text style={styles.saveButtonText}>
+                      {isSaving ? "Saving..." : "Save"}
+                    </Text>
+                  </PressableScale>
+                </View>
+              </View>
+            )}
+          </Animated.View>
+        )}
+
+        {/* Contact Saved Confirmation */}
+        {contactSaved && (
+          <Animated.View
+            entering={FadeIn.duration(200)}
+            style={[styles.savedConfirmation, { backgroundColor: `${successColor}15` }]}
+          >
+            <Ionicons name="checkmark-circle" size={20} color={successColor} />
+            <Text style={[styles.savedText, { color: successColor }]}>
+              Contact saved
             </Text>
           </Animated.View>
         )}
@@ -503,6 +632,90 @@ const styles = StyleSheet.create({
   doneButtonText: {
     color: "#fff",
     fontSize: 17,
+    fontWeight: "600",
+  },
+  // Save Contact Styles
+  saveContactCard: {
+    marginTop: 24,
+    borderRadius: 16,
+    overflow: "hidden",
+    width: "100%",
+  },
+  saveContactCollapsed: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    gap: 12,
+  },
+  saveContactText: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: "500",
+  },
+  addBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  addBadgeText: {
+    color: "#fff",
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  saveContactExpanded: {
+    padding: 16,
+    gap: 12,
+  },
+  saveContactLabel: {
+    fontSize: 12,
+    fontWeight: "500",
+    marginBottom: -4,
+  },
+  nameInput: {
+    fontSize: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 10,
+  },
+  saveContactActions: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: 12,
+    marginTop: 4,
+  },
+  cancelButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  cancelButtonText: {
+    fontSize: 15,
+    fontWeight: "500",
+  },
+  saveButton: {
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 10,
+  },
+  saveButtonDisabled: {
+    opacity: 0.5,
+  },
+  saveButtonText: {
+    color: "#fff",
+    fontSize: 15,
+    fontWeight: "600",
+  },
+  savedConfirmation: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 12,
+    marginTop: 24,
+  },
+  savedText: {
+    fontSize: 14,
     fontWeight: "600",
   },
 });

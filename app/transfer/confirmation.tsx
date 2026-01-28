@@ -27,6 +27,7 @@ import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { useThemeColor } from "@/hooks/use-theme-color";
 import { useColorScheme } from "@/hooks/use-color-scheme";
+import { useContacts } from "@/hooks/useContacts";
 // TransferSummary removed - using simplified inline display
 import { useAuth, useCurrentCredentialId, getLocalSolanaKeypair } from "@/stores/authConvex";
 import { usePrivateTransfer } from "@/hooks/usePrivateTransfer";
@@ -112,6 +113,9 @@ export default function TransferConfirmationScreen() {
   // Auth and Turnkey
   const { user, userId } = useAuth();
   const credentialId = useCurrentCredentialId();
+
+  // Check if recipient is a known contact
+  const { getContactByAddress } = useContacts();
   const turnkey = useTurnkey(userId, {
     organizationId: TURNKEY_ORG_ID,
     rpId: TURNKEY_RP_ID,
@@ -373,6 +377,10 @@ export default function TransferConfirmationScreen() {
               relayTx: privateResult.relaySignature?.slice(0, 16),
             });
 
+            // Check if recipient is a known contact
+            const existingContact = getContactByAddress(recipient.address);
+            const isNewRecipient = !existingContact;
+
             router.push({
               pathname: "/transfer/success",
               params: {
@@ -384,6 +392,7 @@ export default function TransferConfirmationScreen() {
                 feesPaid: fees.totalFeesUsd.toString(),
                 shielded: "true", // Mark as shielded transfer
                 senderPrivate: usedRelay ? "true" : "false", // Sender privacy via relay
+                isNewRecipient: isNewRecipient ? "true" : "false",
               },
             });
             return; // Exit early - transfer complete
@@ -612,6 +621,10 @@ export default function TransferConfirmationScreen() {
         explorerUrl: `https://solscan.io/tx/${signature}`,
       };
 
+      // Check if recipient is a known contact
+      const existingContact = getContactByAddress(recipient.address);
+      const isNewRecipient = !existingContact;
+
       router.push({
         pathname: "/transfer/success",
         params: {
@@ -621,6 +634,7 @@ export default function TransferConfirmationScreen() {
           amountUsd: amount.amountUsd.toString(),
           tokenSymbol: token.symbol,
           feesPaid: fees.totalFeesUsd.toString(),
+          isNewRecipient: isNewRecipient ? "true" : "false",
         },
       });
     } catch (err) {
@@ -689,7 +703,7 @@ export default function TransferConfirmationScreen() {
       setIsConfirming(false);
       setExecutionPhase("idle");
     }
-  }, [recipient, token, amount, fees, userId, walletAddress, turnkey, params, createTransfer, updateTransferStatus, credentialId, privacyState, isPrivateTransferAvailable, isZkCompressionAvailable, isRelayAvailable, relayPoolAddress, generateStealthAddress, generateZkCompressedStealthAddress, executePrivateTransfer, executeZkPrivateTransfer, relayToStealth]);
+  }, [recipient, token, amount, fees, userId, walletAddress, turnkey, params, createTransfer, updateTransferStatus, credentialId, privacyState, isPrivateTransferAvailable, isZkCompressionAvailable, isRelayAvailable, relayPoolAddress, generateStealthAddress, generateZkCompressedStealthAddress, executePrivateTransfer, executeZkPrivateTransfer, relayToStealth, getContactByAddress]);
 
   // Show error if params missing
   if (!recipient || !token || !amount || !fees) {

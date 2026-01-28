@@ -22,13 +22,24 @@ import { PressableScale, PressableOpacity } from "pressto";
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
-import Animated, { FadeIn, FadeOut, LinearTransition } from "react-native-reanimated";
+import Animated, {
+  FadeIn,
+  FadeOut,
+  LinearTransition,
+  useSharedValue,
+  useAnimatedStyle,
+  withSpring,
+  withTiming,
+  runOnJS,
+} from "react-native-reanimated";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
 
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { useThemeColor } from "@/hooks/use-theme-color";
 import { useContacts, Contact } from "@/hooks/useContacts";
 import { formatAddress } from "@/lib/transfer/address-resolver";
+import { Toast } from "@/components/ui/Toast";
 
 // ============================================================================
 // Contact Item Component
@@ -41,8 +52,11 @@ interface ContactItemProps {
   onPress: () => void;
   onLongPress: () => void;
   onToggleFavorite: () => void;
-  onDelete: () => void;
+  onSend: () => void;
+  onSwipeDelete: () => void;
 }
+
+const SWIPE_THRESHOLD = 80;
 
 function ContactItem({
   contact,
@@ -51,7 +65,8 @@ function ContactItem({
   onPress,
   onLongPress,
   onToggleFavorite,
-  onDelete,
+  onSend,
+  onSwipeDelete,
 }: ContactItemProps) {
   const mutedColor = useThemeColor({ light: "#687076", dark: "#9BA1A6" }, "icon");
   const primaryColor = useThemeColor({}, "tint");
@@ -61,90 +76,154 @@ function ContactItem({
     "background"
   );
 
+  // Swipe animation
+  const translateX = useSharedValue(0);
+  const isDeleting = useSharedValue(false);
+
+  const panGesture = Gesture.Pan()
+    .activeOffsetX([-10, 10])
+    .onUpdate((e) => {
+      // Only allow swipe left and not in selection mode
+      if (selectionMode) return;
+      translateX.value = Math.min(0, Math.max(e.translationX, -120));
+    })
+    .onEnd((e) => {
+      if (selectionMode) return;
+      if (e.translationX < -SWIPE_THRESHOLD) {
+        // Trigger delete
+        translateX.value = withTiming(-400, { duration: 200 });
+        isDeleting.value = true;
+        runOnJS(onSwipeDelete)();
+      } else {
+        // Snap back
+        translateX.value = withSpring(0, { damping: 15, stiffness: 150 });
+      }
+    });
+
+  const animatedRowStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: translateX.value }],
+  }));
+
+  const animatedDeleteBgStyle = useAnimatedStyle(() => ({
+    opacity: Math.min(1, Math.abs(translateX.value) / SWIPE_THRESHOLD),
+  }));
+
+  const rowContent = (
+    <PressableScale
+      onPress={onPress}
+      onLongPress={onLongPress}
+      style={[
+        styles.contactItem,
+        { backgroundColor: cardBg },
+        isSelected && styles.contactSelected,
+        isSelected && { borderColor: primaryColor },
+      ]}
+    >
+      {selectionMode && (
+        <View
+          style={[
+            styles.checkbox,
+            { borderColor: mutedColor },
+            isSelected && { backgroundColor: primaryColor, borderColor: primaryColor },
+          ]}
+        >
+          {isSelected && <Ionicons name="checkmark" size={14} color="#fff" />}
+        </View>
+      )}
+
+      <View style={[styles.avatar, { backgroundColor: contact.avatarColor }]}>
+        <ThemedText style={styles.avatarText}>{contact.avatarInitials}</ThemedText>
+      </View>
+
+      <View style={styles.contactInfo}>
+        <View style={styles.nameRow}>
+          <ThemedText style={styles.contactName} numberOfLines={1}>
+            {contact.name}
+          </ThemedText>
+          {contact.verified && (
+            <Ionicons name="checkmark-circle" size={14} color="#4CAF50" />
+          )}
+          {contact.importedFromPhone && (
+            <Ionicons name="phone-portrait-outline" size={12} color={mutedColor} />
+          )}
+        </View>
+        <ThemedText style={[styles.contactIdentifier, { color: mutedColor }]} numberOfLines={1}>
+          {contact.identifierType === "sol_name"
+            ? contact.identifier
+            : contact.identifierType === "phone"
+            ? contact.identifier
+            : contact.identifierType === "email"
+            ? contact.identifier
+            : formatAddress(contact.resolvedAddress, 8)}
+        </ThemedText>
+        {contact.transferCount > 0 && (
+          <ThemedText style={[styles.transferCount, { color: mutedColor }]}>
+            {contact.transferCount} transfer{contact.transferCount !== 1 ? "s" : ""}
+          </ThemedText>
+        )}
+      </View>
+
+      {!selectionMode && (
+        <View style={styles.actions}>
+          <PressableScale
+            onPress={onToggleFavorite}
+            style={styles.actionButton}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Ionicons
+              name={contact.isFavorite ? "star" : "star-outline"}
+              size={20}
+              color={contact.isFavorite ? "#FFD700" : mutedColor}
+            />
+          </PressableScale>
+          <PressableScale
+            onPress={onSend}
+            style={styles.actionButton}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Ionicons name="send" size={18} color={primaryColor} />
+          </PressableScale>
+        </View>
+      )}
+    </PressableScale>
+  );
+
   return (
     <Animated.View
       entering={FadeIn.duration(200)}
       exiting={FadeOut.duration(150)}
       layout={LinearTransition.springify()}
     >
-      <PressableScale
-        onPress={onPress}
-        onLongPress={onLongPress}
-        style={[
-          styles.contactItem,
-          { backgroundColor: cardBg },
-          isSelected && styles.contactSelected,
-          isSelected && { borderColor: primaryColor },
-        ]}
-      >
-        {selectionMode && (
-          <View
-            style={[
-              styles.checkbox,
-              { borderColor: mutedColor },
-              isSelected && { backgroundColor: primaryColor, borderColor: primaryColor },
-            ]}
-          >
-            {isSelected && <Ionicons name="checkmark" size={14} color="#fff" />}
-          </View>
-        )}
+      <View style={styles.swipeContainer}>
+        {/* Delete background */}
+        <Animated.View style={[styles.deleteBackground, animatedDeleteBgStyle]}>
+          <Ionicons name="trash" size={24} color="#fff" />
+        </Animated.View>
 
-        <View style={[styles.avatar, { backgroundColor: contact.avatarColor }]}>
-          <ThemedText style={styles.avatarText}>{contact.avatarInitials}</ThemedText>
-        </View>
-
-        <View style={styles.contactInfo}>
-          <View style={styles.nameRow}>
-            <ThemedText style={styles.contactName} numberOfLines={1}>
-              {contact.name}
-            </ThemedText>
-            {contact.verified && (
-              <Ionicons name="checkmark-circle" size={14} color="#4CAF50" />
-            )}
-            {contact.importedFromPhone && (
-              <Ionicons name="phone-portrait-outline" size={12} color={mutedColor} />
-            )}
-          </View>
-          <ThemedText style={[styles.contactIdentifier, { color: mutedColor }]} numberOfLines={1}>
-            {contact.identifierType === "sol_name"
-              ? contact.identifier
-              : contact.identifierType === "phone"
-              ? contact.identifier
-              : contact.identifierType === "email"
-              ? contact.identifier
-              : formatAddress(contact.resolvedAddress, 8)}
-          </ThemedText>
-          {contact.transferCount > 0 && (
-            <ThemedText style={[styles.transferCount, { color: mutedColor }]}>
-              {contact.transferCount} transfer{contact.transferCount !== 1 ? "s" : ""}
-            </ThemedText>
-          )}
-        </View>
-
-        {!selectionMode && (
-          <View style={styles.actions}>
-            <PressableScale
-              onPress={onToggleFavorite}
-              style={styles.actionButton}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <Ionicons
-                name={contact.isFavorite ? "star" : "star-outline"}
-                size={20}
-                color={contact.isFavorite ? "#FFD700" : mutedColor}
-              />
-            </PressableScale>
-            <PressableScale
-              onPress={onDelete}
-              style={styles.actionButton}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <Ionicons name="trash-outline" size={18} color={dangerColor} />
-            </PressableScale>
-          </View>
-        )}
-      </PressableScale>
+        {/* Swipeable row */}
+        <GestureDetector gesture={panGesture}>
+          <Animated.View style={animatedRowStyle}>
+            {rowContent}
+          </Animated.View>
+        </GestureDetector>
+      </View>
     </Animated.View>
+  );
+}
+
+// ============================================================================
+// Section Header Component
+// ============================================================================
+
+function SectionHeader({ title }: { title: string }) {
+  const mutedColor = useThemeColor({ light: "#687076", dark: "#9BA1A6" }, "icon");
+
+  return (
+    <View style={styles.sectionHeader}>
+      <ThemedText style={[styles.sectionHeaderText, { color: mutedColor }]}>
+        {title}
+      </ThemedText>
+    </View>
   );
 }
 
@@ -170,6 +249,11 @@ export default function ContactsScreen() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isImporting, setIsImporting] = useState(false);
 
+  // Toast state for undo delete
+  const [toastVisible, setToastVisible] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<Contact | null>(null);
+  const [deletedContacts, setDeletedContacts] = useState<Contact[]>([]);
+
   // Theme colors
   const primaryColor = useThemeColor({}, "tint");
   const mutedColor = useThemeColor({ light: "#687076", dark: "#9BA1A6" }, "icon");
@@ -185,17 +269,40 @@ export default function ContactsScreen() {
   const isWhitePrimary = primaryColor === "#fff" || primaryColor === "#ffffff" || primaryColor.toLowerCase() === "white";
   const buttonTextColor = isWhitePrimary ? "#000" : "#fff";
 
-  // Filter contacts by search
+  // Set of deleted contact IDs (for optimistic UI)
+  const deletedIds = useMemo(() => new Set(deletedContacts.map((c) => c.id)), [deletedContacts]);
+
+  // Filter contacts by search and exclude pending deletes
   const filteredContacts = useMemo(() => {
-    if (!searchQuery.trim()) return contacts;
+    let result = contacts.filter((c) => !deletedIds.has(c.id));
+    if (!searchQuery.trim()) return result;
     const query = searchQuery.toLowerCase();
-    return contacts.filter(
+    return result.filter(
       (c) =>
         c.name.toLowerCase().includes(query) ||
         c.identifier.toLowerCase().includes(query) ||
         c.resolvedAddress.toLowerCase().includes(query)
     );
-  }, [contacts, searchQuery]);
+  }, [contacts, searchQuery, deletedIds]);
+
+  // Filter favorites by search and exclude pending deletes
+  const filteredFavorites = useMemo(() => {
+    let result = favoriteContacts.filter((c) => !deletedIds.has(c.id));
+    if (!searchQuery.trim()) return result;
+    const query = searchQuery.toLowerCase();
+    return result.filter(
+      (c) =>
+        c.name.toLowerCase().includes(query) ||
+        c.identifier.toLowerCase().includes(query) ||
+        c.resolvedAddress.toLowerCase().includes(query)
+    );
+  }, [favoriteContacts, searchQuery, deletedIds]);
+
+  // Non-favorite contacts (excluding favorites from main list)
+  const nonFavoriteContacts = useMemo(() => {
+    const favoriteIds = new Set(favoriteContacts.map((c) => c.id));
+    return filteredContacts.filter((c) => !favoriteIds.has(c.id));
+  }, [filteredContacts, favoriteContacts]);
 
   // Handlers
   const handleBack = useCallback(() => {
@@ -231,29 +338,44 @@ export default function ContactsScreen() {
     setSelectedIds(new Set([contact.id]));
   }, []);
 
-  const handleDeleteContact = useCallback(
+  // Swipe-delete handler with undo support
+  const handleSwipeDelete = useCallback(
     (contact: Contact) => {
-      Alert.alert(
-        "Delete Contact",
-        `Are you sure you want to delete "${contact.name}"?`,
-        [
-          { text: "Cancel", style: "cancel" },
-          {
-            text: "Delete",
-            style: "destructive",
-            onPress: async () => {
-              try {
-                await deleteContact(contact.id);
-              } catch (err) {
-                Alert.alert("Error", "Failed to delete contact");
-              }
-            },
-          },
-        ]
-      );
+      // Store the contact for potential undo
+      setPendingDelete(contact);
+      setDeletedContacts((prev) => [...prev, contact]);
+      setToastVisible(true);
     },
-    [deleteContact]
+    []
   );
+
+  // Actually delete the contact (called after toast dismisses without undo)
+  const confirmDelete = useCallback(async () => {
+    if (pendingDelete) {
+      try {
+        await deleteContact(pendingDelete.id);
+      } catch (err) {
+        console.error("[Contacts] Failed to delete:", err);
+      }
+      setPendingDelete(null);
+    }
+    setToastVisible(false);
+  }, [pendingDelete, deleteContact]);
+
+  // Undo delete
+  const handleUndoDelete = useCallback(() => {
+    if (pendingDelete) {
+      // Remove from deleted list to restore visibility
+      setDeletedContacts((prev) => prev.filter((c) => c.id !== pendingDelete.id));
+      setPendingDelete(null);
+    }
+    setToastVisible(false);
+  }, [pendingDelete]);
+
+  // Toast dismiss handler
+  const handleToastDismiss = useCallback(() => {
+    confirmDelete();
+  }, [confirmDelete]);
 
   const handleDeleteSelected = useCallback(() => {
     if (selectedIds.size === 0) return;
@@ -440,6 +562,18 @@ export default function ContactsScreen() {
     [toggleFavorite]
   );
 
+  // Navigate to transfer with contact pre-filled
+  const handleSendToContact = useCallback((contact: Contact) => {
+    router.push({
+      pathname: "/(tabs)/transfer",
+      params: {
+        prefillContactId: contact.id,
+        prefillAddress: contact.resolvedAddress,
+        prefillName: contact.name,
+      },
+    });
+  }, []);
+
   // Empty state
   if (!isLoading && contacts.length === 0) {
     return (
@@ -571,7 +705,7 @@ export default function ContactsScreen() {
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color={primaryColor} />
           </View>
-        ) : filteredContacts.length === 0 ? (
+        ) : filteredContacts.length === 0 && filteredFavorites.length === 0 ? (
           <View style={styles.noResults}>
             <Ionicons name="search-outline" size={32} color={mutedColor} />
             <ThemedText style={[styles.noResultsText, { color: mutedColor }]}>
@@ -579,18 +713,47 @@ export default function ContactsScreen() {
             </ThemedText>
           </View>
         ) : (
-          filteredContacts.map((contact) => (
-            <ContactItem
-              key={contact.id}
-              contact={contact}
-              isSelected={selectedIds.has(contact.id)}
-              selectionMode={selectionMode}
-              onPress={() => handleContactPress(contact)}
-              onLongPress={() => handleContactLongPress(contact)}
-              onToggleFavorite={() => handleToggleFavorite(contact.id)}
-              onDelete={() => handleDeleteContact(contact)}
-            />
-          ))
+          <>
+            {/* Favorites Section */}
+            {filteredFavorites.length > 0 && (
+              <>
+                <SectionHeader title="FAVORITES" />
+                {filteredFavorites.map((contact) => (
+                  <ContactItem
+                    key={contact.id}
+                    contact={contact}
+                    isSelected={selectedIds.has(contact.id)}
+                    selectionMode={selectionMode}
+                    onPress={() => handleContactPress(contact)}
+                    onLongPress={() => handleContactLongPress(contact)}
+                    onToggleFavorite={() => handleToggleFavorite(contact.id)}
+                    onSend={() => handleSendToContact(contact)}
+                    onSwipeDelete={() => handleSwipeDelete(contact)}
+                  />
+                ))}
+              </>
+            )}
+
+            {/* All Contacts Section */}
+            {nonFavoriteContacts.length > 0 && (
+              <>
+                <SectionHeader title={filteredFavorites.length > 0 ? "ALL CONTACTS" : "CONTACTS"} />
+                {nonFavoriteContacts.map((contact) => (
+                  <ContactItem
+                    key={contact.id}
+                    contact={contact}
+                    isSelected={selectedIds.has(contact.id)}
+                    selectionMode={selectionMode}
+                    onPress={() => handleContactPress(contact)}
+                    onLongPress={() => handleContactLongPress(contact)}
+                    onToggleFavorite={() => handleToggleFavorite(contact.id)}
+                    onSend={() => handleSendToContact(contact)}
+                    onSwipeDelete={() => handleSwipeDelete(contact)}
+                  />
+                ))}
+              </>
+            )}
+          </>
         )}
       </ScrollView>
 
@@ -618,6 +781,17 @@ export default function ContactsScreen() {
           </PressableScale>
         </Animated.View>
       )}
+
+      {/* Undo Delete Toast */}
+      <Toast
+        visible={toastVisible}
+        message={pendingDelete ? `"${pendingDelete.name}" deleted` : "Contact deleted"}
+        actionLabel="UNDO"
+        onAction={handleUndoDelete}
+        onDismiss={handleToastDismiss}
+        duration={4000}
+        icon="trash-outline"
+      />
     </ThemedView>
   );
 }
@@ -803,6 +977,34 @@ const styles = StyleSheet.create({
   },
   noResultsText: {
     fontSize: 14,
+  },
+  sectionHeader: {
+    paddingVertical: 8,
+    paddingHorizontal: 4,
+    marginTop: 8,
+  },
+  sectionHeaderText: {
+    fontSize: 12,
+    fontWeight: "600",
+    letterSpacing: 0.5,
+  },
+  swipeContainer: {
+    position: "relative",
+    overflow: "hidden",
+    borderRadius: 16,
+  },
+  deleteBackground: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    width: 120,
+    backgroundColor: "#ef4444",
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    paddingRight: 20,
   },
   selectionBar: {
     position: "absolute",

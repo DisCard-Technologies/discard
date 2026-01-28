@@ -29,6 +29,7 @@ export default function TransferSuccessScreen() {
     amountUsd: string;
     tokenSymbol: string;
     feesPaid: string;
+    isNewRecipient?: string;
   }>();
 
   const bgColor = useThemeColor({ light: "#fff", dark: "#000" }, "background");
@@ -48,6 +49,7 @@ export default function TransferSuccessScreen() {
   const amountUsd = parseFloat(params.amountUsd || "0");
   const tokenSymbol = params.tokenSymbol || "";
   const feesPaid = parseFloat(params.feesPaid || "0");
+  const isNewRecipient = params.isNewRecipient === "true";
 
   // Handle done - dismiss all transfer modals
   const handleDone = useCallback(() => {
@@ -82,6 +84,7 @@ export default function TransferSuccessScreen() {
             tokenSymbol={tokenSymbol}
             feesPaid={feesPaid}
             onDone={handleDone}
+            isNewRecipient={isNewRecipient}
           />
         </SafeAreaView>
       </ThemedView>
@@ -100,6 +103,7 @@ export default function TransferSuccessScreen() {
           feesPaid={feesPaid}
           onDone={handleDone}
           autoDismissMs={0} // Don't auto dismiss from success screen
+          isNewRecipient={isNewRecipient}
         />
       </SafeAreaView>
     </ThemedView>
