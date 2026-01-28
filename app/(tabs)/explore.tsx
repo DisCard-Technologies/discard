@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { StyleSheet, View, ScrollView, ActivityIndicator, TextInput, Modal } from 'react-native';
 import { PressableScale } from 'pressto';
 import { Image, ImageErrorEventData } from 'expo-image';
@@ -7,6 +7,8 @@ import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
+import { useAction } from 'convex/react';
+import { api } from '@/convex/_generated/api';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -16,6 +18,7 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useTrendingTokens } from '@/hooks/useTrendingTokens';
 import { useOpenMarkets } from '@/hooks/useOpenMarkets';
 import { useCategoryTokens, TokenCategoryFilter } from '@/hooks/useCategoryTokens';
+import type { TrendingToken } from '@/types/holdings.types';
 import { positiveColor, negativeColor } from '@/constants/theme';
 
 type TabFilter = 'tokens' | 'markets';
@@ -89,6 +92,13 @@ export default function ExploreScreen() {
   const [marketCategoryFilter, setMarketCategoryFilter] = useState<string>('All');
   const [showSortMenu, setShowSortMenu] = useState(false);
 
+  // Global token search state
+  const [searchResults, setSearchResults] = useState<TrendingToken[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const searchTokensAction = useAction(api.explore.trending.searchTokens);
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const primaryColor = useThemeColor({}, 'tint');
   const mutedColor = useThemeColor({ light: '#687076', dark: '#9BA1A6' }, 'icon');
   const cardBg = useThemeColor({ light: '#f4f4f5', dark: '#1c1c1e' }, 'background');
@@ -111,6 +121,44 @@ export default function ExploreScreen() {
   // Fetch prediction markets
   const { markets, isLoading: marketsLoading, error: marketsError, categories: marketCategories } = useOpenMarkets();
 
+  // Global token search effect - searches across all tokens via Jupiter API
+  useEffect(() => {
+    // Clear any pending debounce
+    if (searchDebounceRef.current) {
+      clearTimeout(searchDebounceRef.current);
+    }
+
+    // Only search when on tokens tab and query is non-empty
+    if (activeTab !== 'tokens' || !searchQuery.trim()) {
+      setSearchResults([]);
+      setIsSearching(false);
+      setSearchError(null);
+      return;
+    }
+
+    // Debounce search by 300ms
+    setIsSearching(true);
+    searchDebounceRef.current = setTimeout(async () => {
+      try {
+        const results = await searchTokensAction({ query: searchQuery.trim() });
+        setSearchResults(results);
+        setSearchError(null);
+      } catch (err) {
+        console.error('[Explore] Search error:', err);
+        setSearchError(err instanceof Error ? err.message : 'Search failed');
+        setSearchResults([]);
+      } finally {
+        setIsSearching(false);
+      }
+    }, 300);
+
+    return () => {
+      if (searchDebounceRef.current) {
+        clearTimeout(searchDebounceRef.current);
+      }
+    };
+  }, [searchQuery, activeTab, searchTokensAction]);
+
   // Build market category filter options with preferred order
   const marketCategoryOptions = useMemo(() => {
     const orderedCategories = MARKET_CATEGORY_ORDER.filter(cat => marketCategories.includes(cat));
@@ -122,15 +170,18 @@ export default function ExploreScreen() {
   const filteredTokens = useMemo(() => {
     if (activeTab !== 'tokens') return [];
 
-    // Use category-specific tokens when a category is selected, otherwise use trending tokens
-    const sourceTokens = tokenCategoryFilter === 'all' ? tokens : categoryTokens;
+    // When searching, use global search results (searches all tokens via Jupiter API)
+    // When not searching, use category-filtered tokens
+    const isActiveSearch = searchQuery.trim().length > 0;
+    let result: TrendingToken[];
 
-    let result = sourceTokens.filter((token) => {
-      const matchesSearch =
-        token.symbol.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        token.name.toLowerCase().includes(searchQuery.toLowerCase());
-      return matchesSearch;
-    });
+    if (isActiveSearch) {
+      // Use global search results - no additional filtering needed
+      result = searchResults;
+    } else {
+      // Use category-specific tokens when a category is selected, otherwise use trending tokens
+      result = tokenCategoryFilter === 'all' ? tokens : categoryTokens;
+    }
 
     // Apply sorting
     if (tokenSort !== 'default') {
@@ -147,7 +198,7 @@ export default function ExploreScreen() {
       });
     }
     return result;
-  }, [tokens, categoryTokens, searchQuery, activeTab, tokenSort, tokenCategoryFilter]);
+  }, [tokens, categoryTokens, searchResults, searchQuery, activeTab, tokenSort, tokenCategoryFilter]);
 
   // Filter and sort markets
   const filteredMarkets = useMemo(() => {
@@ -176,11 +227,12 @@ export default function ExploreScreen() {
   }, [markets, searchQuery, activeTab, marketCategoryFilter, marketSort]);
 
   // Loading and error states based on active tab
+  const isActiveSearch = searchQuery.trim().length > 0;
   const isLoading = activeTab === 'tokens'
-    ? (tokenCategoryFilter === 'all' ? tokensLoading : categoryLoading)
+    ? (isActiveSearch ? isSearching : (tokenCategoryFilter === 'all' ? tokensLoading : categoryLoading))
     : marketsLoading;
   const error = activeTab === 'tokens'
-    ? (tokenCategoryFilter === 'all' ? tokensError : categoryError)
+    ? (isActiveSearch ? searchError : (tokenCategoryFilter === 'all' ? tokensError : categoryError))
     : marketsError;
 
   // Get current sort label for button display
