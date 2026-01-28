@@ -247,7 +247,6 @@ export default function ContactsScreen() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [isImporting, setIsImporting] = useState(false);
 
   // Toast state for undo delete
   const [toastVisible, setToastVisible] = useState(false);
@@ -410,146 +409,10 @@ export default function ContactsScreen() {
     }
   }, [selectedIds.size, filteredContacts]);
 
-  const handleImportContacts = useCallback(async () => {
-    try {
-      // Check if expo-contacts is available
-      let Contacts;
-      try {
-        Contacts = require("expo-contacts");
-      } catch {
-        Alert.alert(
-          "Not Available",
-          "Contact import requires expo-contacts. Run: npx expo install expo-contacts"
-        );
-        return;
-      }
-
-      // Request permission
-      const { status } = await Contacts.requestPermissionsAsync();
-      if (status !== "granted") {
-        Alert.alert(
-          "Permission Required",
-          "Please allow access to contacts in your device settings."
-        );
-        return;
-      }
-
-      setIsImporting(true);
-
-      // Get contacts from phone
-      const { data } = await Contacts.getContactsAsync({
-        fields: [
-          Contacts.Fields.Name,
-          Contacts.Fields.PhoneNumbers,
-          Contacts.Fields.Emails,
-        ],
-      });
-
-      if (data.length === 0) {
-        Alert.alert("No Contacts", "No contacts found on your device.");
-        setIsImporting(false);
-        return;
-      }
-
-      // Filter contacts that have phone or email
-      const validContacts = data.filter(
-        (c: { name?: string; phoneNumbers?: unknown[]; emails?: unknown[] }) =>
-          c.name && (c.phoneNumbers?.length || c.emails?.length)
-      );
-
-      if (validContacts.length === 0) {
-        Alert.alert("No Valid Contacts", "No contacts with phone numbers or emails found.");
-        setIsImporting(false);
-        return;
-      }
-
-      // Show selection dialog
-      Alert.alert(
-        "Import Contacts",
-        `Found ${validContacts.length} contacts with phone/email. Import them to your contact list?`,
-        [
-          { text: "Cancel", style: "cancel", onPress: () => setIsImporting(false) },
-          {
-            text: "Import All",
-            onPress: async () => {
-              try {
-                let imported = 0;
-                let skipped = 0;
-
-                // Get existing contact identifiers to avoid duplicates
-                const existingIdentifiers = new Set(
-                  contacts.map((c) => c.identifier.toLowerCase())
-                );
-
-                const ContactsStorage = await import("@/lib/contacts-storage").then(
-                  (m) => m.ContactsStorage
-                );
-
-                for (const contact of validContacts) {
-                  const name = contact.name as string;
-
-                  // Try phone first, then email
-                  let identifier = "";
-                  let identifierType: "phone" | "email" = "phone";
-
-                  if (contact.phoneNumbers?.length) {
-                    const phone = (contact.phoneNumbers[0] as { number: string }).number;
-                    identifier = phone;
-                    identifierType = "phone";
-                  } else if (contact.emails?.length) {
-                    const email = (contact.emails[0] as { email: string }).email;
-                    identifier = email;
-                    identifierType = "email";
-                  }
-
-                  if (!identifier) {
-                    skipped++;
-                    continue;
-                  }
-
-                  // Skip if already exists
-                  if (existingIdentifiers.has(identifier.toLowerCase())) {
-                    skipped++;
-                    continue;
-                  }
-
-                  await ContactsStorage.create({
-                    name,
-                    identifier,
-                    identifierType,
-                    resolvedAddress: identifier, // Will be resolved when actually sending
-                    verified: false,
-                    importedFromPhone: true,
-                    phoneContactId: contact.id as string,
-                  });
-
-                  existingIdentifiers.add(identifier.toLowerCase());
-                  imported++;
-                }
-
-                // Refresh the contacts list
-                await refreshContacts();
-
-                Alert.alert(
-                  "Import Complete",
-                  `Imported: ${imported}\nAlready saved: ${skipped}`
-                );
-              } catch (err) {
-                console.error("[Contacts] Import error:", err);
-                Alert.alert("Error", "Failed to import contacts");
-              } finally {
-                setIsImporting(false);
-              }
-            },
-          },
-        ]
-      );
-    } catch (err) {
-      console.error("[Contacts] Import error:", err);
-      Alert.alert("Error", "Failed to access contacts");
-      setIsImporting(false);
-    }
-  }, [contacts, refreshContacts]);
+  // Navigate to selective import screen
+  const handleImportContacts = useCallback(() => {
+    router.push("/contacts/import");
+  }, []);
 
   const handleToggleFavorite = useCallback(
     async (contactId: string) => {
@@ -616,23 +479,16 @@ export default function ContactsScreen() {
             </PressableScale>
             <PressableScale
               onPress={handleImportContacts}
-              enabled={!isImporting}
               style={[
                 styles.emptyActionButton,
                 styles.emptyActionButtonOutline,
                 { borderColor: primaryColor },
               ]}
             >
-              {isImporting ? (
-                <ActivityIndicator size="small" color={primaryColor} />
-              ) : (
-                <>
-                  <Ionicons name="cloud-download-outline" size={20} color={primaryColor} />
-                  <ThemedText style={[styles.emptyActionButtonText, { color: primaryColor }]}>
-                    Import from Phone
-                  </ThemedText>
-                </>
-              )}
+              <Ionicons name="cloud-download-outline" size={20} color={primaryColor} />
+              <ThemedText style={[styles.emptyActionButtonText, { color: primaryColor }]}>
+                Import from Phone
+              </ThemedText>
             </PressableScale>
           </View>
         </View>
@@ -672,14 +528,9 @@ export default function ContactsScreen() {
           <View style={styles.headerActions}>
             <PressableScale
               onPress={handleImportContacts}
-              enabled={!isImporting}
               style={styles.headerButton}
             >
-              {isImporting ? (
-                <ActivityIndicator size="small" color={primaryColor} />
-              ) : (
-                <Ionicons name="cloud-download-outline" size={22} color={primaryColor} />
-              )}
+              <Ionicons name="cloud-download-outline" size={22} color={primaryColor} />
             </PressableScale>
             <PressableScale
               onPress={() => router.push("/contacts/add")}
