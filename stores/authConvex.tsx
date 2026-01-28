@@ -263,6 +263,8 @@ const storage = {
 export interface User {
   id: string;
   displayName: string;
+  username?: string;
+  avatarUrl?: string;
   email?: string;
   phoneNumber?: string;
   solanaAddress?: string;
@@ -336,6 +338,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user: {
           id: userData._id,
           displayName: userData.displayName ?? "",
+          username: userData.username,
+          avatarUrl: userData.avatarUrl,
           email: userData.email,
           phoneNumber: userData.phoneNumber,
           solanaAddress: userData.solanaAddress,

@@ -5,14 +5,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
-import { useMutation } from 'convex/react';
+import { useMutation, useQuery } from 'convex/react';
 import { api } from '@/convex/_generated/api';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { useAuth, useAuthOperations } from '@/stores/authConvex';
-import { ProfileField, PhoneVerificationModal } from '@/components/identity';
+import { ProfileField, PhoneVerificationModal, AvatarPicker } from '@/components/identity';
 import { usePrivateIdentity } from '@/hooks/usePrivateIdentity';
 import type { ZkProofType } from '@/services/privateIdentityClient';
 
@@ -80,6 +80,16 @@ export default function IdentityScreen() {
     await updateProfileMutation({ userId, email });
     await checkAuthStatus();
   }, [updateProfileMutation, userId, checkAuthStatus]);
+
+  const handleUpdateUsername = useCallback(async (username: string) => {
+    if (!userId) return;
+    await updateProfileMutation({ userId, username });
+    await checkAuthStatus();
+  }, [updateProfileMutation, userId, checkAuthStatus]);
+
+  const handleAvatarUpdated = useCallback(async () => {
+    await checkAuthStatus();
+  }, [checkAuthStatus]);
 
   // Format phone number for display
   const formatPhoneNumber = (phone: string): string => {
@@ -159,15 +169,25 @@ export default function IdentityScreen() {
           <View style={styles.cardContent}>
             <View style={styles.cardHeader}>
               <View style={styles.cardAvatar}>
-                <View style={[styles.avatarGradient, { backgroundColor: `${primaryColor}30` }]}>
-                  <Ionicons name="finger-print" size={28} color={primaryColor} />
-                </View>
+                <AvatarPicker
+                  avatarUrl={user?.avatarUrl}
+                  displayName={displayName}
+                  size={56}
+                  userId={userId}
+                  onAvatarUpdated={handleAvatarUpdated}
+                />
               </View>
               <View style={styles.cardInfo}>
                 <ThemedText style={styles.identityName}>{displayName}</ThemedText>
-                <ThemedText style={[styles.identitySubtitle, { color: mutedColor }]}>
-                  Self-Sovereign Identity
-                </ThemedText>
+                {user?.username ? (
+                  <ThemedText style={[styles.identityUsername, { color: primaryColor }]}>
+                    @{user.username}
+                  </ThemedText>
+                ) : (
+                  <ThemedText style={[styles.identitySubtitle, { color: mutedColor }]}>
+                    Self-Sovereign Identity
+                  </ThemedText>
+                )}
               </View>
               <PressableScale
                 onPress={() => setShowQR(!showQR)}
@@ -240,6 +260,15 @@ export default function IdentityScreen() {
             placeholder="Add a name"
             inlineEdit
             onSave={handleUpdateDisplayName}
+          />
+
+          <ProfileField
+            icon="at"
+            label="Username"
+            value={user?.username}
+            placeholder="Choose a username"
+            inlineEdit
+            onSave={handleUpdateUsername}
           />
 
           <ProfileField
@@ -491,6 +520,9 @@ const styles = StyleSheet.create({
     marginBottom: 2 },
   identitySubtitle: {
     fontSize: 12 },
+  identityUsername: {
+    fontSize: 14,
+    fontWeight: '500' },
   qrButton: {
     width: 36,
     height: 36,

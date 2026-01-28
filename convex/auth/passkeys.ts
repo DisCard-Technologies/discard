@@ -296,12 +296,49 @@ export const verifyPasskey = mutation({
 });
 
 /**
+ * Check if a username is available
+ */
+export const isUsernameAvailable = query({
+  args: {
+    username: v.string(),
+  },
+  handler: async (ctx, args): Promise<{ available: boolean; reason?: string }> => {
+    const username = args.username.toLowerCase().trim();
+
+    // Validate format: 3-15 chars, alphanumeric and underscores only
+    if (username.length < 3) {
+      return { available: false, reason: "Username must be at least 3 characters" };
+    }
+    if (username.length > 15) {
+      return { available: false, reason: "Username must be 15 characters or less" };
+    }
+    if (!/^[a-z0-9_]+$/.test(username)) {
+      return { available: false, reason: "Username can only contain letters, numbers, and underscores" };
+    }
+
+    // Check if username is taken
+    const existing = await ctx.db
+      .query("users")
+      .withIndex("by_username", (q) => q.eq("username", username))
+      .first();
+
+    if (existing) {
+      return { available: false, reason: "Username is already taken" };
+    }
+
+    return { available: true };
+  },
+});
+
+/**
  * Update user profile
  */
 export const updateProfile = mutation({
   args: {
     userId: v.optional(v.id("users")),
     displayName: v.optional(v.string()),
+    username: v.optional(v.string()),
+    avatarUrl: v.optional(v.string()),
     email: v.optional(v.string()),
   },
   handler: async (ctx, args): Promise<void> => {
@@ -329,6 +366,32 @@ export const updateProfile = mutation({
       throw new ConvexError("User not found or not authenticated");
     }
 
+    // Validate and check username uniqueness
+    if (args.username !== undefined && args.username !== user.username) {
+      const username = args.username.toLowerCase().trim();
+
+      // Validate format
+      if (username.length < 3) {
+        throw new ConvexError("Username must be at least 3 characters");
+      }
+      if (username.length > 15) {
+        throw new ConvexError("Username must be 15 characters or less");
+      }
+      if (!/^[a-z0-9_]+$/.test(username)) {
+        throw new ConvexError("Username can only contain letters, numbers, and underscores");
+      }
+
+      // Check uniqueness
+      const usernameExists = await ctx.db
+        .query("users")
+        .withIndex("by_username", (q) => q.eq("username", username))
+        .first();
+
+      if (usernameExists) {
+        throw new ConvexError("Username is already taken");
+      }
+    }
+
     // Check if new email is already in use
     if (args.email && args.email !== user.email) {
       const emailExists = await ctx.db
@@ -343,8 +406,69 @@ export const updateProfile = mutation({
 
     await ctx.db.patch(user._id, {
       ...(args.displayName !== undefined && { displayName: args.displayName }),
+      ...(args.username !== undefined && { username: args.username.toLowerCase().trim() }),
+      ...(args.avatarUrl !== undefined && { avatarUrl: args.avatarUrl }),
       ...(args.email !== undefined && { email: args.email }),
     });
+  },
+});
+
+/**
+ * Generate an upload URL for avatar images
+ */
+export const generateAvatarUploadUrl = mutation({
+  args: {},
+  handler: async (ctx): Promise<string> => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new ConvexError("Not authenticated");
+    }
+
+    // Generate a short-lived upload URL
+    return await ctx.storage.generateUploadUrl();
+  },
+});
+
+/**
+ * Save the avatar after upload and update user profile
+ */
+export const saveAvatar = mutation({
+  args: {
+    userId: v.optional(v.id("users")),
+    storageId: v.id("_storage"),
+  },
+  handler: async (ctx, args): Promise<string> => {
+    let user: Doc<"users"> | null = null;
+    const identity = await ctx.auth.getUserIdentity();
+
+    if (identity) {
+      user = await ctx.db
+        .query("users")
+        .withIndex("by_credential", (q) => q.eq("credentialId", identity.subject))
+        .first();
+
+      if (!user) {
+        const userId = ctx.db.normalizeId("users", identity.subject);
+        if (userId) user = await ctx.db.get(userId);
+      }
+    } else if (args.userId) {
+      user = await ctx.db.get(args.userId);
+    }
+
+    if (!user) {
+      throw new ConvexError("User not found or not authenticated");
+    }
+
+    // Get the URL for the uploaded file
+    const avatarUrl = await ctx.storage.getUrl(args.storageId);
+    if (!avatarUrl) {
+      throw new ConvexError("Failed to get avatar URL");
+    }
+
+    // Update user with new avatar URL
+    await ctx.db.patch(user._id, { avatarUrl });
+
+    return avatarUrl;
   },
 });
 

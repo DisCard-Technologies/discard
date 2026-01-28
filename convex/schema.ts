@@ -19,6 +19,8 @@ export default defineSchema({
 
     // Profile
     displayName: v.optional(v.string()),
+    username: v.optional(v.string()),   // Unique human-readable identity (e.g., "alice")
+    avatarUrl: v.optional(v.string()),  // Profile picture URL (Convex storage)
     phoneHash: v.optional(v.string()),  // For TextPay PDA derivation
     phoneNumber: v.optional(v.string()), // E.164 format for P2P discovery
     email: v.optional(v.string()),      // Optional, for notifications only
@@ -75,6 +77,7 @@ export default defineSchema({
     createdAt: v.number(),
   })
     .index("by_credential", ["credentialId"])
+    .index("by_username", ["username"])
     .index("by_phone_hash", ["phoneHash"])
     .index("by_phone_number", ["phoneNumber"])
     .index("by_solana_address", ["solanaAddress"])
