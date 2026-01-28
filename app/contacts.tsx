@@ -599,25 +599,42 @@ export default function ContactsScreen() {
           </View>
           <ThemedText style={styles.emptyTitle}>No Contacts Yet</ThemedText>
           <ThemedText style={[styles.emptyDescription, { color: mutedColor }]}>
-            Contacts you send money to will appear here. You can also import contacts from your phone.
+            Add contacts manually or import them from your phone.
           </ThemedText>
-          <PressableScale
-            onPress={handleImportContacts}
-            enabled={!isImporting}
-            style={[
-              styles.importButton,
-              { backgroundColor: primaryColor },
-            ]}
-          >
-            {isImporting ? (
-              <ActivityIndicator size="small" color={buttonTextColor} />
-            ) : (
-              <>
-                <Ionicons name="cloud-download-outline" size={20} color={buttonTextColor} />
-                <ThemedText style={[styles.importButtonText, { color: buttonTextColor }]}>Import from Phone</ThemedText>
-              </>
-            )}
-          </PressableScale>
+          <View style={styles.emptyActions}>
+            <PressableScale
+              onPress={() => router.push("/contacts/add")}
+              style={[
+                styles.emptyActionButton,
+                { backgroundColor: primaryColor },
+              ]}
+            >
+              <Ionicons name="add" size={20} color={buttonTextColor} />
+              <ThemedText style={[styles.emptyActionButtonText, { color: buttonTextColor }]}>
+                Add Contact
+              </ThemedText>
+            </PressableScale>
+            <PressableScale
+              onPress={handleImportContacts}
+              enabled={!isImporting}
+              style={[
+                styles.emptyActionButton,
+                styles.emptyActionButtonOutline,
+                { borderColor: primaryColor },
+              ]}
+            >
+              {isImporting ? (
+                <ActivityIndicator size="small" color={primaryColor} />
+              ) : (
+                <>
+                  <Ionicons name="cloud-download-outline" size={20} color={primaryColor} />
+                  <ThemedText style={[styles.emptyActionButtonText, { color: primaryColor }]}>
+                    Import from Phone
+                  </ThemedText>
+                </>
+              )}
+            </PressableScale>
+          </View>
         </View>
       </ThemedView>
     );
@@ -652,17 +669,25 @@ export default function ContactsScreen() {
             </ThemedText>
           </PressableScale>
         ) : (
-          <PressableScale
-            onPress={handleImportContacts}
-            enabled={!isImporting}
-            style={styles.headerButton}
-          >
-            {isImporting ? (
-              <ActivityIndicator size="small" color={primaryColor} />
-            ) : (
-              <Ionicons name="cloud-download-outline" size={22} color={primaryColor} />
-            )}
-          </PressableScale>
+          <View style={styles.headerActions}>
+            <PressableScale
+              onPress={handleImportContacts}
+              enabled={!isImporting}
+              style={styles.headerButton}
+            >
+              {isImporting ? (
+                <ActivityIndicator size="small" color={primaryColor} />
+              ) : (
+                <Ionicons name="cloud-download-outline" size={22} color={primaryColor} />
+              )}
+            </PressableScale>
+            <PressableScale
+              onPress={() => router.push("/contacts/add")}
+              style={styles.headerButton}
+            >
+              <Ionicons name="add" size={26} color={primaryColor} />
+            </PressableScale>
+          </View>
         )}
       </View>
 
@@ -834,6 +859,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
   headerButtonText: {
     fontSize: 14,
     fontWeight: "500",
@@ -957,16 +986,25 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     marginBottom: 24,
   },
-  importButton: {
+  emptyActions: {
+    gap: 12,
+    width: "100%",
+    maxWidth: 280,
+  },
+  emptyActionButton: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
     gap: 8,
     paddingHorizontal: 24,
     paddingVertical: 14,
     borderRadius: 12,
   },
-  importButtonText: {
-    color: "#fff",
+  emptyActionButtonOutline: {
+    backgroundColor: "transparent",
+    borderWidth: 1.5,
+  },
+  emptyActionButtonText: {
     fontSize: 15,
     fontWeight: "600",
   },
