@@ -8,7 +8,7 @@
  * - Loading states
  */
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import {
   StyleSheet,
   View,
@@ -18,8 +18,15 @@ import {
 } from "react-native";
 import { PressableScale } from "pressto";
 import { Ionicons } from "@expo/vector-icons";
-import * as ImagePicker from "expo-image-picker";
 import { useMutation } from "convex/react";
+
+// Lazy load expo-image-picker to handle Expo Go where native module isn't available
+let ImagePicker: typeof import("expo-image-picker") | null = null;
+try {
+  ImagePicker = require("expo-image-picker");
+} catch (e) {
+  console.log("[AvatarPicker] expo-image-picker not available (Expo Go)");
+}
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 
@@ -84,6 +91,15 @@ export function AvatarPicker({
   // Handle image selection and upload
   const handlePickImage = useCallback(async () => {
     if (disabled || isUploading) return;
+
+    // Check if ImagePicker is available
+    if (!ImagePicker) {
+      Alert.alert(
+        "Not Available",
+        "Image picker is not available in Expo Go. Please use a development build to change your avatar."
+      );
+      return;
+    }
 
     try {
       // Request permission
