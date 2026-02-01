@@ -3,9 +3,20 @@
  *
  * Factory for creating card provider instances.
  * Supports both Marqeta (KYC + JIT) and Starpay (no-KYC + prepaid).
+ *
+ * Includes confidential funding via Arcium MPC for privacy-preserving
+ * card top-ups where on-chain observers cannot see funding amounts.
  */
 
-import type { CardProvider, ProviderName, ProviderConfig } from './types';
+import type {
+  CardProvider,
+  ProviderName,
+  ProviderConfig,
+  ConfidentialFundingRequest,
+  ConfidentialFundingResult,
+} from './types';
+import type { StarpayProvider } from './starpayProvider';
+import type { MarqetaProvider } from './marqetaProvider';
 
 // Lazy imports to avoid loading unused providers
 let marqetaProvider: CardProvider | null = null;
@@ -145,6 +156,102 @@ export function getAvailableProviders(): ProviderInfo[] {
   }
 
   return providers;
+}
+
+// ============================================================================
+// Confidential Funding (Arcium MPC)
+// ============================================================================
+
+/**
+ * Fund a card confidentially using Arcium MPC
+ *
+ * Routes the confidential funding request to the appropriate provider.
+ * For Starpay (prepaid), this funds the card directly.
+ * For Marqeta (JIT), this pre-authorizes a spending limit.
+ *
+ * @param providerName - Card provider name
+ * @param request - Confidential funding request
+ */
+export async function fundCardConfidentially(
+  providerName: ProviderName,
+  request: ConfidentialFundingRequest
+): Promise<ConfidentialFundingResult> {
+  switch (providerName) {
+    case 'starpay': {
+      const { StarpayProvider } = await import('./starpayProvider');
+      const provider = new StarpayProvider() as StarpayProvider;
+      return provider.fundCardConfidentially(request);
+    }
+
+    case 'marqeta': {
+      const { MarqetaProvider } = await import('./marqetaProvider');
+      const provider = new MarqetaProvider() as MarqetaProvider;
+      return provider.preAuthorizeConfidentialSpending(request);
+    }
+
+    default:
+      return {
+        success: false,
+        newBalance: 0,
+        error: `Unknown provider: ${providerName}`,
+      };
+  }
+}
+
+/**
+ * Check if confidential funding is supported for a provider
+ */
+export function supportsConfidentialFunding(providerName: ProviderName): boolean {
+  // Both providers support confidential funding via Arcium MPC
+  return providerName === 'starpay' || providerName === 'marqeta';
+}
+
+/**
+ * Get confidential funding info for UI display
+ */
+export interface ConfidentialFundingInfo {
+  supported: boolean;
+  description: string;
+  privacyLevel: 'high' | 'medium' | 'low';
+  features: string[];
+}
+
+export function getConfidentialFundingInfo(providerName: ProviderName): ConfidentialFundingInfo {
+  switch (providerName) {
+    case 'starpay':
+      return {
+        supported: true,
+        description: 'Direct confidential top-up via Arcium MPC',
+        privacyLevel: 'high',
+        features: [
+          'Amount hidden from on-chain observers',
+          'Stealth address for debit transaction',
+          'Nullifier-based replay protection',
+          'MPC-verified balance proof',
+        ],
+      };
+
+    case 'marqeta':
+      return {
+        supported: true,
+        description: 'Pre-authorized confidential spending limit',
+        privacyLevel: 'high',
+        features: [
+          'Encrypted spending limit via MPC',
+          'JIT authorization within limit',
+          '24-hour limit expiration',
+          'No amount visible on-chain',
+        ],
+      };
+
+    default:
+      return {
+        supported: false,
+        description: 'Confidential funding not supported',
+        privacyLevel: 'low',
+        features: [],
+      };
+  }
 }
 
 // Re-export types

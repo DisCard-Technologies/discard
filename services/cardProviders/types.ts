@@ -91,6 +91,88 @@ export interface FundingResult {
 }
 
 // ============================================================================
+// Confidential Funding (Arcium MPC)
+// ============================================================================
+
+/**
+ * Arcium-encrypted amount for confidential card funding
+ * The plaintext amount is never exposed on-chain
+ */
+export interface ArciumEncryptedFundingAmount {
+  /** Ciphertext bytes (array of 32-byte arrays) */
+  ciphertext: number[][];
+  /** Sender's x25519 public key (hex) */
+  senderPublicKey: string;
+  /** Encryption nonce (hex) */
+  nonce: string;
+  /** MPC computation ID for tracking */
+  computationId: string;
+}
+
+/**
+ * Proof that encrypted amount is valid and within balance
+ */
+export interface FundingBalanceProof {
+  /** Hash binding ciphertext to Pedersen commitment */
+  bindingHash: string;
+  /** Proof that amount <= available shielded balance */
+  balanceProof: {
+    /** Pedersen commitment to shielded balance */
+    balanceCommitment: string;
+    /** Range proof that amount > 0 and amount <= balance */
+    rangeProof: string;
+  };
+  /** Schnorr proof of knowledge */
+  schnorrProof: {
+    challenge: string;
+    response: string;
+  };
+  /** Timestamp for freshness */
+  timestamp: number;
+}
+
+/**
+ * Confidential funding request using Arcium MPC
+ * Amount is encrypted and verified via MPC before funding
+ */
+export interface ConfidentialFundingRequest {
+  /** Card token to fund */
+  cardToken: string;
+  /** Arcium-encrypted funding amount */
+  encryptedAmount: ArciumEncryptedFundingAmount;
+  /** Proof that encrypted amount is valid */
+  balanceProof: FundingBalanceProof;
+  /** Source of funds */
+  source: 'shielded_balance';
+  /** Single-use stealth address for the debit */
+  stealthAddress: string;
+  /** Nullifier to prevent replay */
+  nullifier: string;
+  /** User's Arcium public key for MPC verification */
+  userArciumPubkey: string;
+}
+
+/**
+ * Result of confidential funding operation
+ */
+export interface ConfidentialFundingResult {
+  /** Whether funding succeeded */
+  success: boolean;
+  /** New card balance after funding (cents) - only known to card provider */
+  newBalance: number;
+  /** Transaction/reference ID */
+  transactionId?: string;
+  /** New balance commitment (hides actual balance from observers) */
+  balanceCommitment?: string;
+  /** MPC computation finalization signature */
+  mpcFinalizationSig?: string;
+  /** Nullifier that was consumed */
+  consumedNullifier?: string;
+  /** Error message if failed */
+  error?: string;
+}
+
+// ============================================================================
 // Authorization (JIT Funding)
 // ============================================================================
 
