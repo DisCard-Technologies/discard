@@ -307,6 +307,7 @@ export function usePrivacyTransfer(userId?: Id<'users'>): UsePrivacyTransferRetu
             nullifierUnused: false,
             complianceValid: false,
             notExpired: false,
+            arciumConsistency: false,
           },
           errors: ['Service not initialized'],
         };
@@ -333,6 +334,7 @@ export function usePrivacyTransfer(userId?: Id<'users'>): UsePrivacyTransferRetu
             nullifierUnused: false,
             complianceValid: false,
             notExpired: false,
+            arciumConsistency: false,
           },
           errors: [error instanceof Error ? error.message : 'Verification failed'],
         };
