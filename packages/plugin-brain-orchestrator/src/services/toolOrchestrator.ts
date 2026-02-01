@@ -10,6 +10,7 @@ import type { SoulClient } from "./soulClient.js";
 import type { SoulVerifier } from "../attestation/soulVerifier.js";
 import type { ParsedIntent, SoulVerificationRequest } from "../types/intent.js";
 import type { ToolCallRecord } from "../types/context.js";
+import { registerIncoTools } from "../tools/incoTools.js";
 
 /**
  * Tool definition
@@ -187,6 +188,9 @@ export class ToolOrchestrator {
         return result as unknown as Record<string, unknown>;
       },
     });
+
+    // Register Inco Lightning tools for encrypted balance operations
+    registerIncoTools(this);
   }
 
   /**

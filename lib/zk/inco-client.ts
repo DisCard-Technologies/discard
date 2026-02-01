@@ -112,6 +112,51 @@ export const MAX_RESPONSE_TIME_MS = 100;
  */
 export const HANDLE_VALIDITY_MS = 60 * 60 * 1000;
 
+/**
+ * Comparison operators for encrypted comparisons
+ */
+export type ComparisonOperator = 'gte' | 'lte' | 'eq' | 'gt' | 'lt';
+
+/**
+ * Attestation data from TEE operations
+ */
+export interface Attestation {
+  /** SGX enclave quote */
+  quote: string;
+  /** Attestation timestamp */
+  timestamp: number;
+  /** Verification status */
+  verified: boolean;
+  /** Operation that produced this attestation */
+  operation: string;
+  /** Hash of inputs for audit */
+  inputHash?: string;
+}
+
+/**
+ * Result of an encrypted balance operation
+ */
+export interface EncryptedOperationResult {
+  /** New encrypted handle after operation */
+  newHandle: EncryptedHandle;
+  /** TEE attestation for the operation */
+  attestation: Attestation;
+  /** Response time in milliseconds */
+  responseTimeMs: number;
+}
+
+/**
+ * Result of an encrypted comparison operation
+ */
+export interface ComparisonResult {
+  /** Boolean result of comparison */
+  result: boolean;
+  /** TEE attestation for the comparison */
+  attestation: Attestation;
+  /** Response time in milliseconds */
+  responseTimeMs: number;
+}
+
 // ============ SERVICE CLASS ============
 
 /**
@@ -240,6 +285,188 @@ export class IncoLightningService {
   }
 
   /**
+   * Add amount to encrypted balance (homomorphic addition)
+   *
+   * Performs: E(balance) + amount = E(balance + amount)
+   * Used for funding cards with encrypted balances.
+   *
+   * @param handle - Current encrypted balance handle
+   * @param amount - Amount to add (plaintext, in smallest units)
+   * @returns New encrypted handle with attestation
+   */
+  async addToBalance(
+    handle: EncryptedHandle,
+    amount: bigint
+  ): Promise<EncryptedOperationResult> {
+    console.log(`[Inco] Adding to encrypted balance: ${amount}`);
+    const startTime = Date.now();
+
+    try {
+      // Validate handle
+      if (!this.isHandleValid(handle)) {
+        throw new Error('Cannot add to invalid or expired handle');
+      }
+
+      // In production, this would:
+      // 1. Call Inco SDK to perform encrypted addition
+      // 2. Return new encrypted handle with TEE attestation
+
+      // For development, simulate the TEE operation
+      const result = await this.simulateTeeOperation(handle, amount, 'add');
+
+      const responseTime = Date.now() - startTime;
+      console.log(`[Inco] Balance addition completed in ${responseTime}ms`);
+
+      return {
+        newHandle: result.newHandle,
+        attestation: {
+          quote: result.attestation.quote,
+          timestamp: result.attestation.timestamp,
+          verified: result.attestation.verified,
+          operation: 'e_add',
+          inputHash: this.hashInputs(handle.handle, amount.toString()),
+        },
+        responseTimeMs: responseTime,
+      };
+    } catch (error) {
+      console.error('[Inco] Failed to add to balance:', error);
+      throw new Error(`Inco balance addition failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Compare encrypted balance against a threshold
+   *
+   * Performs comparison operations in TEE without revealing the actual balance.
+   * Returns boolean result with attestation proving the comparison was done correctly.
+   *
+   * @param handle - Encrypted balance handle
+   * @param operator - Comparison operator ('gte', 'lte', 'eq', 'gt', 'lt')
+   * @param threshold - Threshold value to compare against (plaintext)
+   * @returns Comparison result with attestation
+   */
+  async compareBalance(
+    handle: EncryptedHandle,
+    operator: ComparisonOperator,
+    threshold: bigint
+  ): Promise<ComparisonResult> {
+    console.log(`[Inco] Comparing encrypted balance: ${operator} ${threshold}`);
+    const startTime = Date.now();
+
+    try {
+      // Validate handle
+      if (!this.isHandleValid(handle)) {
+        throw new Error('Cannot compare invalid or expired handle');
+      }
+
+      // In production, this would:
+      // 1. Build CPI instruction to Inco program
+      // 2. Call e_cmp(encrypted_balance, operator, threshold) in TEE
+      // 3. Return boolean result with attestation
+
+      // For development, simulate the TEE comparison
+      const result = await this.simulateTeeComparison(handle, operator, threshold);
+
+      const responseTime = Date.now() - startTime;
+
+      if (responseTime > MAX_RESPONSE_TIME_MS) {
+        console.warn(`[Inco] Balance comparison slow: ${responseTime}ms`);
+      } else {
+        console.log(`[Inco] Balance comparison completed in ${responseTime}ms`);
+      }
+
+      return {
+        result: result.comparisonResult,
+        attestation: {
+          quote: result.attestation.quote,
+          timestamp: result.attestation.timestamp,
+          verified: result.attestation.verified,
+          operation: `e_cmp_${operator}`,
+          inputHash: this.hashInputs(handle.handle, operator, threshold.toString()),
+        },
+        responseTimeMs: responseTime,
+      };
+    } catch (error) {
+      console.error('[Inco] Balance comparison failed:', error);
+      throw new Error(`Inco balance comparison failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Query if encrypted balance is sufficient for an operation
+   *
+   * Convenience method that performs a 'gte' comparison.
+   * Used by agents to check if a card has sufficient funds without exposing balance.
+   *
+   * @param handle - Encrypted balance handle
+   * @param minimumRequired - Minimum amount required (plaintext)
+   * @returns Sufficiency result with attestation
+   */
+  async queryBalanceSufficiency(
+    handle: EncryptedHandle,
+    minimumRequired: bigint
+  ): Promise<{ sufficient: boolean; attestation: Attestation }> {
+    console.log(`[Inco] Querying balance sufficiency: minimum=${minimumRequired}`);
+
+    const comparisonResult = await this.compareBalance(handle, 'gte', minimumRequired);
+
+    return {
+      sufficient: comparisonResult.result,
+      attestation: comparisonResult.attestation,
+    };
+  }
+
+  /**
+   * Subtract amount from encrypted balance (homomorphic subtraction)
+   *
+   * Performs: E(balance) - amount = E(balance - amount)
+   * Used for transfers and spending from encrypted balances.
+   *
+   * @param handle - Current encrypted balance handle
+   * @param amount - Amount to subtract (plaintext, in smallest units)
+   * @returns New encrypted handle with attestation
+   */
+  async subtractFromBalance(
+    handle: EncryptedHandle,
+    amount: bigint
+  ): Promise<EncryptedOperationResult> {
+    console.log(`[Inco] Subtracting from encrypted balance: ${amount}`);
+    const startTime = Date.now();
+
+    try {
+      // Validate handle
+      if (!this.isHandleValid(handle)) {
+        throw new Error('Cannot subtract from invalid or expired handle');
+      }
+
+      // In production, this would:
+      // 1. Call Inco SDK to perform encrypted subtraction
+      // 2. Return new encrypted handle with TEE attestation
+
+      // For development, simulate the TEE operation
+      const result = await this.simulateTeeOperation(handle, amount, 'subtract');
+
+      const responseTime = Date.now() - startTime;
+      console.log(`[Inco] Balance subtraction completed in ${responseTime}ms`);
+
+      return {
+        newHandle: result.newHandle,
+        attestation: {
+          quote: result.attestation.quote,
+          timestamp: result.attestation.timestamp,
+          verified: result.attestation.verified,
+          operation: 'e_sub',
+          inputHash: this.hashInputs(handle.handle, amount.toString()),
+        },
+        responseTimeMs: responseTime,
+      };
+    } catch (error) {
+      console.error('[Inco] Failed to subtract from balance:', error);
+      throw new Error(`Inco balance subtraction failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
    * Update encrypted balance after a spending transaction
    *
    * Performs homomorphic subtraction: E(balance) - amount = E(balance - amount)
@@ -247,6 +474,7 @@ export class IncoLightningService {
    * @param handle - Current encrypted balance handle
    * @param spentAmount - Amount that was spent (plaintext)
    * @returns New encrypted handle with updated balance
+   * @deprecated Use subtractFromBalance() instead for new code
    */
   async updateEncryptedBalance(
     handle: EncryptedHandle,
@@ -430,6 +658,132 @@ export class IncoLightningService {
         verified: true,
       },
     };
+  }
+
+  /**
+   * Simulate TEE arithmetic operation for development
+   */
+  private async simulateTeeOperation(
+    handle: EncryptedHandle,
+    amount: bigint,
+    operation: 'add' | 'subtract'
+  ): Promise<{
+    newHandle: EncryptedHandle;
+    attestation: {
+      quote: string;
+      timestamp: number;
+      verified: boolean;
+    };
+  }> {
+    // Simulate network latency (5-50ms)
+    const latency = 5 + Math.random() * 45;
+    await new Promise(resolve => setTimeout(resolve, latency));
+
+    // For development, extract balance hint and perform operation
+    const handleBytes = this.hexToBytes(handle.handle);
+    const currentBalance = this.bytesToBigint(handleBytes.slice(0, 8));
+
+    let newBalance: bigint;
+    if (operation === 'add') {
+      newBalance = currentBalance + amount;
+    } else {
+      // Ensure we don't go negative
+      newBalance = currentBalance >= amount ? currentBalance - amount : BigInt(0);
+    }
+
+    // Create new handle with updated balance hint
+    const newHandleBytes = new Uint8Array(16);
+    const newBalanceBytes = this.bigintToBytes(newBalance, 8);
+    const randomBytes = new Uint8Array(8);
+    crypto.getRandomValues(randomBytes);
+
+    newHandleBytes.set(newBalanceBytes, 0);
+    newHandleBytes.set(randomBytes, 8);
+
+    const newHandle: EncryptedHandle = {
+      handle: this.bytesToHex(newHandleBytes),
+      publicKey: handle.publicKey,
+      epoch: Math.floor(Date.now() / HANDLE_VALIDITY_MS),
+      createdAt: Date.now(),
+    };
+
+    return {
+      newHandle,
+      attestation: {
+        quote: `simulated-sgx-quote-${operation}-${Date.now().toString(16)}`,
+        timestamp: Date.now(),
+        verified: true,
+      },
+    };
+  }
+
+  /**
+   * Simulate TEE comparison operation for development
+   */
+  private async simulateTeeComparison(
+    handle: EncryptedHandle,
+    operator: ComparisonOperator,
+    threshold: bigint
+  ): Promise<{
+    comparisonResult: boolean;
+    attestation: {
+      quote: string;
+      timestamp: number;
+      verified: boolean;
+    };
+  }> {
+    // Simulate network latency (5-50ms)
+    const latency = 5 + Math.random() * 45;
+    await new Promise(resolve => setTimeout(resolve, latency));
+
+    // For development, extract balance hint and perform comparison
+    const handleBytes = this.hexToBytes(handle.handle);
+    const balanceHint = this.bytesToBigint(handleBytes.slice(0, 8));
+
+    let comparisonResult: boolean;
+    switch (operator) {
+      case 'gte':
+        comparisonResult = balanceHint >= threshold;
+        break;
+      case 'lte':
+        comparisonResult = balanceHint <= threshold;
+        break;
+      case 'eq':
+        comparisonResult = balanceHint === threshold;
+        break;
+      case 'gt':
+        comparisonResult = balanceHint > threshold;
+        break;
+      case 'lt':
+        comparisonResult = balanceHint < threshold;
+        break;
+      default:
+        comparisonResult = false;
+    }
+
+    return {
+      comparisonResult,
+      attestation: {
+        quote: `simulated-sgx-quote-cmp-${operator}-${Date.now().toString(16)}`,
+        timestamp: Date.now(),
+        verified: true,
+      },
+    };
+  }
+
+  /**
+   * Hash inputs for audit trail
+   */
+  private hashInputs(...inputs: string[]): string {
+    // Simple hash for development - in production use proper cryptographic hash
+    const combined = inputs.join(':');
+    let hash = 0;
+    for (let i = 0; i < combined.length; i++) {
+      const char = combined.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // Convert to 32bit integer
+    }
+    return `input-hash-${Math.abs(hash).toString(16)}`;
   }
 
   /**

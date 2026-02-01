@@ -409,3 +409,471 @@ function hexToBytes(hex: string): Uint8Array {
   }
   return bytes;
 }
+
+/**
+ * Convert bytes to hex string
+ */
+function bytesToHex(bytes: Uint8Array): string {
+  return Array.from(bytes)
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+// ============ AGENT EXECUTION ACTIONS ============
+
+/**
+ * Execute encrypted fund operation (agent-callable)
+ *
+ * Performs homomorphic addition: E(balance) + amount
+ * Used by agents to fund cards with encrypted balances.
+ */
+export const executeEncryptedFund = internalAction({
+  args: {
+    cardId: v.id("cards"),
+    amount: v.number(),              // Amount to add (cents)
+    sourceType: v.optional(v.string()),
+    sourceId: v.optional(v.string()),
+  },
+  handler: async (ctx, args): Promise<{
+    success: boolean;
+    newHandle?: string;
+    newEpoch?: number;
+    attestation?: {
+      quote: string;
+      timestamp: number;
+      verified: boolean;
+      operation: string;
+    };
+    error?: string;
+    responseTimeMs: number;
+  }> => {
+    const startTime = Date.now();
+
+    try {
+      console.log(`[Inco] Executing encrypted fund for card ${args.cardId}, amount: ${args.amount}`);
+
+      // Get the card's current encrypted handle
+      const card = await ctx.runQuery(internal.cards.cards.getCardById, {
+        cardId: args.cardId,
+      });
+
+      if (!card) {
+        return {
+          success: false,
+          error: "Card not found",
+          responseTimeMs: Date.now() - startTime,
+        };
+      }
+
+      const currentEpoch = Math.floor(Date.now() / EPOCH_DURATION_MS);
+
+      // If card doesn't have encrypted balance, initialize it
+      if (!card.encryptedBalanceHandle) {
+        // Create new encrypted handle with initial amount
+        const balanceBytes = new ArrayBuffer(16);
+        const view = new DataView(balanceBytes);
+        view.setBigUint64(0, BigInt(args.amount), true);
+
+        const randomBytes = new Uint8Array(8);
+        crypto.getRandomValues(randomBytes);
+        new Uint8Array(balanceBytes).set(randomBytes, 8);
+
+        const newHandle = bytesToHex(new Uint8Array(balanceBytes));
+        const incoPublicKey = `inco:${card.userId}:${currentEpoch}`;
+
+        await ctx.runMutation(internal.privacy.incoSpending.updateCardIncoHandle, {
+          cardId: args.cardId,
+          encryptedBalanceHandle: newHandle,
+          incoPublicKey,
+          incoEpoch: currentEpoch,
+        });
+
+        return {
+          success: true,
+          newHandle,
+          newEpoch: currentEpoch,
+          attestation: {
+            quote: `init-encrypted-fund-${Date.now().toString(16)}`,
+            timestamp: Date.now(),
+            verified: true,
+            operation: "e_init",
+          },
+          responseTimeMs: Date.now() - startTime,
+        };
+      }
+
+      // Validate epoch freshness
+      if (card.incoEpoch && card.incoEpoch < currentEpoch - 1) {
+        return {
+          success: false,
+          error: "Encrypted handle epoch expired - refresh required",
+          responseTimeMs: Date.now() - startTime,
+        };
+      }
+
+      // Perform homomorphic addition (simulated for development)
+      const result = await simulateTeeAddition(
+        card.encryptedBalanceHandle,
+        args.amount
+      );
+
+      // Update card with new handle
+      await ctx.runMutation(internal.privacy.incoSpending.updateCardIncoHandle, {
+        cardId: args.cardId,
+        encryptedBalanceHandle: result.newHandle,
+        incoEpoch: currentEpoch,
+      });
+
+      const responseTime = Date.now() - startTime;
+      console.log(`[Inco] Encrypted fund completed in ${responseTime}ms`);
+
+      return {
+        success: true,
+        newHandle: result.newHandle,
+        newEpoch: currentEpoch,
+        attestation: result.attestation,
+        responseTimeMs: responseTime,
+      };
+    } catch (error) {
+      console.error(`[Inco] Encrypted fund failed:`, error);
+
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error",
+        responseTimeMs: Date.now() - startTime,
+      };
+    }
+  },
+});
+
+/**
+ * Execute encrypted transfer operation (agent-callable)
+ *
+ * Performs homomorphic subtraction: E(balance) - amount
+ * Used by agents to transfer from cards with encrypted balances.
+ */
+export const executeEncryptedTransfer = internalAction({
+  args: {
+    cardId: v.id("cards"),
+    amount: v.number(),              // Amount to transfer (cents)
+    destinationType: v.string(),     // 'card', 'wallet', 'external'
+    destinationId: v.string(),
+  },
+  handler: async (ctx, args): Promise<{
+    success: boolean;
+    newHandle?: string;
+    newEpoch?: number;
+    attestation?: {
+      quote: string;
+      timestamp: number;
+      verified: boolean;
+      operation: string;
+    };
+    error?: string;
+    responseTimeMs: number;
+  }> => {
+    const startTime = Date.now();
+
+    try {
+      console.log(`[Inco] Executing encrypted transfer from card ${args.cardId}, amount: ${args.amount}`);
+
+      // Get the card's current encrypted handle
+      const card = await ctx.runQuery(internal.cards.cards.getCardById, {
+        cardId: args.cardId,
+      });
+
+      if (!card) {
+        return {
+          success: false,
+          error: "Card not found",
+          responseTimeMs: Date.now() - startTime,
+        };
+      }
+
+      if (!card.encryptedBalanceHandle) {
+        return {
+          success: false,
+          error: "Card does not have encrypted balance enabled",
+          responseTimeMs: Date.now() - startTime,
+        };
+      }
+
+      const currentEpoch = Math.floor(Date.now() / EPOCH_DURATION_MS);
+
+      // Validate epoch freshness
+      if (card.incoEpoch && card.incoEpoch < currentEpoch - 1) {
+        return {
+          success: false,
+          error: "Encrypted handle epoch expired - refresh required",
+          responseTimeMs: Date.now() - startTime,
+        };
+      }
+
+      // First check if balance is sufficient
+      const checkResult = await simulateTeeSpendingCheck(
+        card.encryptedBalanceHandle,
+        args.amount
+      );
+
+      if (!checkResult.allowed) {
+        return {
+          success: false,
+          error: "Insufficient encrypted balance",
+          attestation: {
+            ...checkResult.attestation,
+            operation: "e_check_insufficient",
+          },
+          responseTimeMs: Date.now() - startTime,
+        };
+      }
+
+      // Perform homomorphic subtraction
+      const result = await simulateTeeSubtraction(
+        card.encryptedBalanceHandle,
+        args.amount
+      );
+
+      // Update source card with new handle
+      await ctx.runMutation(internal.privacy.incoSpending.updateCardIncoHandle, {
+        cardId: args.cardId,
+        encryptedBalanceHandle: result.newHandle,
+        incoEpoch: currentEpoch,
+      });
+
+      // If destination is a card, add to its encrypted balance
+      if (args.destinationType === 'card') {
+        try {
+          await ctx.runAction(internal.privacy.incoSpending.executeEncryptedFund, {
+            cardId: args.destinationId as Id<"cards">,
+            amount: args.amount,
+          });
+        } catch (error) {
+          console.warn(`[Inco] Failed to credit destination card: ${error}`);
+          // Continue - the source debit succeeded
+        }
+      }
+
+      const responseTime = Date.now() - startTime;
+      console.log(`[Inco] Encrypted transfer completed in ${responseTime}ms`);
+
+      return {
+        success: true,
+        newHandle: result.newHandle,
+        newEpoch: currentEpoch,
+        attestation: result.attestation,
+        responseTimeMs: responseTime,
+      };
+    } catch (error) {
+      console.error(`[Inco] Encrypted transfer failed:`, error);
+
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error",
+        responseTimeMs: Date.now() - startTime,
+      };
+    }
+  },
+});
+
+/**
+ * Query encrypted balance sufficiency (agent-callable)
+ *
+ * Returns boolean indicating if balance >= minimumRequired
+ * without revealing the actual balance.
+ */
+export const queryEncryptedBalance = internalAction({
+  args: {
+    cardId: v.id("cards"),
+    minimumRequired: v.number(),     // Minimum amount needed (cents)
+  },
+  handler: async (ctx, args): Promise<{
+    sufficient: boolean;
+    attestation?: {
+      quote: string;
+      timestamp: number;
+      verified: boolean;
+      operation: string;
+    };
+    error?: string;
+    responseTimeMs: number;
+  }> => {
+    const startTime = Date.now();
+
+    try {
+      console.log(`[Inco] Querying encrypted balance for card ${args.cardId}, minimum: ${args.minimumRequired}`);
+
+      // Get the card
+      const card = await ctx.runQuery(internal.cards.cards.getCardById, {
+        cardId: args.cardId,
+      });
+
+      if (!card) {
+        return {
+          sufficient: false,
+          error: "Card not found",
+          responseTimeMs: Date.now() - startTime,
+        };
+      }
+
+      if (!card.encryptedBalanceHandle) {
+        return {
+          sufficient: false,
+          error: "Card does not have encrypted balance enabled",
+          responseTimeMs: Date.now() - startTime,
+        };
+      }
+
+      const currentEpoch = Math.floor(Date.now() / EPOCH_DURATION_MS);
+
+      // Validate epoch freshness
+      if (card.incoEpoch && card.incoEpoch < currentEpoch - 1) {
+        return {
+          sufficient: false,
+          error: "Encrypted handle epoch expired - refresh required",
+          responseTimeMs: Date.now() - startTime,
+        };
+      }
+
+      // Perform sufficiency check in TEE
+      const result = await simulateTeeSpendingCheck(
+        card.encryptedBalanceHandle,
+        args.minimumRequired
+      );
+
+      const responseTime = Date.now() - startTime;
+
+      if (responseTime > MAX_RESPONSE_TIME_MS) {
+        console.warn(`[Inco] Balance query slow: ${responseTime}ms`);
+      }
+
+      return {
+        sufficient: result.allowed,
+        attestation: {
+          ...result.attestation,
+          operation: "e_query_sufficiency",
+        },
+        responseTimeMs: responseTime,
+      };
+    } catch (error) {
+      console.error(`[Inco] Balance query failed:`, error);
+
+      return {
+        sufficient: false,
+        error: error instanceof Error ? error.message : "Unknown error",
+        responseTimeMs: Date.now() - startTime,
+      };
+    }
+  },
+});
+
+// ============ TEE SIMULATION HELPERS (Agent Operations) ============
+
+/**
+ * Simulate TEE addition operation
+ */
+async function simulateTeeAddition(
+  encryptedBalance: string,
+  amount: number
+): Promise<{
+  newHandle: string;
+  attestation: {
+    quote: string;
+    timestamp: number;
+    verified: boolean;
+    operation: string;
+  };
+}> {
+  // Simulate network latency (5-50ms)
+  const latency = 5 + Math.random() * 45;
+  await new Promise(resolve => setTimeout(resolve, latency));
+
+  // Parse current balance from handle (development simulation)
+  const handleBytes = hexToBytes(encryptedBalance);
+  const currentBalance = Number(
+    BigInt(handleBytes[0]) |
+    (BigInt(handleBytes[1]) << BigInt(8)) |
+    (BigInt(handleBytes[2]) << BigInt(16)) |
+    (BigInt(handleBytes[3]) << BigInt(24)) |
+    (BigInt(handleBytes[4]) << BigInt(32)) |
+    (BigInt(handleBytes[5]) << BigInt(40)) |
+    (BigInt(handleBytes[6]) << BigInt(48)) |
+    (BigInt(handleBytes[7]) << BigInt(56))
+  );
+
+  // Add amount
+  const newBalance = currentBalance + amount;
+
+  // Create new handle
+  const newHandleBytes = new ArrayBuffer(16);
+  const view = new DataView(newHandleBytes);
+  view.setBigUint64(0, BigInt(newBalance), true);
+
+  const randomBytes = new Uint8Array(8);
+  crypto.getRandomValues(randomBytes);
+  new Uint8Array(newHandleBytes).set(randomBytes, 8);
+
+  return {
+    newHandle: bytesToHex(new Uint8Array(newHandleBytes)),
+    attestation: {
+      quote: `simulated-sgx-quote-add-${Date.now().toString(16)}`,
+      timestamp: Date.now(),
+      verified: true,
+      operation: "e_add",
+    },
+  };
+}
+
+/**
+ * Simulate TEE subtraction operation
+ */
+async function simulateTeeSubtraction(
+  encryptedBalance: string,
+  amount: number
+): Promise<{
+  newHandle: string;
+  attestation: {
+    quote: string;
+    timestamp: number;
+    verified: boolean;
+    operation: string;
+  };
+}> {
+  // Simulate network latency (5-50ms)
+  const latency = 5 + Math.random() * 45;
+  await new Promise(resolve => setTimeout(resolve, latency));
+
+  // Parse current balance from handle (development simulation)
+  const handleBytes = hexToBytes(encryptedBalance);
+  const currentBalance = Number(
+    BigInt(handleBytes[0]) |
+    (BigInt(handleBytes[1]) << BigInt(8)) |
+    (BigInt(handleBytes[2]) << BigInt(16)) |
+    (BigInt(handleBytes[3]) << BigInt(24)) |
+    (BigInt(handleBytes[4]) << BigInt(32)) |
+    (BigInt(handleBytes[5]) << BigInt(40)) |
+    (BigInt(handleBytes[6]) << BigInt(48)) |
+    (BigInt(handleBytes[7]) << BigInt(56))
+  );
+
+  // Subtract amount (clamp to 0)
+  const newBalance = Math.max(0, currentBalance - amount);
+
+  // Create new handle
+  const newHandleBytes = new ArrayBuffer(16);
+  const view = new DataView(newHandleBytes);
+  view.setBigUint64(0, BigInt(newBalance), true);
+
+  const randomBytes = new Uint8Array(8);
+  crypto.getRandomValues(randomBytes);
+  new Uint8Array(newHandleBytes).set(randomBytes, 8);
+
+  return {
+    newHandle: bytesToHex(new Uint8Array(newHandleBytes)),
+    attestation: {
+      quote: `simulated-sgx-quote-sub-${Date.now().toString(16)}`,
+      timestamp: Date.now(),
+      verified: true,
+      operation: "e_sub",
+    },
+  };
+}

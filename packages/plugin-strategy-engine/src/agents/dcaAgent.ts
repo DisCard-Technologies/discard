@@ -3,6 +3,9 @@
  *
  * Executes Dollar-Cost Averaging strategies by performing
  * scheduled token swaps via Jupiter aggregator.
+ *
+ * Supports encrypted balance execution via Inco TEE or ZK proofs
+ * when strategy.encryptedMode is enabled.
  */
 
 import { v4 as uuidv4 } from 'uuid';
@@ -10,6 +13,54 @@ import type { Job } from 'bullmq';
 import type { Strategy, StrategyExecution, DCAConfig } from '../types/strategy.js';
 import type { ExecutionJobData, ExecutionJobResult, ExecutionHandler } from '../services/executionQueue.js';
 import { PriceMonitor, getPriceMonitor } from '../services/priceMonitor.js';
+
+// ============================================================================
+// Encrypted Execution Types (inlined to avoid cross-package imports)
+// ============================================================================
+
+/**
+ * Strategy with encrypted balance support
+ */
+interface EncryptedStrategy {
+  strategyId: string;
+  userId: string;
+  cardId: string;
+  type: 'dca' | 'stop_loss' | 'take_profit' | 'limit_order';
+  encryptedMode: boolean;
+  encryptedBalanceHandle?: string;
+  incoPublicKey?: string;
+  incoEpoch?: number;
+  config: DCAConfig;
+}
+
+/**
+ * Attestation data from TEE operations
+ */
+interface Attestation {
+  quote: string;
+  timestamp: number;
+  verified: boolean;
+  operation: string;
+  inputHash?: string;
+}
+
+/**
+ * DCA execution result with trade details
+ */
+interface DCAResult {
+  success: boolean;
+  path: 'inco' | 'zk' | 'plaintext';
+  newHandle?: string;
+  newEpoch?: number;
+  attestation?: Attestation;
+  responseTimeMs: number;
+  executedAmount?: number;
+  inputAmount?: number;
+  outputAmount?: number;
+  executionPrice?: number;
+  swapSignature?: string;
+  error?: string;
+}
 
 // ============================================================================
 // Configuration
@@ -107,6 +158,7 @@ const TOKEN_DECIMALS: Record<string, number> = {
 export class DCAAgent {
   private config: DCAAgentConfig;
   private priceMonitor: PriceMonitor;
+  private incoEnabled: boolean | null = null;
 
   // Callbacks for integration with external execution
   private executeSwap?: (
@@ -115,9 +167,68 @@ export class DCAAgent {
     userWallet: string
   ) => Promise<{ signature: string; success: boolean; error?: string }>;
 
+  // Callback for encrypted DCA execution (set by external Inco bridge)
+  private executeEncryptedDCA?: (
+    strategy: EncryptedStrategy
+  ) => Promise<DCAResult>;
+
   constructor(config: Partial<DCAAgentConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
     this.priceMonitor = getPriceMonitor();
+  }
+
+  /**
+   * Check if Inco execution is enabled
+   */
+  private isIncoEnabled(): boolean {
+    if (this.incoEnabled === null) {
+      this.incoEnabled = process.env.INCO_ENABLED === 'true' ||
+                         process.env.EXPO_PUBLIC_INCO_ENABLED === 'true';
+    }
+    return this.incoEnabled;
+  }
+
+  /**
+   * Check if a strategy should use encrypted execution
+   */
+  private isEncryptedStrategy(strategy: Strategy): boolean {
+    // Check if strategy has encrypted mode enabled via metadata
+    return !!(strategy.metadata?.encryptedMode === true);
+  }
+
+  /**
+   * Get encrypted strategy details from standard strategy
+   */
+  private toEncryptedStrategy(strategy: Strategy): EncryptedStrategy | null {
+    if (!this.isEncryptedStrategy(strategy)) {
+      return null;
+    }
+
+    const metadata = strategy.metadata || {};
+
+    return {
+      strategyId: strategy.strategyId,
+      userId: strategy.userId,
+      cardId: metadata.cardId as string || '',
+      type: 'dca',
+      encryptedMode: true,
+      encryptedBalanceHandle: metadata.encryptedBalanceHandle as string || undefined,
+      incoPublicKey: metadata.incoPublicKey as string || undefined,
+      incoEpoch: metadata.incoEpoch as number || undefined,
+      config: strategy.config as DCAConfig,
+    };
+  }
+
+  /**
+   * Set the encrypted DCA execution callback
+   *
+   * This allows external code (like Inco strategy bridge) to provide
+   * the encrypted execution implementation without cross-package imports.
+   */
+  setExecuteEncryptedDCA(
+    callback: (strategy: EncryptedStrategy) => Promise<DCAResult>
+  ): void {
+    this.executeEncryptedDCA = callback;
   }
 
   // ==========================================================================
@@ -135,6 +246,10 @@ export class DCAAgent {
 
   /**
    * Execute a DCA buy
+   *
+   * Execution priority:
+   * 1. If encrypted mode enabled: Inco TEE (~50ms) → ZK proofs (~1-5s)
+   * 2. Standard Jupiter swap execution
    */
   async execute(
     job: Job<ExecutionJobData>,
@@ -151,6 +266,31 @@ export class DCAAgent {
         throw new Error('Invalid DCA config: missing token pair');
       }
 
+      // Check execution limits
+      const limitCheck = this.checkExecutionLimits(strategy, dcaConfig);
+      if (!limitCheck.canExecute) {
+        return {
+          success: false,
+          error: limitCheck.reason,
+          execution: this.createExecution(executionId, strategy.strategyId, startTime, false, limitCheck.reason),
+        };
+      }
+
+      // ============ ENCRYPTED EXECUTION PATH ============
+      // If strategy uses encrypted balance, route through Inco/ZK
+      if (this.isEncryptedStrategy(strategy) && this.isIncoEnabled()) {
+        console.log(`[DCAAgent] Strategy ${strategy.strategyId} using encrypted execution path`);
+
+        const encryptedResult = await this.executeWithEncryptedBalance(strategy, executionId, startTime);
+        if (encryptedResult) {
+          return encryptedResult;
+        }
+
+        // If encrypted path returned null, fall through to standard execution
+        console.log(`[DCAAgent] Encrypted path unavailable, falling back to standard execution`);
+      }
+
+      // ============ STANDARD EXECUTION PATH ============
       // Get token mints
       const inputMint = this.getTokenMint(dcaConfig.tokenPair.from);
       const outputMint = this.getTokenMint(dcaConfig.tokenPair.to);
@@ -162,16 +302,6 @@ export class DCAAgent {
       // Calculate input amount in smallest units
       const inputDecimals = this.getTokenDecimals(dcaConfig.tokenPair.from);
       const inputAmount = Math.floor(dcaConfig.amountPerExecution * Math.pow(10, inputDecimals));
-
-      // Check execution limits
-      const limitCheck = this.checkExecutionLimits(strategy, dcaConfig);
-      if (!limitCheck.canExecute) {
-        return {
-          success: false,
-          error: limitCheck.reason,
-          execution: this.createExecution(executionId, strategy.strategyId, startTime, false, limitCheck.reason),
-        };
-      }
 
       // Get quote from Jupiter
       const quote = await this.getJupiterQuote(
@@ -254,6 +384,148 @@ export class DCAAgent {
         success: false,
         error: errorMessage,
         execution: this.createExecution(executionId, strategy.strategyId, startTime, false, errorMessage),
+      };
+    }
+  }
+
+  /**
+   * Execute DCA with encrypted balance via Inco/ZK path
+   *
+   * Uses the executeEncryptedDCA callback if set, otherwise simulates
+   * encrypted execution for development/testing.
+   *
+   * @returns ExecutionJobResult if successful, null if should fall back to standard path
+   */
+  private async executeWithEncryptedBalance(
+    strategy: Strategy,
+    executionId: string,
+    startTime: number
+  ): Promise<ExecutionJobResult | null> {
+    try {
+      // Convert to encrypted strategy format
+      const encryptedStrategy = this.toEncryptedStrategy(strategy);
+      if (!encryptedStrategy) {
+        return null;
+      }
+
+      // Check if strategy has required encrypted balance handle
+      if (!encryptedStrategy.encryptedBalanceHandle) {
+        console.log(`[DCAAgent] Strategy ${strategy.strategyId} missing encrypted balance handle`);
+        return null;
+      }
+
+      const dcaConfig = strategy.config as DCAConfig;
+      let dcaResult: DCAResult;
+
+      // Use callback if available, otherwise simulate
+      if (this.executeEncryptedDCA) {
+        console.log(`[DCAAgent] Executing DCA via encrypted callback for strategy ${strategy.strategyId}`);
+        dcaResult = await this.executeEncryptedDCA(encryptedStrategy);
+      } else {
+        // Simulate encrypted execution for development
+        console.log(`[DCAAgent] Simulating encrypted DCA for strategy ${strategy.strategyId}`);
+        dcaResult = await this.simulateEncryptedDCA(encryptedStrategy);
+      }
+
+      // Create execution record
+      const execution: StrategyExecution = {
+        executionId,
+        strategyId: strategy.strategyId,
+        startedAt: startTime,
+        completedAt: Date.now(),
+        success: dcaResult.success,
+        error: dcaResult.error,
+        transactionSignature: dcaResult.attestation?.quote || `encrypted-${dcaResult.path}-${executionId}`,
+        amountExecuted: dcaResult.executedAmount || dcaConfig.amountPerExecution,
+        executionPrice: dcaResult.executionPrice,
+      };
+
+      const result: ExecutionJobResult = {
+        success: dcaResult.success,
+        execution,
+        transactionSignature: dcaResult.attestation?.quote,
+        metadata: {
+          encryptedExecution: true,
+          path: dcaResult.path,
+          attestation: dcaResult.attestation,
+          newHandle: dcaResult.newHandle,
+          newEpoch: dcaResult.newEpoch,
+          responseTimeMs: dcaResult.responseTimeMs,
+        },
+      };
+
+      if (!dcaResult.success) {
+        result.error = dcaResult.error;
+      }
+
+      console.log(
+        `[DCAAgent] Encrypted DCA execution ${dcaResult.success ? 'succeeded' : 'failed'} ` +
+        `via ${dcaResult.path} path in ${dcaResult.responseTimeMs}ms`
+      );
+
+      return result;
+    } catch (error) {
+      console.error(`[DCAAgent] Encrypted execution error:`, error);
+
+      // Return error result rather than falling back
+      const execution: StrategyExecution = {
+        executionId,
+        strategyId: strategy.strategyId,
+        startedAt: startTime,
+        completedAt: Date.now(),
+        success: false,
+        error: error instanceof Error ? error.message : 'Encrypted execution failed',
+      };
+
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Encrypted execution failed',
+        execution,
+        metadata: {
+          encryptedExecution: true,
+          path: 'unknown',
+        },
+      };
+    }
+  }
+
+  /**
+   * Simulate encrypted DCA execution for development
+   *
+   * This simulates the Inco TEE path with realistic latency.
+   * In production, use setExecuteEncryptedDCA to provide real implementation.
+   */
+  private async simulateEncryptedDCA(strategy: EncryptedStrategy): Promise<DCAResult> {
+    const startTime = Date.now();
+
+    try {
+      // Simulate Inco TEE latency (5-50ms)
+      const simulatedDelay = 5 + Math.random() * 45;
+      await new Promise(resolve => setTimeout(resolve, simulatedDelay));
+
+      const dcaAmount = strategy.config.amountPerExecution || 0;
+
+      return {
+        success: true,
+        path: 'inco',
+        newHandle: `sim-handle-${Date.now().toString(16)}`,
+        newEpoch: Math.floor(Date.now() / (60 * 60 * 1000)),
+        attestation: {
+          quote: `sim-sgx-quote-dca-${Date.now().toString(16)}`,
+          timestamp: Date.now(),
+          verified: true,
+          operation: 'e_dca_execute',
+        },
+        responseTimeMs: Date.now() - startTime,
+        executedAmount: dcaAmount,
+        inputAmount: dcaAmount,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        path: 'inco',
+        responseTimeMs: Date.now() - startTime,
+        error: error instanceof Error ? error.message : 'Simulation failed',
       };
     }
   }
