@@ -719,12 +719,40 @@ export const processAuthorization = internalAction({
       }
 
       // Step 5: Check spending limits
-      if (args.amount > card.spendingLimit) {
-        return {
-          approved: false,
-          declineReason: "EXCEEDS_SPENDING_LIMIT",
-          responseTimeMs: Date.now() - startTime,
-        };
+      // PRIMARY: Plaintext check (production-ready)
+      // FUTURE: Inco TEE for encrypted handles (~50ms) - currently in beta, disabled by default
+      const incoEnabled = process.env.INCO_ENABLED === 'true';
+      if (incoEnabled && card.encryptedBalanceHandle && card.incoPublicKey && card.incoEpoch) {
+        // Inco TEE-based spending check (confidential)
+        const incoResult = await ctx.runAction(internal.privacy.incoSpending.checkSpendingLimit, {
+          cardId: card._id,
+          encryptedBalance: card.encryptedBalanceHandle,
+          incoPublicKey: card.incoPublicKey,
+          incoEpoch: card.incoEpoch,
+          amount: args.amount,
+        });
+
+        if (!incoResult.allowed) {
+          console.log(`[Marqeta] Inco spending check failed: ${incoResult.error || "insufficient balance"}`);
+          return {
+            approved: false,
+            declineReason: incoResult.error === "Inco handle epoch expired"
+              ? "INCO_EPOCH_EXPIRED"
+              : "EXCEEDS_SPENDING_LIMIT",
+            responseTimeMs: Date.now() - startTime,
+          };
+        }
+
+        console.log(`[Marqeta] Inco spending check passed in ${incoResult.responseTimeMs}ms`);
+      } else {
+        // Fallback: plaintext spending limit check for older cards without Inco
+        if (args.amount > card.spendingLimit) {
+          return {
+            approved: false,
+            declineReason: "EXCEEDS_SPENDING_LIMIT",
+            responseTimeMs: Date.now() - startTime,
+          };
+        }
       }
 
       // Step 6: Run fraud detection (parallel with other checks)
@@ -788,6 +816,21 @@ export const processAuthorization = internalAction({
         merchantName: args.merchantName,
         merchantMcc: args.merchantMcc,
       });
+
+      // Step 11: Update Inco encrypted balance after successful authorization
+      // This is done async (non-blocking) since authorization is already approved
+      if (card.encryptedBalanceHandle && card.incoPublicKey) {
+        // Fire-and-forget: update encrypted balance in background
+        ctx.runAction(internal.privacy.incoSpending.updateBalance, {
+          cardId: card._id,
+          encryptedBalance: card.encryptedBalanceHandle,
+          incoPublicKey: card.incoPublicKey,
+          spentAmount: args.amount,
+        }).catch((error: unknown) => {
+          // Log but don't fail - authorization is already approved
+          console.warn(`[Marqeta] Failed to update Inco balance: ${error}`);
+        });
+      }
 
       const responseTime = Date.now() - startTime;
 

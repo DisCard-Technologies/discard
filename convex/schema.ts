@@ -284,6 +284,18 @@ export default defineSchema({
     nickname: v.optional(v.string()),
     color: v.optional(v.string()),
 
+    // ========== Inco Lightning Fields (BETA - Future Use) ==========
+    // STATUS: Inco SVM is in beta. These fields are reserved for future use.
+    // TEE-based confidential compute for realtime spending verification
+    // Provides ~50ms latency vs 1-5s for ZK proof generation
+
+    // Encrypted balance handle from Inco Lightning (Euint128, hex string)
+    encryptedBalanceHandle: v.optional(v.string()),
+    // Inco public key for this card
+    incoPublicKey: v.optional(v.string()),
+    // Inco handle epoch for freshness validation (epoch = timestamp / 3600000)
+    incoEpoch: v.optional(v.number()),
+
     // Timestamps
     createdAt: v.number(),
     updatedAt: v.number(),
@@ -2045,7 +2057,8 @@ export default defineSchema({
 
     // Proof type
     proofType: v.union(
-      v.literal("spending_limit"),       // Prove balance >= amount
+      v.literal("spending_limit"),       // Prove balance >= amount (Noir/ZK)
+      v.literal("spending_limit_inco"),  // Prove balance >= amount (Inco TEE)
       v.literal("compliance"),           // Prove not sanctioned
       v.literal("balance_threshold"),    // Prove balance meets threshold
       v.literal("age_verification"),     // Prove age >= threshold

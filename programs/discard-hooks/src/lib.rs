@@ -200,6 +200,44 @@ pub mod discard_hooks {
     }
 
     // ========================================================================
+    // Inco Lightning Spending Checks (TEE-based)
+    // ========================================================================
+
+    /// Check spending limit via Inco Lightning TEE (~50ms latency)
+    /// Critical path for Marqeta 800ms authorization deadline
+    pub fn inco_spending_check(
+        ctx: Context<IncoSpendingCheck>,
+        amount: u64,
+    ) -> Result<()> {
+        instructions::inco_spending::check_spending_limit(ctx, amount)
+    }
+
+    /// Update encrypted balance after approved spending
+    pub fn inco_update_balance(
+        ctx: Context<IncoUpdateBalance>,
+        spent_amount: u64,
+    ) -> Result<()> {
+        instructions::inco_spending::update_balance_after_spending(ctx, spent_amount)
+    }
+
+    /// Initialize Inco for a card (new cards only)
+    pub fn initialize_inco(
+        ctx: Context<InitializeInco>,
+        encrypted_balance_handle: [u8; 16],
+        inco_public_key: [u8; 32],
+    ) -> Result<()> {
+        instructions::inco_spending::initialize_inco(ctx, encrypted_balance_handle, inco_public_key)
+    }
+
+    /// Refresh Inco handle epoch before expiry
+    pub fn refresh_inco_epoch(
+        ctx: Context<RefreshIncoEpoch>,
+        new_encrypted_balance_handle: [u8; 16],
+    ) -> Result<()> {
+        instructions::inco_spending::refresh_inco_epoch(ctx, new_encrypted_balance_handle)
+    }
+
+    // ========================================================================
     // Emergency Controls
     // ========================================================================
 

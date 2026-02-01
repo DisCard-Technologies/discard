@@ -62,6 +62,27 @@ pub struct CardConfig {
     pub encrypted_weekly_total: Option<[u8; 64]>,
     pub encrypted_monthly_total: Option<[u8; 64]>,
 
+    // ============ Inco Lightning Fields (BETA - Future Use) ============
+    // STATUS: Inco SVM is in beta. These fields are reserved for future use.
+    // Used for TEE-based confidential compute spending limit verification
+    // Provides ~50ms latency vs 1-5s for ZK proof generation
+
+    /// Encrypted balance handle from Inco Lightning (Euint128, 16 bytes)
+    /// Stored when card uses Inco for spending verification
+    pub encrypted_balance_handle: Option<[u8; 16]>,
+
+    /// Inco public key for this card (32 bytes)
+    /// Used to verify and decrypt balance
+    pub inco_public_key: Option<[u8; 32]>,
+
+    /// Inco handle epoch for freshness validation
+    /// Epoch = timestamp / 3600000 (1 hour epochs)
+    pub inco_epoch: u64,
+
+    /// Whether this card uses Inco for spending checks
+    /// If true, spending verification uses TEE instead of ZK proofs
+    pub inco_enabled: bool,
+
     /// Timestamps
     pub created_at: i64,
     pub updated_at: i64,
@@ -89,6 +110,12 @@ impl CardConfig {
         1 + 64 + // encrypted_daily_total option
         1 + 64 + // encrypted_weekly_total option
         1 + 64 + // encrypted_monthly_total option
+        // Inco Lightning fields
+        1 + 16 + // encrypted_balance_handle option
+        1 + 32 + // inco_public_key option
+        8 + // inco_epoch
+        1 + // inco_enabled
+        // Timestamps
         8 + // created_at
         8 + // updated_at
         9; // last_transaction_at option

@@ -21,3 +21,7 @@ anchor-spl = { version = "0.30.1", features = ["token-2022"] }
 spl-transfer-hook-interface = "0.6.0"
 spl-tlv-account-resolution = "0.6.0"
 spl-type-length-value = "0.4.0"
+solana-program = "1.18"
+
+# Inco Lightning TEE integration (when available)
+# inco-lightning = "0.1.4"  # Uncomment when crate is published

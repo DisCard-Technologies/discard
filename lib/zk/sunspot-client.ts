@@ -25,6 +25,13 @@ import {
   constantTimeSecureShuffle,
   secureClear,
 } from '../crypto/constant-time';
+import {
+  getIncoLightningService,
+  isIncoEnabled,
+  isIncoAvailableForCard,
+  type EncryptedHandle,
+  type SpendingCheckResult,
+} from './inco-client';
 
 // ============ TYPES ============
 
@@ -32,11 +39,12 @@ import {
  * Supported proof types
  */
 export type ProofType =
-  | 'spending_limit'    // Prove balance >= amount
-  | 'compliance'        // Prove not sanctioned
-  | 'balance_threshold' // Prove balance meets threshold
-  | 'age_verification'  // Prove age >= minimum
-  | 'kyc_level';        // Prove KYC level >= required
+  | 'spending_limit'       // Prove balance >= amount (Noir/ZK)
+  | 'spending_limit_inco'  // Prove balance >= amount (Inco TEE)
+  | 'compliance'           // Prove not sanctioned
+  | 'balance_threshold'    // Prove balance meets threshold
+  | 'age_verification'     // Prove age >= minimum
+  | 'kyc_level';           // Prove KYC level >= required
 
 /**
  * Public inputs for spending limit proof
@@ -56,6 +64,42 @@ export interface SpendingLimitWitness {
   balance: bigint;
   /** Randomness used in commitment (private) */
   randomness: string;
+}
+
+/**
+ * Inco-specific spending limit inputs
+ */
+export interface IncoSpendingLimitInputs {
+  /** Transaction amount (public) */
+  amount: bigint;
+  /** Encrypted balance handle from Inco */
+  encryptedBalanceHandle: string;
+  /** Inco public key for the card */
+  incoPublicKey: string;
+  /** Handle validity epoch */
+  incoEpoch: number;
+}
+
+/**
+ * Result from Inco spending check (alternative to ZK proof)
+ */
+export interface IncoSpendingResult {
+  /** Whether the spending is allowed */
+  allowed: boolean;
+  /** Response time in milliseconds */
+  responseTimeMs: number;
+  /** Proof type used */
+  proofType: 'spending_limit_inco';
+  /** TEE attestation (if available) */
+  attestation?: {
+    quote: string;
+    timestamp: number;
+    verified: boolean;
+  };
+  /** Updated handle after spending (if applicable) */
+  updatedHandle?: EncryptedHandle;
+  /** Error if check failed */
+  error?: string;
 }
 
 /**
@@ -184,6 +228,9 @@ export class SunspotService {
 
   /**
    * Generate a proof that balance >= amount without revealing balance
+   *
+   * This method delegates to Inco Lightning for new cards with encrypted handles,
+   * falling back to Noir/Groth16 for older cards or when Inco is unavailable.
    */
   async generateSpendingLimitProof(
     inputs: SpendingLimitInputs,
@@ -216,6 +263,137 @@ export class SunspotService {
       hash: await this.hashProof(proof, publicInputs),
       replayProtection,
     };
+  }
+
+  /**
+   * Check spending limit using Inco Lightning TEE
+   *
+   * This is the fast path for new cards with encrypted balance handles.
+   * Provides ~50ms latency vs 1-5s for ZK proof generation.
+   *
+   * @param inputs - Inco-specific spending limit inputs
+   * @returns Spending check result
+   */
+  async checkSpendingLimitViaInco(
+    inputs: IncoSpendingLimitInputs
+  ): Promise<IncoSpendingResult> {
+    console.log('[Sunspot] Checking spending limit via Inco Lightning');
+    const startTime = Date.now();
+
+    try {
+      // Check if Inco is enabled
+      if (!isIncoEnabled()) {
+        console.warn('[Sunspot] Inco is not enabled, cannot use TEE path');
+        return {
+          allowed: false,
+          responseTimeMs: Date.now() - startTime,
+          proofType: 'spending_limit_inco',
+          error: 'Inco Lightning is not enabled',
+        };
+      }
+
+      // Get Inco service
+      const incoService = getIncoLightningService();
+
+      // Reconstruct encrypted handle
+      const handle: EncryptedHandle = {
+        handle: inputs.encryptedBalanceHandle,
+        publicKey: inputs.incoPublicKey,
+        epoch: inputs.incoEpoch,
+        createdAt: inputs.incoEpoch * 60 * 60 * 1000, // Approximate
+      };
+
+      // Check spending limit via TEE
+      const result = await incoService.checkSpendingLimit(handle, inputs.amount);
+
+      const responseTime = Date.now() - startTime;
+
+      // Log performance
+      if (responseTime > 100) {
+        console.warn(`[Sunspot] Inco check slow: ${responseTime}ms (target: <100ms)`);
+      } else {
+        console.log(`[Sunspot] Inco check completed in ${responseTime}ms`);
+      }
+
+      return {
+        allowed: result.allowed,
+        responseTimeMs: responseTime,
+        proofType: 'spending_limit_inco',
+        attestation: result.attestation,
+        error: result.error,
+      };
+    } catch (error) {
+      const responseTime = Date.now() - startTime;
+      console.error('[Sunspot] Inco spending check failed:', error);
+
+      return {
+        allowed: false,
+        responseTimeMs: responseTime,
+        proofType: 'spending_limit_inco',
+        error: error instanceof Error ? error.message : 'Unknown error',
+      };
+    }
+  }
+
+  /**
+   * Smart spending limit check
+   *
+   * PRIMARY: Noir ZK proofs (production-ready, 1-5s latency)
+   * FUTURE: Inco TEE (beta, ~50ms latency) - disabled by default
+   *
+   * Decision flow:
+   * 1. If Inco enabled AND card has encrypted handle → Use Inco (fast path)
+   * 2. Otherwise → Use Noir proof generation (default)
+   *
+   * NOTE: Inco SVM is in beta. Set INCO_ENABLED=true to opt-in when ready.
+   */
+  async smartSpendingLimitCheck(
+    card: {
+      encryptedBalanceHandle?: string | null;
+      incoPublicKey?: string | null;
+      incoEpoch?: number | null;
+      commitment?: string | null;
+    },
+    amount: bigint,
+    witness?: SpendingLimitWitness
+  ): Promise<{ type: 'inco' | 'noir'; result: IncoSpendingResult | ZkProof }> {
+    console.log('[Sunspot] Smart spending limit check');
+
+    // Check if Inco path is available for this card
+    if (isIncoAvailableForCard({
+      encryptedBalanceHandle: card.encryptedBalanceHandle,
+      incoEpoch: card.incoEpoch,
+    })) {
+      console.log('[Sunspot] Using Inco TEE path (fast)');
+
+      const incoResult = await this.checkSpendingLimitViaInco({
+        amount,
+        encryptedBalanceHandle: card.encryptedBalanceHandle!,
+        incoPublicKey: card.incoPublicKey!,
+        incoEpoch: card.incoEpoch!,
+      });
+
+      // If Inco succeeds, return the result
+      if (!incoResult.error || incoResult.error === 'INSUFFICIENT_BALANCE') {
+        return { type: 'inco', result: incoResult };
+      }
+
+      // Inco failed for network/system reason - try Noir fallback
+      console.warn('[Sunspot] Inco failed, attempting Noir fallback:', incoResult.error);
+    }
+
+    // Noir fallback path
+    if (!witness || !card.commitment) {
+      throw new Error('Noir proof requires witness and commitment');
+    }
+
+    console.log('[Sunspot] Using Noir proof path (fallback)');
+    const noirProof = await this.generateSpendingLimitProof(
+      { amount, commitment: card.commitment },
+      witness
+    );
+
+    return { type: 'noir', result: noirProof };
   }
 
   /**
@@ -623,6 +801,7 @@ export class SunspotService {
   private getProofTypeIndex(type: ProofType): number {
     const types: ProofType[] = [
       'spending_limit',
+      'spending_limit_inco',
       'compliance',
       'balance_threshold',
       'age_verification',

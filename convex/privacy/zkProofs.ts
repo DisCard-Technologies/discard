@@ -21,6 +21,7 @@ export const recordProof = mutation({
     cardId: v.optional(v.id("cards")),
     proofType: v.union(
       v.literal("spending_limit"),
+      v.literal("spending_limit_inco"),  // Inco TEE-based spending check
       v.literal("compliance"),
       v.literal("balance_threshold"),
       v.literal("age_verification"),
@@ -156,6 +157,7 @@ export const getUserProofs = query({
   args: {
     proofType: v.optional(v.union(
       v.literal("spending_limit"),
+      v.literal("spending_limit_inco"),  // Inco TEE-based spending check
       v.literal("compliance"),
       v.literal("balance_threshold"),
       v.literal("age_verification"),
@@ -241,6 +243,7 @@ export const submitAndVerify = action({
     cardId: v.optional(v.id("cards")),
     proofType: v.union(
       v.literal("spending_limit"),
+      v.literal("spending_limit_inco"),  // Inco TEE-based spending check
       v.literal("compliance"),
       v.literal("balance_threshold"),
       v.literal("age_verification"),

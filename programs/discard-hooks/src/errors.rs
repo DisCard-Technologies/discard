@@ -181,4 +181,29 @@ pub enum HookError {
 
     #[msg("Encrypted velocity counter overflow")]
     EncryptedCounterOverflow,
+
+    // ========================================================================
+    // Inco Lightning Errors (7000-7099)
+    // ========================================================================
+
+    #[msg("Inco spending check failed: insufficient balance")]
+    IncoCheckFailed,
+
+    #[msg("Inco network error: TEE unavailable")]
+    IncoNetworkError,
+
+    #[msg("Invalid Inco encrypted handle")]
+    InvalidIncoHandle,
+
+    #[msg("Inco handle epoch expired: refresh required")]
+    IncoEpochExpired,
+
+    #[msg("Inco is not enabled for this card")]
+    IncoNotEnabled,
+
+    #[msg("Inco CPI failed: program invocation error")]
+    IncoCpiFailed,
+
+    #[msg("Invalid Inco attestation: TEE verification failed")]
+    InvalidIncoAttestation,
 }
