@@ -1,0 +1,225 @@
+# DisCard Compliance Enclave - Phala CVM Configuration
+#
+# Configuration for deploying the compliance enclave to Phala Cloud.
+# This enclave performs Range API sanctions checks inside a TEE.
+#
+# Reference: https://docs.phala.network/developers/phala-cloud
+
+apiVersion: phala.network/v1
+kind: ConfidentialVM
+metadata:
+  name: discard-compliance-enclave
+  namespace: discard-prod
+  labels:
+    app: compliance-enclave
+    version: "1.0.0"
+    tier: security
+    component: compliance
+
+spec:
+  # Resource allocation (lighter than financial-armor)
+  resources:
+    cpu: 1
+    memory: 2Gi
+    storage: 5Gi
+
+  # TEE Configuration
+  tee:
+    # SGX provider for Intel enclaves
+    provider: sgx
+
+    # Attestation settings
+    attestation:
+      enabled: true
+      mode: dcap
+      interval: 60s
+      reportDataTemplate:
+        service: compliance-enclave
+        version: "1.0.0"
+
+    # Memory encryption
+    memoryEncryption: true
+
+    # Seal/unseal for persistent secrets (enclave key)
+    sealing:
+      enabled: true
+      keyPolicy: MRSIGNER
+
+  # Container configuration
+  container:
+    image: ghcr.io/discard-technologies/compliance-enclave:latest
+    imagePullPolicy: Always
+
+    # Port mappings
+    ports:
+      - name: http
+        containerPort: 8093
+        protocol: TCP
+      - name: attestation
+        containerPort: 8094
+        protocol: TCP
+      - name: health
+        containerPort: 8095
+        protocol: TCP
+
+    # Environment variables (non-sensitive)
+    env:
+      - name: NODE_ENV
+        value: production
+      - name: HTTP_PORT
+        value: "8093"
+      - name: ATTESTATION_PORT
+        value: "8094"
+      - name: HEALTH_PORT
+        value: "8095"
+      - name: LOG_LEVEL
+        value: info
+      - name: PHALA_ATTESTATION_ENABLED
+        value: "true"
+
+    # Resource limits
+    resources:
+      limits:
+        cpu: 1
+        memory: 2Gi
+      requests:
+        cpu: 500m
+        memory: 1Gi
+
+    # Liveness and readiness probes
+    livenessProbe:
+      httpGet:
+        path: /health
+        port: 8095
+      initialDelaySeconds: 30
+      periodSeconds: 30
+      timeoutSeconds: 10
+      failureThreshold: 3
+
+    readinessProbe:
+      httpGet:
+        path: /health
+        port: 8095
+      initialDelaySeconds: 10
+      periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 3
+
+  # Secrets (encrypted at rest, decrypted only in TEE)
+  secrets:
+    - name: compliance-secrets
+      encryptedData:
+        RANGE_API_KEY: <sealed>
+
+  # Network policy
+  networkPolicy:
+    # Egress rules (outbound traffic)
+    egress:
+      # Allow HTTPS to Range API
+      - to:
+          - ipBlock:
+              cidr: 0.0.0.0/0
+        ports:
+          - port: 443
+            protocol: TCP
+      # Allow DNS
+      - to:
+          - ipBlock:
+              cidr: 0.0.0.0/0
+        ports:
+          - port: 53
+            protocol: UDP
+
+    # Ingress rules (inbound traffic)
+    ingress:
+      # Allow HTTP from DisCard backend
+      - from:
+          - namespaceSelector:
+              matchLabels:
+                name: discard-prod
+        ports:
+          - port: 8093
+            protocol: TCP
+
+      # Allow attestation queries
+      - from:
+          - namespaceSelector:
+              matchLabels:
+                name: discard-prod
+        ports:
+          - port: 8094
+            protocol: TCP
+
+      # Allow health check from monitoring
+      - from:
+          - namespaceSelector:
+              matchLabels:
+                name: monitoring
+        ports:
+          - port: 8095
+            protocol: TCP
+
+  # Auto-scaling configuration
+  scaling:
+    minReplicas: 2
+    maxReplicas: 5
+    targetCPUUtilization: 70
+    targetMemoryUtilization: 80
+
+  # Anti-affinity for high availability
+  affinity:
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchLabels:
+              app: compliance-enclave
+          topologyKey: kubernetes.io/hostname
+
+---
+# Service for internal communication
+apiVersion: v1
+kind: Service
+metadata:
+  name: compliance-enclave
+  namespace: discard-prod
+  labels:
+    app: compliance-enclave
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 8093
+      targetPort: 8093
+      protocol: TCP
+    - name: attestation
+      port: 8094
+      targetPort: 8094
+      protocol: TCP
+    - name: health
+      port: 8095
+      targetPort: 8095
+      protocol: TCP
+  selector:
+    app: compliance-enclave
+
+---
+# Horizontal Pod Autoscaler
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: compliance-enclave-hpa
+  namespace: discard-prod
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: compliance-enclave
+  minReplicas: 2
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70

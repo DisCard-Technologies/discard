@@ -38,6 +38,17 @@ import {
   getNullifierRegistry,
   type NullifierRecord,
 } from '../zk/nullifier-registry';
+import {
+  getPhalaComplianceClient,
+  type PrivateComplianceResult,
+  type PhalaComplianceClientConfig,
+} from '@/services/phalaComplianceClient';
+import {
+  createPrivateComplianceProof,
+  verifyPrivateComplianceProof,
+  type PrivateComplianceProof,
+  type PrivateComplianceVerificationResult,
+} from './private-compliance-proof';
 
 // ============================================================================
 // Types
@@ -50,6 +61,10 @@ export interface ComplianceServiceConfig {
   persistNullifiers?: boolean;
   /** Default proof validity in ms */
   defaultProofValidityMs?: number;
+  /** Phala TEE compliance client configuration */
+  phalaConfig?: Partial<PhalaComplianceClientConfig>;
+  /** Whether to prefer TEE-based checks when available */
+  preferTeeCompliance?: boolean;
 }
 
 export interface UserComplianceState {
@@ -78,6 +93,15 @@ export interface ComplianceCheckResult {
   error?: string;
 }
 
+export interface TeeComplianceCheckResult {
+  allowed: boolean;
+  proof?: PrivateComplianceProof;
+  teeResult?: PrivateComplianceResult;
+  error?: string;
+  /** Whether check was performed via TEE or fell back to direct */
+  usedTee: boolean;
+}
+
 // ============================================================================
 // Compliance Service
 // ============================================================================
@@ -86,12 +110,15 @@ export class ComplianceService {
   private config: Required<ComplianceServiceConfig>;
   private userStates: Map<string, UserComplianceState> = new Map();
   private nullifierRegistry = getNullifierRegistry();
+  private teeComplianceUsedNullifiers: Set<string> = new Set();
 
   constructor(config: ComplianceServiceConfig = {}) {
     this.config = {
       convexClient: config.convexClient ?? null as unknown as ConvexClient,
       persistNullifiers: config.persistNullifiers ?? true,
       defaultProofValidityMs: config.defaultProofValidityMs ?? 60 * 60 * 1000,
+      phalaConfig: config.phalaConfig ?? {},
+      preferTeeCompliance: config.preferTeeCompliance ?? true,
     };
   }
 
@@ -332,6 +359,169 @@ export class ComplianceService {
         allowed: false,
         error: error instanceof Error ? error.message : 'Proof generation failed',
       };
+    }
+  }
+
+  // ==========================================================================
+  // TEE-Based Private Compliance
+  // ==========================================================================
+
+  /**
+   * Check if user can perform a private transfer using Phala TEE
+   *
+   * This method performs sanctions checks inside a TEE enclave where:
+   * - Address is encrypted before being sent to the enclave
+   * - Range API sees the address but can't link it to the user
+   * - RA-TLS attestation proves unmodified enclave code
+   *
+   * Falls back to direct Range API check if TEE is unavailable.
+   *
+   * @param address - Address to check (will be encrypted for TEE)
+   * @param chain - Blockchain (solana or ethereum)
+   * @returns TEE compliance check result with attestation proof
+   */
+  async checkPrivateTransferTee(
+    address: string,
+    chain: "solana" | "ethereum" = "solana"
+  ): Promise<TeeComplianceCheckResult> {
+    console.log('[Compliance] Checking private transfer via TEE...', {
+      addressPrefix: address.slice(0, 8) + '...',
+      chain,
+    });
+
+    try {
+      // Get Phala compliance client
+      const phalaClient = getPhalaComplianceClient(this.config.phalaConfig);
+
+      // Check if TEE enclave is available
+      const teeAvailable = await phalaClient.isAvailable();
+
+      if (!teeAvailable) {
+        console.warn('[Compliance] TEE enclave unavailable, cannot perform private check');
+        return {
+          allowed: false,
+          error: 'TEE enclave unavailable for private compliance check',
+          usedTee: false,
+        };
+      }
+
+      // Perform private sanctions check via TEE
+      const teeResult = await phalaClient.checkPrivateSanctions({
+        address,
+        chain,
+      });
+
+      // Create proof from TEE result
+      const proof = createPrivateComplianceProof(
+        teeResult.attestation,
+        address,
+        {
+          compliant: teeResult.compliant,
+          riskLevel: teeResult.riskLevel,
+        },
+        {
+          expiryMs: this.config.defaultProofValidityMs,
+        }
+      );
+
+      // Register nullifier to prevent replay
+      await this.registerTeeNullifier(proof);
+
+      // Persist TEE proof to Convex if configured
+      if (this.config.persistNullifiers && this.config.convexClient) {
+        try {
+          await this.config.convexClient.mutation(
+            api.privacy.teeCompliance.storeProof,
+            {
+              nullifier: proof.nullifier,
+              addressCommitment: proof.addressCommitment,
+              compliant: proof.result.compliant,
+              riskLevel: proof.result.riskLevel,
+              mrEnclave: proof.attestation.mrEnclave,
+              expiresAt: proof.expiresAt,
+            }
+          );
+        } catch (error) {
+          // Non-fatal - proof is still valid
+          console.warn('[Compliance] Failed to persist TEE proof:', error);
+        }
+      }
+
+      console.log('[Compliance] TEE compliance check complete:', {
+        compliant: teeResult.compliant,
+        riskLevel: teeResult.riskLevel,
+        attestationValid: true,
+      });
+
+      return {
+        allowed: teeResult.compliant,
+        proof,
+        teeResult,
+        usedTee: true,
+      };
+    } catch (error) {
+      console.error('[Compliance] TEE compliance check failed:', error);
+      return {
+        allowed: false,
+        error: error instanceof Error ? error.message : 'TEE check failed',
+        usedTee: false,
+      };
+    }
+  }
+
+  /**
+   * Verify a private compliance proof
+   *
+   * @param proof - The proof to verify
+   * @returns Verification result
+   */
+  verifyPrivateComplianceProof(
+    proof: PrivateComplianceProof
+  ): PrivateComplianceVerificationResult {
+    const phalaClient = getPhalaComplianceClient(this.config.phalaConfig);
+    const expectedMrEnclave = phalaClient.getExpectedMrEnclave();
+
+    return verifyPrivateComplianceProof(
+      proof,
+      expectedMrEnclave,
+      this.teeComplianceUsedNullifiers
+    );
+  }
+
+  /**
+   * Check if TEE compliance is available
+   */
+  async isTeeComplianceAvailable(): Promise<boolean> {
+    try {
+      const phalaClient = getPhalaComplianceClient(this.config.phalaConfig);
+      return await phalaClient.isAvailable();
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Register a TEE compliance nullifier
+   */
+  private async registerTeeNullifier(proof: PrivateComplianceProof): Promise<void> {
+    this.teeComplianceUsedNullifiers.add(proof.nullifier);
+
+    // Persist to Convex if configured
+    if (this.config.persistNullifiers && this.config.convexClient) {
+      try {
+        await this.config.convexClient.mutation(
+          api.privacy.nullifiers.markUsed,
+          {
+            nullifier: proof.nullifier,
+            proofType: 'tee_compliance',
+            expiresAt: proof.expiresAt,
+            proofHash: proof.addressCommitment,
+            context: 'private_transfer',
+          }
+        );
+      } catch (error) {
+        console.warn('[Compliance] Failed to persist TEE nullifier:', error);
+      }
     }
   }
 

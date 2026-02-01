@@ -2227,6 +2227,57 @@ export default defineSchema({
     .index("by_user", ["usedBy"]),
 
   // ============================================================================
+  // TEE COMPLIANCE PROOFS - Phala SGX Attestation
+  // ============================================================================
+  // Stores TEE-attested compliance check results with RA-TLS proofs
+  teeComplianceProofs: defineTable({
+    // Nullifier for replay protection
+    nullifier: v.string(),
+
+    // Address commitment (hides actual address)
+    addressCommitment: v.string(),
+
+    // Compliance result
+    compliant: v.boolean(),
+    riskLevel: v.union(
+      v.literal("low"),
+      v.literal("medium"),
+      v.literal("high"),
+      v.literal("critical")
+    ),
+
+    // Enclave attestation data
+    mrEnclave: v.string(),                 // SHA-256 of enclave code
+    mrSigner: v.optional(v.string()),      // SHA-256 of signing key
+
+    // Serialized attestation quote (base64)
+    attestationQuote: v.optional(v.string()),
+
+    // Timestamps
+    checkedAt: v.number(),                 // When check was performed in TEE
+    expiresAt: v.number(),                 // When proof expires
+    storedAt: v.number(),                  // When stored in Convex
+
+    // Usage tracking
+    usedBy: v.optional(v.id("users")),     // User who requested the check
+    usedFor: v.optional(v.string()),       // Purpose (e.g., "private_transfer", "card_funding")
+
+    // Verification status
+    status: v.union(
+      v.literal("valid"),                  // Proof is valid and usable
+      v.literal("used"),                   // Proof has been consumed
+      v.literal("expired"),                // Proof has expired
+      v.literal("revoked")                 // Proof was revoked (e.g., new sanctions data)
+    ),
+  })
+    .index("by_nullifier", ["nullifier"])
+    .index("by_commitment", ["addressCommitment"])
+    .index("by_mr_enclave", ["mrEnclave"])
+    .index("by_status", ["status"])
+    .index("by_expires", ["expiresAt"])
+    .index("by_user", ["usedBy"]),
+
+  // ============================================================================
   // ENCRYPTED CREDENTIALS - Private Identity Vault (E2EE)
   // ============================================================================
   encryptedCredentials: defineTable({

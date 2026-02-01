@@ -1,0 +1,43 @@
+version: '3.8'
+
+# DisCard Compliance Enclave - Local Development Composition
+# Use for local testing before deploying to Phala Cloud
+
+services:
+  # Compliance Enclave Service
+  compliance-enclave:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: discard-compliance-enclave
+    ports:
+      - "8093:8093"  # HTTP API
+      - "8094:8094"  # Attestation endpoint
+      - "8095:8095"  # Health check
+    environment:
+      # Range API Configuration
+      - RANGE_API_KEY=${RANGE_API_KEY}
+      - RANGE_API_BASE_URL=${RANGE_API_BASE_URL:-https://api.range.org}
+
+      # Attestation Configuration
+      - PHALA_ATTESTATION_ENABLED=${PHALA_ATTESTATION_ENABLED:-false}
+
+      # Service Configuration
+      - HTTP_PORT=8093
+      - ATTESTATION_PORT=8094
+      - HEALTH_PORT=8095
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - NODE_ENV=${NODE_ENV:-development}
+    networks:
+      - discard-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8095/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+networks:
+  discard-network:
+    driver: bridge

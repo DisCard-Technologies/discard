@@ -13,12 +13,20 @@ import { useState, useCallback, useRef } from "react";
 import { PublicKey, Keypair } from "@solana/web3.js";
 import { getRangeComplianceService, type TransferComplianceCheck } from "@/services/rangeComplianceClient";
 import {
+  getPhalaComplianceClient,
+  type PrivateComplianceResult,
+} from "@/services/phalaComplianceClient";
+import {
   getShadowWireService,
   type PrivateTransferResult,
   type StealthAddress,
   type CompressedStealthAddress,
   type ZkPrivateTransferResult,
 } from "@/services/shadowWireClient";
+import {
+  type PrivateComplianceProof,
+  createPrivateComplianceProof,
+} from "@/lib/compliance/private-compliance-proof";
 
 // ============================================================================
 // Types
@@ -44,6 +52,21 @@ export interface PrivacyCheckResult {
   error?: string;
 }
 
+export interface TeePrivacyCheckResult {
+  /** Whether transfer is compliant */
+  compliant: boolean;
+  /** TEE compliance result with attestation */
+  teeResult?: PrivateComplianceResult;
+  /** Private compliance proof (can be verified independently) */
+  proof?: PrivateComplianceProof;
+  /** Warning messages */
+  warnings: string[];
+  /** Error message if check failed */
+  error?: string;
+  /** Whether TEE was actually used (vs fallback) */
+  usedTee: boolean;
+}
+
 export interface PrivateTransferState {
   /** Current state */
   status: "idle" | "checking" | "ready" | "transferring" | "success" | "error";
@@ -65,6 +88,7 @@ export function usePrivateTransfer() {
 
   // Get service instances - use useRef to maintain stable references
   const complianceServiceRef = useRef(getRangeComplianceService());
+  const phalaComplianceRef = useRef(getPhalaComplianceClient());
   const shadowWireServiceRef = useRef(getShadowWireService());
 
   /**
@@ -118,6 +142,109 @@ export function usePrivateTransfer() {
         warnings: ["Compliance check unavailable - proceeding with caution"],
       };
       setState({ status: "ready", privacyCheck: result });
+      setIsLoading(false);
+      return result;
+    }
+  }, []);
+
+  /**
+   * Check compliance privately via Phala TEE
+   *
+   * This performs sanctions/compliance checks inside a trusted enclave where:
+   * - Address is encrypted before transmission
+   * - Range API sees the address but can't link it to the user (no IP/session)
+   * - RA-TLS attestation proves unmodified enclave code
+   * - Result includes a proof that can be verified independently
+   *
+   * @param address - Address to check (source or destination)
+   * @param chain - Blockchain (solana or ethereum)
+   * @returns TEE privacy check result with attestation proof
+   */
+  const checkPrivateCompliance = useCallback(async (
+    address: string,
+    chain: "solana" | "ethereum" = "solana"
+  ): Promise<TeePrivacyCheckResult> => {
+    console.log("[PrivateTransfer] Checking compliance via TEE...");
+    setIsLoading(true);
+    setState({ status: "checking" });
+
+    try {
+      // Check if TEE is available
+      const teeAvailable = await phalaComplianceRef.current.isAvailable();
+
+      if (!teeAvailable) {
+        console.warn("[PrivateTransfer] TEE unavailable - cannot perform private check");
+        const result: TeePrivacyCheckResult = {
+          compliant: false,
+          warnings: [],
+          error: "TEE enclave unavailable for private compliance check",
+          usedTee: false,
+        };
+        setState({ status: "error", error: result.error });
+        setIsLoading(false);
+        return result;
+      }
+
+      // Perform private sanctions check via TEE
+      const teeResult = await phalaComplianceRef.current.checkPrivateSanctions({
+        address,
+        chain,
+      });
+
+      // Create proof from TEE result
+      const proof = createPrivateComplianceProof(
+        teeResult.attestation,
+        address,
+        {
+          compliant: teeResult.compliant,
+          riskLevel: teeResult.riskLevel,
+        }
+      );
+
+      const warnings: string[] = [];
+
+      // Add warnings for elevated risk
+      if (teeResult.riskLevel === "medium") {
+        warnings.push("Address has medium risk score (TEE verified)");
+      }
+      if (teeResult.riskLevel === "high") {
+        warnings.push("Address has elevated risk score (TEE verified)");
+      }
+
+      const result: TeePrivacyCheckResult = {
+        compliant: teeResult.compliant,
+        teeResult,
+        proof,
+        warnings,
+        usedTee: true,
+      };
+
+      setState({
+        status: teeResult.compliant ? "ready" : "error",
+        privacyCheck: {
+          compliant: teeResult.compliant,
+          warnings,
+          error: teeResult.compliant ? undefined : "Address failed TEE compliance check",
+        },
+      });
+
+      console.log("[PrivateTransfer] TEE compliance check complete:", {
+        compliant: teeResult.compliant,
+        riskLevel: teeResult.riskLevel,
+        mrEnclave: teeResult.attestation.mrEnclave.slice(0, 16) + "...",
+      });
+
+      setIsLoading(false);
+      return result;
+    } catch (error) {
+      console.error("[PrivateTransfer] TEE compliance check failed:", error);
+      const result: TeePrivacyCheckResult = {
+        compliant: false,
+        warnings: ["TEE compliance check failed"],
+        error: error instanceof Error ? error.message : "TEE check failed",
+        usedTee: false,
+      };
+      setState({ status: "error", error: result.error });
       setIsLoading(false);
       return result;
     }
@@ -371,6 +498,19 @@ export function usePrivateTransfer() {
   // Get ShadowWire status for ZK compression info
   const shadowWireStatus = shadowWireServiceRef.current.getStatus();
 
+  // Check TEE availability (memoized to avoid repeated async calls)
+  const [isTeeAvailable, setIsTeeAvailable] = useState<boolean | null>(null);
+
+  // Check TEE availability on mount
+  const checkTeeAvailability = useCallback(async () => {
+    try {
+      const available = await phalaComplianceRef.current.isAvailable();
+      setIsTeeAvailable(available);
+    } catch {
+      setIsTeeAvailable(false);
+    }
+  }, []);
+
   return {
     // State
     state,
@@ -389,11 +529,16 @@ export function usePrivateTransfer() {
     hasCompressedAccount,
     initializeZkAccount,
 
+    // TEE-based private compliance (Phala SGX)
+    checkPrivateCompliance,
+    checkTeeAvailability,
+
     // Service availability
     isComplianceAvailable: complianceServiceRef.current.isConfigured(),
     isPrivateTransferAvailable: shadowWireServiceRef.current.isAvailable(),
     isZkCompressionAvailable: shadowWireStatus.zkCompressionEnabled,
     isRelayAvailable: shadowWireServiceRef.current.isRelayAvailable(),
+    isTeeComplianceAvailable: isTeeAvailable,
 
     // Relay pool info
     relayPoolAddress: shadowWireServiceRef.current.getRelayPoolAddress(),
