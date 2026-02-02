@@ -19,6 +19,7 @@ import { WalletsProvider } from '@/stores/walletsConvex';
 import { CryptoProvider } from '@/stores/cryptoConvex';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { ErrorBoundary } from '@/components/ui/error-boundary';
+import { usePushNotifications, isPushNotificationSupported, getLastNotificationResponse } from '@/hooks/usePushNotifications';
 
 // Prevent splash screen from auto-hiding
 SplashScreen.preventAutoHideAsync();
@@ -33,6 +34,63 @@ const convex = convexUrl ? new ConvexReactClient(convexUrl) : null;
 export const unstable_settings = {
   anchor: '(tabs)',
 };
+
+// Push notification initializer - registers token when user is authenticated
+function PushNotificationInitializer() {
+  const auth = useAuth();
+  const {
+    isRegistered,
+    permissionStatus,
+    registerToken,
+    error,
+  } = usePushNotifications(auth.userId);
+
+  useEffect(() => {
+    // Only attempt registration if:
+    // 1. User is authenticated
+    // 2. Device supports push notifications
+    // 3. Not already registered
+    // 4. Permission is granted or undetermined
+    if (
+      auth.isAuthenticated &&
+      auth.userId &&
+      isPushNotificationSupported() &&
+      !isRegistered &&
+      permissionStatus !== 'denied'
+    ) {
+      // Auto-register if permission already granted, otherwise wait for user action
+      if (permissionStatus === 'granted') {
+        registerToken().catch((err) => {
+          console.warn('[PushNotifications] Auto-registration failed:', err);
+        });
+      }
+    }
+  }, [auth.isAuthenticated, auth.userId, isRegistered, permissionStatus, registerToken]);
+
+  // Handle cold start notification (app was opened by tapping notification)
+  useEffect(() => {
+    async function handleColdStartNotification() {
+      const response = await getLastNotificationResponse();
+      if (response) {
+        console.log('[PushNotifications] Cold start notification:', response);
+        // The notification tap handler in usePushNotifications will handle routing
+      }
+    }
+
+    if (auth.isAuthenticated) {
+      handleColdStartNotification();
+    }
+  }, [auth.isAuthenticated]);
+
+  // Log any errors for debugging
+  useEffect(() => {
+    if (error) {
+      console.warn('[PushNotifications] Error:', error);
+    }
+  }, [error]);
+
+  return null; // This component doesn't render anything
+}
 
 // Auth guard that handles navigation based on auth state
 // This runs INSIDE AuthProvider so it can use useAuth()
@@ -99,6 +157,7 @@ function RootLayoutNav() {
                 <FundingProvider>
                   <WalletsProvider>
                     <CryptoProvider>
+                      <PushNotificationInitializer />
                       <AuthGuard>
                         <ErrorBoundary>
                           <Stack>

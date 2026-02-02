@@ -43,7 +43,10 @@
         "USE_BIOMETRIC",
         "USE_FINGERPRINT",
         "android.permission.USE_BIOMETRIC",
-        "android.permission.USE_FINGERPRINT"
+        "android.permission.USE_FINGERPRINT",
+        "RECEIVE_BOOT_COMPLETED",
+        "VIBRATE",
+        "POST_NOTIFICATIONS"
       ],
       "intentFilters": [
         {
@@ -99,6 +102,14 @@
             "image": "./assets/icons/splash-icon-dark.png",
             "backgroundColor": "#000000"
           }
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icons/notification-icon.png",
+          "color": "#0A0A0A",
+          "defaultChannel": "default"
         }
       ]
     ],

@@ -444,6 +444,7 @@ export const refreshTransactionHistory = action({
 export const upsertTransactions = internalMutation({
   args: {
     walletAddress: v.string(),
+    userId: v.optional(v.id("users")), // Optional: for sending notifications
     transactions: v.array(
       v.object({
         signature: v.string(),
@@ -468,6 +469,10 @@ export const upsertTransactions = internalMutation({
   },
   handler: async (ctx, args) => {
     const now = Date.now();
+
+    // Dust threshold: $0.01 USD or 0.0001 SOL equivalent
+    const DUST_USD_THRESHOLD = 1; // 1 cent
+    const DUST_SOL_THRESHOLD = 0.0001;
 
     for (const tx of args.transactions) {
       // Check if transaction already exists
@@ -500,6 +505,25 @@ export const upsertTransactions = internalMutation({
           source: tx.source,
           fetchedAt: now,
         });
+
+        // Send push notification for new "receive" transactions (excluding dust)
+        if (args.userId && tx.type === "receive") {
+          // Filter out dust transactions
+          const isDust = (tx.amountUsd !== undefined && tx.amountUsd < DUST_USD_THRESHOLD) ||
+                         (tx.tokenSymbol === "SOL" && tx.amount < DUST_SOL_THRESHOLD);
+
+          if (!isDust) {
+            // Schedule crypto receipt notification
+            await ctx.scheduler.runAfter(0, internal.notifications.send.sendCryptoReceipt, {
+              userId: args.userId,
+              transactionType: "receive",
+              tokenSymbol: tx.tokenSymbol,
+              amount: tx.amount,
+              amountUsd: tx.amountUsd !== undefined ? Math.round(tx.amountUsd * 100) : undefined, // Convert to cents
+              signature: tx.signature,
+            });
+          }
+        }
       }
     }
   },

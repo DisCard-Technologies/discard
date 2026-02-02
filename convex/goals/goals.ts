@@ -7,6 +7,7 @@
 
 import { v } from "convex/values";
 import { mutation, query, internalQuery } from "../_generated/server";
+import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 
 // ============================================================================
@@ -90,6 +91,14 @@ export const updateProgress = mutation({
       throw new Error("Goal not found");
     }
 
+    // Calculate previous and new progress percentages
+    const previousPercentage = goal.targetAmount > 0
+      ? Math.floor((goal.currentAmount / goal.targetAmount) * 100)
+      : 0;
+    const newPercentage = goal.targetAmount > 0
+      ? Math.floor((args.currentAmount / goal.targetAmount) * 100)
+      : 0;
+
     // Check if goal is now complete
     const isComplete = args.currentAmount >= goal.targetAmount;
 
@@ -99,7 +108,32 @@ export const updateProgress = mutation({
       updatedAt: Date.now(),
     });
 
-    return { completed: isComplete };
+    // Check for milestone crossings and send notifications
+    // Milestones: 25%, 50%, 75%, 90%, 100%
+    const milestones = [25, 50, 75, 90, 100];
+    let milestoneReached: number | null = null;
+
+    for (const milestone of milestones) {
+      if (previousPercentage < milestone && newPercentage >= milestone) {
+        milestoneReached = milestone;
+        // Don't break - we want the highest milestone reached
+      }
+    }
+
+    // Send notification if a milestone was crossed
+    if (milestoneReached !== null) {
+      await ctx.scheduler.runAfter(0, internal.notifications.send.sendGoalMilestone, {
+        userId: goal.userId,
+        goalId: args.goalId,
+        goalTitle: goal.title,
+        milestonePercentage: milestoneReached,
+        currentAmount: args.currentAmount,
+        targetAmount: goal.targetAmount,
+        isComplete,
+      });
+    }
+
+    return { completed: isComplete, milestoneReached };
   },
 });
 

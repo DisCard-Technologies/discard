@@ -2925,4 +2925,102 @@ export default defineSchema({
     .index("by_nullifier", ["nullifier"])
     .index("by_proof_id", ["proofId"]),
 
+  // ============================================================================
+  // PUSH NOTIFICATIONS - Device tokens and notification history
+  // ============================================================================
+
+  // ============ PUSH TOKENS ============
+  // Device push notification tokens and preferences
+  pushTokens: defineTable({
+    userId: v.id("users"),
+
+    // Token details
+    expoPushToken: v.string(),           // Expo push token (ExponentPushToken[xxx])
+    deviceId: v.string(),                // Unique device identifier
+    platform: v.union(
+      v.literal("ios"),
+      v.literal("android")
+    ),
+
+    // Token status
+    status: v.union(
+      v.literal("active"),               // Token is valid and active
+      v.literal("invalid"),              // Token was rejected by Expo
+      v.literal("revoked")               // User disabled notifications
+    ),
+
+    // Notification preferences
+    preferences: v.object({
+      cryptoReceipts: v.boolean(),       // Inbound crypto/fiat notifications
+      goalMilestones: v.boolean(),       // Goal progress notifications
+      agentActivity: v.boolean(),        // Background agent activity
+      fraudAlerts: v.boolean(),          // Fraud/security alerts (always recommended on)
+    }),
+
+    // Device info
+    deviceName: v.optional(v.string()),  // User-friendly device name
+    appVersion: v.optional(v.string()),  // App version for compatibility
+
+    // Timestamps
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    lastUsedAt: v.optional(v.number()),  // Last notification sent
+  })
+    .index("by_user", ["userId"])
+    .index("by_device", ["deviceId"])
+    .index("by_user_status", ["userId", "status"])
+    .index("by_token", ["expoPushToken"]),
+
+  // ============ NOTIFICATION HISTORY ============
+  // Log of sent notifications for audit and debugging
+  notificationHistory: defineTable({
+    userId: v.id("users"),
+
+    // Notification content
+    type: v.union(
+      v.literal("crypto_receipt"),       // Inbound funds notification
+      v.literal("goal_milestone"),       // Goal progress milestone
+      v.literal("agent_activity"),       // Background agent update
+      v.literal("fraud_alert"),          // Security/fraud alert
+      v.literal("system")                // System notifications
+    ),
+    title: v.string(),
+    body: v.string(),
+    data: v.optional(v.any()),           // Custom payload for deep linking
+
+    // Delivery status
+    status: v.union(
+      v.literal("pending"),              // Queued for sending
+      v.literal("sent"),                 // Sent to Expo
+      v.literal("delivered"),            // Confirmed delivered
+      v.literal("failed"),               // Failed to send
+      v.literal("filtered")              // Filtered by user preferences
+    ),
+
+    // Expo tracking
+    expoReceiptId: v.optional(v.string()), // Expo receipt ID for delivery tracking
+    expoTicketId: v.optional(v.string()),  // Expo ticket ID from send response
+    errorMessage: v.optional(v.string()),  // Error details if failed
+
+    // Source reference (what triggered this notification)
+    sourceType: v.optional(v.union(
+      v.literal("transaction"),          // On-chain transaction
+      v.literal("funding"),              // Funding transaction
+      v.literal("goal"),                 // Goal update
+      v.literal("fraud"),                // Fraud detection
+      v.literal("agent"),                // Agent activity
+      v.literal("system")                // System event
+    )),
+    sourceId: v.optional(v.string()),    // ID of the source entity
+
+    // Timestamps
+    createdAt: v.number(),
+    sentAt: v.optional(v.number()),
+    deliveredAt: v.optional(v.number()),
+  })
+    .index("by_user", ["userId"])
+    .index("by_user_type", ["userId", "type"])
+    .index("by_status", ["status"])
+    .index("by_created", ["createdAt"]),
+
 });

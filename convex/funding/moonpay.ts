@@ -888,6 +888,16 @@ export const handleTransactionCompleted = internalMutation({
 
     console.log(`MoonPay transaction completed: ${args.moonpayTransactionId}, credited $${(args.usdAmount / 100).toFixed(2)}`);
 
+    // Send push notification for completed deposit
+    await ctx.scheduler.runAfter(0, internal.notifications.send.sendCryptoReceipt, {
+      userId: transaction.userId,
+      transactionType: "funding",
+      tokenSymbol: transaction.cryptoCurrency.toUpperCase(),
+      amount: args.cryptoAmount,
+      amountUsd: args.usdAmount,
+      source: "MoonPay",
+    });
+
     // PRIVACY CASH: Trigger auto-shield if using private deposit address
     if (transaction.walletAddress) {
       await ctx.scheduler.runAfter(0, internal.funding.moonpay.triggerAutoShield, {

@@ -275,7 +275,7 @@ export const recordAnalysis = internalMutation({
     amount: v.number(),
   },
   handler: async (ctx, args): Promise<Id<"fraud">> => {
-    return await ctx.db.insert("fraud", {
+    const fraudId = await ctx.db.insert("fraud", {
       cardId: args.cardId,
       cardContext: args.cardContext,
       authorizationId: args.authorizationId,
@@ -291,6 +291,27 @@ export const recordAnalysis = internalMutation({
       amount: args.amount,
       analyzedAt: Date.now(),
     });
+
+    // Send push notification for fraud alerts (score >= 50 and action is alert/freeze/decline)
+    if (args.riskScore >= THRESHOLDS.RISK_SCORE_ALERT &&
+        (args.action === "alert" || args.action === "freeze" || args.action === "decline")) {
+      // Get the card to find the user ID
+      const card = await ctx.db.get(args.cardId);
+      if (card) {
+        // Schedule fraud alert notification
+        await ctx.scheduler.runAfter(0, internal.notifications.send.sendFraudAlert, {
+          userId: card.userId,
+          cardId: args.cardId,
+          fraudId,
+          riskLevel: args.riskLevel === "low" ? "medium" : args.riskLevel, // Low risk shouldn't trigger alerts
+          merchantName: args.merchantName,
+          amount: args.amount,
+          action: args.action,
+        });
+      }
+    }
+
+    return fraudId;
   },
 });
 
