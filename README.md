@@ -115,6 +115,8 @@ DisCard packs sophisticated technology under the hood, but the AI co-pilot trans
 | **Confidential Balances** | Token-2022 confidential transfers | SPL Token Wrap |
 | **Privacy Payments** | Alternative privacy-focused payment rails | Starpay |
 | **TEE Authorization** | Sub-50ms card authorization in isolated TEE | MagicBlock Ephemeral Rollups |
+| **Encrypted Balances** | TEE-based encrypted card balances (~50ms) | Inco Lightning |
+| **Confidential Funding** | MPC-encrypted card funding + balance proofs | Arcium MXE |
 | **On-Chain ZK Proofs** | Groth16 spending limit verification | Sunspot + Noir |
 | **Stealth Addresses** | ECDH-derived disposable funding addresses | Hush |
 | **Shielded Pools** | Hidden amounts for large transfers | Umbra |
@@ -250,6 +252,7 @@ discard/
 |                                                             |
 |  SPENDING (Shielded Balance -> Cards/Swaps/Bets/RWA)        |
 |  +-- Light Protocol: ZK-compressed card state               |
+|  +-- Inco Lightning: TEE encrypted balance operations       |
 |  +-- Anoncoin: Confidential swaps (Solana)                  |
 |  +-- SilentSwap: Private cross-chain swaps                  |
 |  +-- PNP Exchange: Private prediction bets                  |
@@ -262,6 +265,7 @@ discard/
 |                                                             |
 |  COMPLIANCE                                                 |
 |  +-- Range: Wallet screening before transfers               |
+|  +-- Phala TEE: Private sanctions checks (no plaintext)     |
 |  +-- Result: OFAC compliant, privacy preserved              |
 |                                                             |
 |  COMPLETE PRIVACY LOOP:                                     |
@@ -309,6 +313,8 @@ discard/
 - **Sunspot** - On-chain Groth16 ZK proof verification
 - **Hush** - ECDH stealth addresses for anonymous card funding
 - **Umbra** - Shielded liquidity pools for large transfers
+- **Inco Lightning** - TEE encrypted balances (~50ms spending checks)
+- **Phala Network** - TEE for dual-LLM execution + private compliance checks
 
 ### DeFi & Trading
 - **Jupiter** - DEX aggregation and swaps
@@ -507,6 +513,8 @@ DisCard integrates with the following sponsors and technologies:
 | **On-Chain ZK Verification** | Sunspot | Groth16 spending limit proofs |
 | **Stealth Addresses** | Hush | ECDH disposable funding addresses |
 | **Shielded Pools** | Umbra | Hidden amounts for large transfers |
+| **Encrypted Balances** | Inco | TEE-based encrypted card balances for agent operations |
+| **TEE Execution** | Phala Network | Dual-LLM execution + private compliance/sanctions checks |
 | **Compliance** | Range | Wallet screening + OFAC compliance |
 | **RPC Infrastructure** | Helius | Firedancer RPC + Alpenglow 150ms confirmations |
 | **Wallet Infrastructure** | Turnkey | Non-custodial passkey wallets |
@@ -556,6 +564,7 @@ MIT License - see [LICENSE](LICENSE)
 - [Sunspot](https://github.com/solana-foundation/noir-examples) - On-chain Groth16 verification
 - [Hush](https://hushwallet.io) - Stealth addresses
 - [Umbra](https://umbra.cash) - Shielded liquidity pools
+- [Inco](https://inco.org) - TEE encrypted balance operations
 
 **Infrastructure:**
 - [Turnkey](https://turnkey.com) - Non-custodial wallets
@@ -563,7 +572,7 @@ MIT License - see [LICENSE](LICENSE)
 - [Range](https://range.org) - Compliance
 - [Civic](https://civic.com) - Identity verification
 - [Convex](https://convex.dev) - Real-time backend
-- [Phala Network](https://phala.network) - TEE infrastructure
+- [Phala Network](https://phala.network) - TEE infrastructure + compliance enclaves
 
 **Additional Resources:**
 - [Expo Documentation](https://docs.expo.dev)
