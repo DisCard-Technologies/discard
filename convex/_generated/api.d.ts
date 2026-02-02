@@ -70,6 +70,8 @@ import type * as intents_solver from "../intents/solver.js";
 import type * as lib_differentialPrivacy from "../lib/differentialPrivacy.js";
 import type * as network_privateRpc from "../network/privateRpc.js";
 import type * as network_timingService from "../network/timingService.js";
+import type * as notifications_send from "../notifications/send.js";
+import type * as notifications_tokens from "../notifications/tokens.js";
 import type * as nullifiers from "../nullifiers.js";
 import type * as privacy from "../privacy.js";
 import type * as privacy_incoSpending from "../privacy/incoSpending.js";
@@ -170,6 +172,8 @@ declare const fullApi: ApiFromModules<{
   "lib/differentialPrivacy": typeof lib_differentialPrivacy;
   "network/privateRpc": typeof network_privateRpc;
   "network/timingService": typeof network_timingService;
+  "notifications/send": typeof notifications_send;
+  "notifications/tokens": typeof notifications_tokens;
   nullifiers: typeof nullifiers;
   privacy: typeof privacy;
   "privacy/incoSpending": typeof privacy_incoSpending;

@@ -1,13 +1,16 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { StyleSheet, View, ScrollView } from 'react-native';
 import { PressableScale } from 'pressto';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import { useQuery } from 'convex/react';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { useThemeColor } from '@/hooks/use-theme-color';
+import { api } from '@/convex/_generated/api';
+import { useCurrentUserId } from '@/stores/authConvex';
 
 // Backup components
 import {
@@ -36,7 +39,7 @@ const settingsSections = [
   {
     title: 'Account',
     items: [
-      { icon: 'wallet' as const, label: 'Connected Wallets', value: '3 wallets', route: '' },
+      { icon: 'wallet' as const, label: 'Connected Wallets', value: '', route: '/connected-wallets', dynamic: 'wallets' },
       { icon: 'card' as const, label: 'Visa Card Settings', value: '', route: '' },
       { icon: 'people' as const, label: 'Saved Contacts', value: '', route: '/contacts' },
       { icon: 'phone-portrait' as const, label: 'Linked Devices', value: '2 devices', route: '' },
@@ -74,6 +77,7 @@ const settingsSections = [
 
 export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
+  const userId = useCurrentUserId();
   const [showPaymentMethods, setShowPaymentMethods] = useState(false);
   const [paymentMethods, setPaymentMethods] = useState(initialPaymentMethods);
 
@@ -85,6 +89,18 @@ export default function SettingsScreen() {
   // Backup status
   const [backupInfo, setBackupInfo] = useState<BackupInfo | null>(null);
   const [hasMnemonic, setHasMnemonic] = useState(false);
+
+  // Query connected wallets for dynamic count
+  const wallets = useQuery(
+    api.wallets.wallets.list,
+    userId ? { userId } : "skip"
+  );
+
+  // Calculate connected wallet count (add 1 for primary passkey wallet)
+  const connectedWalletCount = useMemo(() => {
+    const externalCount = wallets?.filter(w => w.connectionStatus === 'connected').length ?? 0;
+    return externalCount + 1; // +1 for passkey wallet
+  }, [wallets]);
 
   // Load backup status on mount
   useEffect(() => {
@@ -321,7 +337,7 @@ export default function SettingsScreen() {
               darkColor="rgba(255,255,255,0.06)"
             >
               {section.items.map((item, idx) => {
-                // Determine dynamic value for security items
+                // Determine dynamic value for various items
                 let displayValue = item.value;
                 if ('action' in item) {
                   if (item.action === 'setup_backup') {
@@ -329,6 +345,10 @@ export default function SettingsScreen() {
                   } else if (item.action === 'view_seed') {
                     displayValue = hasMnemonic ? 'View' : 'N/A';
                   }
+                }
+                // Dynamic wallet count
+                if ('dynamic' in item && (item as any).dynamic === 'wallets') {
+                  displayValue = `${connectedWalletCount} wallet${connectedWalletCount !== 1 ? 's' : ''}`;
                 }
 
                 return (

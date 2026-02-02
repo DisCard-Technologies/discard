@@ -57,7 +57,8 @@ export const connect = mutation({
       v.literal("walletconnect"),
       v.literal("solana_external"),
       v.literal("eth_external"),
-      v.literal("bitcoin")
+      v.literal("bitcoin"),
+      v.literal("seed_vault")
     ),
     address: v.string(),
     networkType: v.string(),
@@ -177,6 +178,187 @@ export const listByUserId = internalQuery({
       .withIndex("by_user", (q) => q.eq("userId", args.userId))
       .filter((q) => q.eq(q.field("connectionStatus"), "connected"))
       .collect();
+  },
+});
+
+/**
+ * Connect a Seed Vault wallet via Mobile Wallet Adapter
+ */
+export const connectSeedVault = mutation({
+  args: {
+    userId: v.id("users"),
+    address: v.string(),
+    mwaAuthToken: v.string(),
+    mwaWalletName: v.string(),
+    nickname: v.optional(v.string()),
+    setAsPreferredSigner: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    // Check if wallet already exists
+    const existing = await ctx.db
+      .query("wallets")
+      .withIndex("by_address", (q) => q.eq("address", args.address))
+      .first();
+
+    if (existing) {
+      // Update connection status and MWA fields
+      await ctx.db.patch(existing._id, {
+        connectionStatus: "connected",
+        mwaAuthToken: args.mwaAuthToken,
+        mwaWalletName: args.mwaWalletName,
+        isPreferredSigner: args.setAsPreferredSigner ?? false,
+        lastUsedAt: Date.now(),
+      });
+
+      // Update user's preferred signing wallet if requested
+      if (args.setAsPreferredSigner) {
+        await ctx.db.patch(args.userId, {
+          preferredSigningWallet: existing._id,
+        });
+      }
+
+      return existing._id;
+    }
+
+    // Create new Seed Vault wallet
+    const addressLastFour = args.address.slice(-4);
+    const now = Date.now();
+
+    const walletId = await ctx.db.insert("wallets", {
+      userId: args.userId,
+      walletType: "seed_vault",
+      address: args.address,
+      addressLastFour,
+      networkType: "solana",
+      connectionStatus: "connected",
+      permissions: ["sign_transaction", "sign_message"],
+      isDefault: false,
+      mwaAuthToken: args.mwaAuthToken,
+      mwaWalletName: args.mwaWalletName,
+      isPreferredSigner: args.setAsPreferredSigner ?? false,
+      nickname: args.nickname ?? `Seed Vault (${addressLastFour})`,
+      createdAt: now,
+      lastUsedAt: now,
+    });
+
+    // Update user's preferred signing wallet if requested
+    if (args.setAsPreferredSigner) {
+      await ctx.db.patch(args.userId, {
+        preferredSigningWallet: walletId,
+      });
+    }
+
+    return walletId;
+  },
+});
+
+/**
+ * Update MWA auth token (for reauthorization)
+ */
+export const updateMwaAuthToken = mutation({
+  args: {
+    walletId: v.id("wallets"),
+    mwaAuthToken: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const wallet = await ctx.db.get(args.walletId);
+    if (!wallet) {
+      throw new Error("Wallet not found");
+    }
+
+    if (wallet.walletType !== "seed_vault") {
+      throw new Error("Wallet is not a Seed Vault wallet");
+    }
+
+    await ctx.db.patch(args.walletId, {
+      mwaAuthToken: args.mwaAuthToken,
+      lastUsedAt: Date.now(),
+    });
+
+    return { success: true };
+  },
+});
+
+/**
+ * Set preferred signing wallet for a user
+ */
+export const setPreferredSigningWallet = mutation({
+  args: {
+    userId: v.id("users"),
+    walletId: v.optional(v.id("wallets")),
+  },
+  handler: async (ctx, args) => {
+    const user = await ctx.db.get(args.userId);
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    if (args.walletId) {
+      const wallet = await ctx.db.get(args.walletId);
+      if (!wallet) {
+        throw new Error("Wallet not found");
+      }
+
+      if (wallet.userId !== args.userId) {
+        throw new Error("Wallet does not belong to user");
+      }
+
+      // Only seed_vault wallets can be preferred signers (Turnkey is implicit default)
+      if (wallet.walletType !== "seed_vault") {
+        throw new Error("Only Seed Vault wallets can be set as preferred signer");
+      }
+
+      // Clear isPreferredSigner from all other wallets
+      const userWallets = await ctx.db
+        .query("wallets")
+        .withIndex("by_user", (q) => q.eq("userId", args.userId))
+        .collect();
+
+      for (const w of userWallets) {
+        if (w.isPreferredSigner && w._id !== args.walletId) {
+          await ctx.db.patch(w._id, { isPreferredSigner: false });
+        }
+      }
+
+      // Set this wallet as preferred
+      await ctx.db.patch(args.walletId, { isPreferredSigner: true });
+    }
+
+    // Update user's preferred signing wallet
+    await ctx.db.patch(args.userId, {
+      preferredSigningWallet: args.walletId,
+    });
+
+    return { success: true };
+  },
+});
+
+/**
+ * Get the preferred signing wallet for a user
+ */
+export const getPreferredSigningWallet = query({
+  args: {
+    userId: v.id("users"),
+  },
+  handler: async (ctx, args) => {
+    const user = await ctx.db.get(args.userId);
+    if (!user) {
+      return null;
+    }
+
+    if (!user.preferredSigningWallet) {
+      return null; // Fallback to Turnkey
+    }
+
+    const wallet = await ctx.db.get(user.preferredSigningWallet);
+    if (!wallet || wallet.connectionStatus !== "connected") {
+      return null; // Fallback to Turnkey
+    }
+
+    return {
+      ...wallet,
+      encryptedPrivateData: undefined, // Hide sensitive data
+    };
   },
 });
 

@@ -16,7 +16,7 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { useCurrentUserId, useConvexUserId, useIsMockAuth } from "./authConvex";
 
 // Type definitions
-export type WalletType = "metamask" | "walletconnect" | "phantom" | "solflare" | "coinbase";
+export type WalletType = "metamask" | "walletconnect" | "phantom" | "solflare" | "coinbase" | "seed_vault";
 export type NetworkType = "ethereum" | "solana" | "polygon" | "arbitrum" | "base";
 export type ConnectionStatus = "connected" | "disconnected" | "expired" | "error";
 

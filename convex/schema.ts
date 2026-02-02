@@ -72,6 +72,9 @@ export default defineSchema({
       v.literal("locked")
     ),
 
+    // Signing preferences
+    preferredSigningWallet: v.optional(v.id("wallets")), // Preferred wallet for signing (Turnkey or Seed Vault)
+
     // Timestamps
     lastActive: v.number(),
     createdAt: v.number(),
@@ -363,7 +366,8 @@ export default defineSchema({
       v.literal("walletconnect"),       // WalletConnect session
       v.literal("solana_external"),     // External Solana wallet
       v.literal("eth_external"),        // External Ethereum wallet
-      v.literal("bitcoin")              // Bitcoin wallet (read-only)
+      v.literal("bitcoin"),             // Bitcoin wallet (read-only)
+      v.literal("seed_vault")           // Seed Vault via Mobile Wallet Adapter (Seeker)
     ),
 
     // Address (encrypted for external wallets)
@@ -396,6 +400,11 @@ export default defineSchema({
       url: v.string(),
       icons: v.array(v.string()),
     })),
+
+    // Mobile Wallet Adapter (Seed Vault) specific
+    mwaAuthToken: v.optional(v.string()),      // Auth token for reauthorization
+    mwaWalletName: v.optional(v.string()),     // "Seed Vault", "Saga Wallet", etc.
+    isPreferredSigner: v.optional(v.boolean()), // User's preferred signer for transactions
 
     // Permissions granted
     permissions: v.array(v.string()),   // ["sign_transaction", "sign_message"]

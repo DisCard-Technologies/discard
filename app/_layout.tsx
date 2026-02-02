@@ -17,6 +17,7 @@ import { CardsProvider } from '@/stores/cardsConvex';
 import { FundingProvider } from '@/stores/fundingConvex';
 import { WalletsProvider } from '@/stores/walletsConvex';
 import { CryptoProvider } from '@/stores/cryptoConvex';
+import { MWAProvider } from '@/providers/MWAProvider';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { ErrorBoundary } from '@/components/ui/error-boundary';
 import { usePushNotifications, isPushNotificationSupported, getLastNotificationResponse } from '@/hooks/usePushNotifications';
@@ -34,6 +35,12 @@ const convex = convexUrl ? new ConvexReactClient(convexUrl) : null;
 export const unstable_settings = {
   anchor: '(tabs)',
 };
+
+// MWA provider wrapper - needs userId from auth context
+function MWAProviderWrapper({ children }: { children: React.ReactNode }) {
+  const auth = useAuth();
+  return <MWAProvider userId={auth.userId}>{children}</MWAProvider>;
+}
 
 // Push notification initializer - registers token when user is authenticated
 function PushNotificationInitializer() {
@@ -157,33 +164,36 @@ function RootLayoutNav() {
                 <FundingProvider>
                   <WalletsProvider>
                     <CryptoProvider>
-                      <PushNotificationInitializer />
-                      <AuthGuard>
-                        <ErrorBoundary>
-                          <Stack>
-                            <Stack.Screen name="onboarding" options={{ headerShown: false, animation: 'fade' }} />
-                            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-                            <Stack.Screen name="auth" options={{ headerShown: false }} />
-                            <Stack.Screen name="identity" options={{ presentation: 'modal', headerShown: false }} />
-                            <Stack.Screen name="settings" options={{ presentation: 'modal', headerShown: false }} />
-                            <Stack.Screen name="privacy-settings" options={{ presentation: 'modal', headerShown: false }} />
-                            <Stack.Screen name="history" options={{ presentation: 'modal', headerShown: false }} />
-                            <Stack.Screen name="buy-crypto" options={{ headerShown: false }} />
-                            <Stack.Screen name="sell-crypto" options={{ headerShown: false }} />
-                            <Stack.Screen name="token-detail" options={{ headerShown: false }} />
-                            <Stack.Screen name="asset-detail" options={{ headerShown: false }} />
-                            <Stack.Screen name="market-detail" options={{ headerShown: false }} />
-                            <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
-                            <Stack.Screen name="transfer" options={{ headerShown: false, presentation: 'modal' }} />
-                            <Stack.Screen name="receive" options={{ headerShown: false, presentation: 'modal' }} />
-                            <Stack.Screen name="swap" options={{ headerShown: false, presentation: 'modal' }} />
-                            <Stack.Screen name="claim/[code]" options={{ headerShown: false }} />
-                            <Stack.Screen name="pay/[requestId]" options={{ headerShown: false }} />
-                            <Stack.Screen name="contacts" options={{ headerShown: false }} />
-                          </Stack>
-                        </ErrorBoundary>
-                      </AuthGuard>
-                      <StatusBar style="auto" />
+                      <MWAProviderWrapper>
+                        <PushNotificationInitializer />
+                        <AuthGuard>
+                          <ErrorBoundary>
+                            <Stack>
+                              <Stack.Screen name="onboarding" options={{ headerShown: false, animation: 'fade' }} />
+                              <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+                              <Stack.Screen name="auth" options={{ headerShown: false }} />
+                              <Stack.Screen name="identity" options={{ presentation: 'modal', headerShown: false }} />
+                              <Stack.Screen name="settings" options={{ presentation: 'modal', headerShown: false }} />
+                              <Stack.Screen name="connected-wallets" options={{ presentation: 'modal', headerShown: false }} />
+                              <Stack.Screen name="privacy-settings" options={{ presentation: 'modal', headerShown: false }} />
+                              <Stack.Screen name="history" options={{ presentation: 'modal', headerShown: false }} />
+                              <Stack.Screen name="buy-crypto" options={{ headerShown: false }} />
+                              <Stack.Screen name="sell-crypto" options={{ headerShown: false }} />
+                              <Stack.Screen name="token-detail" options={{ headerShown: false }} />
+                              <Stack.Screen name="asset-detail" options={{ headerShown: false }} />
+                              <Stack.Screen name="market-detail" options={{ headerShown: false }} />
+                              <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
+                              <Stack.Screen name="transfer" options={{ headerShown: false, presentation: 'modal' }} />
+                              <Stack.Screen name="receive" options={{ headerShown: false, presentation: 'modal' }} />
+                              <Stack.Screen name="swap" options={{ headerShown: false, presentation: 'modal' }} />
+                              <Stack.Screen name="claim/[code]" options={{ headerShown: false }} />
+                              <Stack.Screen name="pay/[requestId]" options={{ headerShown: false }} />
+                              <Stack.Screen name="contacts" options={{ headerShown: false }} />
+                            </Stack>
+                          </ErrorBoundary>
+                        </AuthGuard>
+                        <StatusBar style="auto" />
+                      </MWAProviderWrapper>
                     </CryptoProvider>
                   </WalletsProvider>
                 </FundingProvider>
