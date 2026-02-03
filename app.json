@@ -24,7 +24,8 @@
         "applinks:www.discard.tech"
       ],
       "infoPlist": {
-        "NSFaceIDUsageDescription": "DisCard uses Face ID to securely authenticate transactions and access your wallet."
+        "NSFaceIDUsageDescription": "DisCard uses Face ID to securely authenticate transactions and access your wallet.",
+        "ITSAppUsesNonExemptEncryption": false
       },
       "icon": {
         "light": "./assets/icons/ios-light.png",
