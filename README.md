@@ -2,6 +2,8 @@
 
 > Privacy-First Intent-Centric Super Wallet with Virtual Global Cards and Autonomous Financial Agents
 
+[Presentation Video](https://youtu.be/L3Iys6N-02o)
+
 ![DisCard Home Screen](assets/discard-mobile-homescreen.png)
 
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache%20License%202.0-blue)](LICENSE)
