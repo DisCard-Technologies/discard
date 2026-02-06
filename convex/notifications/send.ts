@@ -35,7 +35,7 @@ interface ExpoPushTicket {
   details?: { error: string };
 }
 
-type NotificationType = "crypto_receipt" | "goal_milestone" | "agent_activity" | "fraud_alert" | "system";
+type NotificationType = "crypto_receipt" | "goal_milestone" | "agent_activity" | "fraud_alert" | "private_transfer" | "system";
 
 // ============================================================================
 // Internal Actions - Main Send Functions
@@ -53,6 +53,7 @@ export const sendToUser = internalAction({
       v.literal("goal_milestone"),
       v.literal("agent_activity"),
       v.literal("fraud_alert"),
+      v.literal("private_transfer"),
       v.literal("system")
     ),
     title: v.string(),
@@ -465,6 +466,7 @@ export const logNotification = internalMutation({
       v.literal("goal_milestone"),
       v.literal("agent_activity"),
       v.literal("fraud_alert"),
+      v.literal("private_transfer"),
       v.literal("system")
     ),
     title: v.string(),
@@ -544,6 +546,8 @@ function getPreferenceKey(type: NotificationType): string {
       return "agentActivity";
     case "fraud_alert":
       return "fraudAlerts";
+    case "private_transfer":
+      return "cryptoReceipts"; // Private transfers use crypto receipt preference
     case "system":
       return "cryptoReceipts"; // System uses crypto receipt preference
   }

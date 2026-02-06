@@ -188,10 +188,16 @@ export function useTransactionHistory(
           seenSignatures.add(transfer.solanaSignature);
         }
 
-        // Format address for display
-        const addr = transfer.recipientAddress;
-        const shortAddr =
-          addr.length > 10 ? `${addr.slice(0, 6)}...${addr.slice(-4)}` : addr;
+        // For private transfers: show recipient display name, never raw/stealth addresses
+        // For regular transfers: show truncated address
+        const isPrivate = (transfer as any).isPrivate === true;
+        let displayAddress: string;
+        if (transfer.recipientDisplayName) {
+          displayAddress = transfer.recipientDisplayName;
+        } else {
+          const addr = transfer.recipientAddress;
+          displayAddress = addr.length > 10 ? `${addr.slice(0, 6)}...${addr.slice(-4)}` : addr;
+        }
 
         // Format amount
         const amount = transfer.amount / Math.pow(10, transfer.tokenDecimals);
@@ -211,7 +217,7 @@ export function useTransactionHistory(
         result.push({
           id: transfer._id,
           type: "send" as TransactionType,
-          address: shortAddr, // Always show truncated address
+          address: displayAddress,
           tokenAmount: `-${formattedAmount} ${transfer.token}`,
           fiatValue: `$${(transfer.amountUsd / 100).toFixed(2)}`,
           fee: feeFormatted,

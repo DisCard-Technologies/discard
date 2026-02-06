@@ -68,6 +68,8 @@ export interface SuccessScreenProps {
   autoDismissMs?: number;
   /** Whether the recipient is a new (not saved) contact */
   isNewRecipient?: boolean;
+  /** Whether this was a private (shielded) transfer */
+  shielded?: boolean;
 }
 
 // ============================================================================
@@ -270,6 +272,7 @@ export function SuccessScreen({
   onDone,
   autoDismissMs = 0,
   isNewRecipient = false,
+  shielded = false,
 }: SuccessScreenProps) {
   const primaryColor = useThemeColor({}, "tint");
   const mutedColor = useThemeColor({ light: "#687076", dark: "#9BA1A6" }, "icon");
@@ -350,7 +353,12 @@ export function SuccessScreen({
 
         {/* Success Title */}
         <Animated.View entering={FadeIn.delay(200).duration(300)}>
-          <Text style={[styles.title, { color: textColor }]}>Sent!</Text>
+          <View style={styles.titleRow}>
+            {shielded && (
+              <Ionicons name="lock-closed" size={20} color={mutedColor} style={{ marginRight: 8, opacity: 0.6 }} />
+            )}
+            <Text style={[styles.title, { color: textColor }]}>Sent!</Text>
+          </View>
         </Animated.View>
 
         {/* Amount Display */}
@@ -555,6 +563,11 @@ const styles = StyleSheet.create({
     width: 110,
     height: 110,
     borderRadius: 55,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  titleRow: {
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
   },

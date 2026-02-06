@@ -9,6 +9,7 @@ import { ThemedView } from '@/components/themed-view';
 import { AnimatedCounter } from '@/components/animated-counter';
 import { TransactionStack, StackTransaction } from '@/components/transaction-stack';
 import { QuickActions } from '@/components/quick-actions';
+import { ClaimableTransfers } from '@/components/transfer/ClaimableTransfers';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { useAuth } from '@/stores/authConvex';
@@ -143,6 +144,9 @@ export function HomeScreenContent({ topInset = 0 }: HomeScreenContentProps) {
 
         {/* Transaction Stack */}
         <TransactionStack transactions={transactions} onTransactionTap={handleTransactionTap} testID="home-transactions" />
+
+        {/* Incoming Private Transfers — claim cards */}
+        <ClaimableTransfers />
 
         {/* Quick Actions */}
         <QuickActions

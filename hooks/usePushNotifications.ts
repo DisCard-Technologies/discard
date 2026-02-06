@@ -547,6 +547,11 @@ function handleNotificationTap(
       }
       break;
 
+    case "claim":
+      // Deep link to claim screen for incoming private transfers
+      router.push("/(tabs)" as never);
+      break;
+
     default:
       // Default to home
       router.push("/(tabs)" as never);

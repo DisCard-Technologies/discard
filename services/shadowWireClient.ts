@@ -16,7 +16,16 @@
  * - tweetnacl for NaCl box encryption
  */
 
-import { PublicKey, Connection, Keypair, Transaction, SystemProgram, LAMPORTS_PER_SOL, TransactionInstruction } from "@solana/web3.js";
+import { PublicKey, Connection, Keypair, Transaction, SystemProgram, LAMPORTS_PER_SOL, TransactionInstruction, ComputeBudgetProgram } from "@solana/web3.js";
+import {
+  TOKEN_PROGRAM_ID,
+  ASSOCIATED_TOKEN_PROGRAM_ID,
+  getAssociatedTokenAddress,
+  createAssociatedTokenAccountInstruction,
+  createTransferInstruction as createSplTransferInstruction,
+  getAccount,
+  TokenAccountNotFoundError,
+} from "@solana/spl-token";
 import { sha256 as sha256Hash } from "@noble/hashes/sha2.js";
 // Create a wrapper that returns Uint8Array
 const sha256 = (data: Uint8Array | string): Uint8Array => {
@@ -1292,9 +1301,43 @@ export class ShadowWireService {
           })
         );
       } else {
-        // For SPL tokens, we'd need to add token transfer instructions
-        // TODO: Implement SPL token transfer
-        throw new Error("SPL token transfers not yet supported in real mode");
+        // SPL token transfer to stealth address
+        const mintPubkey = new PublicKey(params.tokenMint!);
+        const senderAta = await getAssociatedTokenAddress(mintPubkey, params.signer.publicKey);
+        const recipientPubkey = new PublicKey(params.recipientAddress);
+        const recipientAta = await getAssociatedTokenAddress(mintPubkey, recipientPubkey);
+
+        // Check if recipient ATA exists, create if needed (payer = sender)
+        let needsAta = false;
+        try {
+          await getAccount(this.connection, recipientAta);
+        } catch (error) {
+          if (error instanceof TokenAccountNotFoundError) {
+            needsAta = true;
+          } else {
+            throw error;
+          }
+        }
+
+        if (needsAta) {
+          transaction.add(
+            createAssociatedTokenAccountInstruction(
+              params.signer.publicKey, // payer
+              recipientAta,            // ata
+              recipientPubkey,         // owner (stealth address)
+              mintPubkey               // mint
+            )
+          );
+        }
+
+        transaction.add(
+          createSplTransferInstruction(
+            senderAta,               // source
+            recipientAta,            // destination
+            params.signer.publicKey, // owner
+            BigInt(params.amountLamports) // amount in token base units
+          )
+        );
       }
 
       // Get recent blockhash
@@ -1365,10 +1408,12 @@ export class ShadowWireService {
     signer: Keypair;
     stealthAddress: string;
     amountLamports: number;
+    tokenMint?: string;
     relayAction: (args: {
       stealthAddress: string;
       amountLamports: number;
       depositTxSignature: string;
+      tokenMint?: string;
     }) => Promise<{ success: boolean; relaySignature?: string; error?: string }>;
   }): Promise<{
     depositSignature: string;
@@ -1390,13 +1435,60 @@ export class ShadowWireService {
       // Step 1: User sends to Pool
       console.log("[ShadowWire] Step 1: Depositing to relay pool...");
 
-      const depositTx = new Transaction().add(
-        SystemProgram.transfer({
-          fromPubkey: params.signer.publicKey,
-          toPubkey: new PublicKey(SHADOWWIRE_POOL_ADDRESS),
-          lamports: params.amountLamports,
-        })
-      );
+      const NATIVE_SOL_MINT = "So11111111111111111111111111111111111111112";
+      const isNativeSolRelay = !params.tokenMint ||
+        params.tokenMint === "native" ||
+        params.tokenMint === NATIVE_SOL_MINT;
+
+      const depositTx = new Transaction();
+      const poolPubkey = new PublicKey(SHADOWWIRE_POOL_ADDRESS);
+
+      if (isNativeSolRelay) {
+        depositTx.add(
+          SystemProgram.transfer({
+            fromPubkey: params.signer.publicKey,
+            toPubkey: poolPubkey,
+            lamports: params.amountLamports,
+          })
+        );
+      } else {
+        // SPL token deposit to pool
+        const mintPubkey = new PublicKey(params.tokenMint!);
+        const senderAta = await getAssociatedTokenAddress(mintPubkey, params.signer.publicKey);
+        const poolAta = await getAssociatedTokenAddress(mintPubkey, poolPubkey);
+
+        // Create pool ATA if needed
+        let poolNeedsAta = false;
+        try {
+          await getAccount(this.connection, poolAta);
+        } catch (error) {
+          if (error instanceof TokenAccountNotFoundError) {
+            poolNeedsAta = true;
+          } else {
+            throw error;
+          }
+        }
+
+        if (poolNeedsAta) {
+          depositTx.add(
+            createAssociatedTokenAccountInstruction(
+              params.signer.publicKey, // payer
+              poolAta,                 // ata
+              poolPubkey,              // owner (pool)
+              mintPubkey               // mint
+            )
+          );
+        }
+
+        depositTx.add(
+          createSplTransferInstruction(
+            senderAta,               // source
+            poolAta,                 // destination
+            params.signer.publicKey, // owner
+            BigInt(params.amountLamports) // amount
+          )
+        );
+      }
 
       const { blockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash("confirmed");
       depositTx.recentBlockhash = blockhash;
@@ -1431,6 +1523,7 @@ export class ShadowWireService {
         stealthAddress: params.stealthAddress,
         amountLamports: params.amountLamports,
         depositTxSignature: depositSignature,
+        tokenMint: params.tokenMint,
       });
 
       if (!relayResult.success || !relayResult.relaySignature) {
@@ -1508,6 +1601,7 @@ export class ShadowWireService {
         signer: params.signer,
         stealthAddress: params.recipientAddress,
         amountLamports: params.amount,
+        tokenMint: params.tokenMint,
         relayAction: params.relayAction,
       });
       return {

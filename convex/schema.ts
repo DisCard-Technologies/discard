@@ -1627,6 +1627,18 @@ export default defineSchema({
     // Memo
     memo: v.optional(v.string()),
 
+    // Privacy fields (confidential P2P transfers)
+    isPrivate: v.optional(v.boolean()),
+    stealthAddress: v.optional(v.string()),
+    ephemeralPubKey: v.optional(v.string()),
+    encryptedNote: v.optional(v.string()),
+    ringSignatureHash: v.optional(v.string()),
+    privacyMethod: v.optional(v.union(
+      v.literal("shadowwire"),
+      v.literal("zk_compressed"),
+      v.literal("relay")
+    )),
+
     // Transaction details
     solanaSignature: v.optional(v.string()),
     status: v.union(
@@ -2994,6 +3006,7 @@ export default defineSchema({
       v.literal("goal_milestone"),       // Goal progress milestone
       v.literal("agent_activity"),       // Background agent update
       v.literal("fraud_alert"),          // Security/fraud alert
+      v.literal("private_transfer"),     // Private transfer received (claim needed)
       v.literal("system")                // System notifications
     ),
     title: v.string(),
@@ -3102,5 +3115,39 @@ export default defineSchema({
     .index("by_agent", ["agentId"])
     .index("by_user", ["userId"])
     .index("by_nullifier", ["operationNullifier"]),
+
+  // ============ PRIVATE TRANSFER NOTES ============
+  // Encrypted notes for confidential P2P transfer discovery & claim
+  privateTransferNotes: defineTable({
+    // Recipient lookup (SHA-256 hash of recipient public key — no raw address stored)
+    recipientHash: v.string(),
+
+    // Encrypted transfer details (NaCl box, only recipient can decrypt)
+    encryptedNote: v.string(),
+    ephemeralPubKey: v.string(),
+
+    // Stealth address where funds sit
+    stealthAddress: v.string(),
+
+    // Amount & token metadata (for notification display, not privacy-critical)
+    amount: v.optional(v.number()),
+    token: v.optional(v.string()),
+    tokenSymbol: v.optional(v.string()),
+
+    // Claim tracking
+    claimed: v.boolean(),
+    claimTxSignature: v.optional(v.string()),
+
+    // Notification tracking
+    notifiedAt: v.optional(v.number()),
+
+    // Sender reference (transfer record ID, if available)
+    transferId: v.optional(v.string()),
+
+    // Timestamps
+    createdAt: v.number(),
+  })
+    .index("by_recipient_hash", ["recipientHash", "claimed"])
+    .index("by_stealth_address", ["stealthAddress"]),
 
 });

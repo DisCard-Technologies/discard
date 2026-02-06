@@ -120,13 +120,13 @@ export function TransactionStack({
   const getTransactionIcon = (type: TransactionType): keyof typeof Ionicons.glyphMap => {
     switch (type) {
       case 'send':
-        return 'arrow-up-outline';
+        return 'trending-up-outline';         // ↗ outbound send
       case 'receive':
-        return 'arrow-down-outline';
+        return 'trending-down-outline';       // ↙ inbound receive
       case 'swap':
         return 'swap-horizontal-outline';
       case 'deposit':
-        return 'arrow-down-outline';
+        return 'arrow-down-outline';          // ↓ deposit/fund
       case 'withdrawal':
         return 'arrow-up-outline';
       default:

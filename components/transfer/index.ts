@@ -17,3 +17,4 @@ export {
   SettlementSelector,
   type SettlementSelectorProps,
 } from "./SettlementSelector";
+export { ClaimableTransfers } from "./ClaimableTransfers";

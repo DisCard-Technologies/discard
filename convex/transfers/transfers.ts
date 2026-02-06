@@ -35,6 +35,17 @@ export const create = mutation({
     priorityFee: v.optional(v.number()),
     memo: v.optional(v.string()),
     idempotencyKey: v.optional(v.string()),
+    // Privacy fields
+    isPrivate: v.optional(v.boolean()),
+    stealthAddress: v.optional(v.string()),
+    ephemeralPubKey: v.optional(v.string()),
+    encryptedNote: v.optional(v.string()),
+    ringSignatureHash: v.optional(v.string()),
+    privacyMethod: v.optional(v.union(
+      v.literal("shadowwire"),
+      v.literal("zk_compressed"),
+      v.literal("relay")
+    )),
     // Fallback for custom auth when ctx.auth is not configured
     credentialId: v.optional(v.string()),
   },
@@ -89,6 +100,13 @@ export const create = mutation({
       platformFee: args.platformFee,
       priorityFee: args.priorityFee,
       memo: args.memo,
+      // Privacy metadata
+      isPrivate: args.isPrivate,
+      stealthAddress: args.stealthAddress,
+      ephemeralPubKey: args.ephemeralPubKey,
+      encryptedNote: args.encryptedNote,
+      ringSignatureHash: args.ringSignatureHash,
+      privacyMethod: args.privacyMethod,
       status: "pending",
       idempotencyKey: args.idempotencyKey,
       createdAt: Date.now(),

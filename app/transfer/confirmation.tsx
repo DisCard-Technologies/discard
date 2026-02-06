@@ -33,19 +33,11 @@ import { useAuth, useCurrentCredentialId, getLocalSolanaKeypair } from "@/stores
 import { usePrivateTransfer } from "@/hooks/usePrivateTransfer";
 import { useMutation, useAction } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import { Connection, PublicKey } from "@solana/web3.js";
+// Connection/PublicKey no longer needed — private path handles on-chain interaction
 import { useTurnkey } from "@/hooks/useTurnkey";
-import {
-  getFiredancerClient,
-  initializeFiredancerClient,
-  type ConfirmationResult,
-} from "@/lib/solana/firedancer-client";
-import {
-  buildSOLTransfer,
-  buildSPLTokenTransfer,
-  simulateTransaction,
-  NATIVE_MINT,
-} from "@/lib/transfer/transaction-builder";
+// Firedancer and transaction builder imports removed — all transfers go through ShadowWire privacy path
+import { sha256 as sha256Hash } from "@noble/hashes/sha2.js";
+import bs58 from "bs58";
 import type {
   TransferRecipient,
   TransferToken,
@@ -130,6 +122,7 @@ export default function TransferConfirmationScreen() {
   // Convex mutations for transfer records
   const createTransfer = useMutation(api.transfers.transfers.create);
   const updateTransferStatus = useMutation(api.transfers.transfers.updateStatus);
+  const publishNote = useMutation(api.shadowwire.privateTransferNotes.publishNote);
 
   // Theme colors
   const colorScheme = useColorScheme();
@@ -279,10 +272,18 @@ export default function TransferConfirmationScreen() {
             ? Number(amount.amountBaseUnits)
             : Number(amount.amountBaseUnits);
 
+          // Determine if we should use relay for sender privacy
+          const useRelay = isRelayAvailable && !!relayPoolAddress;
+
+          // Determine privacy method
+          const privacyMethod = isZkCompressionAvailable
+            ? "zk_compressed" as const
+            : (useRelay ? "relay" as const : "shadowwire" as const);
+
           transferId = await createTransfer({
             recipientType: recipient.type,
             recipientIdentifier: recipient.input,
-            recipientAddress: stealthAddress.publicAddress, // Use stealth address
+            recipientAddress: stealthAddress.publicAddress, // Use stealth address (not real address)
             recipientDisplayName: recipient.displayName,
             amount: amountBaseUnits,
             token: token.symbol,
@@ -293,6 +294,11 @@ export default function TransferConfirmationScreen() {
             platformFee: fees.platformFee,
             priorityFee: fees.priorityFee * 150,
             credentialId: credentialId || undefined,
+            // Privacy metadata
+            isPrivate: true,
+            stealthAddress: stealthAddress.publicAddress,
+            ephemeralPubKey: stealthAddress.viewingKey,
+            privacyMethod,
           });
 
           await updateTransferStatus({
@@ -305,9 +311,6 @@ export default function TransferConfirmationScreen() {
           const amountLamports = typeof amount.amountBaseUnits === 'string'
             ? Number(amount.amountBaseUnits)
             : Number(amount.amountBaseUnits);
-
-          // Determine if we should use relay for sender privacy
-          const useRelay = isRelayAvailable && !!relayPoolAddress;
 
           console.log("[Confirmation] Private transfer with signer:", {
             from: localKeypair.publicKey.toBase58().slice(0, 8) + "...",
@@ -377,6 +380,28 @@ export default function TransferConfirmationScreen() {
               relayTx: privateResult.relaySignature?.slice(0, 16),
             });
 
+            // Publish encrypted note for recipient discovery & claim
+            try {
+              const recipientHash = bs58.encode(sha256Hash(new TextEncoder().encode(recipient.address)));
+
+              await publishNote({
+                recipientHash,
+                encryptedNote: privateResult.encryptedNote || "",
+                ephemeralPubKey: stealthAddress.viewingKey,
+                stealthAddress: stealthAddress.publicAddress,
+                amount: amountBaseUnits,
+                token: token.mint,
+                tokenSymbol: token.symbol,
+                transferId: transferId?.toString(),
+                recipientAddress: recipient.address,
+                credentialId: credentialId || undefined,
+              });
+              console.log("[Confirmation] Published transfer note for recipient");
+            } catch (noteErr) {
+              // Non-fatal — transfer already succeeded, note publishing is best-effort
+              console.warn("[Confirmation] Failed to publish transfer note:", noteErr);
+            }
+
             // Check if recipient is a known contact
             const existingContact = getContactByAddress(recipient.address);
             const isNewRecipient = !existingContact;
@@ -411,232 +436,16 @@ export default function TransferConfirmationScreen() {
         }
       }
 
-      // Fallback: Regular transaction flow (when ShadowWire unavailable)
-      console.log("[Confirmation] Using regular transfer flow", {
+      // Privacy-first: No fallback to non-private transfer
+      // If we reach here, the private path was unavailable or failed
+      console.error("[Confirmation] Private transfer path unavailable", {
         privateTransferAvailable: isPrivateTransferAvailable,
         zkCompressionAvailable: isZkCompressionAvailable,
       });
 
-      // Step 2b: Build transaction
-      setExecutionPhase("building");
-
-      // Log transfer details for debugging
-      const isDevnet = SOLANA_RPC_URL.includes("devnet");
-      console.log("[Confirmation] Transfer details:", {
-        rpc: SOLANA_RPC_URL.slice(0, 50) + "...",
-        network: isDevnet ? "devnet" : "mainnet",
-        from: walletAddress?.slice(0, 8) + "...",
-        to: recipient.address.slice(0, 8) + "...",
-        amount: amount.amount,
-        amountBaseUnits: amount.amountBaseUnits?.toString(),
-        token: token.symbol,
-      });
-
-      const connection = new Connection(SOLANA_RPC_URL, "confirmed");
-      const fromPubkey = new PublicKey(walletAddress);
-      const toPubkey = new PublicKey(recipient.address);
-
-      // Parse amount base units (handle both string and bigint)
-      const amountBaseUnits = typeof amount.amountBaseUnits === 'string'
-        ? BigInt(amount.amountBaseUnits)
-        : amount.amountBaseUnits;
-
-      let txResult;
-      if (token.mint === "native" || token.mint === NATIVE_MINT.toBase58()) {
-        txResult = await buildSOLTransfer(
-          connection,
-          fromPubkey,
-          toPubkey,
-          amountBaseUnits
-        );
-      } else {
-        txResult = await buildSPLTokenTransfer(
-          connection,
-          fromPubkey,
-          toPubkey,
-          amountBaseUnits,
-          new PublicKey(token.mint)
-        );
-      }
-
-      // Step 3: Simulate transaction
-      console.log("[Confirmation] Simulating transaction...");
-      const simulation = await simulateTransaction(connection, txResult.transaction);
-      if (!simulation.success) {
-        console.error("[Confirmation] Simulation failed:", simulation.error, simulation.logs);
-        throw new Error(simulation.error || "Transaction simulation failed");
-      }
-      console.log("[Confirmation] Simulation passed");
-
-      // Step 4: Create Convex transfer record
-      // Store amount as base units (lamports) for consistent display
-      const amountInBaseUnits = typeof amount.amountBaseUnits === 'string'
-        ? Number(amount.amountBaseUnits)
-        : Number(amount.amountBaseUnits);
-
-      transferId = await createTransfer({
-        recipientType: recipient.type,
-        recipientIdentifier: recipient.input,
-        recipientAddress: recipient.address,
-        recipientDisplayName: recipient.displayName,
-        amount: amountInBaseUnits,
-        token: token.symbol,
-        tokenMint: token.mint,
-        tokenDecimals: token.decimals,
-        amountUsd: amount.amountUsd,
-        networkFee: fees.networkFeeUsd,
-        platformFee: fees.platformFee,
-        priorityFee: fees.priorityFee * 150, // Convert SOL to USD estimate
-        credentialId: credentialId || undefined,
-      });
-
-      // Step 5: Sign transaction (Turnkey TEE or local keypair)
-      setExecutionPhase("signing");
-
-      await updateTransferStatus({
-        transferId,
-        status: "signing",
-        credentialId: credentialId || undefined,
-      });
-
-      let signedTransaction = txResult.transaction;
-
-      // Check if user has Turnkey sub-organization for TEE signing
-      if (turnkey.subOrg) {
-        console.log("[Confirmation] Signing with Turnkey TEE");
-        const signResult = await turnkey.signTransaction(txResult.transaction);
-        // Add Turnkey signature to transaction
-        signedTransaction.addSignature(
-          fromPubkey,
-          Buffer.from(signResult.signature)
-        );
-      } else {
-        // Fall back to local keypair signing (biometric auth users)
-        console.log("[Confirmation] Signing with local keypair (no Turnkey sub-org)");
-        const localKeypair = await getLocalSolanaKeypair();
-        if (!localKeypair) {
-          throw new Error("No signing key available. Please re-authenticate.");
-        }
-
-        // For local signing, we must rebuild the transaction:
-        // 1. Use the local keypair's address as sender
-        // 2. Disable gas subsidization (we don't have the gas authority's key)
-        const localPubkey = localKeypair.publicKey;
-        const localAddress = localPubkey.toBase58();
-
-        // Warn if local keypair doesn't match the displayed wallet address
-        if (localAddress !== walletAddress) {
-          console.warn("[Confirmation] Address mismatch!", {
-            displayed: walletAddress?.slice(0, 12) + "...",
-            localKeypair: localAddress.slice(0, 12) + "...",
-          });
-        }
-
-        console.log("[Confirmation] Using local keypair:", localAddress.slice(0, 12) + "...");
-        console.log("[Confirmation] Rebuilding transaction without gas subsidization");
-
-        // Rebuild transaction with local keypair's address and no gas subsidy
-        if (token.mint === "native" || token.mint === NATIVE_MINT.toBase58()) {
-          txResult = await buildSOLTransfer(
-            connection,
-            localPubkey,
-            toPubkey,
-            amountBaseUnits,
-            false // subsidizeGas = false, user pays their own fees
-          );
-        } else {
-          txResult = await buildSPLTokenTransfer(
-            connection,
-            localPubkey,
-            toPubkey,
-            amountBaseUnits,
-            new PublicKey(token.mint),
-            false // subsidizeGas = false, user pays their own fees
-          );
-        }
-        signedTransaction = txResult.transaction;
-
-        // Sign transaction with local keypair
-        signedTransaction.sign(localKeypair);
-      }
-
-      // Step 6: Submit to Firedancer
-      setExecutionPhase("submitting");
-
-      // Initialize Firedancer client if not already done
-      let firedancer;
-      try {
-        firedancer = getFiredancerClient();
-      } catch {
-        firedancer = initializeFiredancerClient({
-          primaryEndpoint: SOLANA_RPC_URL,
-          targetConfirmationMs: 150,
-          maxRetries: 3,
-        });
-      }
-
-      const { signature, confirmationPromise } = await firedancer.sendTransaction(
-        signedTransaction as any
+      throw new Error(
+        "Private transfer failed. Your funds are safe — no transfer was made. Please try again."
       );
-
-      await updateTransferStatus({
-        transferId,
-        status: "submitted",
-        solanaSignature: signature,
-        credentialId: credentialId || undefined,
-      });
-
-      // Step 7: Wait for confirmation
-      setExecutionPhase("confirming");
-
-      const confirmation: ConfirmationResult = await confirmationPromise;
-      const confirmationTimeMs = Date.now() - startTime;
-
-      if (!confirmation.confirmed) {
-        await updateTransferStatus({
-          transferId,
-          status: "failed",
-          errorMessage: confirmation.error || "Confirmation failed",
-          credentialId: credentialId || undefined,
-        });
-        throw new Error(confirmation.error || "Transaction failed to confirm on the network");
-      }
-
-      // Step 8: Success!
-      await updateTransferStatus({
-        transferId,
-        status: "confirmed",
-        confirmationTimeMs,
-        credentialId: credentialId || undefined,
-      });
-
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-
-      // Navigate to success screen with real data
-      const result: TransferResult = {
-        signature,
-        confirmationTimeMs,
-        withinTarget: confirmation.withinTarget,
-        transferId,
-        explorerUrl: `https://solscan.io/tx/${signature}`,
-      };
-
-      // Check if recipient is a known contact
-      const existingContact = getContactByAddress(recipient.address);
-      const isNewRecipient = !existingContact;
-
-      router.push({
-        pathname: "/transfer/success",
-        params: {
-          result: JSON.stringify(result),
-          recipient: params.recipient,
-          amountDisplay: amount.amount.toString(),
-          amountUsd: amount.amountUsd.toString(),
-          tokenSymbol: token.symbol,
-          feesPaid: fees.totalFeesUsd.toString(),
-          isNewRecipient: isNewRecipient ? "true" : "false",
-        },
-      });
     } catch (err) {
       console.error("[Confirmation] Transfer failed:", err);
 
@@ -703,7 +512,7 @@ export default function TransferConfirmationScreen() {
       setIsConfirming(false);
       setExecutionPhase("idle");
     }
-  }, [recipient, token, amount, fees, userId, walletAddress, turnkey, params, createTransfer, updateTransferStatus, credentialId, privacyState, isPrivateTransferAvailable, isZkCompressionAvailable, isRelayAvailable, relayPoolAddress, generateStealthAddress, generateZkCompressedStealthAddress, executePrivateTransfer, executeZkPrivateTransfer, relayToStealth, getContactByAddress]);
+  }, [recipient, token, amount, fees, userId, walletAddress, turnkey, params, createTransfer, updateTransferStatus, credentialId, privacyState, isPrivateTransferAvailable, isZkCompressionAvailable, isRelayAvailable, relayPoolAddress, generateStealthAddress, generateZkCompressedStealthAddress, executePrivateTransfer, executeZkPrivateTransfer, relayToStealth, getContactByAddress, publishNote]);
 
   // Show error if params missing
   if (!recipient || !token || !amount || !fees) {

@@ -131,6 +131,96 @@ async function getTransaction(signature: string): Promise<any> {
 }
 
 // ============================================================================
+// SPL Token Constants & Helpers (raw, no @solana/spl-token in Convex)
+// ============================================================================
+
+const TOKEN_PROGRAM_ID = new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
+const ASSOCIATED_TOKEN_PROGRAM_ID = new PublicKey("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL");
+const NATIVE_SOL_MINT = "So11111111111111111111111111111111111111112";
+
+/**
+ * Derive Associated Token Address (deterministic PDA)
+ */
+function deriveAta(owner: PublicKey, mint: PublicKey): PublicKey {
+  const [ata] = PublicKey.findProgramAddressSync(
+    [owner.toBuffer(), TOKEN_PROGRAM_ID.toBuffer(), mint.toBuffer()],
+    ASSOCIATED_TOKEN_PROGRAM_ID
+  );
+  return ata;
+}
+
+/**
+ * Check if an account exists on-chain via RPC
+ */
+async function accountExists(address: string): Promise<boolean> {
+  try {
+    const result = await rpcCall("getAccountInfo", [address, { encoding: "base64" }]);
+    return result.value !== null;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Build a raw SPL token transfer transaction with ATA creation if needed.
+ * Uses @solana/web3.js Transaction + manual instruction building.
+ */
+async function buildSplRelayTransaction(
+  poolKeypair: Keypair,
+  stealthAddress: string,
+  mintAddress: string,
+  amount: number,
+  blockhash: string,
+  lastValidBlockHeight: number
+): Promise<Transaction> {
+  const mintPubkey = new PublicKey(mintAddress);
+  const stealthPubkey = new PublicKey(stealthAddress);
+  const poolAta = deriveAta(poolKeypair.publicKey, mintPubkey);
+  const stealthAta = deriveAta(stealthPubkey, mintPubkey);
+
+  const transaction = new Transaction();
+
+  // Create stealth ATA if it doesn't exist (pool pays rent)
+  const stealthAtaExists = await accountExists(stealthAta.toBase58());
+  if (!stealthAtaExists) {
+    // createAssociatedTokenAccountInstruction (manual)
+    transaction.add({
+      keys: [
+        { pubkey: poolKeypair.publicKey, isSigner: true, isWritable: true },   // payer
+        { pubkey: stealthAta, isSigner: false, isWritable: true },             // ata
+        { pubkey: stealthPubkey, isSigner: false, isWritable: false },         // owner
+        { pubkey: mintPubkey, isSigner: false, isWritable: false },            // mint
+        { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+        { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+      ],
+      programId: ASSOCIATED_TOKEN_PROGRAM_ID,
+      data: Buffer.alloc(0), // No data needed for create ATA
+    });
+  }
+
+  // SPL Token Transfer instruction (instruction index 3)
+  const transferData = Buffer.alloc(9);
+  transferData.writeUInt8(3, 0); // Transfer instruction index
+  transferData.writeBigUInt64LE(BigInt(amount), 1);
+
+  transaction.add({
+    keys: [
+      { pubkey: poolAta, isSigner: false, isWritable: true },             // source
+      { pubkey: stealthAta, isSigner: false, isWritable: true },          // destination
+      { pubkey: poolKeypair.publicKey, isSigner: true, isWritable: false }, // authority
+    ],
+    programId: TOKEN_PROGRAM_ID,
+    data: transferData,
+  });
+
+  transaction.recentBlockhash = blockhash;
+  transaction.lastValidBlockHeight = lastValidBlockHeight;
+  transaction.feePayer = poolKeypair.publicKey;
+
+  return transaction;
+}
+
+// ============================================================================
 // Helper Functions
 // ============================================================================
 
@@ -157,6 +247,7 @@ export const relayToStealth = action({
     stealthAddress: v.string(),
     amountLamports: v.number(),
     depositTxSignature: v.string(), // Proof that user deposited
+    tokenMint: v.optional(v.string()), // SPL token mint (if not native SOL)
   },
   handler: async (ctx, args) => {
     console.log("[ShadowWire Relay] Starting relay to stealth address:", {
@@ -191,18 +282,37 @@ export const relayToStealth = action({
       // Get recent blockhash
       const { blockhash, lastValidBlockHeight } = await getLatestBlockhash();
 
-      // Build the relay transaction
-      const transaction = new Transaction().add(
-        SystemProgram.transfer({
-          fromPubkey: poolKeypair.publicKey,
-          toPubkey: new PublicKey(args.stealthAddress),
-          lamports: args.amountLamports,
-        })
-      );
+      // Determine if this is a native SOL or SPL token relay
+      const isNativeSol = !args.tokenMint ||
+        args.tokenMint === "native" ||
+        args.tokenMint === NATIVE_SOL_MINT;
 
-      transaction.recentBlockhash = blockhash;
-      transaction.lastValidBlockHeight = lastValidBlockHeight;
-      transaction.feePayer = poolKeypair.publicKey;
+      let transaction: Transaction;
+
+      if (isNativeSol) {
+        // Native SOL relay
+        transaction = new Transaction().add(
+          SystemProgram.transfer({
+            fromPubkey: poolKeypair.publicKey,
+            toPubkey: new PublicKey(args.stealthAddress),
+            lamports: args.amountLamports,
+          })
+        );
+        transaction.recentBlockhash = blockhash;
+        transaction.lastValidBlockHeight = lastValidBlockHeight;
+        transaction.feePayer = poolKeypair.publicKey;
+      } else {
+        // SPL token relay (e.g. USDC)
+        console.log("[ShadowWire Relay] Building SPL token relay for mint:", args.tokenMint!.slice(0, 8) + "...");
+        transaction = await buildSplRelayTransaction(
+          poolKeypair,
+          args.stealthAddress,
+          args.tokenMint!,
+          args.amountLamports,
+          blockhash,
+          lastValidBlockHeight
+        );
+      }
 
       // Sign with pool keypair
       transaction.sign(poolKeypair);
