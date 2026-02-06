@@ -550,7 +550,7 @@ MIT License - see [LICENSE](LICENSE)
 
 **Submitted to:**
 - [Solana Privacy Hack 2026](https://solana.com/privacyhack)
-- [Solana Colosseum Eternal](https://www.colosseum.org/eternal)
+- [Colosseum Eternal](https://www.colosseum.org/eternal)
 
 **Privacy Integrations:**
 - [Privacy Cash](https://privacycash.co) - Shielded deposits + cashout
