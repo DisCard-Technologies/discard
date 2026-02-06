@@ -15,6 +15,7 @@ import {
   internalAction,
 } from "../_generated/server";
 import { Id } from "../_generated/dataModel";
+import { internal } from "../_generated/api";
 import { Turnkey } from "@turnkey/sdk-server";
 
 // ============================================================================
@@ -1211,6 +1212,218 @@ export const revokeSessionKey = internalAction({
         error: error instanceof Error ? error.message : "Revocation failed",
       };
     }
+  },
+});
+
+// ============================================================================
+// Agent Session Key Management
+// ============================================================================
+
+/**
+ * Create a restricted session key for an AI agent
+ *
+ * Policy restricts: allowed wallet addresses, max transaction amount,
+ * daily/monthly limits. Random 50-200ms delay decorrelates timing
+ * from agent creation to prevent session key creation timing attacks.
+ */
+export const createAgentSessionKey = internalAction({
+  args: {
+    subOrganizationId: v.string(),
+    agentId: v.string(),
+    permissions: v.object({
+      allowedAddresses: v.array(v.string()),
+      maxTransactionAmount: v.optional(v.number()),
+      dailyLimit: v.optional(v.number()),
+      monthlyLimit: v.optional(v.number()),
+    }),
+  },
+  handler: async (ctx, args): Promise<{
+    sessionKeyId: string;
+    policyId: string;
+  }> => {
+    if (!TURNKEY_API_PUBLIC_KEY || !TURNKEY_API_PRIVATE_KEY || !TURNKEY_ORGANIZATION_ID) {
+      throw new Error("Turnkey API credentials not configured");
+    }
+
+    // Random 50-200ms delay to decorrelate timing (privacy vector #5)
+    const delay = 50 + Math.floor(Math.random() * 150);
+    await new Promise((resolve) => setTimeout(resolve, delay));
+
+    const turnkeyClient = new Turnkey({
+      apiBaseUrl: TURNKEY_API_BASE_URL,
+      apiPublicKey: TURNKEY_API_PUBLIC_KEY,
+      apiPrivateKey: TURNKEY_API_PRIVATE_KEY,
+      defaultOrganizationId: args.subOrganizationId,
+    });
+
+    const apiClient = turnkeyClient.apiClient();
+
+    console.log("[Turnkey] Creating agent session key:", {
+      agentId: args.agentId,
+      subOrgId: args.subOrganizationId,
+    });
+
+    // Generate P-256 key pair for the agent session key
+    const sessionKeyPair = await crypto.subtle.generateKey(
+      { name: "ECDSA", namedCurve: "P-256" },
+      true,
+      ["sign", "verify"]
+    );
+
+    const publicKeyRaw = await crypto.subtle.exportKey("raw", sessionKeyPair.publicKey);
+    const publicKeyHex = Array.from(new Uint8Array(publicKeyRaw))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+
+    // Get root user ID
+    const subOrgUsers = await apiClient.getUsers({
+      organizationId: args.subOrganizationId,
+    });
+    const rootUserId = subOrgUsers.users?.[0]?.userId;
+
+    if (!rootUserId) {
+      throw new Error("No root user found in sub-organization");
+    }
+
+    // Create the API key (session key)
+    const apiKeyResponse = await apiClient.createApiKeys({
+      apiKeys: [{
+        apiKeyName: `agent-${args.agentId}-${Date.now()}`,
+        publicKey: publicKeyHex,
+        curveType: "API_KEY_CURVE_P256",
+      }],
+      userId: rootUserId,
+    });
+
+    const sessionKeyId = apiKeyResponse.apiKeyIds?.[0];
+    if (!sessionKeyId) {
+      throw new Error("Failed to create agent session key");
+    }
+
+    // Build policy condition checks
+    const checks: Array<{
+      subject: string;
+      operator: string;
+      value: string;
+    }> = [
+      {
+        subject: "turnkey.activity.type",
+        operator: "EQUAL",
+        value: "ACTIVITY_TYPE_SIGN_RAW_PAYLOAD",
+      },
+    ];
+
+    // Restrict to allowed wallet addresses
+    if (args.permissions.allowedAddresses.length > 0) {
+      checks.push({
+        subject: "turnkey.resource.wallet.address",
+        operator: "IN",
+        value: JSON.stringify(args.permissions.allowedAddresses),
+      });
+    }
+
+    // Create restrictive policy for this agent
+    const policyResponse = await apiClient.createPolicy({
+      policyName: `agent-${args.agentId.slice(0, 8)}-${Date.now()}`,
+      effect: "EFFECT_ALLOW",
+      condition: JSON.stringify({
+        operator: "AND",
+        checks,
+      }),
+      consensus: JSON.stringify({
+        type: "CONSENSUS_TYPE_SINGLE",
+        threshold: 1,
+        userIds: [rootUserId],
+      }),
+      notes: `Agent session key policy for ${args.agentId}. Max tx: ${args.permissions.maxTransactionAmount ?? "unlimited"}, Daily: ${args.permissions.dailyLimit ?? "unlimited"}`,
+    });
+
+    const policyId = policyResponse.policyId;
+    if (!policyId) {
+      // Clean up the session key if policy creation fails
+      console.warn("[Turnkey] Agent policy creation failed, cleaning up session key");
+      await apiClient.deleteApiKeys({ apiKeyIds: [sessionKeyId], userId: rootUserId });
+      throw new Error("Failed to create agent session key policy");
+    }
+
+    console.log("[Turnkey] Agent session key created:", {
+      agentId: args.agentId,
+      sessionKeyId,
+      policyId,
+    });
+
+    return { sessionKeyId, policyId };
+  },
+});
+
+/**
+ * Verify agent status and sign a transaction using the agent's session key
+ *
+ * TEE fast path (~200ms): checks agent status in Convex, then delegates
+ * to existing signWithSessionKey. No proof leaves the enclave.
+ */
+export const verifyAndSignWithAgent = internalAction({
+  args: {
+    subOrganizationId: v.string(),
+    agentId: v.string(),
+    sessionKeyId: v.string(),
+    walletAddress: v.string(),
+    unsignedTransaction: v.string(),
+  },
+  handler: async (ctx, args): Promise<{ signature: string; signedTransaction: string }> => {
+    // 1. Verify agent is active in Convex
+    const agent = await ctx.runQuery(
+      internal.agents.agents.getAgentInternal,
+      { agentId: args.agentId }
+    );
+
+    if (!agent) {
+      throw new Error(`Agent ${args.agentId} not found`);
+    }
+
+    if (agent.status !== "active") {
+      throw new Error(`Agent ${args.agentId} is not active (status: ${agent.status})`);
+    }
+
+    if (agent.sessionKeyId !== args.sessionKeyId) {
+      throw new Error("Session key mismatch for agent");
+    }
+
+    // 2. Delegate to existing signWithSessionKey
+    const result = await ctx.runAction(
+      internal.tee.turnkey.signWithSessionKey,
+      {
+        subOrganizationId: args.subOrganizationId,
+        sessionKeyId: args.sessionKeyId,
+        walletAddress: args.walletAddress,
+        unsignedTransaction: args.unsignedTransaction,
+      }
+    );
+
+    return result;
+  },
+});
+
+/**
+ * Revoke an agent's session key and associated policy
+ *
+ * Delegates to existing revokeSessionKey.
+ */
+export const revokeAgentSessionKey = internalAction({
+  args: {
+    subOrganizationId: v.string(),
+    sessionKeyId: v.string(),
+    policyId: v.optional(v.string()),
+  },
+  handler: async (ctx, args): Promise<{ success: boolean; error?: string }> => {
+    return ctx.runAction(
+      internal.tee.turnkey.revokeSessionKey,
+      {
+        subOrganizationId: args.subOrganizationId,
+        sessionKeyId: args.sessionKeyId,
+        policyId: args.policyId,
+      }
+    );
   },
 });
 

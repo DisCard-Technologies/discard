@@ -1247,12 +1247,14 @@ export default defineSchema({
       v.literal("card_state"),          // Virtual card PDA
       v.literal("did_commitment"),      // DID anchor
       v.literal("policy_state"),        // Transfer hook policy
-      v.literal("vault")                // User vault
+      v.literal("vault"),               // User vault
+      v.literal("agent_registry")       // AI agent registry
     ),
 
     // Reference to related entity
     cardId: v.optional(v.id("cards")),
     didDocumentId: v.optional(v.id("didDocuments")),
+    agentId: v.optional(v.string()),    // Agent identifier (for agent_registry type)
 
     // Light Protocol state
     merkleTreeAddress: v.string(),      // Light Protocol tree address
@@ -1283,7 +1285,8 @@ export default defineSchema({
     .index("by_did", ["didDocumentId"])
     .index("by_type", ["accountType"])
     .index("by_merkle_tree", ["merkleTreeAddress"])
-    .index("by_sync_status", ["syncStatus"]),
+    .index("by_sync_status", ["syncStatus"])
+    .index("by_agent", ["agentId"]),
 
   // ============ OPTIMISTIC SETTLEMENTS ============
   // Track optimistic UI updates pending blockchain confirmation
@@ -3031,5 +3034,73 @@ export default defineSchema({
     .index("by_user_type", ["userId", "type"])
     .index("by_status", ["status"])
     .index("by_created", ["createdAt"]),
+
+  // ============ AI AGENTS ============
+  // Privacy-preserving agent registry with E2EE records
+  agents: defineTable({
+    userId: v.id("users"),
+
+    // Agent identity
+    agentId: v.string(),                // Unique agent identifier
+    encryptedRecord: v.string(),        // E2EE blob (NaCl secretbox, base64)
+    commitmentHash: v.string(),         // Poseidon commitment hash
+    permissionsHash: v.string(),        // SHA-256 of canonicalized permissions
+
+    // On-chain references
+    compressedAccountId: v.optional(v.id("compressedAccounts")),
+    sessionKeyId: v.optional(v.string()),     // Turnkey session key ID
+    turnkeyPolicyId: v.optional(v.string()),  // Turnkey policy ID
+
+    // Cached proof (pre-computed Groth16)
+    cachedProof: v.optional(v.string()),           // Base64 proof bytes
+    cachedProofMerkleRoot: v.optional(v.string()), // Merkle root for proof
+    proofGeneratedAt: v.optional(v.number()),      // When proof was generated
+
+    // Agent status
+    status: v.union(
+      v.literal("creating"),            // Setup in progress
+      v.literal("active"),              // Ready for operations
+      v.literal("suspended"),           // Temporarily disabled
+      v.literal("revoked")              // Permanently disabled
+    ),
+
+    // Revocation tracking
+    revocationNullifier: v.optional(v.string()),
+
+    // Timestamps
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_user_status", ["userId", "status"])
+    .index("by_agent_id", ["agentId"])
+    .index("by_commitment", ["commitmentHash"])
+    .index("by_session_key", ["sessionKeyId"]),
+
+  // ============ AGENT SESSIONS ============
+  // Encrypted audit log for agent operations
+  agentSessions: defineTable({
+    agentId: v.string(),                 // Agent identifier
+    userId: v.id("users"),
+
+    // E2EE operation data
+    encryptedOperation: v.string(),      // E2EE blob (NaCl secretbox, base64)
+
+    // Nullifier for replay protection
+    operationNullifier: v.string(),      // Unique per operation
+
+    // Operation status
+    status: v.union(
+      v.literal("completed"),
+      v.literal("failed"),
+      v.literal("reverted")
+    ),
+
+    // Timestamps
+    createdAt: v.number(),
+  })
+    .index("by_agent", ["agentId"])
+    .index("by_user", ["userId"])
+    .index("by_nullifier", ["operationNullifier"]),
 
 });

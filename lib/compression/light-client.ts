@@ -75,6 +75,16 @@ export interface DIDCommitmentData {
   updatedAt: bigint;
 }
 
+export interface AgentRegistryData {
+  agentId: string;
+  commitmentHash: string;
+  encryptedPayload: string;
+  status: "active" | "suspended" | "revoked";
+  leafNullifier?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface CompressedProof {
   a: number[];
   b: number[];
@@ -459,6 +469,102 @@ export class LightClient {
       b: Array.from(proof.compressedProof.b),
       c: Array.from(proof.compressedProof.c),
     };
+  }
+
+  // ==========================================================================
+  // Agent Registry (Compressed Accounts)
+  // ==========================================================================
+
+  /**
+   * Create a compressed agent registry account
+   *
+   * Stores E2EE agent data as an opaque blob in a compressed PDA.
+   * Cost: ~$0.002 per agent (vs ~$2 for regular account).
+   */
+  async createCompressedAgentRegistry(
+    payer: PublicKey,
+    agentData: AgentRegistryData
+  ): Promise<TransactionInstruction[]> {
+    if (!this.rpc) {
+      throw new Error("Light Protocol RPC not initialized");
+    }
+
+    const dataBytes = this.serializeAgentRegistry(agentData);
+    const addressSeed = this.generateAddressSeed("agent", agentData.agentId);
+
+    const { instruction } = await this.createCompressedAccountInstruction(
+      payer,
+      dataBytes,
+      addressSeed
+    );
+
+    return [instruction];
+  }
+
+  /**
+   * Get agent registry data from compressed account
+   */
+  async getAgentRegistry(agentId: string): Promise<AgentRegistryData | null> {
+    const addressSeed = this.generateAddressSeed("agent", agentId);
+    const account = await this.getCompressedAccount(addressSeed);
+
+    if (!account || !account.data?.data) {
+      return null;
+    }
+
+    return this.deserializeAgentRegistry(new Uint8Array(account.data.data));
+  }
+
+  /**
+   * Revoke (nullify) an agent's compressed account leaf
+   *
+   * Marks the leaf for nullification via Light Protocol.
+   */
+  async revokeAgentLeaf(
+    payer: PublicKey,
+    agentId: string,
+    currentAccount: CompressedAccountWithMerkleContext,
+    proof: CompressedProof
+  ): Promise<TransactionInstruction[]> {
+    if (!this.rpc) {
+      throw new Error("Light Protocol RPC not initialized");
+    }
+
+    // Update the agent data with revoked status
+    const currentData = this.deserializeAgentRegistry(
+      new Uint8Array(currentAccount.data?.data ?? [])
+    );
+
+    const revokedData: AgentRegistryData = {
+      ...currentData,
+      status: "revoked",
+      updatedAt: Date.now(),
+    };
+
+    const newDataBytes = this.serializeAgentRegistry(revokedData);
+
+    return this.buildUpdateInstruction(
+      payer,
+      currentAccount,
+      newDataBytes,
+      proof
+    );
+  }
+
+  /**
+   * Serialize agent registry data to bytes
+   */
+  private serializeAgentRegistry(data: AgentRegistryData): Uint8Array {
+    const encoder = new TextEncoder();
+    return encoder.encode(JSON.stringify(data));
+  }
+
+  /**
+   * Deserialize agent registry data from bytes
+   */
+  private deserializeAgentRegistry(data: Uint8Array): AgentRegistryData {
+    const decoder = new TextDecoder();
+    return JSON.parse(decoder.decode(data));
   }
 
   // ==========================================================================

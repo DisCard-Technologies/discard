@@ -24,7 +24,8 @@ const accountTypeValidator = v.union(
   v.literal("card_state"),
   v.literal("did_commitment"),
   v.literal("policy_state"),
-  v.literal("vault")
+  v.literal("vault"),
+  v.literal("agent_registry")
 );
 
 const syncStatusValidator = v.union(
@@ -435,6 +436,134 @@ export const updateDIDCommitment = mutation({
       stateHash: args.newStateHash,
       compressedData: new TextEncoder().encode(JSON.stringify(newState)).buffer as ArrayBuffer,
       syncStatus: "synced",
+      updatedAt: Date.now(),
+    });
+  },
+});
+
+// ============================================================================
+// Agent Registry Operations
+// ============================================================================
+
+/**
+ * Create compressed account for agent registry
+ *
+ * Follows the createDIDAccount pattern. Stores E2EE payload
+ * so on-chain data is opaque to Photon indexers.
+ */
+export const createAgentAccount = mutation({
+  args: {
+    userId: v.id("users"),
+    agentId: v.string(),
+    merkleTreeAddress: v.string(),
+    leafIndex: v.number(),
+    stateHash: v.string(),
+    commitmentHash: v.string(),
+    encryptedPayload: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+
+    const agentState = {
+      commitmentHash: args.commitmentHash,
+      encryptedPayload: args.encryptedPayload,
+      status: "active",
+      createdAt: now,
+    };
+
+    const id = await ctx.db.insert("compressedAccounts", {
+      userId: args.userId,
+      accountType: "agent_registry",
+      agentId: args.agentId,
+      merkleTreeAddress: args.merkleTreeAddress,
+      leafIndex: args.leafIndex,
+      stateHash: args.stateHash,
+      compressedData: new TextEncoder().encode(
+        JSON.stringify(agentState)
+      ).buffer as ArrayBuffer,
+      syncStatus: "synced",
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    return id;
+  },
+});
+
+/**
+ * Update agent commitment after permission change
+ */
+export const updateAgentCommitment = mutation({
+  args: {
+    agentId: v.string(),
+    newCommitmentHash: v.string(),
+    newEncryptedPayload: v.string(),
+    newStateHash: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const account = await ctx.db
+      .query("compressedAccounts")
+      .withIndex("by_agent", (q) => q.eq("agentId", args.agentId))
+      .first();
+
+    if (!account) {
+      throw new Error(`Compressed agent account not found: ${args.agentId}`);
+    }
+
+    const currentState = account.compressedData
+      ? JSON.parse(new TextDecoder().decode(account.compressedData))
+      : {};
+
+    const newState = {
+      ...currentState,
+      commitmentHash: args.newCommitmentHash,
+      encryptedPayload: args.newEncryptedPayload,
+      lastUpdatedAt: Date.now(),
+    };
+
+    await ctx.db.patch(account._id, {
+      stateHash: args.newStateHash,
+      compressedData: new TextEncoder().encode(
+        JSON.stringify(newState)
+      ).buffer as ArrayBuffer,
+      syncStatus: "synced",
+      updatedAt: Date.now(),
+    });
+  },
+});
+
+/**
+ * Mark agent compressed account as revoked
+ */
+export const revokeAgentAccount = mutation({
+  args: {
+    agentId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const account = await ctx.db
+      .query("compressedAccounts")
+      .withIndex("by_agent", (q) => q.eq("agentId", args.agentId))
+      .first();
+
+    if (!account) {
+      throw new Error(`Compressed agent account not found: ${args.agentId}`);
+    }
+
+    const currentState = account.compressedData
+      ? JSON.parse(new TextDecoder().decode(account.compressedData))
+      : {};
+
+    const newState = {
+      ...currentState,
+      status: "revoked",
+      revokedAt: Date.now(),
+    };
+
+    await ctx.db.patch(account._id, {
+      compressedData: new TextEncoder().encode(
+        JSON.stringify(newState)
+      ).buffer as ArrayBuffer,
+      syncStatus: "pending_update",
       updatedAt: Date.now(),
     });
   },

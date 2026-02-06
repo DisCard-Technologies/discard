@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as agents_agents from "../agents/agents.js";
 import type * as approvals_approvals from "../approvals/approvals.js";
 import type * as approvals_multiSig from "../approvals/multiSig.js";
 import type * as approvals_plans from "../approvals/plans.js";
@@ -110,6 +111,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  "agents/agents": typeof agents_agents;
   "approvals/approvals": typeof approvals_approvals;
   "approvals/multiSig": typeof approvals_multiSig;
   "approvals/plans": typeof approvals_plans;
