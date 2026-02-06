@@ -9,8 +9,9 @@
  */
 import { useCallback, useEffect, useState, useRef } from 'react';
 import { useMoonPaySdk } from '@moonpay/react-native-moonpay-sdk';
-import { useAction } from 'convex/react';
+import { useAction, useMutation } from 'convex/react';
 import { api } from '@/convex/_generated/api';
+import type { Id } from '@/convex/_generated/dataModel';
 import * as WebBrowser from 'expo-web-browser';
 import { emitRefreshEvent } from '@/hooks/useRefreshStrategy';
 
@@ -69,6 +70,8 @@ interface UseMoonPayReturn {
   isReady: boolean;
   isLoading: boolean;
   error: string | null;
+  /** ID of the last initiated transaction (for tracking) */
+  lastTransactionId: Id<"moonpayTransactions"> | null;
 }
 
 /**
@@ -88,6 +91,10 @@ export function useMoonPay(options: UseMoonPayOptions = {}): UseMoonPayReturn {
   // Cache for single-use deposit address (reused within session if not expired)
   const privacyAddressCache = useRef<{ address: string; expiresAt: number } | null>(null);
 
+  // Track the last initiated transaction ID
+  const lastTransactionIdRef = useRef<Id<"moonpayTransactions"> | null>(null);
+  const [lastTransactionId, setLastTransactionId] = useState<Id<"moonpayTransactions"> | null>(null);
+
   // Determine which wallet address to use based on currency
   // If legacy walletAddress is provided, use it; otherwise determine from currency
   const effectiveWalletAddress = walletAddress || getWalletAddressForCurrency(
@@ -96,9 +103,10 @@ export function useMoonPay(options: UseMoonPayOptions = {}): UseMoonPayReturn {
     ethereumAddress
   );
 
-  // Convex actions
+  // Convex actions & mutations
   const signUrl = useAction(api.funding.moonpay.signUrl);
   const createSingleUseAddress = useAction(api.funding.moonpay.createSingleUseDepositAddress);
+  const initializeTransaction = useMutation(api.funding.moonpay.initializeTransaction);
 
   // Buy SDK instance
   const buySdk = useMoonPaySdk({
@@ -220,7 +228,19 @@ export function useMoonPay(options: UseMoonPayOptions = {}): UseMoonPayReturn {
         const currency = buyOptions?.currencyCode || defaultCurrency;
         const amount = buyOptions?.baseCurrencyAmount;
 
-        // Determine the deposit address
+        // Step 1: Create tracking record so webhooks can find this transaction
+        const amountInCents = amount ? Math.round(amount * 100) : 1000; // Default $10 minimum
+        const cryptoCurrency = currency.replace(/_sol$/, ''); // Strip _sol suffix for backend
+        const { transactionId } = await initializeTransaction({
+          fiatCurrency: 'usd',
+          fiatAmount: amountInCents,
+          cryptoCurrency,
+        });
+        lastTransactionIdRef.current = transactionId;
+        setLastTransactionId(transactionId);
+        console.log('[MoonPay] Transaction initialized:', transactionId);
+
+        // Step 2: Determine the deposit address
         let walletAddr: string | undefined;
 
         // For Solana currencies with privacy enabled, use single-use address
@@ -239,7 +259,7 @@ export function useMoonPay(options: UseMoonPayOptions = {}): UseMoonPayReturn {
           walletAddr = getWalletAddressForCurrency(currency, solanaAddress, ethereumAddress);
         }
 
-        // Build the MoonPay URL with all params including amount
+        // Step 3: Build the MoonPay URL with tracking ID + all params
         const baseUrl = MOONPAY_ENVIRONMENT === 'sandbox'
           ? 'https://buy-sandbox.moonpay.com'
           : 'https://buy.moonpay.com';
@@ -247,6 +267,7 @@ export function useMoonPay(options: UseMoonPayOptions = {}): UseMoonPayReturn {
         const params = new URLSearchParams({
           apiKey: MOONPAY_API_KEY,
           currencyCode: currency,
+          externalTransactionId: transactionId,
           ...(walletAddr && { walletAddress: walletAddr }),
           ...(amount && { baseCurrencyAmount: amount.toString() }),
           showWalletAddressForm: walletAddr ? 'false' : 'true',
@@ -274,7 +295,7 @@ export function useMoonPay(options: UseMoonPayOptions = {}): UseMoonPayReturn {
         setIsLoading(false);
       }
     },
-    [defaultCurrency, solanaAddress, ethereumAddress, signUrl, usePrivacyAddress, getPrivacyAddress]
+    [defaultCurrency, solanaAddress, ethereumAddress, signUrl, usePrivacyAddress, getPrivacyAddress, initializeTransaction]
   );
 
   /**
@@ -333,6 +354,7 @@ export function useMoonPay(options: UseMoonPayOptions = {}): UseMoonPayReturn {
     isReady: !!MOONPAY_API_KEY && buySdk.ready,
     isLoading,
     error,
+    lastTransactionId,
   };
 }
 

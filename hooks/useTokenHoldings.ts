@@ -4,7 +4,7 @@
  * Fetches and subscribes to user's token holdings via Jupiter Ultra API.
  * Uses Convex for caching and real-time subscriptions.
  */
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useQuery, useAction } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type {
@@ -15,7 +15,7 @@ import {
   acquireRefreshLock,
   releaseRefreshLock,
 } from "./useHoldingsRefreshLock";
-import { useSmartRefresh, useStaleness } from "./useRefreshStrategy";
+import { useSmartRefresh, useStaleness, useRefreshOnEvent } from "./useRefreshStrategy";
 
 interface UseTokenHoldingsOptions {
   /** Whether to auto-refresh periodically */
@@ -115,6 +115,46 @@ export function useTokenHoldings(
     enabled: !!walletAddress && (refreshOnForeground || refreshOnEvents),
     minBackgroundTime: 10000, // Refresh if backgrounded 10s+
   });
+
+  // Aggressive polling after deposit: refresh every 5s for up to 2 minutes
+  const aggressivePollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const aggressivePollingTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useRefreshOnEvent({
+    events: ['deposit_completed'],
+    onEvent: () => {
+      if (!walletAddress) return;
+
+      // Clear any existing aggressive polling
+      if (aggressivePollingRef.current) clearInterval(aggressivePollingRef.current);
+      if (aggressivePollingTimeout.current) clearTimeout(aggressivePollingTimeout.current);
+
+      console.log('[useTokenHoldings] Deposit event - starting aggressive 5s polling');
+
+      // Poll every 5 seconds
+      aggressivePollingRef.current = setInterval(() => {
+        refresh();
+      }, 5000);
+
+      // Stop after 2 minutes
+      aggressivePollingTimeout.current = setTimeout(() => {
+        if (aggressivePollingRef.current) {
+          clearInterval(aggressivePollingRef.current);
+          aggressivePollingRef.current = null;
+          console.log('[useTokenHoldings] Aggressive polling stopped after 2 minutes');
+        }
+      }, 2 * 60 * 1000);
+    },
+    enabled: !!walletAddress && refreshOnEvents,
+  });
+
+  // Cleanup aggressive polling on unmount
+  useEffect(() => {
+    return () => {
+      if (aggressivePollingRef.current) clearInterval(aggressivePollingRef.current);
+      if (aggressivePollingTimeout.current) clearTimeout(aggressivePollingTimeout.current);
+    };
+  }, []);
 
   // Track data staleness
   const staleness = useStaleness({

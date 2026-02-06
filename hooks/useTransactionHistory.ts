@@ -85,6 +85,12 @@ export function useTransactionHistory(
     mergeWithInApp && credentialId ? { limit, credentialId } : "skip"
   );
 
+  // Subscribe to active MoonPay deposits (Convex real-time subscription)
+  const moonpayDeposits = useQuery(
+    api.funding.moonpay.getTransactions,
+    { status: "all", limit: 5 }
+  );
+
   // Action to refresh from Helius
   const refreshAction = useAction(api.holdings.transactionHistory.refreshTransactionHistory);
 
@@ -126,6 +132,54 @@ export function useTransactionHistory(
   const transactions: StackTransaction[] = useMemo(() => {
     const result: StackTransaction[] = [];
     const seenSignatures = new Set<string>();
+
+    // Add active MoonPay deposits at the TOP (most important for user visibility)
+    if (moonpayDeposits && moonpayDeposits.length > 0) {
+      const FIVE_MINUTES = 5 * 60 * 1000;
+      for (const deposit of moonpayDeposits) {
+        // Show active deposits + recently completed (< 5 min ago)
+        const isActive = deposit.status === 'pending' ||
+                         deposit.status === 'waitingPayment' ||
+                         deposit.status === 'processing';
+        const isRecentlyCompleted = deposit.status === 'completed' &&
+                                    deposit.completedAt &&
+                                    Date.now() - deposit.completedAt < FIVE_MINUTES;
+        const isRecentlyFailed = deposit.status === 'failed' &&
+                                  deposit.createdAt &&
+                                  Date.now() - deposit.createdAt < FIVE_MINUTES;
+
+        if (!isActive && !isRecentlyCompleted && !isRecentlyFailed) continue;
+
+        // Map deposit status to StackTransaction status
+        const stackStatus: 'processing' | 'completed' | 'failed' =
+          deposit.status === 'completed' ? 'completed' :
+          deposit.status === 'failed' ? 'failed' :
+          'processing';
+
+        // Format amounts
+        const fiatDollars = deposit.fiatAmount ? (deposit.fiatAmount / 100).toFixed(2) : '0.00';
+        const cryptoAmount = deposit.cryptoAmount
+          ? deposit.cryptoAmount.toFixed(2)
+          : (deposit.fiatAmount / 100).toFixed(2); // Estimate from fiat if crypto not yet known
+        const cryptoSymbol = deposit.cryptoCurrency?.toUpperCase() || 'USDC';
+
+        // Format fee
+        const moonpayFee = (deposit as any).moonpayFee;
+        const feeFormatted = moonpayFee ? `$${(moonpayFee / 100).toFixed(2)}` : undefined;
+
+        result.push({
+          id: deposit._id,
+          type: 'deposit' as TransactionType,
+          address: 'via MoonPay',
+          tokenAmount: `+${cryptoAmount} ${cryptoSymbol}`,
+          fiatValue: `$${fiatDollars}`,
+          fee: feeFormatted,
+          estimatedTime: stackStatus === 'processing' ? '~3-5m' : undefined,
+          tokenLogoUri: TOKEN_LOGOS[cryptoSymbol] || TOKEN_LOGOS['USDC'],
+          status: stackStatus,
+        });
+      }
+    }
 
     // Add in-app transfers first (they have richer data)
     if (mergeWithInApp && inAppTransfers && inAppTransfers.length > 0) {
@@ -216,7 +270,7 @@ export function useTransactionHistory(
     // Sort by most recent (in-app transfers don't have blockTime, so they stay at top)
     // This works because in-app transfers are added first and are typically most recent
     return result.slice(0, limit);
-  }, [onChainTransactions, inAppTransfers, mergeWithInApp, limit]);
+  }, [onChainTransactions, inAppTransfers, moonpayDeposits, mergeWithInApp, limit]);
 
   return {
     transactions,

@@ -131,6 +131,8 @@ export default function BuyCryptoScreen() {
         currencyCode: selectedCurrency.code,
         baseCurrencyAmount: numericAmount,
       });
+      // After browser closes, navigate to home so user sees deposit card in transaction stack
+      router.replace('/(tabs)');
     } catch (err) {
       console.error('Buy failed:', err);
     }

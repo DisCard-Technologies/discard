@@ -1,13 +1,16 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { StyleSheet, View, Image } from 'react-native';
 import { PressableScale } from 'pressto';
 import Animated, {
   useAnimatedStyle,
-  withSpring,
-  interpolate,
+  useSharedValue,
+  withRepeat,
+  withTiming,
+  Easing,
 } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import Svg, { Circle } from 'react-native-svg';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { useThemeColor } from '@/hooks/use-theme-color';
@@ -25,6 +28,7 @@ export interface StackTransaction {
   fee?: string;
   estimatedTime?: string;
   tokenLogoUri?: string;
+  status?: 'processing' | 'completed' | 'failed';
 }
 
 interface TransactionStackProps {
@@ -32,6 +36,58 @@ interface TransactionStackProps {
   onTransactionTap?: (transaction: StackTransaction) => void;
   maxVisible?: number;
   testID?: string;
+}
+
+const AnimatedSvgView = Animated.createAnimatedComponent(View);
+
+/**
+ * Rotating arc spinner that wraps around the transaction icon
+ */
+function ProcessingSpinner({ size = 40, color = primaryColor }: { size?: number; color?: string }) {
+  const rotation = useSharedValue(0);
+
+  useEffect(() => {
+    rotation.value = withRepeat(
+      withTiming(360, { duration: 1200, easing: Easing.linear }),
+      -1, // infinite
+      false
+    );
+  }, [rotation]);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${rotation.value}deg` }],
+  }));
+
+  const strokeWidth = 2;
+  const radius = (size - strokeWidth) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const arcLength = circumference * 0.3; // 30% of circle
+
+  return (
+    <AnimatedSvgView
+      style={[
+        {
+          position: 'absolute',
+          width: size,
+          height: size,
+        },
+        animatedStyle,
+      ]}
+    >
+      <Svg width={size} height={size}>
+        <Circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          stroke={color}
+          strokeWidth={strokeWidth}
+          fill="none"
+          strokeDasharray={`${arcLength} ${circumference - arcLength}`}
+          strokeLinecap="round"
+        />
+      </Svg>
+    </AnimatedSvgView>
+  );
 }
 
 export function TransactionStack({
@@ -142,11 +198,29 @@ export function TransactionStack({
               darkColor="#1a1f25"
             >
               <View style={styles.cardContent}>
-                <View style={[styles.iconContainer, { borderColor }]}>
+                <View style={[
+                  styles.iconContainer,
+                  {
+                    borderColor: tx.status === 'failed' ? '#ef4444' :
+                                 tx.status === 'completed' ? '#10b981' :
+                                 borderColor,
+                  },
+                ]}>
+                  {tx.status === 'processing' && (
+                    <ProcessingSpinner size={42} color={primaryColor} />
+                  )}
                   <Ionicons
-                    name={getTransactionIcon(tx.type)}
+                    name={
+                      tx.status === 'completed' ? 'checkmark' :
+                      tx.status === 'failed' ? 'close' :
+                      getTransactionIcon(tx.type)
+                    }
                     size={20}
-                    color={colors.text}
+                    color={
+                      tx.status === 'completed' ? '#10b981' :
+                      tx.status === 'failed' ? '#ef4444' :
+                      colors.text
+                    }
                   />
                 </View>
                 <View style={styles.txInfo}>
