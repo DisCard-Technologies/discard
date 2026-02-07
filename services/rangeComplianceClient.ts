@@ -267,8 +267,7 @@ export class RangeComplianceService {
 
     try {
       if (!this.apiKey) {
-        console.warn("[RangeCompliance] No API key - returning safe default");
-        return this.getSafeDefaultResult(address);
+        throw new Error("Range API key not configured — cannot perform compliance check");
       }
 
       const response = await this.fetchWithRetry(
@@ -282,8 +281,7 @@ export class RangeComplianceService {
       );
 
       if (!response.ok) {
-        console.error("[RangeCompliance] API error:", response.status);
-        return this.getSafeDefaultResult(address);
+        throw new Error(`Compliance API error (HTTP ${response.status})`);
       }
 
       const data = await response.json();
@@ -314,7 +312,7 @@ export class RangeComplianceService {
       return result;
     } catch (error) {
       console.error("[RangeCompliance] Sanctions check failed:", error);
-      return this.getSafeDefaultResult(address);
+      throw error;
     }
   }
 
@@ -568,19 +566,6 @@ export class RangeComplianceService {
     const idx1 = levels.indexOf(level1);
     const idx2 = levels.indexOf(level2);
     return levels[Math.max(idx1, idx2)] as any;
-  }
-
-  /**
-   * Get safe default result when API is unavailable
-   */
-  private getSafeDefaultResult(address: string): SanctionsCheckResult {
-    return {
-      address,
-      isOfacSanctioned: false,
-      isTokenBlacklisted: false,
-      riskLevel: "low",
-      checkedAt: Date.now(),
-    };
   }
 
   /**

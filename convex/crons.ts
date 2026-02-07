@@ -108,4 +108,26 @@ crons.weekly(
   internal.crons.cleanupMetrics.run
 );
 
+// ============ BLINK CLAIMS ============
+
+/**
+ * Expire unclaimed blink links past their 15-minute window
+ * Releases stealth address funds and marks claims as expired
+ */
+crons.interval(
+  "expire-blink-claims",
+  { minutes: 5 },
+  internal.actions.blinkClaim.expireOldBlinks
+);
+
+/**
+ * Process batched pool → recipient payouts (privacy: batching breaks timing correlation)
+ * Picks up queued payouts whose scheduledFor timestamp has passed
+ */
+crons.interval(
+  "process-blink-payouts",
+  { minutes: 5 },
+  internal.actions.blinkClaim.processPayoutBatch
+);
+
 export default crons;

@@ -22,144 +22,31 @@ import {
 } from "@solana/web3.js";
 import bs58 from "bs58";
 
+import {
+  getBalance,
+  getLatestBlockhash,
+  sendTransaction,
+  waitForConfirmation,
+  getTransaction,
+  accountExists,
+  deriveAta,
+  IS_DEVNET,
+  RPC_URL,
+  TOKEN_PROGRAM_ID,
+  ASSOCIATED_TOKEN_PROGRAM_ID,
+  NATIVE_SOL_MINT,
+} from "../lib/solanaRpc";
+
 // ============================================================================
 // Configuration
 // ============================================================================
-
-const SOLANA_NETWORK = process.env.SOLANA_NETWORK || "devnet";
-const IS_DEVNET = SOLANA_NETWORK === "devnet";
-
-const RPC_URL = IS_DEVNET
-  ? process.env.HELIUS_RPC_URL || "https://api.devnet.solana.com"
-  : process.env.HELIUS_RPC_URL || "https://api.mainnet-beta.solana.com";
 
 // Pool keypair from environment (server-side only - never expose to client)
 const POOL_PRIVATE_KEY = process.env.SHADOWWIRE_POOL_PRIVATE_KEY;
 
 // ============================================================================
-// Raw RPC Helper Functions (avoiding @solana/web3.js Connection)
+// SPL Token Helpers
 // ============================================================================
-
-async function rpcCall(method: string, params: any[]): Promise<any> {
-  const response = await fetch(RPC_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      id: 1,
-      method,
-      params,
-    }),
-  });
-
-  const data = await response.json();
-  if (data.error) {
-    throw new Error(`RPC Error: ${data.error.message || JSON.stringify(data.error)}`);
-  }
-  return data.result;
-}
-
-async function getBalance(pubkey: string): Promise<number> {
-  const result = await rpcCall("getBalance", [pubkey, { commitment: "confirmed" }]);
-  return result.value;
-}
-
-async function getLatestBlockhash(): Promise<{ blockhash: string; lastValidBlockHeight: number }> {
-  const result = await rpcCall("getLatestBlockhash", [{ commitment: "confirmed" }]);
-  return {
-    blockhash: result.value.blockhash,
-    lastValidBlockHeight: result.value.lastValidBlockHeight,
-  };
-}
-
-async function sendTransaction(serializedTx: Uint8Array): Promise<string> {
-  // Convert Uint8Array to base64 without using Node.js Buffer
-  const base64Tx = uint8ArrayToBase64(serializedTx);
-  const signature = await rpcCall("sendTransaction", [
-    base64Tx,
-    {
-      encoding: "base64",
-      skipPreflight: false,
-      preflightCommitment: "confirmed",
-    },
-  ]);
-  return signature;
-}
-
-// Helper to convert Uint8Array to base64 without Buffer
-function uint8ArrayToBase64(bytes: Uint8Array): string {
-  let binary = "";
-  for (let i = 0; i < bytes.length; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  return btoa(binary);
-}
-
-async function getSignatureStatus(signature: string): Promise<{ confirmed: boolean; err: any }> {
-  const result = await rpcCall("getSignatureStatuses", [[signature]]);
-  const status = result.value[0];
-  if (!status) {
-    return { confirmed: false, err: null };
-  }
-  return {
-    confirmed: status.confirmationStatus === "confirmed" || status.confirmationStatus === "finalized",
-    err: status.err,
-  };
-}
-
-async function waitForConfirmation(signature: string, maxAttempts = 30): Promise<boolean> {
-  for (let i = 0; i < maxAttempts; i++) {
-    const status = await getSignatureStatus(signature);
-    if (status.err) {
-      throw new Error(`Transaction failed: ${JSON.stringify(status.err)}`);
-    }
-    if (status.confirmed) {
-      return true;
-    }
-    // Wait 1 second between checks
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-  }
-  throw new Error("Transaction confirmation timeout");
-}
-
-async function getTransaction(signature: string): Promise<any> {
-  const result = await rpcCall("getTransaction", [
-    signature,
-    { encoding: "json", commitment: "confirmed", maxSupportedTransactionVersion: 0 },
-  ]);
-  return result;
-}
-
-// ============================================================================
-// SPL Token Constants & Helpers (raw, no @solana/spl-token in Convex)
-// ============================================================================
-
-const TOKEN_PROGRAM_ID = new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
-const ASSOCIATED_TOKEN_PROGRAM_ID = new PublicKey("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL");
-const NATIVE_SOL_MINT = "So11111111111111111111111111111111111111112";
-
-/**
- * Derive Associated Token Address (deterministic PDA)
- */
-function deriveAta(owner: PublicKey, mint: PublicKey): PublicKey {
-  const [ata] = PublicKey.findProgramAddressSync(
-    [owner.toBuffer(), TOKEN_PROGRAM_ID.toBuffer(), mint.toBuffer()],
-    ASSOCIATED_TOKEN_PROGRAM_ID
-  );
-  return ata;
-}
-
-/**
- * Check if an account exists on-chain via RPC
- */
-async function accountExists(address: string): Promise<boolean> {
-  try {
-    const result = await rpcCall("getAccountInfo", [address, { encoding: "base64" }]);
-    return result.value !== null;
-  } catch {
-    return false;
-  }
-}
 
 /**
  * Build a raw SPL token transfer transaction with ATA creation if needed.

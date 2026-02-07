@@ -20,9 +20,11 @@ import { PressableScale } from "pressto";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { EyeOff, Shield, Clock, Zap } from "lucide-react-native";
+import { EyeOff, Shield, Clock, Zap, Globe } from "lucide-react-native";
 import Animated, { FadeIn, FadeInUp } from "react-native-reanimated";
 import QRCode from "react-native-qrcode-svg";
+import { useMutation } from "convex/react";
+import { api } from "@/convex/_generated/api";
 
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
@@ -62,7 +64,6 @@ export default function OneTimeLinkScreen() {
 
   const [amount, setAmount] = useState(params.amount || "");
   const [selectedToken, setSelectedToken] = useState(initialToken);
-  const [memo, setMemo] = useState("");
   const [generatedLink, setGeneratedLink] = useState<OneTimeLinkResult | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -70,6 +71,7 @@ export default function OneTimeLinkScreen() {
   const [isCopied, setIsCopied] = useState(false);
 
   const oneTimeService = getOneTimePaymentService();
+  const createBlinkClaimMutation = useMutation(api.actions.blinkClaim.createBlinkClaim);
 
   // Crypto rates for real-time SOL price
   const { convertToUsd, convertFromUsd, isLoading: ratesLoading } = useCryptoRates({
@@ -122,7 +124,7 @@ export default function OneTimeLinkScreen() {
     return converted ?? numericAmount * 100; // Fallback if rate unavailable
   }, [numericAmount, selectedToken.symbol, convertToUsd]);
 
-  // Generate one-time link
+  // Generate blink claim link (claimable by any Solana wallet)
   const handleGenerate = useCallback(async () => {
     if (numericAmount <= 0) return;
 
@@ -130,23 +132,46 @@ export default function OneTimeLinkScreen() {
     setError(null);
 
     try {
-      const result = await oneTimeService.createOneTimeLink({
-        amount: numericAmount,
+      const amountBaseUnits = Math.floor(
+        numericAmount * Math.pow(10, selectedToken.decimals)
+      );
+
+      const result = await oneTimeService.createBlinkLink({
+        amount: amountBaseUnits,
         token: selectedToken.symbol,
         tokenMint: selectedToken.mint,
         tokenDecimals: selectedToken.decimals,
-        amountUsd,
-        memo: memo.trim() || undefined,
+        amountDisplay: numericAmount,
+        createBlinkClaimMutation: createBlinkClaimMutation,
       });
 
-      setGeneratedLink(result);
+      // Set compatible generatedLink for the shared UI (QR, timer, etc.)
+      setGeneratedLink({
+        linkId: result.linkId,
+        claimUrl: result.claimUrl,
+        qrData: result.claimUrl,
+        discardDeepLink: `discard://claim/${result.linkId}`,
+        linkData: {
+          linkId: result.linkId,
+          encryptedSeed: "",
+          viewingKey: "",
+          amount: numericAmount,
+          token: selectedToken.symbol,
+          tokenMint: selectedToken.mint,
+          tokenDecimals: selectedToken.decimals,
+          amountUsd,
+          expiresAt: Date.now() + 15 * 60 * 1000,
+          status: "pending",
+          createdAt: Date.now(),
+        },
+      });
     } catch (err) {
       console.error("[OneTimeLink] Generation failed:", err);
       setError(err instanceof Error ? err.message : "Failed to create link");
     }
 
     setIsCreating(false);
-  }, [numericAmount, selectedToken, amountUsd, memo, oneTimeService]);
+  }, [numericAmount, selectedToken, amountUsd, oneTimeService, createBlinkClaimMutation]);
 
   // Copy link
   const handleCopy = useCallback(async () => {
@@ -170,7 +195,7 @@ export default function OneTimeLinkScreen() {
     try {
       const { Share } = await import("react-native");
       await Share.share({
-        message: `Claim ${numericAmount} ${selectedToken.symbol} privately (expires in 15 min): ${generatedLink.claimUrl}`,
+        message: `Claim ${numericAmount} ${selectedToken.symbol} in any Solana wallet (expires in 15 min): ${generatedLink.claimUrl}`,
         url: generatedLink.claimUrl,
       });
     } catch (err) {
@@ -182,7 +207,6 @@ export default function OneTimeLinkScreen() {
   const handleNewRequest = useCallback(() => {
     setGeneratedLink(null);
     setAmount("");
-    setMemo("");
     setError(null);
   }, []);
 
@@ -257,7 +281,7 @@ export default function OneTimeLinkScreen() {
                   <View style={[styles.qrPrivacyBadge, { backgroundColor: `${privacyColor}10` }]}>
                     <EyeOff size={12} color={privacyColor} />
                     <ThemedText style={[styles.qrPrivacyText, { color: privacyColor }]}>
-                      Stealth Address Delivery
+                      Pool Relay Privacy
                     </ThemedText>
                   </View>
                 </>
@@ -305,16 +329,20 @@ export default function OneTimeLinkScreen() {
                 PRIVACY FEATURES
               </ThemedText>
               <View style={styles.featureRow}>
+                <Globe size={14} color={primaryColor} />
+                <ThemedText style={styles.featureText}>Claimable by any Solana wallet (Phantom, Backpack, etc.)</ThemedText>
+              </View>
+              <View style={styles.featureRow}>
                 <Shield size={14} color={privacyColor} />
-                <ThemedText style={styles.featureText}>Single-use link (auto-expires after claim)</ThemedText>
+                <ThemedText style={styles.featureText}>Two-hop pool relay hides sender-recipient link</ThemedText>
               </View>
               <View style={styles.featureRow}>
                 <EyeOff size={14} color={privacyColor} />
-                <ThemedText style={styles.featureText}>Recipient address generated at claim time</ThemedText>
+                <ThemedText style={styles.featureText}>Batched payouts break timing correlation</ThemedText>
               </View>
               <View style={styles.featureRow}>
                 <Ionicons name="shield-checkmark" size={14} color={privacyColor} />
-                <ThemedText style={styles.featureText}>No persistent identity on-chain</ThemedText>
+                <ThemedText style={styles.featureText}>Single-use link (auto-expires in 15 min)</ThemedText>
               </View>
             </Animated.View>
           </ScrollView>
@@ -395,11 +423,11 @@ export default function OneTimeLinkScreen() {
             <Shield size={18} color={privacyColor} />
             <View style={styles.infoBannerContent}>
               <ThemedText style={[styles.infoBannerTitle, { color: privacyColor }]}>
-                Privacy-Preserving Payment Link
+                Private Payment Link
               </ThemedText>
               <ThemedText style={[styles.infoBannerText, { color: mutedColor }]}>
-                Link expires in 15 minutes and can only be claimed once. Recipient's address is
-                generated at claim time for maximum privacy.
+                Create a link claimable by any Solana wallet. Funds are routed through a privacy
+                pool so sender and recipient are unlinkable on-chain. Expires in 15 minutes.
               </ThemedText>
             </View>
           </Animated.View>
@@ -468,28 +496,6 @@ export default function OneTimeLinkScreen() {
                   </ThemedText>
                 </PressableScale>
               ))}
-            </View>
-          </Animated.View>
-
-          {/* Memo Input */}
-          <Animated.View entering={FadeInUp.delay(300).duration(300)}>
-            <ThemedText style={[styles.inputLabel, { color: mutedColor }]}>
-              PRIVATE MEMO (OPTIONAL)
-            </ThemedText>
-            <TextInput
-              style={[styles.memoInput, { borderColor, color: textColor }]}
-              value={memo}
-              onChangeText={setMemo}
-              placeholder="Encrypted memo for recipient..."
-              placeholderTextColor={mutedColor}
-              multiline
-              maxLength={100}
-            />
-            <View style={styles.memoHint}>
-              <EyeOff size={12} color={mutedColor} />
-              <ThemedText style={[styles.memoHintText, { color: mutedColor }]}>
-                Memo is encrypted and only visible to recipient
-              </ThemedText>
             </View>
           </Animated.View>
 
@@ -636,23 +642,6 @@ const styles = StyleSheet.create({
   tokenName: {
     fontSize: 11,
     marginTop: 2,
-  },
-  memoInput: {
-    borderWidth: 1.5,
-    borderRadius: 14,
-    padding: 16,
-    fontSize: 15,
-    minHeight: 80,
-    textAlignVertical: "top",
-  },
-  memoHint: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    marginTop: 8,
-  },
-  memoHintText: {
-    fontSize: 11,
   },
   errorContainer: {
     flexDirection: "row",

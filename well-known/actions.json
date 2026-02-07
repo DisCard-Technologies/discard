@@ -1,0 +1,8 @@
+{
+  "rules": [
+    {
+      "pathPattern": "/claim/*",
+      "apiPath": "/api/actions/claim?linkId=*"
+    }
+  ]
+}

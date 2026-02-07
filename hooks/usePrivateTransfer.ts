@@ -138,10 +138,11 @@ export function usePrivateTransfer() {
     } catch (error) {
       console.error("[PrivateTransfer] Compliance check failed:", error);
       const result: PrivacyCheckResult = {
-        compliant: true, // Fail open for availability
-        warnings: ["Compliance check unavailable - proceeding with caution"],
+        compliant: false,
+        warnings: [],
+        error: "Compliance check unavailable — transfer blocked for safety. Please try again.",
       };
-      setState({ status: "ready", privacyCheck: result });
+      setState({ status: "error", privacyCheck: result, error: result.error });
       setIsLoading(false);
       return result;
     }

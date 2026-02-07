@@ -1722,7 +1722,8 @@ export default defineSchema({
     linkType: v.union(
       v.literal("solana_pay"),        // Standard Solana Pay URI
       v.literal("deep_link"),         // discard:// deep link
-      v.literal("web_link")           // https://www.discard.tech/pay/...
+      v.literal("web_link"),          // https://www.discard.tech/pay/...
+      v.literal("blink")             // Solana Actions blink (any wallet claim)
     ),
     linkUrl: v.string(),              // The generated link
 
@@ -3149,5 +3150,84 @@ export default defineSchema({
   })
     .index("by_recipient_hash", ["recipientHash", "claimed"])
     .index("by_stealth_address", ["stealthAddress"]),
+
+  // ============ BLINK CLAIMS ============
+  // Confidential blink claims — external wallet claim via Solana Actions
+  blinkClaims: defineTable({
+    // Claim identification
+    linkId: v.string(),               // 8-char claim code (in URL)
+    stealthAddress: v.string(),       // Where funds sit (stealth PDA)
+    stealthSeed: v.string(),          // base64-encoded 32-byte seed (SECRET, server-only)
+
+    // Amount info
+    amount: v.number(),               // Amount in base units (lamports / token units)
+    tokenMint: v.string(),            // Mint address
+    tokenDecimals: v.number(),
+    tokenSymbol: v.string(),          // "USDC", "SOL", etc.
+    amountDisplay: v.number(),        // Human-readable amount (e.g. 5.00)
+
+    // Status tracking
+    status: v.union(
+      v.literal("active"),            // Created, awaiting claim
+      v.literal("deposited"),         // Stealth → pool tx built
+      v.literal("confirmed"),         // Stealth → pool tx verified on-chain
+      v.literal("paid"),              // Pool → recipient tx confirmed
+      v.literal("expired"),           // Past expiry without claim
+      v.literal("cancelled")          // Creator cancelled
+    ),
+
+    // Claimer info (filled on POST)
+    claimerAccount: v.optional(v.string()),   // Recipient wallet pubkey
+    depositTxSig: v.optional(v.string()),     // Stealth → pool tx signature
+    payoutTxSig: v.optional(v.string()),      // Pool → recipient tx signature
+
+    // Rate limiting
+    claimAttempts: v.number(),        // Number of buildDepositToPool attempts
+
+    // Expiry
+    expiresAt: v.number(),            // 15-minute window
+
+    // Timestamps
+    createdAt: v.number(),
+    claimedAt: v.optional(v.number()),
+    paidAt: v.optional(v.number()),
+
+    // Audit trail
+    creatorId: v.id("users"),         // Who created this blink link
+  })
+    .index("by_link_id", ["linkId"])
+    .index("by_status", ["status"])
+    .index("by_stealth_address", ["stealthAddress"]),
+
+  // ============ PENDING PAYOUTS ============
+  // Batch queue for pool → recipient relay (privacy: batching breaks timing correlation)
+  pendingPayouts: defineTable({
+    blinkClaimId: v.id("blinkClaims"),   // Links back to claim
+    recipientAddress: v.string(),         // Where to send
+    amount: v.number(),                   // Base units
+    tokenMint: v.string(),                // Mint address
+    tokenDecimals: v.number(),
+
+    // Status tracking
+    status: v.union(
+      v.literal("queued"),               // Waiting for batch processing
+      v.literal("processing"),           // Currently being sent
+      v.literal("completed"),            // Successfully sent
+      v.literal("failed")               // Send failed (will retry)
+    ),
+
+    // Scheduling (timing jitter for privacy)
+    scheduledFor: v.number(),            // Timestamp with random delay (now + 0-300s)
+
+    // Retry tracking
+    attempts: v.number(),                // Retry counter
+    txSignature: v.optional(v.string()), // Payout tx signature once completed
+    error: v.optional(v.string()),       // Last error message
+
+    // Timestamps
+    createdAt: v.number(),
+    completedAt: v.optional(v.number()),
+  })
+    .index("by_status_scheduled", ["status", "scheduledFor"]),
 
 });

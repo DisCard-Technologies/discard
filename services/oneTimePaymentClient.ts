@@ -121,6 +121,43 @@ export interface PaymentDeliveryResult {
   error?: string;
 }
 
+export interface BlinkLinkParams {
+  /** Amount in base units (lamports / token smallest unit) */
+  amount: number;
+  /** Token symbol (USDC, SOL, etc.) */
+  token: string;
+  /** Token mint address */
+  tokenMint: string;
+  /** Token decimals */
+  tokenDecimals: number;
+  /** Human-readable amount (e.g. 5.00) */
+  amountDisplay: number;
+  /** Convex mutation caller — passed in from the React component */
+  createBlinkClaimMutation: (args: {
+    stealthSeed: string;
+    stealthAddress: string;
+    amount: number;
+    tokenMint: string;
+    tokenDecimals: number;
+    tokenSymbol: string;
+    amountDisplay: number;
+    credentialId?: string;
+  }) => Promise<{ linkId: string; claimId: string; stealthAddress: string }>;
+  /** Optional credentialId for auth fallback */
+  credentialId?: string;
+}
+
+export interface BlinkLinkResult {
+  /** Link ID (claim code) */
+  linkId: string;
+  /** Full claim URL (shareable) */
+  claimUrl: string;
+  /** Stealth address where funds will be deposited */
+  stealthAddress: string;
+  /** Stealth keypair seed (for relay funding) */
+  stealthSeed: Uint8Array;
+}
+
 // ============================================================================
 // One-Time Payment Service
 // ============================================================================
@@ -194,6 +231,57 @@ export class OneTimePaymentService {
       qrData,
       discardDeepLink,
       linkData,
+    };
+  }
+
+  // ==========================================================================
+  // Blink Link Creation (Solana Actions — any wallet claim)
+  // ==========================================================================
+
+  /**
+   * Create a blink-compatible claim link
+   *
+   * Generates a stealth keypair, stores the seed server-side via Convex,
+   * and returns the claim URL for sharing. The stealth address must then
+   * be funded via ShadowWire relay (User → Pool → Stealth).
+   */
+  async createBlinkLink(params: BlinkLinkParams): Promise<BlinkLinkResult> {
+    console.log("[OneTimePayment] Creating blink link:", {
+      amount: params.amountDisplay,
+      token: params.token,
+    });
+
+    // Generate random 32-byte seed → deterministic stealth keypair
+    const seed = await Crypto.getRandomBytesAsync(32);
+    const stealthKeypair = Keypair.fromSeed(seed);
+    const stealthAddress = stealthKeypair.publicKey.toBase58();
+    const stealthSeedBase64 = this.uint8ArrayToBase64(seed);
+
+    // Store seed server-side via Convex mutation (returns linkId)
+    const result = await params.createBlinkClaimMutation({
+      stealthSeed: stealthSeedBase64,
+      stealthAddress,
+      amount: params.amount,
+      tokenMint: params.tokenMint,
+      tokenDecimals: params.tokenDecimals,
+      tokenSymbol: params.token,
+      amountDisplay: params.amountDisplay,
+      credentialId: params.credentialId,
+    });
+
+    const claimUrl = `${WEB_LINK_BASE}/${result.linkId}`;
+
+    console.log("[OneTimePayment] Blink link created:", {
+      linkId: result.linkId,
+      stealthAddress: stealthAddress.slice(0, 8) + "...",
+      claimUrl,
+    });
+
+    return {
+      linkId: result.linkId,
+      claimUrl,
+      stealthAddress,
+      stealthSeed: seed,
     };
   }
 

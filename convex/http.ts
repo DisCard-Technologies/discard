@@ -7,7 +7,7 @@
  */
 import { httpRouter } from "convex/server";
 import { httpAction } from "./_generated/server";
-import { internal } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 
 const http = httpRouter();
 
@@ -662,6 +662,256 @@ http.route({
         headers: { "Content-Type": "application/json" },
       }
     );
+  }),
+});
+
+// ============ SOLANA ACTIONS (BLINKS) — CONFIDENTIAL CLAIMS ============
+
+const ACTIONS_CORS_HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, POST, PUT, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, Content-Encoding, Accept-Encoding",
+  "Access-Control-Expose-Headers": "X-Action-Version, X-Blockchain-Ids",
+  "X-Action-Version": "2.1.3",
+  "X-Blockchain-Ids": "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1",
+  "Content-Type": "application/json",
+};
+
+const BLINK_ICON_URL = "https://www.discard.tech/icon-blink.png";
+
+/**
+ * OPTIONS /api/actions/claim — CORS preflight
+ */
+http.route({
+  path: "/api/actions/claim",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, { status: 204, headers: ACTIONS_CORS_HEADERS });
+  }),
+});
+
+/**
+ * GET /api/actions/claim — Returns ActionGetResponse metadata
+ *
+ * Wallets (Phantom, Backpack, etc.) fetch this to display the Blink card.
+ */
+http.route({
+  path: "/api/actions/claim",
+  method: "GET",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const url = new URL(request.url);
+      const linkId = url.searchParams.get("linkId");
+
+      if (!linkId) {
+        return new Response(
+          JSON.stringify({ error: "Missing linkId parameter" }),
+          { status: 400, headers: ACTIONS_CORS_HEADERS }
+        );
+      }
+
+      const claim = await ctx.runQuery(api.actions.blinkClaim.getBlinkClaim, { linkId });
+
+      if (!claim) {
+        // Return completed action for invalid links
+        return new Response(
+          JSON.stringify({
+            type: "completed",
+            icon: BLINK_ICON_URL,
+            title: "Invalid Claim Link",
+            description: "This claim link is not valid.",
+            label: "Invalid",
+          }),
+          { status: 200, headers: ACTIONS_CORS_HEADERS }
+        );
+      }
+
+      const isExpired = claim.expiresAt < Date.now();
+      const isUsed = claim.status === "deposited" || claim.status === "confirmed" || claim.status === "paid";
+
+      if (isExpired || claim.status === "expired") {
+        return new Response(
+          JSON.stringify({
+            type: "completed",
+            icon: BLINK_ICON_URL,
+            title: "Claim Expired",
+            description: `This ${claim.amountDisplay} ${claim.tokenSymbol} claim has expired.`,
+            label: "Expired",
+          }),
+          { status: 200, headers: ACTIONS_CORS_HEADERS }
+        );
+      }
+
+      if (isUsed) {
+        return new Response(
+          JSON.stringify({
+            type: "completed",
+            icon: BLINK_ICON_URL,
+            title: "Already Claimed",
+            description: `This ${claim.amountDisplay} ${claim.tokenSymbol} transfer has already been claimed.`,
+            label: "Claimed",
+          }),
+          { status: 200, headers: ACTIONS_CORS_HEADERS }
+        );
+      }
+
+      // Active claim — show the claim button
+      return new Response(
+        JSON.stringify({
+          type: "action",
+          icon: BLINK_ICON_URL,
+          title: `Claim ${claim.amountDisplay} ${claim.tokenSymbol}`,
+          description: `You've received a private transfer of ${claim.amountDisplay} ${claim.tokenSymbol}. Claim it to your wallet now. The transfer is routed through a privacy pool — sender and recipient are unlinkable on-chain.`,
+          label: `Claim ${claim.amountDisplay} ${claim.tokenSymbol}`,
+          links: {
+            actions: [
+              {
+                type: "transaction",
+                label: `Claim ${claim.amountDisplay} ${claim.tokenSymbol}`,
+                href: `/api/actions/claim?linkId=${linkId}`,
+              },
+            ],
+          },
+        }),
+        { status: 200, headers: ACTIONS_CORS_HEADERS }
+      );
+    } catch (error) {
+      console.error("[Blink GET] Error:", error);
+      return new Response(
+        JSON.stringify({ error: "Internal error" }),
+        { status: 500, headers: ACTIONS_CORS_HEADERS }
+      );
+    }
+  }),
+});
+
+/**
+ * POST /api/actions/claim — Returns partially-signed deposit tx (stealth → pool)
+ *
+ * The wallet signs this tx as fee payer and submits it.
+ * After confirmation, the wallet follows the chained action to confirm.
+ */
+http.route({
+  path: "/api/actions/claim",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const url = new URL(request.url);
+      const linkId = url.searchParams.get("linkId");
+
+      if (!linkId) {
+        return new Response(
+          JSON.stringify({ error: "Missing linkId parameter" }),
+          { status: 400, headers: ACTIONS_CORS_HEADERS }
+        );
+      }
+
+      const body = await request.json();
+      const account = body.account;
+
+      if (!account || typeof account !== "string") {
+        return new Response(
+          JSON.stringify({ error: "Missing or invalid account in request body" }),
+          { status: 400, headers: ACTIONS_CORS_HEADERS }
+        );
+      }
+
+      const result = await ctx.runAction(api.actions.blinkClaim.buildDepositToPoolTransaction, {
+        linkId,
+        claimerAccount: account,
+      });
+
+      return new Response(
+        JSON.stringify({
+          type: "transaction",
+          transaction: result.transaction,
+          message: result.message,
+          links: {
+            next: {
+              type: "post",
+              href: `/api/actions/claim/confirm?linkId=${linkId}`,
+            },
+          },
+        }),
+        { status: 200, headers: ACTIONS_CORS_HEADERS }
+      );
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : "Failed to build claim transaction";
+      console.error("[Blink POST] Error:", errMsg);
+      return new Response(
+        JSON.stringify({ error: errMsg }),
+        { status: 400, headers: ACTIONS_CORS_HEADERS }
+      );
+    }
+  }),
+});
+
+/**
+ * OPTIONS /api/actions/claim/confirm — CORS preflight for chained action
+ */
+http.route({
+  path: "/api/actions/claim/confirm",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, { status: 204, headers: ACTIONS_CORS_HEADERS });
+  }),
+});
+
+/**
+ * POST /api/actions/claim/confirm — Chained action: verify deposit + queue payout
+ *
+ * Called by the wallet after the deposit tx confirms.
+ * Receives the tx signature and triggers the pool → recipient payout.
+ */
+http.route({
+  path: "/api/actions/claim/confirm",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    try {
+      const url = new URL(request.url);
+      const linkId = url.searchParams.get("linkId");
+
+      if (!linkId) {
+        return new Response(
+          JSON.stringify({ error: "Missing linkId parameter" }),
+          { status: 400, headers: ACTIONS_CORS_HEADERS }
+        );
+      }
+
+      const body = await request.json();
+      const { account, signature } = body;
+
+      if (!account || !signature) {
+        return new Response(
+          JSON.stringify({ error: "Missing account or signature in request body" }),
+          { status: 400, headers: ACTIONS_CORS_HEADERS }
+        );
+      }
+
+      const result = await ctx.runAction(api.actions.blinkClaim.confirmClaimAndRelay, {
+        linkId,
+        signature,
+        account,
+      });
+
+      return new Response(
+        JSON.stringify({
+          type: "completed",
+          icon: BLINK_ICON_URL,
+          title: "Transfer Claimed!",
+          description: result.message,
+          label: "Done",
+        }),
+        { status: 200, headers: ACTIONS_CORS_HEADERS }
+      );
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : "Confirmation failed";
+      console.error("[Blink Confirm] Error:", errMsg);
+      return new Response(
+        JSON.stringify({ error: errMsg }),
+        { status: 400, headers: ACTIONS_CORS_HEADERS }
+      );
+    }
   }),
 });
 
