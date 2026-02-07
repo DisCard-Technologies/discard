@@ -481,7 +481,7 @@ describe('Utility Functions', () => {
     test('delays function execution', () => {
       const fn = jest.fn();
       const debounce = (func: Function, wait: number) => {
-        let timeout: NodeJS.Timeout;
+        let timeout: ReturnType<typeof setTimeout>;
         return (...args: any[]) => {
           clearTimeout(timeout);
           timeout = setTimeout(() => func(...args), wait);

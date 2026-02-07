@@ -179,7 +179,7 @@ export const triggerAutoShield = internalAction({
     let balance: number;
 
     try {
-      const balanceResult = await getTokenAccountBalance(stealthAta.toBase58());
+      const balanceResult = await getTokenAccountBalance(stealthPubkey.toBase58(), usdcMint.toBase58());
       balance = parseInt(balanceResult.amount, 10);
     } catch {
       console.error("[CashoutPipeline] No USDC balance at stealth address");

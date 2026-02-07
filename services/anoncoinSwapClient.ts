@@ -520,7 +520,7 @@ export class AnoncoinSwapService {
 
       if (status.status === "completed") {
         // Get the transaction signature from the computation result
-        const txSignature = status.signature || `anoncoin_tx_${computationId}`;
+        const txSignature = (status as any).signature || `anoncoin_tx_${computationId}`;
 
         // Verify the transaction on-chain
         let verification: TransactionVerification | undefined;

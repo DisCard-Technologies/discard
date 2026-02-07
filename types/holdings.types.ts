@@ -8,7 +8,7 @@
  * - RWA token registry
  */
 
-import type { Id } from "../../convex/_generated/dataModel";
+import type { Id } from "../convex/_generated/dataModel";
 
 // ============================================================================
 // JUPITER ULTRA API TYPES (User Holdings)

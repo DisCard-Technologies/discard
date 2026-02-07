@@ -22,8 +22,8 @@ import { getArciumMpcService, type EncryptedInput } from "./arciumMpcClient";
 import { getRangeComplianceService } from "./rangeComplianceClient";
 import type { AttestationType, AttestationData, AttestationIssuer } from "@/lib/attestations/sas-client";
 import { deriveEncryptionKey, encryptData, decryptData } from "@/lib/crypto-utils";
-import { sha256 } from '@noble/hashes/sha2';
-import { bytesToHex } from '@noble/hashes/utils';
+import { sha256 } from '@noble/hashes/sha2.js';
+import { bytesToHex } from '@noble/hashes/utils.js';
 
 // ============================================================================
 // Types
@@ -294,7 +294,7 @@ export class PrivateIdentityService {
         const stored: StoredCredential = {
           id: cred.credentialId,
           attestationType: cred.attestationType as any,
-          issuer: { id: cred.issuer, name: cred.issuer, publicKey: '' },
+          issuer: cred.issuer as AttestationIssuer,
           storedAt: Date.now(),
           expiresAt: cred.expiresAt,
           encryptedData: '', // Already decrypted
@@ -331,7 +331,7 @@ export class PrivateIdentityService {
         type: attestation.type,
         issuer: attestation.issuer,
         subjectDid: attestation.subjectDid,
-        claims: attestation.claims,
+        metadata: attestation.metadata,
         issuedAt: attestation.issuedAt,
         expiresAt: attestation.expiresAt,
         zkProof: attestation.zkProof ? Array.from(attestation.zkProof) : undefined,
@@ -366,7 +366,7 @@ export class PrivateIdentityService {
             credentialId: credential.id,
             data: attestation,
             attestationType: credential.attestationType,
-            issuer: credential.issuer.name,
+            issuer: credential.issuer,
             availableProofs: credential.availableProofs,
             expiresAt: credential.expiresAt,
           });
@@ -785,7 +785,7 @@ export class PrivateIdentityService {
 
   private async hashIssuerKey(issuer: AttestationIssuer): Promise<string> {
     // Hash the issuer's public key
-    return `issuer_${issuer.id}_${issuer.name}`.split("").reduce((hash, char) => {
+    return `issuer_${issuer}`.split("").reduce((hash, char) => {
       return ((hash << 5) - hash) + char.charCodeAt(0);
     }, 0).toString(16).padStart(16, "0");
   }

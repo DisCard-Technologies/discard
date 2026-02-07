@@ -504,7 +504,7 @@ export function useTransfer(options: UseTransferOptions): UseTransferReturn {
       transferIdRef.current = transferId;
 
       // 4. Sign with Turnkey (triggers biometric)
-      const { signedTransaction } = await turnkey.signTransaction(txResult.transaction);
+      const signedTransaction = await turnkey.signTransaction(txResult.transaction);
 
       await updateTransferStatus({
         transferId,

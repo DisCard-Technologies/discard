@@ -561,7 +561,7 @@ export class OneTimePaymentService {
     const keyBytes = this.base64ToUint8Array(viewingKey);
 
     // Derive a proper 256-bit key from viewing key using SHA-256
-    const keyMaterial = await crypto.subtle.digest("SHA-256", keyBytes);
+    const keyMaterial = await crypto.subtle.digest("SHA-256", new Uint8Array(keyBytes));
     const cryptoKey = await crypto.subtle.importKey(
       "raw",
       keyMaterial,
@@ -571,7 +571,7 @@ export class OneTimePaymentService {
     );
 
     // Generate random 12-byte nonce (IV)
-    const nonce = await Crypto.getRandomBytesAsync(12);
+    const nonce = new Uint8Array(await Crypto.getRandomBytesAsync(12));
 
     // Encrypt with AES-GCM (includes authentication tag automatically)
     const ciphertext = await crypto.subtle.encrypt(
@@ -581,7 +581,7 @@ export class OneTimePaymentService {
         tagLength: 128, // 16 bytes auth tag
       },
       cryptoKey,
-      memoBytes
+      new Uint8Array(memoBytes)
     );
 
     // Combine nonce + ciphertext (auth tag is appended by AES-GCM)
@@ -606,7 +606,7 @@ export class OneTimePaymentService {
     const ciphertext = combined.slice(12);
 
     // Derive the same key from viewing key
-    const keyMaterial = await crypto.subtle.digest("SHA-256", keyBytes);
+    const keyMaterial = await crypto.subtle.digest("SHA-256", new Uint8Array(keyBytes));
     const cryptoKey = await crypto.subtle.importKey(
       "raw",
       keyMaterial,
@@ -619,11 +619,11 @@ export class OneTimePaymentService {
     const decrypted = await crypto.subtle.decrypt(
       {
         name: "AES-GCM",
-        iv: nonce,
+        iv: new Uint8Array(nonce),
         tagLength: 128,
       },
       cryptoKey,
-      ciphertext
+      new Uint8Array(ciphertext)
     );
 
     return new TextDecoder().decode(decrypted);

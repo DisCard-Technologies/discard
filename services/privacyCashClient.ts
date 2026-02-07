@@ -381,7 +381,7 @@ export class PrivacyCashService {
       }
 
       // 5. Generate commitment for user's shielded balance
-      const commitment = this.generateCommitment(userId, balance);
+      const { commitment } = await this.generateCommitmentWithRandomness(balance);
 
       console.log("[PrivacyCash] Shield complete:", {
         txSignature,
@@ -429,7 +429,7 @@ export class PrivacyCashService {
       commitmentCount: 0,
       yieldEarned: 0,
       yieldFormatted: "$0.00",
-      currentApyBps: PrivacyCashClient.PRIVACY_CASH_APY_BPS,
+      currentApyBps: PrivacyCashService.PRIVACY_CASH_APY_BPS,
       totalWithYield: 0,
       totalWithYieldFormatted: "$0.00",
     };
@@ -451,7 +451,7 @@ export class PrivacyCashService {
           principal: this.formatUSDC(total),
           yield: this.formatUSDC(BigInt(yieldEarned)),
           total: this.formatUSDC(BigInt(totalWithYield)),
-          apyBps: PrivacyCashClient.PRIVACY_CASH_APY_BPS,
+          apyBps: PrivacyCashService.PRIVACY_CASH_APY_BPS,
         });
 
         return {
@@ -461,7 +461,7 @@ export class PrivacyCashService {
           commitmentCount: commitments.length,
           yieldEarned,
           yieldFormatted: this.formatUSDC(BigInt(yieldEarned)),
-          currentApyBps: PrivacyCashClient.PRIVACY_CASH_APY_BPS,
+          currentApyBps: PrivacyCashService.PRIVACY_CASH_APY_BPS,
           totalWithYield,
           totalWithYieldFormatted: this.formatUSDC(BigInt(totalWithYield)),
         };
@@ -488,7 +488,7 @@ export class PrivacyCashService {
    */
   private computeYield(commitments: Array<{ amount: bigint; createdAt?: number }>): number {
     const now = Date.now();
-    const apyDecimal = PrivacyCashClient.PRIVACY_CASH_APY_BPS / 10000; // Convert bps to decimal
+    const apyDecimal = PrivacyCashService.PRIVACY_CASH_APY_BPS / 10000; // Convert bps to decimal
     const dailyRate = apyDecimal / 365;
 
     let totalYield = 0;

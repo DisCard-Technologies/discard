@@ -90,7 +90,7 @@ export function mockMutation<TResult = any>(result?: TResult): {
     return result ?? `mock_result_${Date.now()}`;
   });
 
-  mockUseMutation.mockReturnValueOnce(mutationFn);
+  mockUseMutation.mockReturnValueOnce(mutationFn as any);
 
   return { mutationFn, calls };
 }
@@ -101,7 +101,7 @@ export function mockMutation<TResult = any>(result?: TResult): {
 export function mockMutationError(error: Error | string): jest.Mock {
   const errorObj = typeof error === 'string' ? new Error(error) : error;
   const mutationFn = jest.fn().mockRejectedValue(errorObj);
-  mockUseMutation.mockReturnValueOnce(mutationFn);
+  mockUseMutation.mockReturnValueOnce(mutationFn as any);
   return mutationFn;
 }
 
@@ -116,7 +116,7 @@ export function mockMutationDelayed<TResult = any>(
     await new Promise((resolve) => setTimeout(resolve, delayMs));
     return result;
   });
-  mockUseMutation.mockReturnValueOnce(mutationFn);
+  mockUseMutation.mockReturnValueOnce(mutationFn as any);
   return mutationFn;
 }
 
@@ -137,7 +137,7 @@ export function mockAction<TResult = any>(result?: TResult): {
     return result ?? { success: true };
   });
 
-  mockUseAction.mockReturnValueOnce(actionFn);
+  mockUseAction.mockReturnValueOnce(actionFn as any);
 
   return { actionFn, calls };
 }
@@ -148,7 +148,7 @@ export function mockAction<TResult = any>(result?: TResult): {
 export function mockActionError(error: Error | string): jest.Mock {
   const errorObj = typeof error === 'string' ? new Error(error) : error;
   const actionFn = jest.fn().mockRejectedValue(errorObj);
-  mockUseAction.mockReturnValueOnce(actionFn);
+  mockUseAction.mockReturnValueOnce(actionFn as any);
   return actionFn;
 }
 

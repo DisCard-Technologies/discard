@@ -87,7 +87,7 @@ export class GoalOrchestrator {
   private state: OrchestratorState;
 
   // Progress check intervals
-  private checkIntervals: Map<string, NodeJS.Timeout> = new Map();
+  private checkIntervals: Map<string, ReturnType<typeof setInterval>> = new Map();
 
   // Callbacks
   private onGoalStatusChange?: (

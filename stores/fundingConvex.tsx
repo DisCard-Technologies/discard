@@ -141,7 +141,7 @@ export function FundingProvider({ children }: { children: ReactNode }) {
   const transferBetweenCardsMutation = useMutation(api.funding.funding.transferBetweenCards);
 
   // Actions
-  const createPaymentIntentAction = useAction(api.funding.stripe.createPaymentIntent);
+  const createPaymentIntentAction = useAction((api.funding as any).stripe.createPaymentIntent);
 
   // Build account balance from Convex data
   const accountBalance: AccountBalance | null = balanceData
@@ -168,7 +168,7 @@ export function FundingProvider({ children }: { children: ReactNode }) {
   }
 
   // Build transactions list
-  const transactions: FundingTransaction[] = (transactionsData?.transactions || []).map((tx) => ({
+  const transactions: FundingTransaction[] = (transactionsData?.transactions || []).map((tx: any) => ({
     ...tx,
     id: tx._id,
   }));
@@ -244,10 +244,10 @@ export function FundingProvider({ children }: { children: ReactNode }) {
             currency: request.currency || "USD",
             sourceType: request.sourceType,
             stripePaymentIntentId: result.paymentIntentId,
-          });
+          } as any);
 
           // Find the created transaction
-          const newTx = transactions.find((tx) => tx._id === txId);
+          const newTx = transactions.find((tx) => (tx as any)._id === txId);
           return newTx || null;
         } else {
           // Other funding sources
@@ -256,9 +256,9 @@ export function FundingProvider({ children }: { children: ReactNode }) {
             amount: request.amount,
             currency: request.currency || "USD",
             sourceType: request.sourceType,
-          });
+          } as any);
 
-          const newTx = transactions.find((tx) => tx._id === txId);
+          const newTx = transactions.find((tx) => (tx as any)._id === txId);
           return newTx || null;
         }
       } catch (err) {
@@ -287,7 +287,7 @@ export function FundingProvider({ children }: { children: ReactNode }) {
           userId,
           cardId: request.cardId as Id<"cards">,
           amount: request.amount,
-        });
+        } as any);
 
         const newTx = transactions.find((tx) => tx._id === txId);
         return newTx || null;
@@ -318,7 +318,7 @@ export function FundingProvider({ children }: { children: ReactNode }) {
           sourceCardId: request.fromCardId as Id<"cards">,
           targetCardId: request.toCardId as Id<"cards">,
           amount: request.amount,
-        });
+        } as any);
 
         const newTx = transactions.find((tx) => tx._id === txId);
         return newTx || null;

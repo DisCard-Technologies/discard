@@ -98,7 +98,7 @@ export function useTransactionSubscription(
 
   // Real-time subscription to transactions
   const transactionsData = useQuery(
-    api.cards.authorizations.listRecent,
+    (api.cards as any).authorizations.listRecent,
     enabled && userId
       ? { userId, cardIds: cardIds as Id<'cards'>[] | undefined, limit: 100 }
       : 'skip'
@@ -106,13 +106,13 @@ export function useTransactionSubscription(
 
   // Real-time subscription to spending alerts
   const alertsData = useQuery(
-    api.fraud.alerts.listActive,
+    (api.fraud as any).alerts.listActive,
     enabled && userId ? { userId } : 'skip'
   );
 
   // Real-time subscription to spending summary
   const summaryData = useQuery(
-    api.funding.spending.getSummary,
+    (api.funding as any).spending.getSummary,
     enabled && userId && cardIds?.length === 1
       ? { cardId: cardIds[0] as Id<'cards'> }
       : 'skip'
@@ -121,7 +121,7 @@ export function useTransactionSubscription(
   // Transform transactions
   const transactions: Transaction[] = useMemo(() => {
     if (!transactionsData) return [];
-    return transactionsData.map((t) => ({
+    return transactionsData.map((t: any) => ({
       _id: t._id,
       transactionId: t._id,
       cardId: t.cardId,
@@ -150,7 +150,7 @@ export function useTransactionSubscription(
   // Transform alerts
   const alerts: SpendingAlert[] = useMemo(() => {
     if (!alertsData) return [];
-    return alertsData.map((a) => ({
+    return alertsData.map((a: any) => ({
       _id: a._id,
       cardId: a.cardId,
       alertType: a.alertType as SpendingAlert['alertType'],
@@ -186,11 +186,11 @@ export function useTransactionSubscription(
   useEffect(() => {
     if (!transactionsData || !onNewTransaction) return;
 
-    const currentIds = new Set(transactionsData.map((t) => t._id));
+    const currentIds = new Set<string>(transactionsData.map((t: any) => t._id));
     const previousIds = previousTransactionsRef.current;
 
     // Find new transactions
-    transactionsData.forEach((t) => {
+    transactionsData.forEach((t: any) => {
       if (!previousIds.has(t._id)) {
         onNewTransaction({
           _id: t._id,
@@ -215,11 +215,11 @@ export function useTransactionSubscription(
   useEffect(() => {
     if (!alertsData || !onSpendingAlert) return;
 
-    const currentIds = new Set(alertsData.map((a) => a._id));
+    const currentIds = new Set<string>(alertsData.map((a: any) => a._id));
     const previousIds = previousAlertsRef.current;
 
     // Find new alerts
-    alertsData.forEach((a) => {
+    alertsData.forEach((a: any) => {
       if (!previousIds.has(a._id)) {
         onSpendingAlert({
           _id: a._id,
@@ -290,13 +290,13 @@ export function useCardTransactions(cardId: string | null) {
   const userId = useCurrentUserId();
 
   const transactionsData = useQuery(
-    api.cards.authorizations.listByCard,
+    (api.cards as any).authorizations.listByCard,
     cardId && userId ? { cardId: cardId as Id<'cards'>, limit: 50 } : 'skip'
   );
 
   const transactions: Transaction[] = useMemo(() => {
     if (!transactionsData) return [];
-    return transactionsData.map((t) => ({
+    return transactionsData.map((t: any) => ({
       _id: t._id,
       transactionId: t._id,
       cardId: t.cardId,
@@ -324,7 +324,7 @@ export function useCardTransactions(cardId: string | null) {
  */
 export function useAuthorizationStatus(authorizationId: string | null) {
   const authorization = useQuery(
-    api.cards.authorizations.get,
+    (api.cards as any).authorizations.get,
     authorizationId ? { authorizationId: authorizationId as Id<'authorizations'> } : 'skip'
   );
 

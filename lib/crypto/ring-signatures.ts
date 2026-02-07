@@ -13,10 +13,10 @@
  * @see https://eprint.iacr.org/2015/1098.pdf (Borromean)
  */
 
-import { ed25519 } from '@noble/curves/ed25519';
-import { sha512 } from '@noble/hashes/sha2';
-import { sha256 } from '@noble/hashes/sha2';
-import { bytesToHex, hexToBytes } from '@noble/hashes/utils';
+import { ed25519 } from '@noble/curves/ed25519.js';
+import { sha512 } from '@noble/hashes/sha2.js';
+import { sha256 } from '@noble/hashes/sha2.js';
+import { bytesToHex, hexToBytes } from '@noble/hashes/utils.js';
 import {
   constantTimeCompare,
   constantTimeCompareHex,
@@ -24,6 +24,9 @@ import {
   constantTimeSecureShuffle,
   secureClear,
 } from './constant-time';
+
+// Ed25519 point instance type (vs the constructor type)
+type Ed25519Point = InstanceType<(typeof ed25519)['Point']>;
 
 // Get curve order from @noble/curves v2 API
 const CURVE_ORDER = ed25519.Point.Fn.ORDER;
@@ -262,7 +265,7 @@ function computeKeyImage(privateKey: Uint8Array, publicKey: Uint8Array): string 
  * 
  * Deterministically maps bytes to curve point.
  */
-function hashToPoint(data: Uint8Array): typeof ed25519.Point {
+function hashToPoint(data: Uint8Array): Ed25519Point {
   // Hash data to get point seed
   const hash = sha512(new Uint8Array([...data, 0x00]));
 
@@ -278,8 +281,8 @@ function hashToPoint(data: Uint8Array): typeof ed25519.Point {
  */
 function hashPoints(
   messageHash: string,
-  L: typeof ed25519.Point,
-  R: typeof ed25519.Point
+  L: Ed25519Point,
+  R: Ed25519Point
 ): bigint {
   const data = new TextEncoder().encode(
     `${messageHash}:${bytesToHex(L.toBytes())}:${bytesToHex(R.toBytes())}`

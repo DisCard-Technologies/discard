@@ -119,19 +119,19 @@ export function useAgentRegistry(
     // Build Convex actions interface
     const convexActions: ConvexAgentActions = {
       create: (args) => createMutation(args),
-      activate: (args) => activateMutation(args),
-      updateRecord: (args) => updateRecordMutation(args),
-      cacheProof: (args) => cacheProofMutation(args),
-      suspend: (args) => suspendMutation(args),
-      revoke: (args) => revokeMutation(args),
-      logOperation: (args) => logOperationMutation(args),
+      activate: (args) => activateMutation(args) as any,
+      updateRecord: (args) => updateRecordMutation(args) as any,
+      cacheProof: (args) => cacheProofMutation(args) as any,
+      suspend: (args) => suspendMutation(args) as any,
+      revoke: (args) => revokeMutation(args) as any,
+      logOperation: (args) => logOperationMutation(args) as any,
       getActiveByUser: async () => encryptedAgents ?? [],
       getByAgentId: async ({ agentId }) => {
         const found = encryptedAgents?.find((a: any) => a.agentId === agentId);
         return found ?? null;
       },
       createAgentAccount: (args) => createAgentAccountMutation(args),
-      revokeAgentAccount: (args) => revokeAgentAccountMutation(args),
+      revokeAgentAccount: (args) => revokeAgentAccountMutation(args) as any,
       // TEE actions are called via the registry internally
       createAgentSessionKey: async () => {
         throw new Error('TEE session key creation requires server-side action');

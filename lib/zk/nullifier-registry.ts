@@ -5,8 +5,8 @@
  * Supports both in-memory (for development) and Convex backend (for production).
  */
 
-import { sha256 } from '@noble/hashes/sha2';
-import { bytesToHex } from '@noble/hashes/utils';
+import { sha256 } from '@noble/hashes/sha2.js';
+import { bytesToHex } from '@noble/hashes/utils.js';
 
 // ============================================================================
 // Types
@@ -64,7 +64,12 @@ export class NullifierRegistry {
   private expiryMap: Map<string, number> = new Map();
   
   // Cleanup timer
-  private cleanupTimer: NodeJS.Timeout | null = null;
+  private cleanupTimer: ReturnType<typeof setInterval> | null = null;
+
+  /** Get the set of used nullifiers (for verification) */
+  getUsedNullifiers(): Set<string> {
+    return new Set(this.memoryCache);
+  }
 
   constructor(config: NullifierRegistryConfig = {}) {
     this.config = {

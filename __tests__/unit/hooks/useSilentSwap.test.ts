@@ -465,7 +465,7 @@ describe('SilentSwap Integration', () => {
 
     test('success and failed are mutually exclusive', () => {
       expect(successResult.success).toBe(true);
-      expect(successResult.error).toBeUndefined();
+      expect((successResult as any).error).toBeUndefined();
       expect(failedResult.success).toBe(false);
       expect(failedResult.error).toBeDefined();
     });

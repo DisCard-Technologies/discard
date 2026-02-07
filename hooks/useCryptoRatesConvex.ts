@@ -92,7 +92,7 @@ export function useCryptoRates(
   // Transform rates data
   const rates: CryptoRate[] = useMemo(() => {
     if (!ratesData) return [];
-    return ratesData.filter((rate): rate is NonNullable<typeof rate> => rate !== null).map((rate) => ({
+    return ratesData.filter((rate: any): rate is NonNullable<typeof rate> => rate !== null).map((rate: any) => ({
       symbol: rate.symbol,
       name: rate.name || rate.symbol,
       usdPrice: rate.usdPrice.toString(),

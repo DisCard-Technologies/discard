@@ -99,7 +99,7 @@ export function useMWAWallet(
 
   // Find the Seed Vault wallet from the list
   const seedVaultWallet = existingWallet?.find(
-    (w) => w.walletType === "seed_vault" && w.connectionStatus === "connected"
+    (w: any) => w.walletType === "seed_vault" && w.connectionStatus === "connected"
   );
 
   // Check MWA availability

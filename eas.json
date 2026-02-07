@@ -5,16 +5,22 @@
   },
   "build": {
     "development": {
-      "developmentClient": true, // Ensure this is false for a standalone build
-      "distribution": "internal"
+      "developmentClient": true,
+      "distribution": "internal",
+      "environment": "development"
     },
     "preview": {
       "distribution": "internal",
+      "environment": "preview",
       "android": {
         "buildType": "apk"
+      },
+      "ios": {
+        "buildConfiguration": "Release"
       }
     },
     "production": {
+      "environment": "production",
       "android": {
         "buildType": "app-bundle"
       }
@@ -23,7 +29,7 @@
       "developmentClient": true, 
       "distribution": "internal",
       "ios": {
-        "simulator": true // Set to false if you want to install on a physical device
+        "simulator": true
       },
       "environment": "development"
     }

@@ -167,8 +167,8 @@ export function useCashoutPipeline() {
   const { rwaTokens } = useRwaHoldings(solanaAddress);
 
   // Convex actions
-  const prescreenWallet = useAction(api.cashout.swapAndShield.prescreenWallet);
-  const createSwapOutputAddress = useAction(api.cashout.swapAndShield.createSwapOutputAddress);
+  const prescreenWallet = useAction((api as any).cashout.swapAndShield.prescreenWallet);
+  const createSwapOutputAddress = useAction((api as any).cashout.swapAndShield.createSwapOutputAddress);
 
   // ---- Build unified asset list for the sell screen ----
   const allCashoutAssets = useMemo((): CashoutAsset[] => {
@@ -196,8 +196,8 @@ export function useCashoutPipeline() {
           mint: h.mint,
           symbol: h.symbol,
           name: h.name,
-          balance: h.balance,
-          balanceFormatted: h.balanceFormatted,
+          balance: String(h.balance),
+          balanceFormatted: String(h.balanceFormatted),
           valueUsd: h.valueUsd,
           decimals: h.decimals,
           logoUri: h.logoUri,
@@ -215,8 +215,8 @@ export function useCashoutPipeline() {
             mint: r.mint,
             symbol: r.symbol,
             name: r.name,
-            balance: r.balance,
-            balanceFormatted: r.balanceFormatted,
+            balance: String(r.balance),
+            balanceFormatted: String(r.balanceFormatted),
             valueUsd: r.valueUsd,
             decimals: r.decimals,
             logoUri: r.logoUri,

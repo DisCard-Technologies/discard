@@ -48,7 +48,7 @@ export function useRwaHoldings(
   const rwaTokens: RwaToken[] = useMemo(() => {
     if (!cachedHoldings) return [];
 
-    return cachedHoldings.map((h) => {
+    return cachedHoldings.map((h: any) => {
       const rwaInfo = h.rwaMetadata || getRwaInfo(h.mint);
 
       return {

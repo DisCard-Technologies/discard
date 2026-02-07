@@ -7,7 +7,7 @@
 import { useState, useCallback } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import { Passkey, PasskeyRegistrationResult, PasskeyAuthenticationResult } from "react-native-passkey";
+import { Passkey, type PasskeyCreateResult, type PasskeyGetResult } from "react-native-passkey";
 import * as LocalAuthentication from "expo-local-authentication";
 import * as SecureStore from "expo-secure-store";
 
@@ -76,7 +76,7 @@ export function usePasskeyAuth(): UsePasskeyAuthReturn {
         const challenge = generateChallenge();
 
         // Create passkey registration request
-        const registrationResult: PasskeyRegistrationResult = await Passkey.register({
+        const registrationResult: PasskeyCreateResult = await Passkey.create({
           challenge: challenge,
           rp: {
             id: RP_ID,
@@ -102,7 +102,7 @@ export function usePasskeyAuth(): UsePasskeyAuthReturn {
 
         // Extract credential data
         const credentialId = registrationResult.id;
-        const publicKey = registrationResult.response.publicKey || "";
+        const publicKey = (registrationResult.response as any).publicKey || "";
 
         // Store credential ID locally
         await SecureStore.setItemAsync(CREDENTIAL_ID_KEY, credentialId);
@@ -116,7 +116,7 @@ export function usePasskeyAuth(): UsePasskeyAuthReturn {
             platform: "mobile",
             userAgent: "DisCard Mobile App",
           },
-        });
+        } as any);
 
         setUserId(result.userId);
         return true;
@@ -146,7 +146,7 @@ export function usePasskeyAuth(): UsePasskeyAuthReturn {
       const challenge = generateChallenge();
 
       // Authenticate with passkey
-      const authResult: PasskeyAuthenticationResult = await Passkey.authenticate({
+      const authResult: PasskeyGetResult = await Passkey.get({
         challenge: challenge,
         rpId: RP_ID,
         allowCredentials: storedCredentialId
@@ -163,9 +163,9 @@ export function usePasskeyAuth(): UsePasskeyAuthReturn {
         authenticatorData: authResult.response.authenticatorData,
         clientDataJSON: authResult.response.clientDataJSON,
         challenge,
-      });
+      } as any);
 
-      if (result.verified) {
+      if ((result as any).verified) {
         setUserId(result.userId);
 
         // Update stored credential ID
@@ -189,7 +189,7 @@ export function usePasskeyAuth(): UsePasskeyAuthReturn {
   const logout = useCallback(async (): Promise<void> => {
     try {
       if (userId) {
-        await logoutMutation({ userId: userId as any });
+        await logoutMutation({ userId: userId } as any);
       }
     } finally {
       setUserId(null);

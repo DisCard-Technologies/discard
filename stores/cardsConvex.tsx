@@ -139,7 +139,7 @@ export function CardsProvider({ children }: { children: ReactNode }) {
 
   // Transform Convex cards to legacy format
   const cards: CardWithDetails[] = Array.isArray(cardsData?.cards) 
-    ? cardsData.cards.map((card) => ({
+    ? cardsData.cards.map((card: any) => ({
         ...card,
         cardId: card._id, // Legacy compatibility
         cardNumber: sensitiveData[card._id]?.cardNumber,

@@ -98,7 +98,7 @@ export default function SettingsScreen() {
 
   // Calculate connected wallet count (add 1 for primary passkey wallet)
   const connectedWalletCount = useMemo(() => {
-    const externalCount = wallets?.filter(w => w.connectionStatus === 'connected').length ?? 0;
+    const externalCount = wallets?.filter((w: any) => w.connectionStatus === 'connected').length ?? 0;
     return externalCount + 1; // +1 for passkey wallet
   }, [wallets]);
 

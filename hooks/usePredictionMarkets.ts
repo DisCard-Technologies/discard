@@ -116,7 +116,7 @@ export function usePredictionMarkets(
     });
 
     // Subscribe to each market
-    cachedPositions.forEach((pos) => {
+    cachedPositions.forEach((pos: any) => {
       const unsub = dflowClient.current.subscribeToMarket(pos.marketId);
       unsubscribes.current.push(unsub);
     });
@@ -141,7 +141,7 @@ export function usePredictionMarkets(
   const positions: PredictionPosition[] = useMemo(() => {
     if (!cachedPositions) return [];
 
-    return cachedPositions.map((pos) => ({
+    return cachedPositions.map((pos: any) => ({
       marketId: pos.marketId,
       market: {
         marketId: pos.marketId,

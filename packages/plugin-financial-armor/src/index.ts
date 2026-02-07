@@ -198,13 +198,13 @@ export const financialArmorPlugin: Plugin = {
             content: {
               text: "Verify intent to fund card with $50",
             },
-          },
+          } as any,
           {
             user: "alex_sovereign",
             content: {
               text: "Intent verified. Attestation: abc123...",
             },
-          },
+          } as any,
         ],
       ],
       validate: async () => true,
@@ -214,7 +214,7 @@ export const financialArmorPlugin: Plugin = {
             text: "Financial Armor not initialized",
             error: true,
           });
-          return false;
+          return;
         }
 
         try {
@@ -232,7 +232,7 @@ export const financialArmorPlugin: Plugin = {
               timestamp: Date.now(),
             },
             {
-              userId: message.userId,
+              userId: (message as any).userId,
               walletAddress: intent.walletAddress as string ?? "",
               subOrganizationId: intent.subOrganizationId as string ?? "",
               policies: {
@@ -257,13 +257,13 @@ export const financialArmorPlugin: Plugin = {
             data: result,
           });
 
-          return result.approved;
+          return;
         } catch (error) {
           callback?.({
             text: `Verification error: ${error instanceof Error ? error.message : "Unknown"}`,
             error: true,
           });
-          return false;
+          return;
         }
       },
     },
@@ -276,7 +276,7 @@ export const financialArmorPlugin: Plugin = {
       handler: async (runtime, message, state, options, callback) => {
         if (!services) {
           callback?.({ text: "Not initialized", error: true });
-          return false;
+          return;
         }
 
         const content = message.content as Record<string, unknown>;
@@ -304,7 +304,7 @@ export const financialArmorPlugin: Plugin = {
           data: result,
         });
 
-        return result.isValid;
+        return;
       },
     },
     {
@@ -316,7 +316,7 @@ export const financialArmorPlugin: Plugin = {
       handler: async (runtime, message, state, options, callback) => {
         if (!services) {
           callback?.({ text: "Not initialized", error: true });
-          return false;
+          return;
         }
 
         const content = message.content as Record<string, unknown>;
@@ -339,7 +339,7 @@ export const financialArmorPlugin: Plugin = {
           data: result,
         });
 
-        return result.withinLimits;
+        return;
       },
     },
     {
@@ -351,7 +351,7 @@ export const financialArmorPlugin: Plugin = {
       handler: async (runtime, message, state, options, callback) => {
         if (!services) {
           callback?.({ text: "Not initialized", error: true });
-          return false;
+          return;
         }
 
         const quote = await services.attestationProvider.getQuote();
@@ -365,7 +365,7 @@ export const financialArmorPlugin: Plugin = {
           },
         });
 
-        return true;
+        return;
       },
     },
   ],
@@ -378,23 +378,23 @@ export const financialArmorPlugin: Plugin = {
 
   // Plugin services (background services)
   services: [
-    {
+    ({
       name: "financial-armor-grpc",
       description: "gRPC server for orchestrator communication",
-      
+
       initialize: async (runtime: IAgentRuntime) => {
         // Get config from runtime settings
         const config: FinancialArmorConfig = {
           solanaRpcUrl:
-            runtime.getSetting("SOLANA_RPC_URL") ??
-            "https://api.mainnet-beta.solana.com",
-          heliusRpcUrl: runtime.getSetting("HELIUS_RPC_URL") ?? undefined,
-          compressionRpcUrl: runtime.getSetting("COMPRESSION_RPC_URL") ?? undefined,
+            String(runtime.getSetting("SOLANA_RPC_URL") ??
+            "https://api.mainnet-beta.solana.com"),
+          heliusRpcUrl: runtime.getSetting("HELIUS_RPC_URL") as string ?? undefined,
+          compressionRpcUrl: runtime.getSetting("COMPRESSION_RPC_URL") as string ?? undefined,
           turnkeyOrganizationId:
-            runtime.getSetting("TURNKEY_ORGANIZATION_ID") ?? "",
-          turnkeyApiBaseUrl: runtime.getSetting("TURNKEY_API_BASE_URL") ?? undefined,
+            String(runtime.getSetting("TURNKEY_ORGANIZATION_ID") ?? ""),
+          turnkeyApiBaseUrl: runtime.getSetting("TURNKEY_API_BASE_URL") as string ?? undefined,
           grpcPort: Number(runtime.getSetting("GRPC_PORT") ?? 50051),
-          attestationEndpoint: runtime.getSetting("ATTESTATION_ENDPOINT") ?? undefined,
+          attestationEndpoint: runtime.getSetting("ATTESTATION_ENDPOINT") as string ?? undefined,
           logLevel: (runtime.getSetting("LOG_LEVEL") ?? "info") as "info",
           metricsEnabled:
             runtime.getSetting("METRICS_ENABLED") !== "false",
@@ -405,7 +405,7 @@ export const financialArmorPlugin: Plugin = {
       stop: async () => {
         await shutdown();
       },
-    },
+    }) as any,
   ],
 };
 

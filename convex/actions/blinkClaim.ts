@@ -172,9 +172,9 @@ export const buildDepositToPoolTransaction = action({
     linkId: v.string(),
     claimerAccount: v.string(), // Recipient wallet pubkey (from POST body)
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<any> => {
     // Look up the claim
-    const claim = await ctx.runQuery(internal.actions.blinkClaim.getBlinkClaimInternal, {
+    const claim = await ctx.runQuery((internal.actions.blinkClaim as any).getBlinkClaimInternal, {
       linkId: args.linkId,
     });
 
@@ -276,7 +276,7 @@ export const buildDepositToPoolTransaction = action({
             { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
           ],
           programId: ASSOCIATED_TOKEN_PROGRAM_ID,
-          data: new Uint8Array(0),
+          data: Buffer.from(new Uint8Array(0)),
         });
       }
 
@@ -293,7 +293,7 @@ export const buildDepositToPoolTransaction = action({
           { pubkey: stealthKeypair.publicKey, isSigner: true, isWritable: false }, // authority
         ],
         programId: TOKEN_PROGRAM_ID,
-        data: transferData,
+        data: Buffer.from(transferData),
       });
 
       // Close stealth ATA (rent goes to claimer as fee payer)
@@ -305,7 +305,7 @@ export const buildDepositToPoolTransaction = action({
           { pubkey: stealthKeypair.publicKey, isSigner: true, isWritable: false }, // authority
         ],
         programId: TOKEN_PROGRAM_ID,
-        data: closeData,
+        data: Buffer.from(closeData),
       });
     }
 
@@ -344,9 +344,9 @@ export const confirmClaimAndRelay = action({
     signature: v.string(),  // The deposit tx signature from the wallet
     account: v.string(),    // Claimer pubkey (from chained POST body)
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<any> => {
     // Look up claim
-    const claim = await ctx.runQuery(internal.actions.blinkClaim.getBlinkClaimInternal, {
+    const claim = await ctx.runQuery((internal.actions.blinkClaim as any).getBlinkClaimInternal, {
       linkId: args.linkId,
     });
 
@@ -422,7 +422,7 @@ export const processPayoutBatch = internalAction({
     const now = Date.now();
 
     // Get all queued payouts ready for processing
-    const pendingPayouts = await ctx.runQuery(internal.actions.blinkClaim.getPendingPayouts, {
+    const pendingPayouts = await ctx.runQuery((internal.actions.blinkClaim as any).getPendingPayouts, {
       beforeTimestamp: now,
     });
 
@@ -488,7 +488,7 @@ export const processPayoutBatch = internalAction({
                 { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
               ],
               programId: ASSOCIATED_TOKEN_PROGRAM_ID,
-              data: new Uint8Array(0),
+              data: Buffer.from(new Uint8Array(0)),
             });
           }
 
@@ -505,7 +505,7 @@ export const processPayoutBatch = internalAction({
               { pubkey: poolKeypair.publicKey, isSigner: true, isWritable: false },
             ],
             programId: TOKEN_PROGRAM_ID,
-            data: transferData,
+            data: Buffer.from(transferData),
           });
         }
 

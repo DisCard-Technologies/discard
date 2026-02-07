@@ -114,7 +114,7 @@ export class PriceMonitor {
   private config: PriceMonitorConfig;
   private priceCache: Map<string, CachedPrice> = new Map();
   private subscriptions: Map<string, PriceSubscription> = new Map();
-  private pollingIntervals: Map<string, NodeJS.Timeout> = new Map();
+  private pollingIntervals: Map<string, ReturnType<typeof setInterval>> = new Map();
   private initialized: boolean = false;
 
   constructor(config: Partial<PriceMonitorConfig> = {}) {

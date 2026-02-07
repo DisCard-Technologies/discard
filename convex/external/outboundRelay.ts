@@ -273,7 +273,7 @@ export const processOutboundBatch = internalAction({
     const now = Date.now();
 
     const pendingPayouts = await ctx.runQuery(
-      internal.external.outboundRelay.getPendingOutboundPayouts,
+      (internal.external.outboundRelay as any).getPendingOutboundPayouts,
       { beforeTimestamp: now }
     );
 

@@ -139,7 +139,7 @@ export function useVerifiedTokens() {
   // Filter to verified only
   useEffect(() => {
     if (cachedData?.tokens) {
-      setTokens(cachedData.tokens.filter((t) => t.verified));
+      setTokens(cachedData.tokens.filter((t: any) => t.verified));
       setIsLoading(false);
     }
   }, [cachedData]);

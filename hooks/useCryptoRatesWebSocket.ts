@@ -191,11 +191,11 @@ export const useCryptoRatesWebSocket = (
 
       switch (message.type) {
         case 'rate_update':
-          const validRates = message.data.filter((rate: CryptoRate) => 
+          const validRates = message.data.filter((rate: CryptoRate) =>
             rate.symbol &&
             rate.usdPrice &&
-            !isNaN(parseFloat(rate.usdPrice)) &&
-            rate.timestamp
+            !isNaN(rate.usdPrice) &&
+            rate.lastUpdated
           );
 
           if (validRates.length > 0) {
@@ -225,7 +225,7 @@ export const useCryptoRatesWebSocket = (
 
         case 'error':
           const walletError: CryptoWalletError = {
-            code: CRYPTO_ERROR_CODES.RATE_FETCH_FAILED,
+            code: 'RATE_FETCH_FAILED',
             message: message.data.message || 'WebSocket rate update error',
             details: message.data,
           };

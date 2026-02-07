@@ -66,7 +66,7 @@ export function useGoalChips(): UseGoalChipsResult {
       return [];
     }
 
-    return convexGoals.map((goal) => {
+    return convexGoals.map((goal: any) => {
       const progress = goal.targetAmount > 0
         ? Math.round((goal.currentAmount / goal.targetAmount) * 100)
         : 0;

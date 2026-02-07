@@ -88,7 +88,7 @@ export function useWallets(userId: Id<"users"> | null): UseWalletsReturn {
         networkType,
         publicAddress,
         nickname,
-      });
+      } as any);
     },
     [userId, connectWalletMutation]
   );
@@ -136,9 +136,9 @@ export function useDefiPositions(userId: Id<"users"> | null) {
   );
 
   // Calculate totals
-  const totalValueUsd = positions?.reduce((sum, p) => sum + p.totalValueUsd, 0) ?? 0;
-  const totalEarnedUsd = positions?.reduce((sum, p) => sum + p.earnedValueUsd, 0) ?? 0;
-  const totalAvailableForFunding = positions?.reduce((sum, p) => sum + p.availableForFunding, 0) ?? 0;
+  const totalValueUsd = positions?.reduce((sum: number, p: any) => sum + p.totalValueUsd, 0) ?? 0;
+  const totalEarnedUsd = positions?.reduce((sum: number, p: any) => sum + p.earnedValueUsd, 0) ?? 0;
+  const totalAvailableForFunding = positions?.reduce((sum: number, p: any) => sum + p.availableForFunding, 0) ?? 0;
 
   return {
     positions: positions as DeFiPosition[] | undefined,
@@ -183,14 +183,14 @@ export function useFundingSources(userId: Id<"users"> | null) {
 
   // Combine into funding sources
   const fundingSources = [
-    ...(wallets?.map((w) => ({
+    ...(wallets?.map((w: any) => ({
       id: w._id,
       type: "wallet" as const,
       name: w.nickname || `${w.walletType} (${w.networkType})`,
       availableAmount: w.cachedBalanceUsd ?? 0,
       network: w.networkType,
     })) ?? []),
-    ...(defiPositions?.map((p) => ({
+    ...(defiPositions?.map((p: any) => ({
       id: p._id,
       type: "defi" as const,
       name: `${p.protocolName} ${p.positionType}`,

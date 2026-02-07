@@ -181,7 +181,7 @@ export function useAttestations(
 
   const attestations: AttestationData[] = useMemo(() => {
     if (!userAttestations) return [];
-    return userAttestations.map((a) => ({
+    return userAttestations.map((a: any) => ({
       id: a._id,
       type: a.attestationType as AttestationType,
       issuer: a.issuer as any,
@@ -197,7 +197,7 @@ export function useAttestations(
 
   const activeAttestations: AttestationData[] = useMemo(() => {
     if (!activeAttestationsData) return [];
-    return activeAttestationsData.map((a) => ({
+    return activeAttestationsData.map((a: any) => ({
       id: a._id,
       type: a.attestationType as AttestationType,
       issuer: a.issuer as any,

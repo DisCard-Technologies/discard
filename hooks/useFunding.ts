@@ -57,7 +57,7 @@ export function useFunding(userId: Id<"users"> | null): UseFundingReturn {
   const transferBetweenCardsMutation = useMutation(api.funding.funding.transferBetweenCards);
 
   // Actions
-  const createPaymentIntentAction = useAction(api.funding.stripe.createPaymentIntent);
+  const createPaymentIntentAction = useAction((api.funding as any).stripe.createPaymentIntent);
 
   const isLoading = balanceData === undefined || transactions === undefined;
 
@@ -160,7 +160,7 @@ export function useFunding(userId: Id<"users"> | null): UseFundingReturn {
  * Hook for Stripe payment sheet integration
  */
 export function useStripePayment() {
-  const confirmPaymentAction = useAction(api.funding.stripe.confirmPaymentIntent);
+  const confirmPaymentAction = useAction((api.funding as any).stripe.confirmPaymentIntent);
 
   const confirmPayment = useCallback(
     async (paymentIntentId: string): Promise<boolean> => {
@@ -187,7 +187,7 @@ export function useCryptoFunding(userId: Id<"users"> | null) {
     validUserId ? { userId: validUserId } : "skip"
   );
 
-  const fundFromWalletMutation = useMutation(api.funding.funding.fundFromWallet);
+  const fundFromWalletMutation = useMutation((api.funding.funding as any).fundFromWallet);
 
   const fundFromWallet = useCallback(
     async (

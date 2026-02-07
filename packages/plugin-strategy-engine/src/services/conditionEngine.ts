@@ -63,7 +63,7 @@ export class ConditionEngine {
   private priceMonitor: PriceMonitor;
   private scheduledJobs: Map<string, cron.ScheduledTask> = new Map();
   private jobMetadata: Map<string, ScheduledJob> = new Map();
-  private evaluationInterval: NodeJS.Timeout | null = null;
+  private evaluationInterval: ReturnType<typeof setInterval> | null = null;
   private initialized: boolean = false;
   private running: boolean = false;
 

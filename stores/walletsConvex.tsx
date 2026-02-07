@@ -122,12 +122,12 @@ export function WalletsProvider({ children }: { children: ReactNode }) {
   const refreshBalanceMutation = useMutation(api.wallets.wallets.refreshBalance);
 
   // Transform data
-  const wallets: CryptoWallet[] = (walletsData || []).map((w) => ({
+  const wallets: CryptoWallet[] = (walletsData || []).map((w: any) => ({
     ...w,
     walletId: w._id,
   }));
 
-  const defiPositions: DeFiPosition[] = (defiData || []).map((p) => ({
+  const defiPositions: DeFiPosition[] = (defiData || []).map((p: any) => ({
     ...p,
     positionId: p._id,
   }));
@@ -187,7 +187,7 @@ export function WalletsProvider({ children }: { children: ReactNode }) {
           networkType,
           publicAddress,
           nickname,
-        });
+        } as any);
 
         const newWallet = wallets.find((w) => w._id === walletId);
         return newWallet || null;

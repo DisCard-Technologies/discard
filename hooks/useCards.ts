@@ -75,7 +75,7 @@ export function useCards(userId: Id<"users"> | null): UseCardsReturn {
    */
   const getCard = useCallback(
     (cardId: Id<"cards">) => {
-      return cards?.find((card) => card._id === cardId);
+      return cards?.find((card: any) => card._id === cardId);
     },
     [cards]
   );
@@ -99,7 +99,7 @@ export function useCards(userId: Id<"users"> | null): UseCardsReturn {
         blockedMccCodes: params.blockedMccCodes,
         blockedCountries: params.blockedCountries,
         privacyIsolated: params.privacyIsolated,
-      });
+      } as any);
     },
     [userId, createCardMutation]
   );
@@ -109,7 +109,7 @@ export function useCards(userId: Id<"users"> | null): UseCardsReturn {
    */
   const freezeCard = useCallback(
     async (cardId: Id<"cards">): Promise<void> => {
-      await freezeCardMutation({ cardId });
+      await freezeCardMutation({ cardId } as any);
     },
     [freezeCardMutation]
   );
@@ -139,7 +139,7 @@ export function useCards(userId: Id<"users"> | null): UseCardsReturn {
       await updateStatusMutation({
         cardId,
         ...limits,
-      });
+      } as any);
     },
     [updateStatusMutation]
   );
@@ -186,7 +186,7 @@ export function useCard(cardId: Id<"cards"> | null) {
  */
 export function useCardAuthorizations(cardId: Id<"cards"> | null) {
   const authorizations = useQuery(
-    api.cards.cards.getAuthorizations,
+    (api.cards.cards as any).getAuthorizations,
     cardId ? { cardId } : "skip"
   );
 

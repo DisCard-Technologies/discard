@@ -117,6 +117,7 @@ function createTestStrategy(
     totalAmountExecuted: 0,
     successfulExecutions: 0,
     failedExecutions: 0,
+    totalFeePaid: 0,
     ...overrides,
   };
 }
@@ -141,6 +142,8 @@ function createPriceCondition(
     enabled: true,
     isMet: false,
     triggerCount: 0,
+    inCooldown: false,
+    priority: 0,
     createdAt: Date.now(),
     updatedAt: Date.now(),
   };
@@ -159,6 +162,8 @@ function createTimeCondition(cronExpression: string): TriggerCondition {
     enabled: true,
     isMet: false,
     triggerCount: 0,
+    inCooldown: false,
+    priority: 0,
     createdAt: Date.now(),
     updatedAt: Date.now(),
   };
@@ -689,10 +694,11 @@ describe('Type Guards', () => {
         tokenPair: { from: 'USDC', to: 'SOL' },
         amountPerExecution: 100,
         frequency: 'daily',
+        slippageTolerance: 0.01,
       };
 
       expect(isDCAConfig(dcaConfig)).toBe(true);
-      expect(isDCAConfig({ token: 'SOL' })).toBe(false);
+      expect(isDCAConfig({ token: 'SOL' } as any)).toBe(false);
     });
 
     it('should identify StopLoss config', async () => {
@@ -709,7 +715,7 @@ describe('Type Guards', () => {
       };
 
       expect(isStopLossConfig(stopLossConfig)).toBe(true);
-      expect(isStopLossConfig({ tokenPair: {} })).toBe(false);
+      expect(isStopLossConfig({ tokenPair: {} } as any)).toBe(false);
     });
 
     it('should identify TakeProfit config', async () => {
@@ -725,7 +731,7 @@ describe('Type Guards', () => {
       };
 
       expect(isTakeProfitConfig(takeProfitConfig)).toBe(true);
-      expect(isTakeProfitConfig({ token: 'SOL', triggerType: 'below' })).toBe(false);
+      expect(isTakeProfitConfig({ token: 'SOL', triggerType: 'below' } as any)).toBe(false);
     });
   });
 
@@ -743,7 +749,7 @@ describe('Type Guards', () => {
       };
 
       expect(isPriceCondition(priceConfig)).toBe(true);
-      expect(isPriceCondition({ type: 'time' })).toBe(false);
+      expect(isPriceCondition({ type: 'time' } as any)).toBe(false);
     });
 
     it('should identify time conditions', async () => {
@@ -756,7 +762,7 @@ describe('Type Guards', () => {
       };
 
       expect(isTimeCondition(timeConfig)).toBe(true);
-      expect(isTimeCondition({ type: 'price' })).toBe(false);
+      expect(isTimeCondition({ type: 'price' } as any)).toBe(false);
     });
   });
 });
@@ -772,9 +778,7 @@ describe('Event Sourcing', () => {
     const event = createStrategyCreatedEvent(
       'strat_123',
       'user_456',
-      'dca',
-      'My DCA Strategy',
-      { amountPerExecution: 100 }
+      { type: 'dca', name: 'My DCA Strategy', config: { amountPerExecution: 100 } } as any
     );
 
     expect(event.eventId).toMatch(/^evt_/);

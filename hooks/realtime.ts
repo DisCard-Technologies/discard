@@ -36,7 +36,7 @@ export {
 // Re-export from stores for convenience
 export { useCrypto, useCryptoState, useCryptoActions } from '@/stores/cryptoConvex';
 export { useWallets, useWalletsState, useFundingSources } from '@/stores/walletsConvex';
-export { useFunding, useFundingState, useFundingActions } from '@/stores/fundingConvex';
+export { useFunding, useFundingState } from '@/stores/fundingConvex';
 export { useCards, useCardsState, useCardOperations } from '@/stores/cardsConvex';
 
 /**

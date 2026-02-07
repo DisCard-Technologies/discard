@@ -158,7 +158,7 @@ export function useStealthScanner(): UseStealthScannerReturn {
   const claimableTransfers: ClaimableTransfer[] = useMemo(() => {
     if (!rawNotes) return [];
 
-    return rawNotes.map((note) => ({
+    return rawNotes.map((note: any) => ({
       noteId: note._id,
       stealthAddress: note.stealthAddress,
       ephemeralPubKey: note.ephemeralPubKey,

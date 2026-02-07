@@ -203,7 +203,7 @@ export function CryptoProvider({ children }: { children: ReactNode }) {
   // Transform wallets data
   const wallets: CryptoWallet[] = useMemo(() => {
     if (!walletsData) return [];
-    return walletsData.map((w) => ({
+    return walletsData.map((w: any) => ({
       _id: w._id,
       walletId: w._id,
       walletType: w.walletType as WalletType,
@@ -220,7 +220,7 @@ export function CryptoProvider({ children }: { children: ReactNode }) {
   // Transform DeFi data
   const defiPositions: DeFiPosition[] = useMemo(() => {
     if (!defiData) return [];
-    return defiData.map((p) => ({
+    return defiData.map((p: any) => ({
       _id: p._id,
       positionId: p._id,
       protocolName: p.protocolName,
@@ -235,7 +235,7 @@ export function CryptoProvider({ children }: { children: ReactNode }) {
   // Transform rates data
   const rates: CryptoRate[] = useMemo(() => {
     if (!ratesData) return [];
-    return ratesData.filter((r): r is NonNullable<typeof r> => r !== null).map((r) => ({
+    return ratesData.filter((r: any): r is NonNullable<typeof r> => r !== null).map((r: any) => ({
       symbol: r.symbol,
       name: r.name || r.symbol,
       usdPrice: r.usdPrice,
@@ -250,13 +250,13 @@ export function CryptoProvider({ children }: { children: ReactNode }) {
   const networkCongestion: Record<NetworkType, NetworkCongestion> = useMemo(() => {
     if (!congestionData?.networks) return {} as Record<NetworkType, NetworkCongestion>;
     const result: Record<NetworkType, NetworkCongestion> = {} as Record<NetworkType, NetworkCongestion>;
-    congestionData.networks.forEach((c) => {
+    congestionData.networks.forEach((c: any) => {
       result[c.network as NetworkType] = {
         networkType: c.network as NetworkType,
         level: c.congestionLevel as NetworkCongestion['level'],
         feeEstimates: {
           slow: c.baseFee,
-          normal: c.baseFee + c.priorityFee,
+          standard: c.baseFee + c.priorityFee,
           fast: c.baseFee + c.priorityFee * 2,
         },
         lastUpdated: c.lastBlockTime,
@@ -333,7 +333,7 @@ export function CryptoProvider({ children }: { children: ReactNode }) {
           networkType,
           publicAddress,
           nickname,
-        });
+        } as any);
 
         const newWallet = wallets.find((w) => w._id === walletId);
         return newWallet || null;
@@ -409,15 +409,15 @@ export function CryptoProvider({ children }: { children: ReactNode }) {
           userId,
           fromCrypto,
           toUsd,
-        });
+        } as any);
 
         const conversionQuote: ConversionQuote = {
           quoteId: quote.quoteId,
           fromCrypto,
           fromAmount: quote.fromAmount,
           toUsd,
-          rate: quote.rate,
-          fee: quote.fee,
+          rate: (quote as any).rate,
+          fee: (quote as any).fee,
           expiresAt: quote.expiresAt,
           status: 'active',
         };
@@ -433,7 +433,7 @@ export function CryptoProvider({ children }: { children: ReactNode }) {
 
     executeQuote: async (quoteId: string): Promise<boolean> => {
       try {
-        await executeQuoteMutation({ quoteId });
+        await executeQuoteMutation({ quoteId } as any);
         setActiveQuote(null);
         return true;
       } catch (err) {
@@ -445,7 +445,7 @@ export function CryptoProvider({ children }: { children: ReactNode }) {
 
     cancelQuote: async (quoteId: string): Promise<boolean> => {
       try {
-        await cancelQuoteMutation({ quoteId });
+        await cancelQuoteMutation({ quoteId } as any);
         if (activeQuote?.quoteId === quoteId) {
           setActiveQuote(null);
         }

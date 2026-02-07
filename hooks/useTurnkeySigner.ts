@@ -117,7 +117,7 @@ export function useTurnkeySigner(userId?: Id<"users">) {
 
         if (request.sessionKeyId) {
           // Use session key for automated signing (auto-shield, etc.)
-          result = await convex.action(api.tee.turnkey.signWithSessionKey, {
+          result = await convex.action((api.tee.turnkey as any).signWithSessionKey, {
             subOrganizationId: state.subOrgId,
             sessionKeyId: request.sessionKeyId,
             walletAddress: state.walletAddress,
@@ -175,7 +175,7 @@ export function useTurnkeySigner(userId?: Id<"users">) {
       try {
         console.log("[TurnkeySigner] Creating deposit wallet");
 
-        const result = await convex.action(api.tee.turnkey.createDepositWallet, {
+        const result = await convex.action((api.tee.turnkey as any).createDepositWallet, {
           subOrganizationId: state.subOrgId,
           walletName: `Deposit-${Date.now()}`,
           destinationAddress,
@@ -252,7 +252,7 @@ export function useTurnkeySigner(userId?: Id<"users">) {
       try {
         console.log("[TurnkeySigner] Revoking session key:", sessionKeyId);
 
-        const result = await convex.action(api.tee.turnkey.revokeSessionKey, {
+        const result = await convex.action((api.tee.turnkey as any).revokeSessionKey, {
           subOrganizationId: state.subOrgId,
           sessionKeyId,
           policyId,

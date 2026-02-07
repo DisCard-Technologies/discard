@@ -18,8 +18,8 @@
  */
 
 import { Connection, PublicKey, Transaction, TransactionInstruction } from '@solana/web3.js';
-import { sha256 } from '@noble/hashes/sha2';
-import { bytesToHex } from '@noble/hashes/utils';
+import { sha256 } from '@noble/hashes/sha2.js';
+import { bytesToHex } from '@noble/hashes/utils.js';
 import {
   constantTimeCompareHex,
   constantTimeSecureShuffle,
@@ -641,13 +641,13 @@ export class SunspotService {
         
         // Initialize backend
         const backend = new BarretenbergBackend(circuit);
-        const noir = new Noir(circuit, backend);
+        const noir = new Noir(circuit);
 
         // Prepare inputs (convert witness to Noir format)
         const noirInputs = this.prepareNoirInputs(type, publicInputs, witness);
 
         // Generate actual Groth16 proof
-        const { proof } = await noir.generateProof(noirInputs);
+        const { proof } = await (noir as any).generateProof(noirInputs);
 
         console.log(`[Sunspot] Generated real proof: ${proof.length} bytes`);
         return proof;
@@ -714,7 +714,7 @@ export class SunspotService {
   private prepareSpendingLimitInputs(publicInputs: Uint8Array, witness: unknown): Record<string, any> {
     const w = witness as SpendingLimitWitness;
     // Extract amount from public inputs
-    const amount = this.bytesToBigint(publicInputs.slice(0, 32));
+    const amount = BigInt('0x' + bytesToHex(publicInputs.slice(0, 32)));
 
     // Build inputs as array of key-value pairs, then shuffle
     // This randomizes the order of operations to prevent timing analysis
@@ -736,7 +736,7 @@ export class SunspotService {
 
     // Build inputs with randomized order for side-channel resistance
     const inputs: Array<[string, any]> = [
-      ['sanctions_root', this.bytesToHex(publicInputs.slice(0, 32))],
+      ['sanctions_root', bytesToHex(publicInputs.slice(0, 32))],
       ['wallet_address', w.walletAddress],
       ['merkle_path', w.merklePath],
       ['path_indices', w.pathIndices],

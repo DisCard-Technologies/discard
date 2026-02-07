@@ -77,7 +77,7 @@ export function useOptimisticBalance(
 
   // Query current card
   const card = useQuery(
-    api.cards?.get,
+    (api.cards as any)?.get,
     cardId ? { id: cardId } : "skip"
   );
 
@@ -175,7 +175,7 @@ export function useOptimisticBalance(
 
   const cardPendingCount = useMemo(() => {
     if (!pendingUpdates || !cardId) return 0;
-    return pendingUpdates.filter((u) => u.entityId === cardId).length;
+    return pendingUpdates.filter((u: any) => u.entityId === cardId).length;
   }, [pendingUpdates, cardId]);
 
   return {
@@ -207,7 +207,7 @@ export function useOptimisticStatus(
 
   // Query current card
   const card = useQuery(
-    api.cards?.get,
+    (api.cards as any)?.get,
     cardId ? { id: cardId } : "skip"
   );
 
@@ -359,7 +359,7 @@ export function usePendingSettlements(userId: Id<"users"> | null) {
 
     return {
       count: pending.length,
-      settlements: pending.map((s) => ({
+      settlements: pending.map((s: any) => ({
         id: s._id,
         entityType: s.entityType,
         entityId: s.entityId,

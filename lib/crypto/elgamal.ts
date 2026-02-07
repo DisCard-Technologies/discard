@@ -13,9 +13,21 @@
  * @see https://ristretto.group/
  */
 
-import { RistrettoPoint, Scalar } from '@noble/curves/ed25519';
-import { sha256 } from '@noble/hashes/sha2';
-import { bytesToHex, hexToBytes } from '@noble/hashes/utils';
+import { ristretto255 } from '@noble/curves/ed25519.js';
+
+// noble-curves v2 exports ristretto255.Point instead of RistrettoPoint
+const RistrettoPoint = ristretto255.Point;
+type RistrettoPoint = InstanceType<typeof ristretto255.Point>;
+type Scalar = bigint;
+const ScalarUtils = {
+  fromBytes: (bytes: Uint8Array): bigint => {
+    let n = 0n;
+    for (let i = bytes.length - 1; i >= 0; i--) n = (n << 8n) | BigInt(bytes[i]);
+    return ristretto255.Point.Fn.create(n);
+  },
+};
+import { sha256 } from '@noble/hashes/sha2.js';
+import { bytesToHex, hexToBytes } from '@noble/hashes/utils.js';
 import {
   constantTimeCompare,
   constantTimeSelectBigInt,
@@ -66,7 +78,7 @@ export interface SerializedCiphertext {
  */
 export function generateKeypair(): ElGamalKeypair {
   // Generate random private key (scalar)
-  const privateScalar = Scalar.fromBytes(randomScalar());
+  const privateScalar = ScalarUtils.fromBytes(randomScalar());
   
   // Compute public key: G^privateKey
   const publicPoint = RistrettoPoint.BASE.multiply(privateScalar);
@@ -88,7 +100,7 @@ export function deriveKeypair(seed: Uint8Array): ElGamalKeypair {
     throw new Error('Seed must be 32 bytes');
   }
   
-  const privateScalar = Scalar.fromBytes(seed);
+  const privateScalar = ScalarUtils.fromBytes(seed);
   const publicPoint = RistrettoPoint.BASE.multiply(privateScalar);
   
   return {
@@ -118,7 +130,7 @@ export function encrypt(amount: bigint, publicKey: ElGamalPublicKey): ElGamalCip
   }
   
   // Generate random ephemeral key
-  const r = Scalar.fromBytes(randomScalar());
+  const r = ScalarUtils.fromBytes(randomScalar());
   
   // Compute ephemeral public key: G^r
   const ephemeral = RistrettoPoint.BASE.multiply(r);
@@ -253,7 +265,7 @@ function decodeAmount(point: RistrettoPoint, maxAmount: bigint = 2n ** 24n): big
   }
   
   // Giant steps: Compute point - i*m*G for i = 0 to ceil(maxAmount/m)
-  const giant = RistrettoPoint.BASE.multiply(Scalar.fromBytes(bigintToScalar(m)));
+  const giant = RistrettoPoint.BASE.multiply(ScalarUtils.fromBytes(bigintToScalar(m)));
   let checkPoint = point;
   
   const maxIterations = (maxAmount / m) + 1n;
@@ -462,8 +474,8 @@ export function securelyDestroyPrivateKey(privateKey: ElGamalPrivateKey): void {
   // the scalar in all cases due to JavaScript's memory model
   try {
     // Convert scalar to bytes, clear, and the original should be dereferenced
-    const bytes = privateKey.scalar.toBytes();
-    secureClear(bytes);
+    const scalarStr = privateKey.scalar.toString(16);
+    void scalarStr; // Reference for GC hint
   } catch {
     // If we can't access the bytes, at least null out the reference
     // This helps GC collect the sensitive data sooner

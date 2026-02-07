@@ -69,7 +69,7 @@ export class GoalProgressTracker {
   private store: StrategyStore;
   private contributions: Map<string, ContributionRecord[]> = new Map();
   private reachedMilestones: Map<string, Set<number>> = new Map();
-  private snapshotIntervals: Map<string, NodeJS.Timeout> = new Map();
+  private snapshotIntervals: Map<string, ReturnType<typeof setInterval>> = new Map();
 
   // Callbacks
   private onMilestoneReached?: (

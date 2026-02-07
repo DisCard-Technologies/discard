@@ -447,7 +447,7 @@ export class RaTlsClient {
       // Import the public key
       const cryptoKey = await crypto.subtle.importKey(
         "raw",
-        fullPubKey,
+        new Uint8Array(fullPubKey),
         { name: "ECDSA", namedCurve: "P-256" },
         false,
         ["verify"]
@@ -455,14 +455,14 @@ export class RaTlsClient {
 
       // Convert signature from concatenated r||s to DER if needed
       // Intel quotes use raw r||s format (64 bytes)
-      const rawSignature = signature;
+      const rawSignature = new Uint8Array(signature);
 
       // Verify signature
       const isValid = await crypto.subtle.verify(
         { name: "ECDSA", hash: "SHA-256" },
         cryptoKey,
         rawSignature,
-        data
+        new Uint8Array(data)
       );
 
       return isValid;

@@ -76,7 +76,7 @@ describe('useWallets Hook', () => {
     });
 
     test('wallet can have optional fields', () => {
-      const minimalWallet = {
+      const minimalWallet: Record<string, any> = {
         _id: 'wallet_123',
         userId: 'user_456',
         walletType: 'phantom',
@@ -205,7 +205,7 @@ describe('useWallets Hook', () => {
     });
 
     test('uses default name when nickname is missing', () => {
-      const wallet = {
+      const wallet: Record<string, any> = {
         _id: 'wallet_1',
         walletType: 'metamask',
         networkType: 'ethereum',

@@ -12,8 +12,8 @@
  */
 
 import { PublicKey, Connection, Keypair } from '@solana/web3.js';
-import { sha256 } from '@noble/hashes/sha2';
-import { bytesToHex, hexToBytes } from '@noble/hashes/utils';
+import { sha256 } from '@noble/hashes/sha2.js';
+import { bytesToHex, hexToBytes } from '@noble/hashes/utils.js';
 
 // Arcium MPC for encrypted amount computation
 import {
@@ -534,8 +534,7 @@ export class PrivateTransferService {
     bits: number
   ): Promise<{ commitment: string; rangeProof: RangeProof }> {
     // Compute Pedersen commitment
-    const commitment = computePedersenCommitment(amount, blinding);
-    const commitmentHex = bytesToHex(commitment);
+    const commitmentHex = computePedersenCommitment(amount, blinding);
 
     // Generate range proof proving amount is in valid range
     const rangeProof = generateRangeProof({

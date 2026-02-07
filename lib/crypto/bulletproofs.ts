@@ -19,9 +19,9 @@
  * @see https://crypto.stanford.edu/~dabo/pubs/papers/ORproofs.pdf (Sigma OR)
  */
 
-import { ed25519 } from '@noble/curves/ed25519';
-import { sha256, sha512 } from '@noble/hashes/sha2';
-import { bytesToHex, hexToBytes, concatBytes } from '@noble/hashes/utils';
+import { ed25519 } from '@noble/curves/ed25519.js';
+import { sha256, sha512 } from '@noble/hashes/sha2.js';
+import { bytesToHex, hexToBytes, concatBytes } from '@noble/hashes/utils.js';
 
 // ============================================================================
 // Types

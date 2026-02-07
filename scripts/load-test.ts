@@ -11,7 +11,9 @@
  *   npx tsx scripts/load-test.ts 50 10
  */
 
+// @ts-ignore
 import * as grpc from '@grpc/grpc-js';
+// @ts-ignore
 import * as protoLoader from '@grpc/proto-loader';
 import { performance } from 'perf_hooks';
 

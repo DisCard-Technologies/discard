@@ -141,6 +141,7 @@ function createGoalStrategy(
     totalAmountExecuted: 0,
     successfulExecutions: 0,
     failedExecutions: 0,
+    totalFeePaid: 0,
     ...overrides,
   };
 }

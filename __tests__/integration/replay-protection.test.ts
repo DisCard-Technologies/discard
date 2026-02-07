@@ -17,8 +17,8 @@ import {
 import {
   PrivateIdentityService,
   type ZkProofRequest,
-  type AttestationData,
 } from '@/services/privateIdentityClient';
+import type { AttestationData } from '@/lib/attestations/sas-client';
 
 // Detect if we're using mocked crypto (Jest environment)
 const IS_MOCKED = process.env.JEST_WORKER_ID !== undefined;
@@ -177,14 +177,12 @@ describe('Replay Protection Integration', () => {
     test('selective disclosure proof should have replay protection', async () => {
       // Store a mock attestation
       const mockAttestation: AttestationData = {
+        id: 'test-age-attestation',
         type: 'age_over_21',
-        issuer: {
-          id: 'civic',
-          name: 'Civic',
-          publicKey: 'civic-pubkey',
-        },
+        issuer: 'civic' as const,
         subjectDid: 'did:sol:test123',
-        claims: {
+        status: 'active',
+        metadata: {
           age_over_21: true,
           verified_at: Date.now(),
         },
@@ -225,14 +223,12 @@ describe('Replay Protection Integration', () => {
 
     test('different proof types should have independent nullifiers', async () => {
       const mockAttestation: AttestationData = {
+        id: 'test-kyc-attestation',
         type: 'kyc_full',
-        issuer: {
-          id: 'civic',
-          name: 'Civic',
-          publicKey: 'civic-pubkey',
-        },
+        issuer: 'civic' as const,
         subjectDid: 'did:sol:test123',
-        claims: {
+        status: 'active',
+        metadata: {
           kyc_level: 3,
           aml_cleared: true,
           sanctions_cleared: true,

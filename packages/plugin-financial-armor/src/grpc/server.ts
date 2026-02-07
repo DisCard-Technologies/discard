@@ -83,7 +83,7 @@ export class FinancialArmorGrpcServer {
 
     // Add service implementation
     this.server.addService(
-      (financialArmor.FinancialArmorService as grpc.ServiceDefinition<grpc.UntypedServiceImplementation>).service,
+      (financialArmor.FinancialArmorService as any).service,
       {
         VerifyIntent: this.handleVerifyIntent.bind(this),
         ValidateMerchant: this.handleValidateMerchant.bind(this),

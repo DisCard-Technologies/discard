@@ -83,7 +83,7 @@ export function useOpenMarkets(
   const markets: PredictionMarket[] = useMemo(() => {
     if (!cachedMarkets) return [];
 
-    return cachedMarkets.map((m) => ({
+    return cachedMarkets.map((m: any) => ({
       marketId: m.marketId,
       ticker: m.ticker,
       eventId: m.eventId,
@@ -100,7 +100,7 @@ export function useOpenMarkets(
 
   // Extract category names
   const categories: string[] = useMemo(() => {
-    return cachedCategories?.map((c) => c.category) ?? [];
+    return cachedCategories?.map((c: any) => c.category) ?? [];
   }, [cachedCategories]);
 
   // Set category with null for "all"

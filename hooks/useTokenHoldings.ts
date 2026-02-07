@@ -167,8 +167,8 @@ export function useTokenHoldings(
     if (!cachedHoldings) return [];
 
     return cachedHoldings
-      .filter((h) => !h.isRwa) // Exclude RWA tokens (those go to useRwaHoldings)
-      .map((h) => ({
+      .filter((h: any) => !h.isRwa) // Exclude RWA tokens (those go to useRwaHoldings)
+      .map((h: any) => ({
         mint: h.mint,
         symbol: h.symbol,
         name: h.name,

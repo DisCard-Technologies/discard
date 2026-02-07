@@ -8,8 +8,8 @@
  */
 
 import { Keypair, PublicKey } from '@solana/web3.js';
-import { x25519 } from '@noble/curves/ed25519';
-import { sha256 } from '@noble/hashes/sha2';
+import { x25519 } from '@noble/curves/ed25519.js';
+import { sha256 } from '@noble/hashes/sha2.js';
 
 // ============ TYPES ============
 
@@ -175,7 +175,7 @@ function deriveKeypairFromSecret(secret: Uint8Array): Keypair {
  */
 async function hashBytes(bytes: Uint8Array): Promise<string> {
   const hash = sha256(bytes);
-  return Array.from(hash).map(b => b.toString(16).padStart(2, '0')).join('');
+  return Array.from(hash).map((b: number) => b.toString(16).padStart(2, '0')).join('');
 }
 
 // ============ BATCH OPERATIONS ============

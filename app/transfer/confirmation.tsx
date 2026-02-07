@@ -573,8 +573,8 @@ export default function TransferConfirmationScreen() {
             ${amount.amountUsd.toFixed(2)}
           </Text>
           <View style={[styles.tokenBadge, { backgroundColor: primaryColor }]}>
-            {token.logoUri && (
-              <Image source={{ uri: token.logoUri }} style={styles.tokenImage} />
+            {token.iconUrl && (
+              <Image source={{ uri: token.iconUrl }} style={styles.tokenImage} />
             )}
             <Text style={styles.tokenText}>{token.symbol}</Text>
           </View>

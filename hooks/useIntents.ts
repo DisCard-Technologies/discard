@@ -263,7 +263,7 @@ export function useIntents(userId: Id<"users"> | null): UseIntentsReturn {
       const mockIntent = mockIntents.find((intent) => intent._id === intentId);
       if (mockIntent) return mockIntent;
       // Then check Convex intents
-      return intents?.find((intent) => intent._id === intentId) as Intent | undefined;
+      return intents?.find((intent: any) => intent._id === intentId) as Intent | undefined;
     },
     [intents, mockIntents]
   );

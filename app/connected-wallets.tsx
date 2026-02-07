@@ -87,11 +87,11 @@ export default function ConnectedWalletsScreen() {
 
   // Filter wallets by type
   const seedVaultWallet = useMemo(() => {
-    return wallets?.find(w => w.walletType === 'seed_vault' && w.connectionStatus === 'connected');
+    return wallets?.find((w: any) => w.walletType === 'seed_vault' && w.connectionStatus === 'connected');
   }, [wallets]);
 
   const externalWallets = useMemo(() => {
-    return wallets?.filter(w =>
+    return wallets?.filter((w: any) =>
       w.walletType !== 'seed_vault' &&
       w.walletType !== 'passkey' &&
       w.connectionStatus === 'connected'
@@ -315,7 +315,7 @@ export default function ConnectedWalletsScreen() {
           </ThemedText>
 
           {externalWallets.length > 0 ? (
-            externalWallets.map((wallet) => (
+            externalWallets.map((wallet: any) => (
               <WalletItem
                 key={wallet._id}
                 icon="wallet"

@@ -255,7 +255,7 @@ export const simulateTransactionFailure = (error: string = 'Transaction failed')
  */
 export const simulateConfirmationFailure = () => {
   mockConnection.confirmTransaction.mockResolvedValueOnce({
-    value: { err: { InstructionError: [0, 'Custom error'] } },
+    value: { err: { InstructionError: [0, 'Custom error'] } as any },
   });
 };
 

@@ -136,21 +136,22 @@ export class ComplianceService {
     }
 
     // Fetch attestations from Convex
-    const attestations = this.config.convexClient
-      ? await this.config.convexClient.query(api.attestations.sas.getActiveByUser, { userId })
+    const attestations: AttestationData[] = this.config.convexClient
+      ? await this.config.convexClient.query(api.attestations.sas.getActiveByUser, { userId }) as any as AttestationData[]
       : [];
 
     // Convert to commitments
     const commitments = new Map<string, AttestationCommitment>();
     for (const att of attestations) {
-      const kycLevel = this.attestationTypeToKycLevel(att.attestationType);
+      const attType = (att as any).attestationType ?? att.type;
+      const kycLevel = this.attestationTypeToKycLevel(attType);
       const commitment = commitAttestation(
-        att.attestationType,
+        attType,
         kycLevel,
         att.expiresAt,
         att.issuer
       );
-      commitments.set(att.attestationType, commitment);
+      commitments.set(attType, commitment);
     }
 
     // Determine overall KYC level
@@ -574,11 +575,7 @@ export class ComplianceService {
     const record = createNullifierRecord(proof, context);
 
     // Register in memory
-    await this.nullifierRegistry.markNullifierUsed(
-      proof.nullifier,
-      proof.type,
-      proof.expiresAt
-    );
+    await this.nullifierRegistry.markNullifierUsed(record);
 
     // Persist to Convex if configured
     if (this.config.persistNullifiers && this.config.convexClient) {
@@ -617,7 +614,7 @@ export class ComplianceService {
    * Determine user's overall KYC level from attestations
    */
   private determineKycLevel(attestations: AttestationData[]): KYCLevel {
-    const types = new Set(attestations.map(a => a.attestationType));
+    const types = new Set(attestations.map(a => a.type));
 
     if (types.has('kyc_full')) return 'full';
     if (types.has('kyc_enhanced')) return 'enhanced';
@@ -647,7 +644,7 @@ export class ComplianceService {
 
     let score = 0;
     for (const att of attestations) {
-      score += weights[att.attestationType] ?? 0;
+      score += weights[att.type] ?? 0;
     }
 
     const maxScore = Object.values(weights).reduce((a, b) => a + b, 0);

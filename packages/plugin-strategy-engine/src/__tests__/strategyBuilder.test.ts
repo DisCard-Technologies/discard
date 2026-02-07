@@ -22,10 +22,12 @@ const createMockStore = () => {
         config: input.config,
         conditions: [],
         executions: [],
+        events: [],
         totalExecutions: 0,
         successfulExecutions: 0,
         failedExecutions: 0,
         totalAmountExecuted: 0,
+        totalFeePaid: 0,
         createdAt: Date.now(),
         updatedAt: Date.now(),
       };
