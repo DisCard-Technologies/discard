@@ -6,6 +6,7 @@
 
 import { v } from "convex/values";
 import { mutation, query, internalMutation } from "../_generated/server";
+import { Keypair } from "@solana/web3.js";
 
 // ============================================================================
 // Constants
@@ -94,8 +95,13 @@ export const create = mutation({
     // Generate links
     const webLink = `${WEB_LINK_BASE}/${requestId}`;
 
-    // Generate Solana Pay URI
-    let solanaPayUri = `solana:${walletAddress}`;
+    // Generate a stealth address for privacy (never expose the real wallet)
+    const stealthKeypair = Keypair.generate();
+    const stealthAddress = stealthKeypair.publicKey.toBase58();
+    const stealthSeed = Buffer.from(stealthKeypair.secretKey.slice(0, 32)).toString("base64");
+
+    // Generate Solana Pay URI using stealth address (NOT walletAddress)
+    let solanaPayUri = `solana:${stealthAddress}`;
     const queryParams: string[] = [];
 
     if (args.amount > 0) {
@@ -121,7 +127,10 @@ export const create = mutation({
       solanaPayUri += `?${queryParams.join("&")}`;
     }
 
-    // Create payment request record
+    const now = Date.now();
+    const expiresAt = now + expiryMs;
+
+    // Create payment request record (stores stealth address, not real wallet)
     const paymentRequestId = await ctx.db.insert("paymentRequests", {
       userId: user._id,
       requestId,
@@ -131,14 +140,32 @@ export const create = mutation({
       tokenDecimals: args.tokenDecimals,
       amountUsd: args.amountUsd,
       memo: args.memo,
-      recipientAddress: walletAddress,
+      recipientAddress: stealthAddress, // Stealth, not real wallet
       recipientName: args.recipientName || user.displayName,
       linkType: "web_link",
       linkUrl: webLink,
       qrData: solanaPayUri,
       status: "pending",
-      expiresAt: Date.now() + expiryMs,
-      createdAt: Date.now(),
+      expiresAt,
+      createdAt: now,
+    });
+
+    // Create a receive address record so the deposit monitor picks up payments
+    const ACTIVE_WINDOW_MS = 30 * 60 * 1000;
+    const GRACE_PERIOD_MS = 30 * 60 * 1000;
+    const addrExpiresAt = now + Math.max(expiryMs, ACTIVE_WINDOW_MS);
+
+    await ctx.db.insert("receiveAddresses", {
+      userId: user._id,
+      stealthAddress,
+      stealthSeed,
+      ephemeralPubKey: stealthAddress,
+      tokenMint: args.tokenMint,
+      status: "active",
+      paymentRequestId,
+      expiresAt: addrExpiresAt,
+      graceExpiresAt: addrExpiresAt + GRACE_PERIOD_MS,
+      createdAt: now,
     });
 
     return {
@@ -147,7 +174,7 @@ export const create = mutation({
       webLink,
       solanaPayUri,
       qrData: solanaPayUri,
-      expiresAt: Date.now() + expiryMs,
+      expiresAt,
     };
   },
 });

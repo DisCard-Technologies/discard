@@ -8,6 +8,12 @@
  * @module
  */
 
+import type {
+  ApiFromModules,
+  FilterApi,
+  FunctionReference,
+} from "convex/server";
+import type * as actions_blinkClaim from "../actions/blinkClaim.js";
 import type * as agents_agents from "../agents/agents.js";
 import type * as approvals_approvals from "../approvals/approvals.js";
 import type * as approvals_multiSig from "../approvals/multiSig.js";
@@ -33,7 +39,6 @@ import type * as circuitBreakers_circuitBreakers from "../circuitBreakers/circui
 import type * as compliance_proofArchive from "../compliance/proofArchive.js";
 import type * as compression_light from "../compression/light.js";
 import type * as compression_proofs from "../compression/proofs.js";
-import type * as crons from "../crons.js";
 import type * as crons_anchorAuditBatch from "../crons/anchorAuditBatch.js";
 import type * as crons_cleanupMetrics from "../crons/cleanupMetrics.js";
 import type * as crons_cleanupSessions from "../crons/cleanupSessions.js";
@@ -42,9 +47,14 @@ import type * as crons_selfHealingCheck from "../crons/selfHealingCheck.js";
 import type * as crons_syncDefi from "../crons/syncDefi.js";
 import type * as crons_syncHistoricalPrices from "../crons/syncHistoricalPrices.js";
 import type * as crons_syncRates from "../crons/syncRates.js";
+import type * as crons from "../crons.js";
 import type * as explore_birdeye from "../explore/birdeye.js";
 import type * as explore_tokenDetail from "../explore/tokenDetail.js";
 import type * as explore_trending from "../explore/trending.js";
+import type * as external_depositMonitor from "../external/depositMonitor.js";
+import type * as external_inboundShield from "../external/inboundShield.js";
+import type * as external_outboundRelay from "../external/outboundRelay.js";
+import type * as external_receiveAddresses from "../external/receiveAddresses.js";
 import type * as fraud_detection from "../fraud/detection.js";
 import type * as funding_funding from "../funding/funding.js";
 import type * as funding_iban from "../funding/iban.js";
@@ -56,8 +66,8 @@ import type * as holdings_jupiter from "../holdings/jupiter.js";
 import type * as holdings_transactionHistory from "../holdings/transactionHistory.js";
 import type * as hooks_merchants from "../hooks/merchants.js";
 import type * as hooks_policies from "../hooks/policies.js";
-import type * as http from "../http.js";
 import type * as http_webhooks from "../http/webhooks.js";
+import type * as http from "../http.js";
 import type * as identity_did from "../identity/did.js";
 import type * as intents_cache from "../intents/cache.js";
 import type * as intents_classifier from "../intents/classifier.js";
@@ -68,13 +78,14 @@ import type * as intents_handlers_questionHandler from "../intents/handlers/ques
 import type * as intents_intents from "../intents/intents.js";
 import type * as intents_rateLimiter from "../intents/rateLimiter.js";
 import type * as intents_solver from "../intents/solver.js";
+import type * as lib_compliance from "../lib/compliance.js";
 import type * as lib_differentialPrivacy from "../lib/differentialPrivacy.js";
+import type * as lib_solanaRpc from "../lib/solanaRpc.js";
 import type * as network_privateRpc from "../network/privateRpc.js";
 import type * as network_timingService from "../network/timingService.js";
 import type * as notifications_send from "../notifications/send.js";
 import type * as notifications_tokens from "../notifications/tokens.js";
 import type * as nullifiers from "../nullifiers.js";
-import type * as privacy from "../privacy.js";
 import type * as privacy_incoSpending from "../privacy/incoSpending.js";
 import type * as privacy_keyImages from "../privacy/keyImages.js";
 import type * as privacy_nullifiers from "../privacy/nullifiers.js";
@@ -82,6 +93,7 @@ import type * as privacy_stealthAddresses from "../privacy/stealthAddresses.js";
 import type * as privacy_teeCompliance from "../privacy/teeCompliance.js";
 import type * as privacy_umbra from "../privacy/umbra.js";
 import type * as privacy_zkProofs from "../privacy/zkProofs.js";
+import type * as privacy from "../privacy.js";
 import type * as realtime_optimistic from "../realtime/optimistic.js";
 import type * as scripts_bulkCreateCards from "../scripts/bulkCreateCards.js";
 import type * as scripts_migrateEthereumWallets from "../scripts/migrateEthereumWallets.js";
@@ -105,13 +117,16 @@ import type * as wallets_quotes from "../wallets/quotes.js";
 import type * as wallets_rates from "../wallets/rates.js";
 import type * as wallets_wallets from "../wallets/wallets.js";
 
-import type {
-  ApiFromModules,
-  FilterApi,
-  FunctionReference,
-} from "convex/server";
-
+/**
+ * A utility for referencing Convex functions in your app's API.
+ *
+ * Usage:
+ * ```js
+ * const myFunctionReference = api.myModule.myFunction;
+ * ```
+ */
 declare const fullApi: ApiFromModules<{
+  "actions/blinkClaim": typeof actions_blinkClaim;
   "agents/agents": typeof agents_agents;
   "approvals/approvals": typeof approvals_approvals;
   "approvals/multiSig": typeof approvals_multiSig;
@@ -137,7 +152,6 @@ declare const fullApi: ApiFromModules<{
   "compliance/proofArchive": typeof compliance_proofArchive;
   "compression/light": typeof compression_light;
   "compression/proofs": typeof compression_proofs;
-  crons: typeof crons;
   "crons/anchorAuditBatch": typeof crons_anchorAuditBatch;
   "crons/cleanupMetrics": typeof crons_cleanupMetrics;
   "crons/cleanupSessions": typeof crons_cleanupSessions;
@@ -146,9 +160,14 @@ declare const fullApi: ApiFromModules<{
   "crons/syncDefi": typeof crons_syncDefi;
   "crons/syncHistoricalPrices": typeof crons_syncHistoricalPrices;
   "crons/syncRates": typeof crons_syncRates;
+  crons: typeof crons;
   "explore/birdeye": typeof explore_birdeye;
   "explore/tokenDetail": typeof explore_tokenDetail;
   "explore/trending": typeof explore_trending;
+  "external/depositMonitor": typeof external_depositMonitor;
+  "external/inboundShield": typeof external_inboundShield;
+  "external/outboundRelay": typeof external_outboundRelay;
+  "external/receiveAddresses": typeof external_receiveAddresses;
   "fraud/detection": typeof fraud_detection;
   "funding/funding": typeof funding_funding;
   "funding/iban": typeof funding_iban;
@@ -160,8 +179,8 @@ declare const fullApi: ApiFromModules<{
   "holdings/transactionHistory": typeof holdings_transactionHistory;
   "hooks/merchants": typeof hooks_merchants;
   "hooks/policies": typeof hooks_policies;
-  http: typeof http;
   "http/webhooks": typeof http_webhooks;
+  http: typeof http;
   "identity/did": typeof identity_did;
   "intents/cache": typeof intents_cache;
   "intents/classifier": typeof intents_classifier;
@@ -172,13 +191,14 @@ declare const fullApi: ApiFromModules<{
   "intents/intents": typeof intents_intents;
   "intents/rateLimiter": typeof intents_rateLimiter;
   "intents/solver": typeof intents_solver;
+  "lib/compliance": typeof lib_compliance;
   "lib/differentialPrivacy": typeof lib_differentialPrivacy;
+  "lib/solanaRpc": typeof lib_solanaRpc;
   "network/privateRpc": typeof network_privateRpc;
   "network/timingService": typeof network_timingService;
   "notifications/send": typeof notifications_send;
   "notifications/tokens": typeof notifications_tokens;
   nullifiers: typeof nullifiers;
-  privacy: typeof privacy;
   "privacy/incoSpending": typeof privacy_incoSpending;
   "privacy/keyImages": typeof privacy_keyImages;
   "privacy/nullifiers": typeof privacy_nullifiers;
@@ -186,6 +206,7 @@ declare const fullApi: ApiFromModules<{
   "privacy/teeCompliance": typeof privacy_teeCompliance;
   "privacy/umbra": typeof privacy_umbra;
   "privacy/zkProofs": typeof privacy_zkProofs;
+  privacy: typeof privacy;
   "realtime/optimistic": typeof realtime_optimistic;
   "scripts/bulkCreateCards": typeof scripts_bulkCreateCards;
   "scripts/migrateEthereumWallets": typeof scripts_migrateEthereumWallets;
@@ -209,31 +230,11 @@ declare const fullApi: ApiFromModules<{
   "wallets/rates": typeof wallets_rates;
   "wallets/wallets": typeof wallets_wallets;
 }>;
-
-/**
- * A utility for referencing Convex functions in your app's public API.
- *
- * Usage:
- * ```js
- * const myFunctionReference = api.myModule.myFunction;
- * ```
- */
 export declare const api: FilterApi<
   typeof fullApi,
   FunctionReference<any, "public">
 >;
-
-/**
- * A utility for referencing Convex functions in your app's internal API.
- *
- * Usage:
- * ```js
- * const myFunctionReference = internal.myModule.myFunction;
- * ```
- */
 export declare const internal: FilterApi<
   typeof fullApi,
   FunctionReference<any, "internal">
 >;
-
-export declare const components: {};

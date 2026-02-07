@@ -130,4 +130,35 @@ crons.interval(
   internal.actions.blinkClaim.processPayoutBatch
 );
 
+// ============ EXTERNAL TRANSFERS ============
+
+/**
+ * Poll active stealth receive addresses for incoming deposits (60s interval)
+ * Detects deposits, triggers compliance screening + auto-shield pipeline
+ */
+crons.interval(
+  "poll-receive-deposits",
+  { minutes: 1 },
+  internal.external.depositMonitor.pollForDeposits
+);
+
+/**
+ * Expire unused stealth receive addresses past their grace period
+ */
+crons.interval(
+  "expire-receive-addresses",
+  { minutes: 5 },
+  internal.external.receiveAddresses.expireOld
+);
+
+/**
+ * Process batched outbound payouts (pool → external recipient)
+ * Privacy: batching with timing jitter breaks correlation
+ */
+crons.interval(
+  "process-outbound-payouts",
+  { minutes: 5 },
+  internal.external.outboundRelay.processOutboundBatch
+);
+
 export default crons;

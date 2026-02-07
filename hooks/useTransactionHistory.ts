@@ -91,6 +91,18 @@ export function useTransactionHistory(
     { status: "all", limit: 5 }
   );
 
+  // Subscribe to inbound external receive addresses (stealth deposits)
+  const receiveAddresses = useQuery(
+    api.external.receiveAddresses.getHistory,
+    credentialId ? { limit: 10, credentialId } : "skip"
+  );
+
+  // Subscribe to outbound external payouts
+  const outboundPayouts = useQuery(
+    api.external.outboundRelay.getOutboundHistory,
+    credentialId ? { limit: 10, credentialId } : "skip"
+  );
+
   // Action to refresh from Helius
   const refreshAction = useAction(api.holdings.transactionHistory.refreshTransactionHistory);
 
@@ -177,6 +189,67 @@ export function useTransactionHistory(
           estimatedTime: stackStatus === 'processing' ? '~3-5m' : undefined,
           tokenLogoUri: TOKEN_LOGOS[cryptoSymbol] || TOKEN_LOGOS['USDC'],
           status: stackStatus,
+        });
+      }
+    }
+
+    // Add inbound external deposits (stealth receive addresses)
+    if (receiveAddresses && receiveAddresses.length > 0) {
+      for (const addr of receiveAddresses) {
+        // Only show funded/shielded/quarantined (not active/expired)
+        if (addr.status === "active" || addr.status === "expired") continue;
+
+        const isProcessing = addr.status === "funded" || addr.status === "shielding";
+        const isQuarantined = addr.status === "quarantined";
+
+        const stackStatus: 'processing' | 'completed' | 'failed' =
+          isProcessing ? 'processing' :
+          isQuarantined ? 'failed' :
+          'completed';
+
+        const statusLabel =
+          isQuarantined ? 'Held for review' :
+          isProcessing ? 'Shielding...' :
+          'via external';
+
+        result.push({
+          id: addr.id,
+          type: 'receive' as TransactionType,
+          address: statusLabel,
+          tokenAmount: addr.depositAmount ? `+${addr.depositAmount}` : '+...',
+          fiatValue: '—',
+          tokenLogoUri: TOKEN_LOGOS['USDC'],
+          status: stackStatus,
+          estimatedTime: isProcessing ? '~1m' : undefined,
+        });
+      }
+    }
+
+    // Add outbound external payouts
+    if (outboundPayouts && outboundPayouts.length > 0) {
+      for (const payout of outboundPayouts) {
+        const isProcessing = payout.status === "queued" || payout.status === "processing" ||
+                             payout.status === "compliance_check" || payout.status === "unshielding";
+        const isFailed = payout.status === "failed" || payout.status === "blocked";
+
+        const stackStatus: 'processing' | 'completed' | 'failed' =
+          isProcessing ? 'processing' :
+          isFailed ? 'failed' :
+          'completed';
+
+        const shortAddr = payout.recipientAddress.length > 10
+          ? `${payout.recipientAddress.slice(0, 6)}...${payout.recipientAddress.slice(-4)}`
+          : payout.recipientAddress;
+
+        result.push({
+          id: payout._id,
+          type: 'send' as TransactionType,
+          address: payout.recipientDisplayName || shortAddr,
+          tokenAmount: `-${payout.amountDisplay} ${payout.tokenSymbol}`,
+          fiatValue: '—',
+          tokenLogoUri: TOKEN_LOGOS[payout.tokenSymbol],
+          status: stackStatus,
+          estimatedTime: isProcessing ? '~5m' : undefined,
         });
       }
     }
@@ -276,7 +349,7 @@ export function useTransactionHistory(
     // Sort by most recent (in-app transfers don't have blockTime, so they stay at top)
     // This works because in-app transfers are added first and are typically most recent
     return result.slice(0, limit);
-  }, [onChainTransactions, inAppTransfers, moonpayDeposits, mergeWithInApp, limit]);
+  }, [onChainTransactions, inAppTransfers, moonpayDeposits, receiveAddresses, outboundPayouts, mergeWithInApp, limit]);
 
   return {
     transactions,

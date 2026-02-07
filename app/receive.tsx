@@ -15,6 +15,7 @@ import { useThemeColor } from '@/hooks/use-theme-color';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useAuth } from '@/stores/authConvex';
 import { useTokenHoldings } from '@/hooks/useTokenHoldings';
+import { useReceiveAddress } from '@/hooks/useReceiveAddress';
 import { Fonts } from '@/constants/theme';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -35,6 +36,19 @@ export default function ReceiveScreen() {
   const { user } = useAuth();
   const walletAddress = user?.solanaAddress || null;
 
+  // Stealth receive address (privacy-preserving — never exposes real wallet)
+  const {
+    stealthAddress,
+    isGenerating: isGeneratingAddress,
+    isDeposited,
+    isProcessing,
+    status: receiveStatus,
+    generate: regenerateAddress,
+  } = useReceiveAddress();
+
+  // Use stealth address for QR/copy/share, fall back to wallet address during generation
+  const displayedAddress = stealthAddress || walletAddress;
+
   // Token holdings for balance display
   const { holdings, totalValue } = useTokenHoldings(walletAddress);
 
@@ -52,36 +66,36 @@ export default function ReceiveScreen() {
     return holdings[0];
   }, [holdings]);
 
-  // Format wallet address for display
-  const displayAddress = walletAddress
-    ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`
+  // Format address for display (uses stealth address, not real wallet)
+  const displayAddress = displayedAddress
+    ? `${displayedAddress.slice(0, 6)}...${displayedAddress.slice(-4)}`
     : 'No wallet';
 
   // Full address for display below QR
-  const fullAddressDisplay = walletAddress
-    ? `${walletAddress.slice(0, 22)}\n${walletAddress.slice(22)}`
+  const fullAddressDisplay = displayedAddress
+    ? `${displayedAddress.slice(0, 22)}\n${displayedAddress.slice(22)}`
     : '';
 
-  // Copy address
+  // Copy address (stealth, not real wallet)
   const handleCopy = useCallback(async () => {
-    if (!walletAddress) return;
-    await Clipboard.setStringAsync(walletAddress);
+    if (!displayedAddress) return;
+    await Clipboard.setStringAsync(displayedAddress);
     setCopied(true);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setTimeout(() => setCopied(false), 2000);
-  }, [walletAddress]);
+  }, [displayedAddress]);
 
-  // Share address
+  // Share address (stealth, not real wallet)
   const handleShare = useCallback(async () => {
-    if (!walletAddress) return;
+    if (!displayedAddress) return;
     try {
       await Share.share({
-        message: walletAddress,
+        message: displayedAddress,
         title: 'My Solana Address' });
     } catch (error) {
       console.log('Share error:', error);
     }
-  }, [walletAddress]);
+  }, [displayedAddress]);
 
   // Set amount (for payment requests)
   const handleSetAmount = useCallback(() => {
@@ -128,11 +142,11 @@ export default function ReceiveScreen() {
             <ThemedText style={styles.tokenIconText}>◎</ThemedText>
           </View>
 
-          {/* QR Code */}
+          {/* QR Code — encodes stealth address, never the real wallet */}
           <View style={styles.qrCodeWrapper}>
-            {walletAddress ? (
+            {displayedAddress ? (
               <QRCode
-                value={`solana:${walletAddress}`}
+                value={`solana:${displayedAddress}`}
                 size={200}
                 backgroundColor="#fff"
                 color="#000"

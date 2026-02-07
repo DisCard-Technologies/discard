@@ -3230,4 +3230,113 @@ export default defineSchema({
   })
     .index("by_status_scheduled", ["status", "scheduledFor"]),
 
+  // ============ RECEIVE ADDRESSES ============
+  // Stealth receive addresses for inbound external transfers (privacy-preserving)
+  receiveAddresses: defineTable({
+    userId: v.id("users"),
+
+    // Stealth address details
+    stealthAddress: v.string(),       // Public stealth address (shown in QR / shared)
+    stealthSeed: v.string(),          // base64-encoded 32-byte seed (SECRET, server-only)
+    ephemeralPubKey: v.string(),      // For ECDH derivation (if needed for claim)
+
+    // Token configuration
+    tokenMint: v.optional(v.string()),  // Expected token mint (null = any/SOL)
+
+    // Status machine: active → funded → shielded / quarantined / expired
+    status: v.union(
+      v.literal("active"),            // Waiting for deposit
+      v.literal("funded"),            // Deposit detected, processing
+      v.literal("shielding"),         // Shield transaction in progress
+      v.literal("shielded"),          // Successfully shielded to Privacy Cash pool
+      v.literal("quarantined"),       // Sender failed compliance — funds held
+      v.literal("expired")            // Past grace period with no deposit
+    ),
+
+    // Deposit tracking (filled when deposit detected)
+    senderAddress: v.optional(v.string()),       // Extracted from on-chain tx
+    depositTxSignature: v.optional(v.string()),  // On-chain deposit tx
+    depositAmount: v.optional(v.number()),       // Amount received (base units)
+    depositTokenMint: v.optional(v.string()),    // Actual token deposited
+
+    // Shield tracking (filled after auto-shield)
+    shieldTxSignature: v.optional(v.string()),   // Shield to Privacy Cash pool
+    shieldedAt: v.optional(v.number()),
+
+    // Compliance
+    compliancePassed: v.optional(v.boolean()),
+    complianceReason: v.optional(v.string()),
+    complianceCheckedAt: v.optional(v.number()),
+
+    // Quarantine tracking
+    quarantineReason: v.optional(v.string()),
+
+    // Linked to payment request (if generated for a specific request)
+    paymentRequestId: v.optional(v.id("paymentRequests")),
+
+    // Expiry: 30min active + 30min grace
+    expiresAt: v.number(),            // Active window end
+    graceExpiresAt: v.number(),       // Grace period end (deposit still accepted)
+
+    // Timestamps
+    createdAt: v.number(),
+    fundedAt: v.optional(v.number()),
+  })
+    .index("by_user", ["userId"])
+    .index("by_stealth_address", ["stealthAddress"])
+    .index("by_status", ["status"])
+    .index("by_payment_request", ["paymentRequestId"])
+    .index("by_expires", ["expiresAt"]),
+
+  // ============ OUTBOUND PAYOUTS ============
+  // Queue for privacy-preserving outbound transfers to external wallets
+  outboundPayouts: defineTable({
+    userId: v.id("users"),
+
+    // Recipient
+    recipientAddress: v.string(),     // External wallet address
+    recipientDisplayName: v.optional(v.string()),
+
+    // Amount details
+    amount: v.number(),               // Base units (lamports / token units)
+    tokenMint: v.string(),            // Token mint address
+    tokenDecimals: v.number(),
+    tokenSymbol: v.string(),
+    amountDisplay: v.number(),        // Human-readable amount
+
+    // Privacy relay tracking
+    singleUseAddress: v.optional(v.string()),   // Unshield destination
+    hop1TxSignature: v.optional(v.string()),    // Single-use → Pool
+    hop2TxSignature: v.optional(v.string()),    // Pool → Recipient
+
+    // Status machine: queued → processing → completed / failed
+    status: v.union(
+      v.literal("compliance_check"), // Screening recipient
+      v.literal("unshielding"),      // Withdrawing from Privacy Cash pool
+      v.literal("queued"),           // Waiting for batch payout (hop2)
+      v.literal("processing"),       // Pool → recipient in progress
+      v.literal("completed"),        // Successfully sent
+      v.literal("failed"),           // Terminal failure
+      v.literal("blocked")           // Compliance blocked
+    ),
+
+    // Compliance
+    compliancePassed: v.optional(v.boolean()),
+    complianceReason: v.optional(v.string()),
+
+    // Scheduling (timing jitter for privacy)
+    scheduledFor: v.number(),         // Timestamp with random delay
+
+    // Retry tracking
+    attempts: v.number(),
+    error: v.optional(v.string()),
+
+    // Timestamps
+    createdAt: v.number(),
+    completedAt: v.optional(v.number()),
+  })
+    .index("by_user", ["userId"])
+    .index("by_status_scheduled", ["status", "scheduledFor"])
+    .index("by_recipient", ["recipientAddress"]),
+
 });
