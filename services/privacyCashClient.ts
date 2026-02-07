@@ -1183,6 +1183,124 @@ export class PrivacyCashService {
   }
 
   // ==========================================================================
+  // Shield From Wallet (USDC wallet → pool shortcut)
+  // ==========================================================================
+
+  /**
+   * Shield USDC directly from the user's wallet into the Privacy Cash pool.
+   *
+   * Used in the cashout pipeline when the user already holds USDC in their
+   * wallet (no swap needed). Creates a single-use deposit address, the user
+   * sends USDC there, then auto-shields to the pool.
+   *
+   * Flow:
+   *   1. Create Turnkey deposit address (restricted to pool)
+   *   2. User sends USDC from wallet → deposit address
+   *   3. Auto-shield deposit address → pool
+   *
+   * @param userId — User ID
+   * @param subOrgId — User's Turnkey sub-org ID
+   * @param amount — USDC amount in base units (6 decimals)
+   * @param walletAddress — User's main wallet address (source of USDC)
+   * @param signTransaction — Callback to sign the user-to-deposit transfer
+   * @param convexActions — Convex action executor
+   * @returns Shield result
+   */
+  async shieldFromWallet(
+    userId: string,
+    subOrgId: string,
+    amount: number,
+    walletAddress: string,
+    signTransaction: (transaction: Transaction) => Promise<Transaction>,
+    convexActions?: ConvexActionExecutor
+  ): Promise<ShieldResult> {
+    console.log("[PrivacyCash] shieldFromWallet:", { userId, amount, walletAddress });
+
+    try {
+      // 1. Create single-use deposit address
+      const deposit = await this.createDepositAddress(userId, subOrgId, convexActions);
+
+      // 2. Build USDC transfer: user wallet → deposit address
+      const userPubkey = new PublicKey(walletAddress);
+      const depositPubkey = new PublicKey(deposit.address);
+      const usdcMint = new PublicKey(USDC_MINT);
+
+      const userAta = await getAssociatedTokenAddress(usdcMint, userPubkey);
+      const depositAta = await getAssociatedTokenAddress(usdcMint, depositPubkey);
+
+      const transferTx = new Transaction();
+
+      // Create deposit ATA if needed (user pays rent)
+      transferTx.add(
+        // createAssociatedTokenAccountInstruction equivalent
+        {
+          keys: [
+            { pubkey: userPubkey, isSigner: true, isWritable: true },
+            { pubkey: depositAta, isSigner: false, isWritable: true },
+            { pubkey: depositPubkey, isSigner: false, isWritable: false },
+            { pubkey: usdcMint, isSigner: false, isWritable: false },
+            { pubkey: new PublicKey("11111111111111111111111111111111"), isSigner: false, isWritable: false },
+            { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+            { pubkey: new PublicKey("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"), isSigner: false, isWritable: false },
+          ],
+          programId: new PublicKey("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"),
+          data: Buffer.alloc(0),
+        } as any,
+      );
+
+      transferTx.add(
+        createTransferInstruction(userAta, depositAta, userPubkey, amount)
+      );
+
+      const { blockhash } = await this.connection.getLatestBlockhash();
+      transferTx.recentBlockhash = blockhash;
+      transferTx.feePayer = userPubkey;
+
+      // 3. Sign with user's wallet (passkey / wallet adapter)
+      const signedTx = await signTransaction(transferTx);
+
+      // 4. Submit user→deposit transfer
+      const rawTx = signedTx.serialize();
+      const userTxSig = await this.connection.sendRawTransaction(rawTx, {
+        skipPreflight: false,
+        preflightCommitment: "confirmed",
+      });
+      await this.connection.confirmTransaction(userTxSig, "confirmed");
+
+      console.log("[PrivacyCash] User→deposit transfer confirmed:", userTxSig);
+
+      // 5. Auto-shield deposit → pool
+      const shieldResult = await this.autoShieldDeposit(
+        deposit.address,
+        deposit.sessionKeyId,
+        userId,
+        subOrgId,
+        convexActions
+      );
+
+      if (!shieldResult.success) {
+        return {
+          success: false,
+          error: `Shield failed after deposit: ${shieldResult.error}`,
+        };
+      }
+
+      return {
+        success: true,
+        txSignature: shieldResult.txSignature,
+        shieldedAmount: amount,
+        commitment: shieldResult.commitment,
+      };
+    } catch (error) {
+      console.error("[PrivacyCash] shieldFromWallet failed:", error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Shield from wallet failed",
+      };
+    }
+  }
+
+  // ==========================================================================
   // Confidential Card Funding (Token-2022 Encrypted Transfers)
   // ==========================================================================
 

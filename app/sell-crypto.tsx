@@ -1,8 +1,9 @@
 /**
  * Sell Crypto Screen
  *
- * Allows users to sell crypto via MoonPay and receive fiat to their bank account.
- * Supports pre-selecting a token from token-detail or defaults to USDC.
+ * Confidential cashout pipeline: any held asset → USDC → Privacy Cash → fiat.
+ * Supports all wallet tokens (incl. xStocks/RWA), shielded USDC, and standard tokens.
+ * Pipeline progress stepper visible during execution with retry/cancel support.
  */
 import { useState, useCallback, useMemo, useEffect } from 'react';
 import { StyleSheet, View, TextInput, ActivityIndicator, Keyboard, TouchableWithoutFeedback, ScrollView } from 'react-native';
@@ -16,33 +17,48 @@ import { ThemedView } from '@/components/themed-view';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { useAuth } from '@/stores/authConvex';
 import { useMoonPay } from '@/hooks/useMoonPay';
-import { useTokenHoldings } from '@/hooks/useTokenHoldings';
-import { usePrivateCashout } from '@/hooks/usePrivateCashout';
-
-// Supported currencies for selling (mapped to token symbols)
-// Network suffix: _sol = Solana, no suffix = Ethereum
-const CURRENCY_CONFIG = [
-  { code: 'usdc', name: 'USD Coin (ETH)', symbol: 'USDC', icon: '$', network: 'ethereum' },
-  { code: 'usdc_sol', name: 'USD Coin (SOL)', symbol: 'USDC', icon: '$', network: 'solana' },
-  { code: 'eth', name: 'Ethereum', symbol: 'ETH', icon: '◇', network: 'ethereum' },
-  { code: 'sol', name: 'Solana', symbol: 'SOL', icon: '◎', network: 'solana' },
-  { code: 'usdt', name: 'Tether (ETH)', symbol: 'USDT', icon: '₮', network: 'ethereum' },
-];
-
-// Helper to get wallet address based on currency network
-function getWalletAddress(
-  currency: typeof CURRENCY_CONFIG[number],
-  solanaAddress?: string | null,
-  ethereumAddress?: string | null
-): string | null {
-  if (currency.network === 'solana') {
-    return solanaAddress || null;
-  }
-  return ethereumAddress || null;
-}
+import { useCashoutPipeline, type CashoutAsset, type CashoutPhase } from '@/hooks/useCashoutPipeline';
 
 // Quick percentage buttons for selling
 const QUICK_PERCENTAGES = [25, 50, 75, 100];
+
+// Icon for asset (fallback when no logoUri)
+function getAssetIcon(asset: CashoutAsset): string {
+  if (asset.isShielded) return '\u{1F6E1}'; // shield emoji
+  const map: Record<string, string> = {
+    USDC: '$', SOL: '\u25CE', ETH: '\u25C7', USDT: '\u20AE',
+  };
+  return map[asset.symbol] || '\u{1F4B0}'; // default to money bag
+}
+
+// Pipeline step config for the stepper
+const PIPELINE_STEPS: { phase: CashoutPhase; label: string; icon: string }[] = [
+  { phase: 'compliance_prescreen', label: 'Compliance check', icon: 'shield-checkmark' },
+  { phase: 'creating_swap_address', label: 'Creating private address', icon: 'key' },
+  { phase: 'swapping', label: 'Swapping to USDC', icon: 'swap-horizontal' },
+  { phase: 'swap_complete', label: 'Privacy delay', icon: 'time' },
+  { phase: 'shielding', label: 'Shielding funds', icon: 'lock-closed' },
+  { phase: 'creating_cashout_address', label: 'Cashout address', icon: 'wallet' },
+  { phase: 'unshielding', label: 'Preparing cashout', icon: 'arrow-up' },
+  { phase: 'sending_to_moonpay', label: 'Sending to MoonPay', icon: 'cash' },
+  { phase: 'awaiting_fiat', label: 'Awaiting fiat', icon: 'checkmark-circle' },
+];
+
+// Which steps to show for each path
+function getStepsForPath(path?: string): typeof PIPELINE_STEPS {
+  if (path === 'usdc_pool') {
+    return PIPELINE_STEPS.filter((s) =>
+      ['creating_cashout_address', 'unshielding', 'sending_to_moonpay', 'awaiting_fiat'].includes(s.phase)
+    );
+  }
+  if (path === 'usdc_wallet') {
+    return PIPELINE_STEPS.filter((s) =>
+      ['compliance_prescreen', 'shielding', 'creating_cashout_address', 'unshielding', 'sending_to_moonpay', 'awaiting_fiat'].includes(s.phase)
+    );
+  }
+  // xstock_full — all steps
+  return PIPELINE_STEPS;
+}
 
 export default function SellCryptoScreen() {
   const insets = useSafeAreaInsets();
@@ -56,138 +72,81 @@ export default function SellCryptoScreen() {
     'background'
   );
 
-  // User wallet addresses (both Solana and Ethereum)
-  const { user, userId } = useAuth();
+  // User
+  const { user } = useAuth();
   const solanaAddress = user?.solanaAddress || null;
   const ethereumAddress = user?.ethereumAddress || null;
-  const subOrgId = (user as any)?.turnkeySubOrgId || undefined;
 
-  // Get real token holdings (Solana-based for now)
-  const { holdings, isLoading: holdingsLoading } = useTokenHoldings(solanaAddress);
+  // Pipeline hook (replaces old usePrivateCashout + useTokenHoldings + hardcoded config)
+  const pipeline = useCashoutPipeline();
 
-  // Private cashout for privacy-preserving withdrawals
-  const {
-    state: cashoutState,
-    isLoading: cashoutLoading,
-    shieldedBalance,
-    fetchShieldedBalance,
-    quickCashout,
-    isAvailable: isPrivateCashoutAvailable } = usePrivateCashout(userId || undefined, subOrgId);
+  // Selected asset
+  const initialSymbol = params.currency?.toUpperCase() || 'USDC';
+  const [selectedAsset, setSelectedAsset] = useState<CashoutAsset | null>(null);
 
-  // Track if using private mode
-  const [usePrivateMode, setUsePrivateMode] = useState(true);
-
-  // Fetch shielded balance on mount
+  // Set initial asset when list loads
   useEffect(() => {
-    if (userId && isPrivateCashoutAvailable) {
-      fetchShieldedBalance();
-    }
-  }, [userId, isPrivateCashoutAvailable, fetchShieldedBalance]);
-
-  // Build available currencies with real balances
-  const availableCurrencies = useMemo(() => {
-    if (!holdings || holdings.length === 0) return [];
-
-    return CURRENCY_CONFIG.map((currency) => {
-      const holding = holdings.find(
-        (h) => h.symbol.toUpperCase() === currency.symbol.toUpperCase()
+    if (pipeline.allCashoutAssets.length > 0 && !selectedAsset) {
+      const fromParams = pipeline.allCashoutAssets.find(
+        (a) => a.symbol.toUpperCase() === initialSymbol
       );
-      return {
-        ...currency,
-        balance: holding ? parseFloat(holding.balance) : 0,
-        value: holding?.valueUsd || 0 };
-    }).filter((c) => c.balance > 0);
-  }, [holdings]);
-
-  // Selected currency (default to first available or from params)
-  const initialCurrency = params.currency?.toLowerCase() || 'usdc';
-  const [selectedCurrency, setSelectedCurrency] = useState<typeof availableCurrencies[0] | null>(null);
-
-  // Set initial currency when holdings load
-  useEffect(() => {
-    if (availableCurrencies.length > 0 && !selectedCurrency) {
-      const fromParams = availableCurrencies.find((c) => c.code === initialCurrency);
-      setSelectedCurrency(fromParams || availableCurrencies[0]);
+      setSelectedAsset(fromParams || pipeline.allCashoutAssets[0]);
     }
-  }, [availableCurrencies, initialCurrency, selectedCurrency]);
+  }, [pipeline.allCashoutAssets, initialSymbol, selectedAsset]);
 
-  // Amount input (in crypto units)
+  // Amount input
   const [amount, setAmount] = useState('');
   const numericAmount = parseFloat(amount) || 0;
 
-  // Current balance for selected currency
-  const currentBalance = selectedCurrency?.balance || 0;
+  // Current balance for selected asset
+  const currentBalance = selectedAsset ? parseFloat(selectedAsset.balance) / Math.pow(10, selectedAsset.decimals) : 0;
 
-  // MoonPay hook - pass both addresses, it will use the right one
-  const { openSell, isReady, isLoading, error } = useMoonPay({
+  // MoonPay for fallback
+  const { openSell, isReady, isLoading: moonPayLoading, error: moonPayError } = useMoonPay({
     solanaAddress,
     ethereumAddress,
-    defaultCurrency: selectedCurrency?.code || 'usdc' });
+    defaultCurrency: 'usdc_sol',
+  });
 
-  // Handle sell action
+  // Handle sell action — starts the pipeline
   const handleSell = useCallback(async () => {
-    if (numericAmount <= 0 || !selectedCurrency) {
-      return;
-    }
+    if (numericAmount <= 0 || !selectedAsset) return;
 
-    try {
-      // Use private cashout if available and enabled
-      if (usePrivateMode && isPrivateCashoutAvailable && shieldedBalance) {
-        console.log('[SellCrypto] Using private cashout flow');
+    // Convert display amount to base units
+    const amountBaseUnits = Math.floor(numericAmount * Math.pow(10, selectedAsset.decimals));
 
-        // Convert to base units (USDC has 6 decimals)
-        const amountBaseUnits = Math.floor(numericAmount * 1_000_000);
+    await pipeline.startCashout(selectedAsset, amountBaseUnits, 'USD');
+  }, [numericAmount, selectedAsset, pipeline]);
 
-        // Get the user's commitment (first available)
-        const userCommitment = (shieldedBalance as any).commitments?.[0]?.commitment;
-        if (!userCommitment) {
-          console.error('[SellCrypto] No shielded commitment available');
-          // Fall back to regular MoonPay
-          await openSell({
-            currencyCode: selectedCurrency.code,
-            quoteCurrencyAmount: numericAmount });
-          return;
-        }
-
-        // Execute private cashout flow
-        const { result, moonPayUrl } = await quickCashout(
-          amountBaseUnits,
-          'USD',
-          userCommitment
-        );
-
-        if (result?.success && moonPayUrl) {
-          // MoonPay will be opened by the hook or we navigate to it
-          console.log('[SellCrypto] Private cashout initiated:', {
-            sessionId: result.sessionId,
-            privacyInfo: result.privacyInfo });
-          // The MoonPay widget should open automatically via the hook
-        } else {
-          console.error('[SellCrypto] Private cashout failed:', result?.error);
-          // Fall back to regular MoonPay
-          await openSell({
-            currencyCode: selectedCurrency.code,
-            quoteCurrencyAmount: numericAmount });
-        }
-      } else {
-        // Regular MoonPay flow (less private)
-        await openSell({
-          currencyCode: selectedCurrency.code,
-          quoteCurrencyAmount: numericAmount });
-      }
-    } catch (err) {
-      console.error('Sell failed:', err);
-    }
-  }, [openSell, selectedCurrency, numericAmount, usePrivateMode, isPrivateCashoutAvailable, shieldedBalance, quickCashout]);
-
-  // Set quick percentage of balance
+  // Quick percentage
   const handleQuickPercentage = (percentage: number) => {
     const value = (currentBalance * percentage) / 100;
     setAmount(value.toFixed(6).replace(/\.?0+$/, ''));
   };
 
   const isValidAmount = numericAmount > 0 && numericAmount <= currentBalance;
-  const hasHoldings = availableCurrencies.length > 0;
+  const hasAssets = pipeline.allCashoutAssets.length > 0;
+  const isLoadingAssets = !hasAssets && pipeline.allCashoutAssets.length === 0;
+
+  // Pipeline active — show stepper instead of input
+  const isPipelineActive = pipeline.isActive;
+
+  // Steps for current path
+  const pipelineSteps = getStepsForPath(pipeline.state.path);
+
+  // Step status helper
+  const getStepStatus = (stepPhase: CashoutPhase): 'pending' | 'active' | 'completed' | 'error' => {
+    const { phase, failedAtPhase } = pipeline.state;
+    if (phase === 'error' && failedAtPhase === stepPhase) return 'error';
+
+    const allPhases: CashoutPhase[] = pipelineSteps.map((s) => s.phase);
+    const currentIdx = allPhases.indexOf(phase as CashoutPhase);
+    const stepIdx = allPhases.indexOf(stepPhase);
+
+    if (stepIdx < currentIdx) return 'completed';
+    if (stepIdx === currentIdx) return 'active';
+    return 'pending';
+  };
 
   return (
     <ThemedView style={styles.container}>
@@ -207,234 +166,389 @@ export default function SellCryptoScreen() {
         keyboardDismissMode="on-drag"
       >
         <TouchableWithoutFeedback onPress={Keyboard.dismiss}><View style={styles.touchableContent}>
-        {/* Loading State */}
-        {holdingsLoading && (
-          <View style={styles.emptyState}>
-            <ActivityIndicator size="large" color={mutedColor} />
-            <ThemedText style={[styles.emptyStateText, { color: mutedColor }]}>
-              Loading your holdings...
-            </ThemedText>
-          </View>
-        )}
 
-        {/* Empty State */}
-        {!holdingsLoading && !hasHoldings && (
-          <View style={styles.emptyState}>
-            <View style={[styles.emptyStateIcon, { backgroundColor: cardBg }]}>
-              <Ionicons name="wallet-outline" size={48} color={mutedColor} />
-            </View>
-            <ThemedText style={styles.emptyStateTitle}>No Holdings to Sell</ThemedText>
-            <ThemedText style={[styles.emptyStateText, { color: mutedColor }]}>
-              You don't have any supported tokens in your wallet. Deposit some crypto first to sell.
-            </ThemedText>
-            <PressableScale
-              onPress={() => router.replace('/buy-crypto?currency=usdc&mode=deposit')}
-              style={[styles.emptyStateButton, { backgroundColor: '#22c55e' }]}
-            >
-              <Ionicons name="add" size={20} color="#fff" />
-              <ThemedText style={[styles.emptyStateButtonText, { color: '#fff' }]}>Deposit USDC</ThemedText>
-            </PressableScale>
-          </View>
-        )}
-
-        {/* Main Content - only show if has holdings */}
-        {!holdingsLoading && hasHoldings && selectedCurrency && (
-          <>
-            {/* Currency Selector */}
-            <View style={styles.section}>
-              <ThemedText style={[styles.sectionLabel, { color: mutedColor }]}>SELECT CURRENCY</ThemedText>
-              <View style={styles.currencyGrid}>
-                {availableCurrencies.map((currency) => {
-                  const isSelected = selectedCurrency.code === currency.code;
-                  return (
-                    <PressableScale
-                      key={currency.code}
-                      onPress={() => setSelectedCurrency(currency)}
-                      style={[
-                        styles.currencyButton,
-                        { backgroundColor: isSelected ? 'rgba(239,68,68,0.15)' : cardBg },
-                        isSelected && { borderColor: '#ef4444', borderWidth: 1 },
-                      ]}
-                    >
-                      <View style={[styles.currencyIcon, { backgroundColor: isSelected ? 'rgba(239,68,68,0.2)' : borderColor }]}>
-                        <ThemedText style={styles.currencyIconText}>{currency.icon}</ThemedText>
-                      </View>
-                      <ThemedText style={[styles.currencySymbol, isSelected && { color: '#ef4444' }]}>
-                        {currency.symbol}
-                      </ThemedText>
-                    </PressableScale>
-                  );
-                })}
-              </View>
+        {/* ===== PIPELINE ACTIVE: Show progress stepper ===== */}
+        {isPipelineActive && (
+          <View style={styles.pipelineContainer}>
+            {/* Progress bar */}
+            <View style={[styles.progressBarBg, { backgroundColor: borderColor }]}>
+              <View
+                style={[
+                  styles.progressBarFill,
+                  { width: `${pipeline.progressPercent}%`, backgroundColor: '#22c55e' },
+                ]}
+              />
             </View>
 
-            {/* Balance Display */}
-            <View style={[styles.balanceCard, { backgroundColor: cardBg }]}>
-              <View style={styles.balanceRow}>
-                <ThemedText style={[styles.balanceLabel, { color: mutedColor }]}>Available Balance</ThemedText>
-                <ThemedText style={styles.balanceValue}>
-                  {currentBalance.toLocaleString(undefined, { maximumFractionDigits: 6 })} {selectedCurrency.symbol}
+            {/* Current phase label */}
+            <View style={styles.phaseHeader}>
+              <ThemedText style={styles.phaseLabel}>{pipeline.currentPhaseLabel}</ThemedText>
+              {pipeline.estimatedTimeRemaining && (
+                <ThemedText style={[styles.phaseTime, { color: mutedColor }]}>
+                  {pipeline.estimatedTimeRemaining}
                 </ThemedText>
-              </View>
-            </View>
-
-            {/* Amount Input */}
-            <View style={styles.section}>
-              <ThemedText style={[styles.sectionLabel, { color: mutedColor }]}>AMOUNT TO SELL</ThemedText>
-              <View style={[styles.amountInputContainer, { backgroundColor: cardBg }]}>
-                <TextInput
-                  style={[styles.amountInput, { color: textColor }]}
-                  value={amount}
-                  onChangeText={setAmount}
-                  placeholder="0.00"
-                  placeholderTextColor={mutedColor}
-                  keyboardType="decimal-pad"
-                />
-                <ThemedText style={[styles.currencyLabel, { color: mutedColor }]}>{selectedCurrency.symbol}</ThemedText>
-              </View>
-              {numericAmount > currentBalance && (
-                <ThemedText style={[styles.errorText, { color: '#ef4444' }]}>Insufficient balance</ThemedText>
               )}
             </View>
-          </>
-        )}
 
-        {/* Quick Percentage Buttons - only show if has holdings */}
-        {!holdingsLoading && hasHoldings && selectedCurrency && (
-          <>
-            <View style={styles.quickAmounts}>
-              {QUICK_PERCENTAGES.map((percentage) => {
-                const isMax = percentage === 100;
+            {/* Jitter countdown */}
+            {pipeline.state.phase === 'swap_complete' && pipeline.state.jitterRemainingMs !== undefined && (
+              <View style={[styles.jitterCard, { backgroundColor: 'rgba(34,197,94,0.1)', borderColor: 'rgba(34,197,94,0.2)' }]}>
+                <Ionicons name="time" size={18} color="#22c55e" />
+                <View style={{ flex: 1 }}>
+                  <ThemedText style={[styles.jitterTitle, { color: '#22c55e' }]}>
+                    Privacy delay... {Math.ceil(pipeline.state.jitterRemainingMs / 1000)}s
+                  </ThemedText>
+                  <ThemedText style={[styles.jitterDesc, { color: mutedColor }]}>
+                    Random delay breaks timing correlation between your swap and shield
+                  </ThemedText>
+                </View>
+              </View>
+            )}
+
+            {/* Vertical stepper */}
+            <View style={styles.stepper}>
+              {pipelineSteps.map((step, i) => {
+                const status = getStepStatus(step.phase);
+                const isLast = i === pipelineSteps.length - 1;
+
+                const dotColor =
+                  status === 'completed' ? '#22c55e' :
+                  status === 'active' ? '#3b82f6' :
+                  status === 'error' ? '#ef4444' :
+                  `${mutedColor}40`;
+
+                const labelColor =
+                  status === 'completed' ? '#22c55e' :
+                  status === 'active' ? textColor :
+                  status === 'error' ? '#ef4444' :
+                  mutedColor;
+
                 return (
-                  <PressableScale
-                    key={percentage}
-                    onPress={() => handleQuickPercentage(percentage)}
-                    style={[
-                      styles.quickAmountButton,
-                      { backgroundColor: cardBg },
-                      isMax && { backgroundColor: 'rgba(239,68,68,0.1)', borderColor: 'rgba(239,68,68,0.3)', borderWidth: 1 },
-                    ]}
-                  >
-                    <ThemedText style={[styles.quickAmountText, isMax && { color: '#ef4444' }]}>
-                      {isMax ? 'MAX' : `${percentage}%`}
-                    </ThemedText>
-                  </PressableScale>
+                  <View key={step.phase} style={styles.stepRow}>
+                    <View style={styles.stepIndicator}>
+                      <View style={[styles.stepDot, { backgroundColor: dotColor }]}>
+                        {status === 'completed' && (
+                          <Ionicons name="checkmark" size={10} color="#fff" />
+                        )}
+                        {status === 'active' && (
+                          <ActivityIndicator size="small" color="#fff" />
+                        )}
+                        {status === 'error' && (
+                          <Ionicons name="close" size={10} color="#fff" />
+                        )}
+                      </View>
+                      {!isLast && (
+                        <View style={[styles.stepLine, {
+                          backgroundColor: status === 'completed' ? '#22c55e' : `${mutedColor}20`,
+                        }]} />
+                      )}
+                    </View>
+                    <View style={styles.stepContent}>
+                      <Ionicons name={step.icon as any} size={14} color={labelColor} />
+                      <ThemedText style={[styles.stepLabel, { color: labelColor }]}>
+                        {step.label}
+                      </ThemedText>
+                    </View>
+                  </View>
                 );
               })}
             </View>
 
-            {/* Privacy Mode Indicator */}
-            {isPrivateCashoutAvailable && (
-              <PressableScale
-                onPress={() => setUsePrivateMode(!usePrivateMode)}
-                style={[
-                  styles.privacyToggle,
-                  {
-                    backgroundColor: usePrivateMode ? 'rgba(34,197,94,0.1)' : cardBg,
-                    borderColor: usePrivateMode ? 'rgba(34,197,94,0.3)' : borderColor },
-                ]}
-              >
-                <View style={[
-                  styles.privacyIcon,
-                  { backgroundColor: usePrivateMode ? 'rgba(34,197,94,0.2)' : borderColor }
-                ]}>
-                  <Ionicons
-                    name={usePrivateMode ? 'shield-checkmark' : 'shield-outline'}
-                    size={20}
-                    color={usePrivateMode ? '#22c55e' : mutedColor}
-                  />
-                </View>
-                <View style={styles.privacyText}>
-                  <ThemedText style={[
-                    styles.privacyTitle,
-                    usePrivateMode && { color: '#22c55e' }
-                  ]}>
-                    {usePrivateMode ? 'Private Cashout' : 'Standard Cashout'}
-                  </ThemedText>
-                  <ThemedText style={[styles.privacyDesc, { color: mutedColor }]}>
-                    {usePrivateMode
-                      ? 'Your wallet history stays hidden from MoonPay'
-                      : 'MoonPay can see your wallet address'}
-                  </ThemedText>
-                </View>
-                <View style={[
-                  styles.privacyStatus,
-                  { backgroundColor: usePrivateMode ? '#22c55e' : mutedColor }
-                ]} />
-              </PressableScale>
-            )}
-
-            {/* Shielded Balance (if available) */}
-            {usePrivateMode && shieldedBalance && shieldedBalance.totalBalance > 0 && (
-              <View style={[styles.shieldedBalanceCard, { backgroundColor: 'rgba(34,197,94,0.1)', borderColor: 'rgba(34,197,94,0.2)' }]}>
-                <Ionicons name="lock-closed" size={16} color="#22c55e" />
-                <ThemedText style={[styles.shieldedBalanceLabel, { color: '#22c55e' }]}>
-                  Shielded Balance: ${(shieldedBalance.totalBalance / 1_000_000).toFixed(2)} USDC
+            {/* Error display with retry */}
+            {pipeline.state.phase === 'error' && (
+              <View style={[styles.errorBanner, { backgroundColor: 'rgba(239,68,68,0.1)' }]}>
+                <Ionicons name="alert-circle" size={16} color="#ef4444" />
+                <ThemedText style={[styles.errorBannerText, { color: '#ef4444' }]}>
+                  {pipeline.state.error}
                 </ThemedText>
               </View>
             )}
 
-            {/* Payout Info */}
-            <View style={[styles.payoutInfo, { backgroundColor: cardBg }]}>
-              <ThemedText style={[styles.payoutInfoTitle, { color: mutedColor }]}>PAYOUT</ThemedText>
-              <View style={styles.payoutMethods}>
-                <View style={styles.payoutMethod}>
-                  <Ionicons name="business" size={20} color={textColor} />
-                  <View style={styles.payoutMethodText}>
-                    <ThemedText style={styles.payoutMethodTitle}>Bank Account</ThemedText>
-                    <ThemedText style={[styles.payoutMethodDesc, { color: mutedColor }]}>
-                      Receive USD directly to your bank
+            {/* Awaiting fiat info */}
+            {pipeline.state.phase === 'awaiting_fiat' && (
+              <View style={[styles.awaitingCard, { backgroundColor: 'rgba(59,130,246,0.1)', borderColor: 'rgba(59,130,246,0.2)' }]}>
+                <Ionicons name="checkmark-circle" size={20} color="#3b82f6" />
+                <View style={{ flex: 1 }}>
+                  <ThemedText style={[styles.awaitingTitle, { color: '#3b82f6' }]}>
+                    Cashout submitted
+                  </ThemedText>
+                  <ThemedText style={[styles.awaitingDesc, { color: mutedColor }]}>
+                    MoonPay is processing your fiat withdrawal. Funds typically arrive in 1–3 business days.
+                  </ThemedText>
+                </View>
+              </View>
+            )}
+          </View>
+        )}
+
+        {/* ===== PIPELINE IDLE: Show asset selector + amount input ===== */}
+        {!isPipelineActive && (
+          <>
+            {/* Loading State */}
+            {isLoadingAssets && (
+              <View style={styles.emptyState}>
+                <ActivityIndicator size="large" color={mutedColor} />
+                <ThemedText style={[styles.emptyStateText, { color: mutedColor }]}>
+                  Loading your holdings...
+                </ThemedText>
+              </View>
+            )}
+
+            {/* Empty State */}
+            {!isLoadingAssets && !hasAssets && (
+              <View style={styles.emptyState}>
+                <View style={[styles.emptyStateIcon, { backgroundColor: cardBg }]}>
+                  <Ionicons name="wallet-outline" size={48} color={mutedColor} />
+                </View>
+                <ThemedText style={styles.emptyStateTitle}>No Holdings to Sell</ThemedText>
+                <ThemedText style={[styles.emptyStateText, { color: mutedColor }]}>
+                  You don't have any tokens in your wallet. Deposit some crypto first to sell.
+                </ThemedText>
+                <PressableScale
+                  onPress={() => router.replace('/buy-crypto?currency=usdc&mode=deposit')}
+                  style={[styles.emptyStateButton, { backgroundColor: '#22c55e' }]}
+                >
+                  <Ionicons name="add" size={20} color="#fff" />
+                  <ThemedText style={[styles.emptyStateButtonText, { color: '#fff' }]}>Deposit USDC</ThemedText>
+                </PressableScale>
+              </View>
+            )}
+
+            {/* Main Content */}
+            {hasAssets && selectedAsset && (
+              <>
+                {/* Asset Selector — scrollable list of all tokens */}
+                <View style={styles.section}>
+                  <ThemedText style={[styles.sectionLabel, { color: mutedColor }]}>SELECT ASSET</ThemedText>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.assetScroll}>
+                    {pipeline.allCashoutAssets.map((asset) => {
+                      const isSelected = selectedAsset.mint === asset.mint && selectedAsset.isShielded === asset.isShielded;
+                      const key = asset.isShielded ? `shielded_${asset.mint}` : asset.mint;
+                      return (
+                        <PressableScale
+                          key={key}
+                          onPress={() => {
+                            setSelectedAsset(asset);
+                            setAmount('');
+                          }}
+                          style={[
+                            styles.assetButton,
+                            { backgroundColor: isSelected ? 'rgba(239,68,68,0.15)' : cardBg },
+                            isSelected && { borderColor: '#ef4444', borderWidth: 1 },
+                          ]}
+                        >
+                          <View style={[styles.assetIcon, { backgroundColor: isSelected ? 'rgba(239,68,68,0.2)' : borderColor }]}>
+                            {asset.isShielded ? (
+                              <Ionicons name="lock-closed" size={16} color={isSelected ? '#ef4444' : mutedColor} />
+                            ) : asset.isRwa ? (
+                              <Ionicons name="trending-up" size={16} color={isSelected ? '#ef4444' : mutedColor} />
+                            ) : (
+                              <ThemedText style={styles.assetIconText}>{getAssetIcon(asset)}</ThemedText>
+                            )}
+                          </View>
+                          <ThemedText style={[styles.assetSymbol, isSelected && { color: '#ef4444' }]}>
+                            {asset.isShielded ? 'Shielded' : asset.symbol}
+                          </ThemedText>
+                          <ThemedText style={[styles.assetValue, { color: mutedColor }]}>
+                            ${asset.valueUsd.toFixed(2)}
+                          </ThemedText>
+                        </PressableScale>
+                      );
+                    })}
+                  </ScrollView>
+                </View>
+
+                {/* Path indicator */}
+                {selectedAsset && !selectedAsset.isUSDC && !selectedAsset.isShielded && (
+                  <View style={[styles.pathBadge, { backgroundColor: 'rgba(168,85,247,0.1)', borderColor: 'rgba(168,85,247,0.2)' }]}>
+                    <Ionicons name="swap-horizontal" size={14} color="#a855f7" />
+                    <ThemedText style={[styles.pathBadgeText, { color: '#a855f7' }]}>
+                      {selectedAsset.symbol} will be privately swapped to USDC before cashout
+                    </ThemedText>
+                  </View>
+                )}
+
+                {/* Balance Display */}
+                <View style={[styles.balanceCard, { backgroundColor: cardBg }]}>
+                  <View style={styles.balanceRow}>
+                    <ThemedText style={[styles.balanceLabel, { color: mutedColor }]}>Available Balance</ThemedText>
+                    <ThemedText style={styles.balanceValue}>
+                      {currentBalance.toLocaleString(undefined, { maximumFractionDigits: 6 })} {selectedAsset.symbol}
                     </ThemedText>
                   </View>
                 </View>
-              </View>
-              <View style={[styles.estimateRow, { borderTopColor: borderColor }]}>
-                <ThemedText style={[styles.estimateLabel, { color: mutedColor }]}>Estimated payout</ThemedText>
-                <ThemedText style={styles.estimateValue}>
-                  ~${(numericAmount * 1.0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD
-                </ThemedText>
-              </View>
-            </View>
 
-            {/* Error Display */}
-            {error && (
-              <View style={[styles.errorBanner, { backgroundColor: 'rgba(239,68,68,0.1)' }]}>
-                <Ionicons name="alert-circle" size={16} color="#ef4444" />
-                <ThemedText style={[styles.errorBannerText, { color: '#ef4444' }]}>{error}</ThemedText>
-              </View>
+                {/* Amount Input */}
+                <View style={styles.section}>
+                  <ThemedText style={[styles.sectionLabel, { color: mutedColor }]}>AMOUNT TO SELL</ThemedText>
+                  <View style={[styles.amountInputContainer, { backgroundColor: cardBg }]}>
+                    <TextInput
+                      style={[styles.amountInput, { color: textColor }]}
+                      value={amount}
+                      onChangeText={setAmount}
+                      placeholder="0.00"
+                      placeholderTextColor={mutedColor}
+                      keyboardType="decimal-pad"
+                    />
+                    <ThemedText style={[styles.currencyLabel, { color: mutedColor }]}>{selectedAsset.symbol}</ThemedText>
+                  </View>
+                  {numericAmount > currentBalance && (
+                    <ThemedText style={[styles.errorText, { color: '#ef4444' }]}>Insufficient balance</ThemedText>
+                  )}
+                </View>
+
+                {/* Quick Percentage Buttons */}
+                <View style={styles.quickAmounts}>
+                  {QUICK_PERCENTAGES.map((percentage) => {
+                    const isMax = percentage === 100;
+                    return (
+                      <PressableScale
+                        key={percentage}
+                        onPress={() => handleQuickPercentage(percentage)}
+                        style={[
+                          styles.quickAmountButton,
+                          { backgroundColor: cardBg },
+                          isMax && { backgroundColor: 'rgba(239,68,68,0.1)', borderColor: 'rgba(239,68,68,0.3)', borderWidth: 1 },
+                        ]}
+                      >
+                        <ThemedText style={[styles.quickAmountText, isMax && { color: '#ef4444' }]}>
+                          {isMax ? 'MAX' : `${percentage}%`}
+                        </ThemedText>
+                      </PressableScale>
+                    );
+                  })}
+                </View>
+
+                {/* Privacy indicator — always private */}
+                <View style={[styles.privacyToggle, { backgroundColor: 'rgba(34,197,94,0.1)', borderColor: 'rgba(34,197,94,0.3)' }]}>
+                  <View style={[styles.privacyIconContainer, { backgroundColor: 'rgba(34,197,94,0.2)' }]}>
+                    <Ionicons name="shield-checkmark" size={20} color="#22c55e" />
+                  </View>
+                  <View style={styles.privacyText}>
+                    <ThemedText style={[styles.privacyTitle, { color: '#22c55e' }]}>
+                      Private Cashout
+                    </ThemedText>
+                    <ThemedText style={[styles.privacyDesc, { color: mutedColor }]}>
+                      Your wallet history stays hidden from MoonPay
+                    </ThemedText>
+                  </View>
+                  <View style={[styles.privacyStatus, { backgroundColor: '#22c55e' }]} />
+                </View>
+
+                {/* Payout Info */}
+                <View style={[styles.payoutInfo, { backgroundColor: cardBg }]}>
+                  <ThemedText style={[styles.payoutInfoTitle, { color: mutedColor }]}>PAYOUT</ThemedText>
+                  <View style={styles.payoutMethods}>
+                    <View style={styles.payoutMethod}>
+                      <Ionicons name="business" size={20} color={textColor} />
+                      <View style={styles.payoutMethodText}>
+                        <ThemedText style={styles.payoutMethodTitle}>Bank Account</ThemedText>
+                        <ThemedText style={[styles.payoutMethodDesc, { color: mutedColor }]}>
+                          Receive USD directly to your bank
+                        </ThemedText>
+                      </View>
+                    </View>
+                  </View>
+                  <View style={[styles.estimateRow, { borderTopColor: borderColor }]}>
+                    <ThemedText style={[styles.estimateLabel, { color: mutedColor }]}>Estimated payout</ThemedText>
+                    <ThemedText style={styles.estimateValue}>
+                      ~${(numericAmount * (selectedAsset.valueUsd / (currentBalance || 1))).toLocaleString(
+                        undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }
+                      )} USD
+                    </ThemedText>
+                  </View>
+                </View>
+
+                {/* MoonPay error */}
+                {moonPayError && (
+                  <View style={[styles.errorBanner, { backgroundColor: 'rgba(239,68,68,0.1)' }]}>
+                    <Ionicons name="alert-circle" size={16} color="#ef4444" />
+                    <ThemedText style={[styles.errorBannerText, { color: '#ef4444' }]}>{moonPayError}</ThemedText>
+                  </View>
+                )}
+              </>
             )}
           </>
         )}
+
         </View></TouchableWithoutFeedback>
       </ScrollView>
 
-      {/* Sell Button - only show if has holdings */}
-      {!holdingsLoading && hasHoldings && selectedCurrency && (
-        <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
-          <PressableScale
-            onPress={handleSell}
-            enabled={isValidAmount && !isLoading && isReady}
-            style={[
-              styles.sellButton,
-              { backgroundColor: isValidAmount && isReady ? '#ef4444' : `${mutedColor}50` },
-            ]}
-          >
-            {isLoading ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <>
-                <Ionicons name="arrow-down" size={20} color="#fff" />
-                <ThemedText style={styles.sellButtonText}>
-                  {isValidAmount ? `Sell ${numericAmount} ${selectedCurrency.symbol}` : 'Enter amount'}
-                </ThemedText>
-              </>
+      {/* Footer — context-dependent */}
+      <View style={[styles.footer, { paddingBottom: insets.bottom + 16 }]}>
+        {/* Pipeline active: show cancel/retry/done buttons */}
+        {isPipelineActive && (
+          <View style={styles.footerButtons}>
+            {pipeline.canRetry && (
+              <PressableScale
+                onPress={pipeline.retryFromFailure}
+                style={[styles.sellButton, { backgroundColor: '#3b82f6' }]}
+              >
+                <Ionicons name="refresh" size={20} color="#fff" />
+                <ThemedText style={styles.sellButtonText}>Retry</ThemedText>
+              </PressableScale>
             )}
+            {pipeline.canCancel && (
+              <PressableScale
+                onPress={pipeline.cancelCashout}
+                style={[styles.cancelButton, { backgroundColor: cardBg, borderColor: borderColor }]}
+              >
+                <ThemedText style={[styles.cancelButtonText, { color: textColor }]}>Cancel</ThemedText>
+              </PressableScale>
+            )}
+            {pipeline.state.phase === 'awaiting_fiat' && (
+              <PressableScale
+                onPress={() => {
+                  pipeline.markComplete();
+                  router.back();
+                }}
+                style={[styles.sellButton, { backgroundColor: '#22c55e' }]}
+              >
+                <Ionicons name="checkmark" size={20} color="#fff" />
+                <ThemedText style={styles.sellButtonText}>Done</ThemedText>
+              </PressableScale>
+            )}
+          </View>
+        )}
+
+        {/* Pipeline idle: show sell button */}
+        {!isPipelineActive && hasAssets && selectedAsset && (
+          <>
+            <PressableScale
+              onPress={handleSell}
+              enabled={isValidAmount && !moonPayLoading}
+              style={[
+                styles.sellButton,
+                { backgroundColor: isValidAmount ? '#ef4444' : `${mutedColor}50` },
+              ]}
+            >
+              {moonPayLoading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <>
+                  <Ionicons name="arrow-down" size={20} color="#fff" />
+                  <ThemedText style={styles.sellButtonText}>
+                    {isValidAmount ? `Sell ${numericAmount} ${selectedAsset.symbol}` : 'Enter amount'}
+                  </ThemedText>
+                </>
+              )}
+            </PressableScale>
+            <ThemedText style={[styles.footerNote, { color: mutedColor }]}>
+              Powered by MoonPay. Funds sent to your linked bank account.
+            </ThemedText>
+          </>
+        )}
+
+        {/* Completed/cancelled: reset button */}
+        {(pipeline.state.phase === 'completed' || pipeline.state.phase === 'cancelled') && (
+          <PressableScale
+            onPress={() => pipeline.reset()}
+            style={[styles.sellButton, { backgroundColor: '#3b82f6' }]}
+          >
+            <ThemedText style={styles.sellButtonText}>New Cashout</ThemedText>
           </PressableScale>
-          <ThemedText style={[styles.footerNote, { color: mutedColor }]}>
-            Powered by MoonPay. Funds sent to your linked bank account.
-          </ThemedText>
-        </View>
-      )}
+        )}
+      </View>
     </ThemedView>
   );
 }
@@ -505,26 +619,46 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     letterSpacing: 1,
     marginBottom: 12 },
-  currencyGrid: {
-    flexDirection: 'row',
-    gap: 8 },
-  currencyButton: {
-    flex: 1,
+
+  // Asset selector
+  assetScroll: {
+    flexDirection: 'row' },
+  assetButton: {
     alignItems: 'center',
-    gap: 8,
-    paddingVertical: 16,
-    borderRadius: 14 },
-  currencyIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    gap: 6,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 14,
+    marginRight: 8,
+    minWidth: 80 },
+  assetIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center' },
-  currencyIconText: {
-    fontSize: 18 },
-  currencySymbol: {
+  assetIconText: {
+    fontSize: 16 },
+  assetSymbol: {
     fontSize: 12,
-    fontWeight: '500' },
+    fontWeight: '600' },
+  assetValue: {
+    fontSize: 10 },
+
+  // Path badge
+  pathBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    padding: 10,
+    borderRadius: 10,
+    marginBottom: 16,
+    borderWidth: 1 },
+  pathBadgeText: {
+    fontSize: 12,
+    flex: 1 },
+
+  // Balance card
   balanceCard: {
     borderRadius: 14,
     padding: 16,
@@ -538,6 +672,8 @@ const styles = StyleSheet.create({
   balanceValue: {
     fontSize: 16,
     fontWeight: '600' },
+
+  // Amount input
   amountInputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -555,6 +691,8 @@ const styles = StyleSheet.create({
   errorText: {
     fontSize: 12,
     marginTop: 8 },
+
+  // Quick amounts
   quickAmounts: {
     flexDirection: 'row',
     gap: 8,
@@ -567,6 +705,36 @@ const styles = StyleSheet.create({
   quickAmountText: {
     fontSize: 14,
     fontWeight: '500' },
+
+  // Privacy toggle
+  privacyToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 16,
+    borderWidth: 1,
+    gap: 12 },
+  privacyIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center' },
+  privacyText: {
+    flex: 1 },
+  privacyTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 2 },
+  privacyDesc: {
+    fontSize: 12 },
+  privacyStatus: {
+    width: 8,
+    height: 8,
+    borderRadius: 4 },
+
+  // Payout
   payoutInfo: {
     borderRadius: 14,
     padding: 16 },
@@ -601,6 +769,8 @@ const styles = StyleSheet.create({
   estimateValue: {
     fontSize: 16,
     fontWeight: '600' },
+
+  // Error
   errorBanner: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -611,9 +781,92 @@ const styles = StyleSheet.create({
   errorBannerText: {
     fontSize: 12,
     flex: 1 },
+
+  // Pipeline stepper
+  pipelineContainer: {
+    paddingTop: 8 },
+  progressBarBg: {
+    height: 4,
+    borderRadius: 2,
+    marginBottom: 20,
+    overflow: 'hidden' },
+  progressBarFill: {
+    height: '100%',
+    borderRadius: 2 },
+  phaseHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20 },
+  phaseLabel: {
+    fontSize: 18,
+    fontWeight: '600' },
+  phaseTime: {
+    fontSize: 14 },
+  stepper: {
+    gap: 0 },
+  stepRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start' },
+  stepIndicator: {
+    alignItems: 'center',
+    width: 24 },
+  stepDot: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center' },
+  stepLine: {
+    width: 2,
+    height: 24 },
+  stepContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginLeft: 12,
+    paddingBottom: 24 },
+  stepLabel: {
+    fontSize: 14 },
+
+  // Jitter card
+  jitterCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 14,
+    borderRadius: 12,
+    marginBottom: 20,
+    borderWidth: 1 },
+  jitterTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 2 },
+  jitterDesc: {
+    fontSize: 11 },
+
+  // Awaiting fiat card
+  awaitingCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 14,
+    borderRadius: 12,
+    marginTop: 16,
+    borderWidth: 1 },
+  awaitingTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 2 },
+  awaitingDesc: {
+    fontSize: 11 },
+
+  // Footer
   footer: {
     paddingHorizontal: 16,
     paddingTop: 16 },
+  footerButtons: {
+    gap: 8 },
   sellButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -625,44 +878,17 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#fff' },
+  cancelButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    borderRadius: 14,
+    borderWidth: 1 },
+  cancelButtonText: {
+    fontSize: 14,
+    fontWeight: '500' },
   footerNote: {
     fontSize: 12,
     textAlign: 'center',
     marginTop: 12 },
-  privacyToggle: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 16,
-    borderWidth: 1,
-    gap: 12 },
-  privacyIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center' },
-  privacyText: {
-    flex: 1 },
-  privacyTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    marginBottom: 2 },
-  privacyDesc: {
-    fontSize: 12 },
-  privacyStatus: {
-    width: 8,
-    height: 8,
-    borderRadius: 4 },
-  shieldedBalanceCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    padding: 12,
-    borderRadius: 10,
-    marginBottom: 16,
-    borderWidth: 1 },
-  shieldedBalanceLabel: {
-    fontSize: 13,
-    fontWeight: '500' } });
+});
