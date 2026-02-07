@@ -47,19 +47,12 @@ export const fetchRates = internalAction({
       console.log(`Fetching rates for ${args.symbols.length} symbols`);
 
       // Fetch rates from external API
-      // In production, use CoinGecko, CoinMarketCap, or similar
       const rates = await fetchExternalRates(args.symbols);
 
-      // Update rates in database
-      for (const rate of rates) {
-        await ctx.runMutation(internal.crons.syncRates.upsertRate, {
-          symbol: rate.symbol,
-          name: rate.name,
-          usdPrice: rate.usdPrice,
-          change24h: rate.change24h,
-          volume24h: rate.volume24h,
-          marketCap: rate.marketCap,
-          source: rate.source,
+      // Batch update all rates in a single mutation
+      if (rates.length > 0) {
+        await ctx.runMutation(internal.crons.syncRates.batchUpsertRates, {
+          rates,
         });
       }
 
@@ -115,6 +108,57 @@ export const upsertRate = internalMutation({
         createdAt: Date.now(),
         updatedAt: Date.now(),
       });
+    }
+  },
+});
+
+/**
+ * Batch upsert all crypto rates in a single mutation
+ */
+export const batchUpsertRates = internalMutation({
+  args: {
+    rates: v.array(
+      v.object({
+        symbol: v.string(),
+        name: v.string(),
+        usdPrice: v.number(),
+        change24h: v.number(),
+        volume24h: v.number(),
+        marketCap: v.number(),
+        source: v.string(),
+      })
+    ),
+  },
+  handler: async (ctx, args): Promise<void> => {
+    for (const rate of args.rates) {
+      const existing = await ctx.db
+        .query("cryptoRates")
+        .withIndex("by_symbol", (q) => q.eq("symbol", rate.symbol))
+        .first();
+
+      if (existing) {
+        await ctx.db.patch(existing._id, {
+          name: rate.name,
+          usdPrice: rate.usdPrice,
+          change24h: rate.change24h,
+          volume24h: rate.volume24h,
+          marketCap: rate.marketCap,
+          source: rate.source,
+          updatedAt: Date.now(),
+        });
+      } else {
+        await ctx.db.insert("cryptoRates", {
+          symbol: rate.symbol,
+          name: rate.name,
+          usdPrice: rate.usdPrice,
+          change24h: rate.change24h,
+          volume24h: rate.volume24h,
+          marketCap: rate.marketCap,
+          source: rate.source,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        });
+      }
     }
   },
 });
@@ -321,12 +365,10 @@ export const fetchFxRates = internalAction({
       // Fetch rates from ExchangeRate API
       const rates = await fetchExternalFxRates(args.currencies);
 
-      // Update rates in database
-      for (const rate of rates) {
-        await ctx.runMutation(internal.crons.syncRates.upsertFxRate, {
-          currency: rate.currency,
-          rate: rate.rate,
-          source: rate.source,
+      // Batch update all FX rates in a single mutation
+      if (rates.length > 0) {
+        await ctx.runMutation(internal.crons.syncRates.batchUpsertFxRates, {
+          rates,
         });
       }
 
@@ -368,6 +410,45 @@ export const upsertFxRate = internalMutation({
         createdAt: Date.now(),
         updatedAt: Date.now(),
       });
+    }
+  },
+});
+
+/**
+ * Batch upsert all FX rates in a single mutation
+ */
+export const batchUpsertFxRates = internalMutation({
+  args: {
+    rates: v.array(
+      v.object({
+        currency: v.string(),
+        rate: v.number(),
+        source: v.string(),
+      })
+    ),
+  },
+  handler: async (ctx, args): Promise<void> => {
+    for (const rate of args.rates) {
+      const existing = await ctx.db
+        .query("fxRates")
+        .withIndex("by_currency", (q) => q.eq("currency", rate.currency))
+        .first();
+
+      if (existing) {
+        await ctx.db.patch(existing._id, {
+          rate: rate.rate,
+          source: rate.source,
+          updatedAt: Date.now(),
+        });
+      } else {
+        await ctx.db.insert("fxRates", {
+          currency: rate.currency,
+          rate: rate.rate,
+          source: rate.source,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        });
+      }
     }
   },
 });

@@ -63,24 +63,25 @@ crons.hourly(
 // ============ CRYPTO RATES SYNC ============
 
 /**
- * Sync crypto rates every minute
+ * Sync crypto rates every 5 minutes
  * Updates prices from external APIs for real-time subscriptions
  */
 crons.interval(
   "sync-crypto-rates",
-  { minutes: 1 },
+  { minutes: 5 },
   internal.crons.syncRates.run
 );
 
 // ============ HISTORICAL PRICE SYNC ============
 
 /**
- * Sync historical prices every 15 minutes
+ * Sync historical prices every hour
  * Fetches price history from CoinGecko for chart displays
+ * Hourly data doesn't change retroactively — incremental sync picks up new points only
  */
 crons.interval(
   "sync-historical-prices",
-  { minutes: 15 },
+  { hours: 1 },
   internal.crons.syncHistoricalPrices.run
 );
 

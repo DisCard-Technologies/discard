@@ -5,7 +5,7 @@
  * Runs every 15 minutes to keep recent data fresh.
  */
 import { v } from "convex/values";
-import { internalMutation, internalAction } from "../_generated/server";
+import { internalMutation, internalAction, internalQuery } from "../_generated/server";
 import { internal } from "../_generated/api";
 
 // Supported crypto symbols (same as syncRates)
@@ -55,6 +55,7 @@ export const run = internalMutation({
 
 /**
  * Fetch historical prices from CoinGecko market_chart endpoint
+ * Uses incremental sync (only new points since last sync) + batch mutations
  */
 export const fetchHistoricalPrices = internalAction({
   args: {
@@ -69,21 +70,40 @@ export const fetchHistoricalPrices = internalAction({
         const geckoId = SYMBOL_TO_COINGECKO_ID[symbol];
         if (!geckoId) continue;
 
+        // Get the last synced timestamp to only process new data
+        const lastSynced = await ctx.runQuery(
+          internal.crons.syncHistoricalPrices.getLastSyncedTimestamp,
+          { entityId: symbol }
+        );
+
         // Fetch 7 days of hourly data
         const data = await fetchMarketChart(geckoId, 7);
 
         if (data && data.prices) {
-          // Store hourly data points
-          for (const [timestamp, price] of data.prices) {
-            await ctx.runMutation(internal.crons.syncHistoricalPrices.upsertPricePoint, {
-              entityType: "crypto",
-              entityId: symbol,
-              timestamp,
-              value: price,
-              volume: findVolumeAtTimestamp(data.total_volumes, timestamp),
-              granularity: "1h",
-              source: "coingecko",
-            });
+          // Filter to only new points (after last synced timestamp)
+          const newPoints = lastSynced
+            ? data.prices.filter(([timestamp]) => timestamp > lastSynced)
+            : data.prices;
+
+          if (newPoints.length > 0) {
+            // Batch all points into a single mutation
+            await ctx.runMutation(
+              internal.crons.syncHistoricalPrices.upsertPricePointsBatch,
+              {
+                points: newPoints.map(([timestamp, price]) => ({
+                  entityType: "crypto" as const,
+                  entityId: symbol,
+                  timestamp,
+                  value: price,
+                  volume: findVolumeAtTimestamp(data.total_volumes, timestamp),
+                  granularity: "1h" as const,
+                  source: "coingecko",
+                })),
+              }
+            );
+            console.log(`[HistoricalPrices] ${symbol}: batched ${newPoints.length} new points`);
+          } else {
+            console.log(`[HistoricalPrices] ${symbol}: no new points, skipping`);
           }
         }
 
@@ -193,6 +213,81 @@ export const upsertPricePoint = internalMutation({
         granularity: args.granularity,
         source: args.source,
       });
+    }
+  },
+});
+
+/**
+ * Get the most recent synced timestamp for a given symbol
+ * Used for incremental sync — skip points we already have
+ */
+export const getLastSyncedTimestamp = internalQuery({
+  args: {
+    entityId: v.string(),
+  },
+  handler: async (ctx, args): Promise<number | null> => {
+    const latest = await ctx.db
+      .query("priceHistory")
+      .withIndex("by_entity_time", (q) =>
+        q.eq("entityType", "crypto").eq("entityId", args.entityId)
+      )
+      .order("desc")
+      .first();
+
+    return latest?.timestamp ?? null;
+  },
+});
+
+/**
+ * Batch upsert price history points (one mutation per symbol instead of per point)
+ */
+export const upsertPricePointsBatch = internalMutation({
+  args: {
+    points: v.array(
+      v.object({
+        entityType: v.union(v.literal("crypto"), v.literal("market")),
+        entityId: v.string(),
+        timestamp: v.number(),
+        value: v.number(),
+        volume: v.optional(v.number()),
+        granularity: v.union(v.literal("1h"), v.literal("1d")),
+        source: v.string(),
+      })
+    ),
+  },
+  handler: async (ctx, args): Promise<void> => {
+    for (const point of args.points) {
+      // Same existence check + threshold logic as upsertPricePoint
+      const existing = await ctx.db
+        .query("priceHistory")
+        .withIndex("by_entity_time", (q) =>
+          q
+            .eq("entityType", point.entityType)
+            .eq("entityId", point.entityId)
+            .eq("timestamp", point.timestamp)
+        )
+        .first();
+
+      if (existing) {
+        const pctChange = Math.abs((point.value - existing.value) / existing.value);
+        if (pctChange > 0.001) {
+          await ctx.db.patch(existing._id, {
+            value: point.value,
+            volume: point.volume,
+            source: point.source,
+          });
+        }
+      } else {
+        await ctx.db.insert("priceHistory", {
+          entityType: point.entityType,
+          entityId: point.entityId,
+          timestamp: point.timestamp,
+          value: point.value,
+          volume: point.volume,
+          granularity: point.granularity,
+          source: point.source,
+        });
+      }
     }
   },
 });
